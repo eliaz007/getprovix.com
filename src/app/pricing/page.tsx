@@ -44,7 +44,8 @@ const talentHighlights = [
   "Apply to opportunities with one click",
 ];
 
-const BETA_ACCESS_STORAGE_KEY = "vanguardx_beta_access_unlocked";
+const BETA_UNLOCK_STORAGE_KEY = "beta_unlocked_session";
+const BETA_LEAD_STORAGE_KEY = "beta_unlocked_lead";
 
 export default function PricingPage() {
   const router = useRouter();
@@ -75,7 +76,14 @@ export default function PricingPage() {
 
     const markBetaUnlocked = () => {
       if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(BETA_ACCESS_STORAGE_KEY, "true");
+        window.localStorage.setItem(BETA_UNLOCK_STORAGE_KEY, "true");
+        window.localStorage.setItem(
+          BETA_LEAD_STORAGE_KEY,
+          JSON.stringify({
+            company_name: trimmedCompany,
+            work_email: trimmedEmail,
+          })
+        );
       }
     };
 

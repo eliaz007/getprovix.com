@@ -8,7 +8,8 @@ import { createClient } from "@/utils/supabase/client";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
-const BETA_ACCESS_STORAGE_KEY = "vanguardx_beta_access_unlocked";
+const BETA_UNLOCK_STORAGE_KEY = "beta_unlocked_session";
+const BETA_LEAD_STORAGE_KEY = "beta_unlocked_lead";
 
 const DEFAULT_PROFILE_DATA = {
   name: "Alex Morgan",
@@ -431,6 +432,50 @@ function getCandidateProfileLink(candidate: TalentPoolCandidate): string | null 
     null;
 
   return github ? formatExternalUrl(github) : null;
+}
+
+function getCandidateProjectLinks(
+  candidate: TalentPoolCandidate
+): Array<{ label: string; url: string }> {
+  const links: Array<{ label: string; url: string }> = [];
+
+  const github =
+    candidate.github_url?.trim() || candidate.github?.trim() || "";
+  if (github) {
+    links.push({
+      label: github.includes("github.com") ? "GitHub" : "Portfolio",
+      url: formatExternalUrl(github),
+    });
+  }
+
+  const linkedin = candidate.linkedin_url?.trim() || "";
+  if (linkedin) {
+    links.push({
+      label: "LinkedIn",
+      url: formatExternalUrl(linkedin),
+    });
+  }
+
+  const demo = candidate.demoVideo?.trim() || "";
+  if (demo) {
+    links.push({
+      label: "Demo Reel",
+      url: formatExternalUrl(demo),
+    });
+  }
+
+  return links;
+}
+
+function getCandidateInitials(name: string): string {
+  return (
+    name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "??"
+  );
 }
 
 function formatBaselineMatchLabel(
@@ -1002,14 +1047,33 @@ const showToast = (msg: string) => {
   const isProEmployerAccount =
     betaAccessUnlocked ||
     isProEmployer(dbProfile, businessProfileData.billingPlan);
+  const hasBetaAccess = isProEmployerAccount;
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
 
-    if (window.sessionStorage.getItem(BETA_ACCESS_STORAGE_KEY) === "true") {
+    if (window.localStorage.getItem(BETA_UNLOCK_STORAGE_KEY) === "true") {
       setBetaAccessUnlocked(true);
+    }
+
+    try {
+      const storedLead = window.localStorage.getItem(BETA_LEAD_STORAGE_KEY);
+      if (storedLead) {
+        const parsed = JSON.parse(storedLead) as {
+          company_name?: string;
+          work_email?: string;
+        };
+        if (parsed.company_name) {
+          setBetaCompanyName(parsed.company_name);
+        }
+        if (parsed.work_email) {
+          setBetaWorkEmail(parsed.work_email);
+        }
+      }
+    } catch {
+      // Ignore malformed local lead cache.
     }
   }, []);
 
@@ -1854,7 +1918,14 @@ const showToast = (msg: string) => {
     const applyBetaUnlockLocal = () => {
       setBetaAccessUnlocked(true);
       if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(BETA_ACCESS_STORAGE_KEY, "true");
+        window.localStorage.setItem(BETA_UNLOCK_STORAGE_KEY, "true");
+        window.localStorage.setItem(
+          BETA_LEAD_STORAGE_KEY,
+          JSON.stringify({
+            company_name: companyName,
+            work_email: workEmail,
+          })
+        );
       }
 
       setDbProfile((prev) =>
@@ -4517,13 +4588,13 @@ const showToast = (msg: string) => {
                                 type="button"
                                 onClick={() => handleConnectCandidate(col)}
                                 className={`flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer ${
-                                  isProEmployerAccount
+                                  hasBetaAccess
                                     ? "bg-indigo-600 hover:bg-indigo-500 text-white"
                                     : "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
                                 }`}
                               >
-                                {!isProEmployerAccount && (
-                                  <Icons.LockSmall />
+                                {!hasBetaAccess && (
+                                  <Lock className="w-3 h-3" aria-hidden />
                                 )}
                                 Connect
                               </button>
@@ -4630,44 +4701,55 @@ const showToast = (msg: string) => {
           >
             {selectedCandidate && (
               <div className="p-6 space-y-6">
-                {/* Header — identity is anonymized until the employer upgrades */}
+                {/* Header — identity revealed after beta unlock */}
                 <div className="flex items-start justify-between pb-5 border-b border-slate-800">
                   <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setUpgradeModalOpen(true)}
-                      title="Unlock to reveal this candidate's identity"
-                      className="relative w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden cursor-pointer"
-                    >
-                      <span className="blur-md select-none">
-                        {selectedCandidate.name
-                          .split(" ")
-                          .filter(Boolean)
-                          .slice(0, 2)
-                          .map((part) => part[0]?.toUpperCase())
-                          .join("")}
-                      </span>
-                      <span className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
-                        <Icons.LockSmall />
-                      </span>
-                    </button>
+                    {hasBetaAccess ? (
+                      <div className="relative w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 flex items-center justify-center font-bold text-sm shrink-0">
+                        {getCandidateInitials(selectedCandidate.name)}
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setProUpgradeModalOpen(true)}
+                        title="Unlock to reveal this candidate's identity"
+                        className="relative w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden cursor-pointer"
+                      >
+                        <span className="blur-md select-none">
+                          {getCandidateInitials(selectedCandidate.name)}
+                        </span>
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
+                          <Lock className="w-3.5 h-3.5" aria-hidden />
+                        </span>
+                      </button>
+                    )}
                     <div>
                       <h3 className="text-base font-bold text-white leading-tight">
-                        AI-Vetted Candidate #{selectedCandidate.id.replace(/\D/g, "")}
+                        {hasBetaAccess
+                          ? selectedCandidate.name
+                          : `AI-Vetted Candidate #${selectedCandidate.id.replace(/\D/g, "")}`}
                       </h3>
                       <p className="text-xs text-indigo-400 font-medium mt-0.5">
                         {selectedCandidate.role}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          selectedCandidate &&
-                          handleConnectCandidate(selectedCandidate)
-                        }
-                        className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-lg shadow-indigo-500/20"
-                      >
-                        <Icons.LockSmall /> Reveal Identity &amp; Contact
-                      </button>
+                      {hasBetaAccess ? (
+                        <button
+                          type="button"
+                          onClick={() => handleConnectCandidate(selectedCandidate)}
+                          className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-lg shadow-indigo-500/20"
+                        >
+                          <Icons.Mail /> View Contact &amp; Interview Prep
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setProUpgradeModalOpen(true)}
+                          className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-lg shadow-indigo-500/20"
+                        >
+                          <Lock className="w-3.5 h-3.5" aria-hidden />
+                          Reveal Identity &amp; Contact
+                        </button>
+                      )}
                     </div>
                   </div>
                   <button
@@ -4728,30 +4810,84 @@ const showToast = (msg: string) => {
                   </div>
                 </div>
 
-                {/* Project Links — hidden until the employer upgrades */}
+                {/* Project Links */}
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
                     Project Links
                   </div>
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => setUpgradeModalOpen(true)}
-                      className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-slate-700 transition-all cursor-pointer"
-                    >
-                      <span className="text-zinc-500 italic">Hidden until upgrade</span>
-                      <Icons.LockSmall />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setUpgradeModalOpen(true)}
-                      className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-slate-700 transition-all cursor-pointer"
-                    >
-                      <span className="text-zinc-500 italic">Hidden until upgrade</span>
-                      <Icons.LockSmall />
-                    </button>
-                  </div>
+                  {hasBetaAccess ? (
+                    <div className="space-y-2">
+                      {(() => {
+                        const projectLinks =
+                          getCandidateProjectLinks(selectedCandidate);
+                        if (projectLinks.length === 0) {
+                          return (
+                            <p className="text-xs text-slate-500 italic bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5">
+                              No public project links provided.
+                            </p>
+                          );
+                        }
+
+                        return projectLinks.map((link) => (
+                          <a
+                            key={`${link.label}-${link.url}`}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-indigo-500/40 transition-all"
+                          >
+                            <span className="text-indigo-300 font-medium">
+                              {link.label}
+                            </span>
+                            <Icons.ExternalLink />
+                          </a>
+                        ));
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => setProUpgradeModalOpen(true)}
+                        className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-slate-700 transition-all cursor-pointer"
+                      >
+                        <span className="text-zinc-500 italic">Hidden until upgrade</span>
+                        <Lock className="w-3.5 h-3.5 text-zinc-500" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProUpgradeModalOpen(true)}
+                        className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-slate-700 transition-all cursor-pointer"
+                      >
+                        <span className="text-zinc-500 italic">Hidden until upgrade</span>
+                        <Lock className="w-3.5 h-3.5 text-zinc-500" aria-hidden />
+                      </button>
+                    </div>
+                  )}
                 </div>
+
+                {hasBetaAccess && (
+                  <div>
+                    <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
+                      Verified Contact
+                    </div>
+                    <div className="bg-[#0A0A0A] border border-slate-800/80 rounded-xl p-3.5 space-y-2 text-xs">
+                      {selectedCandidate.email ? (
+                        <a
+                          href={`mailto:${selectedCandidate.email}`}
+                          className="block text-indigo-300 hover:text-indigo-200"
+                        >
+                          {selectedCandidate.email}
+                        </a>
+                      ) : (
+                        <p className="text-slate-500 italic">Email available in contact card</p>
+                      )}
+                      {selectedCandidate.phone && (
+                        <p className="text-slate-300">{selectedCandidate.phone}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* AI Deep Screening */}
                 <div className="bg-[#0A0A0A] border border-slate-800/80 rounded-xl p-4 space-y-4">
@@ -4790,7 +4926,7 @@ const showToast = (msg: string) => {
                     )}
                   </button>
 
-                  {!isProEmployerAccount ? (
+                  {!hasBetaAccess ? (
                     <p className="text-[11px] text-slate-400">
                       Unlock beta access to enable deep screening.
                     </p>
@@ -4802,7 +4938,7 @@ const showToast = (msg: string) => {
                     )
                   )}
 
-                  {isProEmployerAccount && deepScreeningResult && (
+                  {hasBetaAccess && deepScreeningResult && (
                     <div className="space-y-4 pt-1">
                       <div>
                         <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
@@ -4880,8 +5016,9 @@ const showToast = (msg: string) => {
                   onClick={() => handleConnectCandidate(selectedCandidate)}
                   className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Icons.Mail /> Connect
-                  {!isProEmployerAccount && <Icons.LockSmall />}
+                  <Icons.Mail />
+                  {hasBetaAccess ? "Open Contact Card" : "Connect"}
+                  {!hasBetaAccess && <Lock className="w-3.5 h-3.5" aria-hidden />}
                 </button>
               </div>
             )}
