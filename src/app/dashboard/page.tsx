@@ -178,6 +178,17 @@ type ProfileRecord = {
   portfolio_url?: string | null;
   is_visible_in_pool?: boolean | null;
   company_name?: string | null;
+  tier?: string | null;
+  is_pro?: boolean | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
+  contact_email?: string | null;
+};
+
+type DeepScreeningResult = {
+  strengths: string[];
+  gaps: string[];
+  interview_questions: string[];
 };
 
 type MatchInsight = {
@@ -189,7 +200,7 @@ type MatchInsight = {
 
 const BASE_PROFILE_COLUMNS = "id, full_name, role, graduation_year";
 const EXTENDED_PROFILE_COLUMNS =
-  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, is_visible_in_pool, company_name";
+  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, is_visible_in_pool, company_name, tier, is_pro, phone, linkedin_url, contact_email";
 const LEGACY_EXTENDED_PROFILE_COLUMNS =
   "id, full_name, role, graduation_year, major, is_visible_in_pool, company_name";
 
@@ -212,10 +223,36 @@ function isPaidEmployerPlan(billingPlan: string): boolean {
     plan.includes("monthly") ||
     plan.includes("agency") ||
     plan.includes("$299") ||
+    plan.includes("$149") ||
     plan.includes("$15") ||
     plan.includes("pro") ||
     plan.includes("paid")
   );
+}
+
+function isProEmployer(
+  profile: ProfileRecord | null,
+  billingPlan: string
+): boolean {
+  if (profile?.is_pro === true) {
+    return true;
+  }
+
+  const tier = profile?.tier?.trim().toLowerCase();
+  if (tier === "pro") {
+    return true;
+  }
+
+  return isPaidEmployerPlan(billingPlan);
+}
+
+function formatExternalUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
 }
 
 function isUuid(value: string): boolean {
@@ -226,7 +263,12 @@ function isUuid(value: string): boolean {
 
 type TalentPoolCandidate = {
   id: string;
+  profileId?: string | null;
   name: string;
+  email?: string | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
+  github_url?: string | null;
   role: string;
   major: string;
   skills: string[];
@@ -241,6 +283,153 @@ type TalentPoolCandidate = {
   demoVideo: string;
   projects: string[];
 };
+
+const FALLBACK_TALENT_CANDIDATES: TalentPoolCandidate[] = [
+  {
+    id: "C-992",
+    name: "Jordan Lee",
+    email: "jordan.lee@example.com",
+    phone: "+1 (415) 555-0192",
+    linkedin_url: "linkedin.com/in/jordanlee",
+    github_url: "github.com/jordanlee",
+    role: "Software Engineer",
+    major: "B.S. Computer Science, Stanford",
+    skills: ["Next.js", "Python", "PostgreSQL"],
+    rating: "94%",
+    execution_score: 94,
+    status: "Open for Hire",
+    experienceLevel: "Mid-Level",
+    roleType: "Engineering",
+    availability: "Available Now",
+    bio: "Full-stack engineer focused on shipping production-ready Next.js apps fast.",
+    github: "github.com/jordanlee",
+    demoVideo: "youtube.com/watch?v=jordan-demo",
+    projects: [
+      "Built a Next.js SaaS dashboard used by 500+ paying customers.",
+      "Migrated a legacy Rails app to a modern Next.js + Postgres stack.",
+    ],
+  },
+  {
+    id: "C-414",
+    name: "Maya Chen",
+    email: "maya.chen@example.com",
+    phone: "+1 (310) 555-0144",
+    linkedin_url: "linkedin.com/in/mayachen",
+    github_url: "vimeo.com/mayachen",
+    role: "Video Editor / Content",
+    major: "Self-Taught (No Degree)",
+    skills: ["Premiere", "TikTok Hooks", "After Effects"],
+    rating: "92%",
+    execution_score: 92,
+    status: "Interviewing",
+    experienceLevel: "Entry-Level",
+    roleType: "Design",
+    availability: "Interviewing",
+    bio: "Short-form content editor specializing in hook-driven retention edits.",
+    github: "vimeo.com/mayachen",
+    demoVideo: "youtube.com/watch?v=maya-demo",
+    projects: [
+      "Edited 200+ short-form videos averaging 1M+ views.",
+      "Grew a client's TikTok from 0 to 80K followers in 4 months.",
+    ],
+  },
+  {
+    id: "C-771",
+    name: "Riley Ortiz",
+    email: "riley.ortiz@example.com",
+    phone: "+1 (212) 555-0177",
+    linkedin_url: "linkedin.com/in/rileyortiz",
+    github_url: "github.com/rileyops",
+    role: "Operations Lead",
+    major: "B.A. Business Admin, NYU",
+    skills: ["Zapier", "Logistics", "Notion"],
+    rating: "89%",
+    execution_score: 89,
+    status: "Open for Hire",
+    experienceLevel: "Senior",
+    roleType: "Operations",
+    availability: "Available Now",
+    bio: "Operations generalist who automates messy internal workflows.",
+    github: "github.com/rileyops",
+    demoVideo: "youtube.com/watch?v=riley-demo",
+    projects: [
+      "Automated a 12-step onboarding flow into a single Zapier pipeline.",
+      "Reduced fulfillment errors by 40% through process redesign.",
+    ],
+  },
+  {
+    id: "C-205",
+    name: "Sam Patel",
+    email: "sam.patel@example.com",
+    phone: "+1 (646) 555-0205",
+    linkedin_url: "linkedin.com/in/sampatel",
+    github_url: "github.com/sampatel",
+    role: "B2B Sales Rep",
+    major: "B.A. Communications",
+    skills: ["Cold Calling", "HubSpot", "Outbound"],
+    rating: "87%",
+    execution_score: 87,
+    status: "Placed",
+    experienceLevel: "Mid-Level",
+    roleType: "Sales",
+    availability: "Not Available",
+    bio: "Outbound sales rep with a track record of booking qualified demos.",
+    github: "linkedin.com/in/sampatel",
+    demoVideo: "youtube.com/watch?v=sam-demo",
+    projects: [
+      "Booked 150+ qualified demos in a single quarter.",
+      "Built a cold outreach playbook adopted company-wide.",
+    ],
+  },
+];
+
+function mapProfileRowToTalentCandidate(
+  row: ProfileRecord & { id: string }
+): TalentPoolCandidate {
+  const skills = Array.isArray(row.skills) ? row.skills : [];
+  const portfolioUrl = row.portfolio_url?.trim() ?? "";
+  const isLinkedIn = portfolioUrl.toLowerCase().includes("linkedin");
+  const shortId = row.id.replace(/-/g, "").slice(0, 3).toUpperCase();
+
+  return {
+    id: `C-${shortId}`,
+    profileId: row.id,
+    name: row.full_name?.trim() || "Vetted Candidate",
+    email: row.contact_email?.trim() || null,
+    phone: row.phone?.trim() || null,
+    linkedin_url: row.linkedin_url?.trim() || (isLinkedIn ? portfolioUrl : null),
+    github_url: !isLinkedIn && portfolioUrl ? portfolioUrl : null,
+    role: row.job_title?.trim() || "Open Role Candidate",
+    major: row.major?.trim() || row.school?.trim() || "Credentials on file",
+    skills,
+    rating: "90%",
+    execution_score: 90,
+    status: row.status?.trim() || "Open for Hire",
+    experienceLevel: "Mid-Level",
+    roleType: "General",
+    availability: "Available Now",
+    bio:
+      row.bio?.trim() ||
+      "AI-vetted candidate with verified proof-of-work in the talent pool.",
+    github: portfolioUrl || "",
+    demoVideo: "",
+    projects: [],
+  };
+}
+
+function getCandidateProfileLink(candidate: TalentPoolCandidate): string | null {
+  const linkedin = candidate.linkedin_url?.trim();
+  if (linkedin) {
+    return formatExternalUrl(linkedin);
+  }
+
+  const github =
+    candidate.github_url?.trim() ||
+    candidate.github?.trim() ||
+    null;
+
+  return github ? formatExternalUrl(github) : null;
+}
 
 function formatBaselineMatchLabel(
   executionScore: number | string | null | undefined,
@@ -418,6 +607,13 @@ export default function DashboardPage() {
 
   // Soft paywall: premium nav items open this modal instead of switching tabs.
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [proUpgradeModalOpen, setProUpgradeModalOpen] = useState(false);
+  const [contactModalCandidate, setContactModalCandidate] =
+    useState<TalentPoolCandidate | null>(null);
+  const [contactEmailCopied, setContactEmailCopied] = useState(false);
+  const [deepScreeningLoading, setDeepScreeningLoading] = useState(false);
+  const [deepScreeningResult, setDeepScreeningResult] =
+    useState<DeepScreeningResult | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [postJobModalOpen, setPostJobModalOpen] = useState(false);
   const [newJobTitle, setNewJobTitle] = useState("");
@@ -624,6 +820,50 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (!showTalentPoolNav) {
+      return;
+    }
+
+    const supabase = createClient();
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select(
+            "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, phone, linkedin_url, contact_email"
+          )
+          .eq("is_visible_in_pool", true)
+          .in("role", ["candidate", "employee"]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (error) {
+          console.error("Failed to fetch talent pool profiles:", error);
+          return;
+        }
+
+        const mapped = (data ?? [])
+          .filter((row): row is ProfileRecord & { id: string } => !!row.id)
+          .map((row) => mapProfileRowToTalentCandidate(row));
+
+        if (mapped.length > 0) {
+          setCandidates(mapped);
+        }
+      } catch (err) {
+        console.error("Talent pool fetch threw:", err);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [showTalentPoolNav]);
+
+  useEffect(() => {
     if (!showTalentPoolNav && activeTab === "talent") {
       setActiveTab(isEmployeeAccount ? "opportunities" : "my_profile");
     }
@@ -752,7 +992,7 @@ const showToast = (msg: string) => {
     dbProfile?.company_name ||
     businessProfileData?.businessName ||
     "your company";
-  const isPaidEmployer = isPaidEmployerPlan(businessProfileData.billingPlan);
+  const isProEmployerAccount = isProEmployer(dbProfile, businessProfileData.billingPlan);
   const employerActiveJobs = useMemo(
     () => jobs.filter((job) => job.employer_id === user?.id),
     [jobs, user?.id]
@@ -971,88 +1211,9 @@ const showToast = (msg: string) => {
   const [powResult, setPowResult] = useState(false);
 
   // --- EMPLOYER TALENT POOL DATA ---
-  const candidates = [
-    {
-      id: "C-992",
-      name: "Jordan Lee",
-      role: "Software Engineer",
-      major: "B.S. Computer Science, Stanford",
-      skills: ["Next.js", "Python", "PostgreSQL"],
-      rating: "94%",
-      execution_score: 94,
-      status: "Open for Hire",
-      experienceLevel: "Mid-Level",
-      roleType: "Engineering",
-      availability: "Available Now",
-      bio: "Full-stack engineer focused on shipping production-ready Next.js apps fast.",
-      github: "github.com/jordanlee",
-      demoVideo: "youtube.com/watch?v=jordan-demo",
-      projects: [
-        "Built a Next.js SaaS dashboard used by 500+ paying customers.",
-        "Migrated a legacy Rails app to a modern Next.js + Postgres stack.",
-      ],
-    },
-    {
-      id: "C-414",
-      name: "Maya Chen",
-      role: "Video Editor / Content",
-      major: "Self-Taught (No Degree)",
-      skills: ["Premiere", "TikTok Hooks", "After Effects"],
-      rating: "92%",
-      execution_score: 92,
-      status: "Interviewing",
-      experienceLevel: "Entry-Level",
-      roleType: "Design",
-      availability: "Interviewing",
-      bio: "Short-form content editor specializing in hook-driven retention edits.",
-      github: "vimeo.com/mayachen",
-      demoVideo: "youtube.com/watch?v=maya-demo",
-      projects: [
-        "Edited 200+ short-form videos averaging 1M+ views.",
-        "Grew a client's TikTok from 0 to 80K followers in 4 months.",
-      ],
-    },
-    {
-      id: "C-771",
-      name: "Riley Ortiz",
-      role: "Operations Lead",
-      major: "B.A. Business Admin, NYU",
-      skills: ["Zapier", "Logistics", "Notion"],
-      rating: "89%",
-      execution_score: 89,
-      status: "Open for Hire",
-      experienceLevel: "Senior",
-      roleType: "Operations",
-      availability: "Available Now",
-      bio: "Operations generalist who automates messy internal workflows.",
-      github: "github.com/rileyops",
-      demoVideo: "youtube.com/watch?v=riley-demo",
-      projects: [
-        "Automated a 12-step onboarding flow into a single Zapier pipeline.",
-        "Reduced fulfillment errors by 40% through process redesign.",
-      ],
-    },
-    {
-      id: "C-205",
-      name: "Sam Patel",
-      role: "B2B Sales Rep",
-      major: "B.A. Communications",
-      skills: ["Cold Calling", "HubSpot", "Outbound"],
-      rating: "87%",
-      execution_score: 87,
-      status: "Placed",
-      experienceLevel: "Mid-Level",
-      roleType: "Sales",
-      availability: "Not Available",
-      bio: "Outbound sales rep with a track record of booking qualified demos.",
-      github: "linkedin.com/in/sampatel",
-      demoVideo: "youtube.com/watch?v=sam-demo",
-      projects: [
-        "Booked 150+ qualified demos in a single quarter.",
-        "Built a cold outreach playbook adopted company-wide.",
-      ],
-    },
-  ];
+  const [candidates, setCandidates] = useState<TalentPoolCandidate[]>(
+    FALLBACK_TALENT_CANDIDATES
+  );
 
   const opportunityListings = [
     {
@@ -1159,9 +1320,13 @@ const showToast = (msg: string) => {
   const [experienceFilter, setExperienceFilter] = useState("all");
   const [roleTypeFilter, setRoleTypeFilter] = useState("all");
   const [availabilityFilter, setAvailabilityFilter] = useState("all");
-  const [selectedCandidate, setSelectedCandidate] = useState<
-    (typeof candidates)[number] | null
-  >(null);
+  const [selectedCandidate, setSelectedCandidate] =
+    useState<TalentPoolCandidate | null>(null);
+
+  useEffect(() => {
+    setDeepScreeningResult(null);
+    setDeepScreeningLoading(false);
+  }, [selectedCandidate?.id]);
 
   const filteredCandidates = candidates.filter((candidate) => {
     const query = talentSearch.trim().toLowerCase();
@@ -1580,13 +1745,112 @@ const showToast = (msg: string) => {
     );
   };
 
-  const handleConnectCandidate = (candidateId: string) => {
-    if (!isPaidEmployer) {
-      router.push("/pricing");
+  const handleConnectCandidate = async (candidate: TalentPoolCandidate) => {
+    if (!isProEmployerAccount) {
+      setProUpgradeModalOpen(true);
       return;
     }
 
-    showToast(`Connection request sent to ${candidateId}.`);
+    let unlockedCandidate = candidate;
+
+    if (candidate.profileId && isUuid(candidate.profileId)) {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(
+          "full_name, contact_email, phone, linkedin_url, portfolio_url, bio, skills, job_title, major"
+        )
+        .eq("id", candidate.profileId)
+        .maybeSingle();
+
+      if (!error && data) {
+        unlockedCandidate = {
+          ...candidate,
+          name: data.full_name?.trim() || candidate.name,
+          email: data.contact_email?.trim() || candidate.email || null,
+          phone: data.phone?.trim() || candidate.phone || null,
+          linkedin_url:
+            data.linkedin_url?.trim() ||
+            candidate.linkedin_url ||
+            null,
+          github_url:
+            data.portfolio_url?.trim() ||
+            candidate.github_url ||
+            candidate.github ||
+            null,
+          bio: data.bio?.trim() || candidate.bio,
+          role: data.job_title?.trim() || candidate.role,
+          major: data.major?.trim() || candidate.major,
+          skills: Array.isArray(data.skills)
+            ? data.skills
+            : candidate.skills,
+        };
+      }
+    }
+
+    setContactEmailCopied(false);
+    setContactModalCandidate(unlockedCandidate);
+  };
+
+  const handleCopyContactEmail = async (email: string) => {
+    try {
+      await navigator.clipboard.writeText(email);
+      setContactEmailCopied(true);
+      showToast("Email copied to clipboard.");
+      window.setTimeout(() => setContactEmailCopied(false), 2000);
+    } catch {
+      showToast("Could not copy email.");
+    }
+  };
+
+  const runDeepScreening = async () => {
+    if (!selectedCandidate) {
+      return;
+    }
+
+    if (!primaryMatchingJob) {
+      showToast("Post an active job to run AI deep screening.");
+      return;
+    }
+
+    setDeepScreeningLoading(true);
+    setDeepScreeningResult(null);
+
+    try {
+      const response = await fetch("/api/screen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidate: {
+            name: selectedCandidate.name,
+            title: selectedCandidate.role,
+            bio: selectedCandidate.bio,
+            skills: selectedCandidate.skills,
+            degree: selectedCandidate.major,
+            experience: selectedCandidate.experienceLevel,
+            projects: selectedCandidate.projects,
+          },
+          job: {
+            title: primaryMatchingJob.title,
+            company: primaryMatchingJob.company,
+            tags: primaryMatchingJob.tags,
+            location: primaryMatchingJob.location,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Deep screening failed (${response.status})`);
+      }
+
+      const data = (await response.json()) as DeepScreeningResult;
+      setDeepScreeningResult(data);
+    } catch (err) {
+      console.error("Deep screening request failed:", err);
+      showToast("Could not generate deep screening. Please try again.");
+    } finally {
+      setDeepScreeningLoading(false);
+    }
   };
 
   const isDrawerOpen = selectedCandidate !== null;
@@ -4108,14 +4372,14 @@ const showToast = (msg: string) => {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleConnectCandidate(col.id)}
+                                onClick={() => handleConnectCandidate(col)}
                                 className={`flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer ${
-                                  isPaidEmployer
+                                  isProEmployerAccount
                                     ? "bg-indigo-600 hover:bg-indigo-500 text-white"
                                     : "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
                                 }`}
                               >
-                                {!isPaidEmployer && (
+                                {!isProEmployerAccount && (
                                   <Icons.LockSmall />
                                 )}
                                 Connect
@@ -4253,7 +4517,10 @@ const showToast = (msg: string) => {
                       </p>
                       <button
                         type="button"
-                        onClick={() => setUpgradeModalOpen(true)}
+                        onClick={() =>
+                          selectedCandidate &&
+                          handleConnectCandidate(selectedCandidate)
+                        }
                         className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-lg shadow-indigo-500/20"
                       >
                         <Icons.LockSmall /> Reveal Identity &amp; Contact
@@ -4343,6 +4610,96 @@ const showToast = (msg: string) => {
                   </div>
                 </div>
 
+                {/* AI Deep Screening */}
+                <div className="bg-[#0A0A0A] border border-slate-800/80 rounded-xl p-4 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+                        Gemini Deep Screening
+                      </div>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        Generate strengths, gaps, and interview questions against your active job post.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={runDeepScreening}
+                    disabled={deepScreeningLoading || !primaryMatchingJob}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {deepScreeningLoading ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Analyzing candidate…
+                      </>
+                    ) : (
+                      "Generate AI Deep Screening"
+                    )}
+                  </button>
+
+                  {!primaryMatchingJob && (
+                    <p className="text-[11px] text-amber-400/90">
+                      Post an active job to enable deep screening.
+                    </p>
+                  )}
+
+                  {deepScreeningResult && (
+                    <div className="space-y-4 pt-1">
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
+                          Key Strengths
+                        </div>
+                        <ul className="space-y-1.5">
+                          {deepScreeningResult.strengths.map((item, index) => (
+                            <li
+                              key={`strength-${index}`}
+                              className="text-xs text-slate-300 leading-relaxed bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2"
+                            >
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-2">
+                          Growth Areas
+                        </div>
+                        <ul className="space-y-1.5">
+                          {deepScreeningResult.gaps.map((item, index) => (
+                            <li
+                              key={`gap-${index}`}
+                              className="text-xs text-slate-300 leading-relaxed bg-amber-500/5 border border-amber-500/10 rounded-lg px-3 py-2"
+                            >
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-indigo-300 tracking-wider mb-2">
+                          Interview Questions
+                        </div>
+                        <ul className="space-y-1.5">
+                          {deepScreeningResult.interview_questions.map(
+                            (item, index) => (
+                              <li
+                                key={`question-${index}`}
+                                className="text-xs text-slate-300 leading-relaxed bg-indigo-500/5 border border-indigo-500/10 rounded-lg px-3 py-2"
+                              >
+                                {item}
+                              </li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Verified Projects */}
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
@@ -4360,14 +4717,14 @@ const showToast = (msg: string) => {
                   </ul>
                 </div>
 
-                {/* Send Direct Hire Inquiry — premium action, gated behind the paywall */}
+                {/* Connect — Pro unlocks direct contact details */}
                 <button
                   type="button"
-                  onClick={() => setUpgradeModalOpen(true)}
+                  onClick={() => handleConnectCandidate(selectedCandidate)}
                   className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Icons.Mail /> Send Direct Hire Inquiry
-                  <Icons.LockSmall />
+                  <Icons.Mail /> Connect
+                  {!isProEmployerAccount && <Icons.LockSmall />}
                 </button>
               </div>
             )}
@@ -4641,6 +4998,139 @@ const showToast = (msg: string) => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* PRO CONTACT UNLOCK MODAL */}
+        {contactModalCandidate && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-[#121212] border border-slate-800 rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
+              <button
+                type="button"
+                onClick={() => setContactModalCandidate(null)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors cursor-pointer"
+              >
+                <Icons.XMark />
+              </button>
+
+              <div className="mb-5">
+                <h3 className="text-lg font-bold text-white">
+                  Candidate Contact Unlocked
+                </h3>
+                <p className="text-sm text-slate-400 mt-1">
+                  Pro access — direct contact details for{" "}
+                  {contactModalCandidate.name}
+                </p>
+              </div>
+
+              <div className="space-y-3 text-sm">
+                <div className="bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3">
+                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+                    Full Name
+                  </div>
+                  <div className="text-white font-medium">
+                    {contactModalCandidate.name}
+                  </div>
+                </div>
+
+                <div className="bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3">
+                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+                    Email
+                  </div>
+                  {contactModalCandidate.email ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <a
+                        href={`mailto:${contactModalCandidate.email}`}
+                        className="text-indigo-400 hover:text-indigo-300 break-all"
+                      >
+                        {contactModalCandidate.email}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCopyContactEmail(contactModalCandidate.email!)
+                        }
+                        className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-white transition-all cursor-pointer"
+                      >
+                        {contactEmailCopied ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                        Copy Email
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-slate-500">Not provided</div>
+                  )}
+                </div>
+
+                <div className="bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3">
+                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+                    Phone
+                  </div>
+                  <div className="text-slate-200">
+                    {contactModalCandidate.phone || "Not provided"}
+                  </div>
+                </div>
+
+                {getCandidateProfileLink(contactModalCandidate) && (
+                  <div className="bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3">
+                    <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+                      {contactModalCandidate.linkedin_url
+                        ? "LinkedIn"
+                        : "GitHub / Portfolio"}
+                    </div>
+                    <a
+                      href={getCandidateProfileLink(contactModalCandidate)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-400 hover:text-indigo-300 break-all inline-flex items-center gap-1"
+                    >
+                      {contactModalCandidate.linkedin_url ||
+                        contactModalCandidate.github_url ||
+                        contactModalCandidate.github}
+                      <Icons.ExternalLink />
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* UPGRADE TO PRO MODAL (employer contact unlock) */}
+        {proUpgradeModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-sm w-full text-center relative">
+              <button
+                type="button"
+                onClick={() => setProUpgradeModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors cursor-pointer"
+              >
+                <Icons.XMark />
+              </button>
+
+              <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto mb-4">
+                <Icons.LockSmall />
+              </div>
+
+              <h3 className="text-xl font-bold text-white">
+                Upgrade to Pro
+              </h3>
+              <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                Pro membership ($149/mo) unlocks direct candidate contact details,
+                including email, phone, and profile links.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => router.push("/pricing")}
+                className="w-full mt-8 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20 cursor-pointer"
+              >
+                View Pro Plans
+              </button>
             </div>
           </div>
         )}
