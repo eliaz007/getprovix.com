@@ -22,28 +22,9 @@ export type MatchResult = {
   missing_skills: string[];
 };
 
-const SYSTEM_PROMPT = `You are a talent matching engine for Vanguard X. Compare the candidate profile to the job posting and score the fit.
-
-Return strict JSON only in this exact structure:
-{
-  "match_percentage": number (integer between 50 and 99),
-  "reasoning": "1 concise sentence speaking directly to the candidate in second person (You/Your)",
-  "matching_skills": ["skill1", "skill2"],
-  "missing_skills": ["skill3"]
-}
-
-Rules:
-- match_percentage must be an integer from 50 to 99 inclusive.
-- reasoning must be exactly one concise sentence written in direct second-person address ("You" / "Your"), as if speaking to the candidate viewing their recommendations. Never refer to them as "the candidate" or in third person.
-  Good examples:
-  - "You're a strong fit for this role with your React experience, but you may need more TypeScript experience."
-  - "Your profile currently has limited overlap with the required Python skills for this role."
-  Bad examples:
-  - "The candidate lacks required skills for the Frontend role."
-  - "This applicant would be a good match."
-- matching_skills lists skills the candidate has that align with the role.
-- missing_skills lists important job requirements the candidate lacks.
-- Do not include markdown, code fences, or extra keys.`;
+const SYSTEM_PROMPT = `Score candidate vs job fit. Return JSON only:
+{"match_percentage":50-99,"reasoning":"one short sentence","matching_skills":["…"],"missing_skills":["…"]}
+Keep reasoning under 20 words. No markdown.`;
 
 const MATCH_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
@@ -205,31 +186,20 @@ async function generateGeminiMatch(
 
   const ai = new GoogleGenAI({ apiKey });
 
-  const userPrompt = `Evaluate this candidate against the job posting.
-
-Candidate:
-${JSON.stringify(
-  {
-    title: candidate.title ?? "",
-    bio: candidate.bio ?? "",
-    skills: normalizeStringArray(candidate.skills),
-    degree: candidate.degree ?? "",
-  },
-  null,
-  2
-)}
-
-Job:
-${JSON.stringify(
-  {
-    title: job.title ?? "",
-    company: job.company ?? "",
-    tags: normalizeStringArray(job.tags),
-    location: job.location ?? "",
-  },
-  null,
-  2
-)}`;
+  const userPrompt = JSON.stringify({
+    candidate: {
+      title: candidate.title ?? "",
+      skills: normalizeStringArray(candidate.skills),
+      degree: candidate.degree ?? "",
+      bio: (candidate.bio ?? "").slice(0, 120),
+    },
+    job: {
+      title: job.title ?? "",
+      company: job.company ?? "",
+      tags: normalizeStringArray(job.tags),
+      location: job.location ?? "",
+    },
+  });
 
   let lastError: unknown;
 

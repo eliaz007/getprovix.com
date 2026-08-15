@@ -1425,7 +1425,7 @@ const showToast = (msg: string) => {
         return next;
       });
 
-      await Promise.all(
+      void Promise.all(
         pendingCandidates.map(async (candidate) => {
           try {
             const response = await fetch("/api/match", {
@@ -1434,7 +1434,6 @@ const showToast = (msg: string) => {
               body: JSON.stringify({
                 candidate: {
                   title: candidate.role,
-                  bio: candidate.bio,
                   skills: candidate.skills,
                   degree: candidate.major,
                 },
@@ -4060,28 +4059,30 @@ const showToast = (msg: string) => {
                               ))}
                             </div>
 
-                            <div className="mt-auto pt-5 flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-mono font-bold text-emerald-400">
+                            <div className="mt-auto pt-4 flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-mono font-bold text-emerald-400 shrink-0">
                                 {getTalentMatchLabel(col.id)}
                               </span>
-                              <div className="flex gap-2">
+                              <div className="flex items-center gap-1.5 shrink-0">
                                 <button
                                   type="button"
                                   onClick={() => setSelectedCandidate(col)}
-                                  className="bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold px-3 py-2 rounded-lg transition-all cursor-pointer"
+                                  className="px-3 py-1.5 text-xs font-semibold rounded-md bg-slate-800 hover:bg-slate-700 text-white transition-colors cursor-pointer"
                                 >
                                   View Profile
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleConnectCandidate(col.id)}
-                                  className={`text-[11px] font-bold px-3 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 ${
                                     isPaidEmployer
-                                      ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
+                                      ? "bg-indigo-600 hover:bg-indigo-500 text-white"
                                       : "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
                                   }`}
                                 >
-                                  {!isPaidEmployer && <Icons.LockSmall />}
+                                  {!isPaidEmployer && (
+                                    <Icons.LockSmall />
+                                  )}
                                   Connect
                                 </button>
                               </div>
