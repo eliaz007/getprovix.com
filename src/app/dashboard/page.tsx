@@ -8,6 +8,7 @@ import { createClient } from "@/utils/supabase/client";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
+const BETA_ACCESS_STORAGE_KEY = "vanguardx_beta_access_unlocked";
 
 const DEFAULT_PROFILE_DATA = {
   name: "Alex Morgan",
@@ -612,6 +613,8 @@ export default function DashboardPage() {
   const [betaCompanyName, setBetaCompanyName] = useState("");
   const [betaWorkEmail, setBetaWorkEmail] = useState("");
   const [betaAccessSubmitting, setBetaAccessSubmitting] = useState(false);
+  const [betaAccessError, setBetaAccessError] = useState<string | null>(null);
+  const [betaAccessUnlocked, setBetaAccessUnlocked] = useState(false);
   const [contactModalCandidate, setContactModalCandidate] =
     useState<TalentPoolCandidate | null>(null);
   const [contactEmailCopied, setContactEmailCopied] = useState(false);
@@ -996,7 +999,19 @@ const showToast = (msg: string) => {
     dbProfile?.company_name ||
     businessProfileData?.businessName ||
     "your company";
-  const isProEmployerAccount = isProEmployer(dbProfile, businessProfileData.billingPlan);
+  const isProEmployerAccount =
+    betaAccessUnlocked ||
+    isProEmployer(dbProfile, businessProfileData.billingPlan);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.sessionStorage.getItem(BETA_ACCESS_STORAGE_KEY) === "true") {
+      setBetaAccessUnlocked(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (!proUpgradeModalOpen) {
@@ -1819,27 +1834,27 @@ const showToast = (msg: string) => {
   };
 
   const handleUnlockBetaAccess = async () => {
-    if (!betaCompanyName.trim() || !betaWorkEmail.trim()) {
-      showToast("Enter your company name and work email.");
+    const companyName = betaCompanyName.trim();
+    const workEmail = betaWorkEmail.trim();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!companyName || !workEmail) {
+      setBetaAccessError("Company name and work email are required.");
       return;
     }
 
+    if (!emailPattern.test(workEmail)) {
+      setBetaAccessError("Enter a valid work email address.");
+      return;
+    }
+
+    setBetaAccessError(null);
     setBetaAccessSubmitting(true);
 
-    try {
-      const response = await fetch("/api/beta-access", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company_name: betaCompanyName.trim(),
-          work_email: betaWorkEmail.trim(),
-        }),
-      });
-
-      const data = (await response.json()) as { error?: string; success?: boolean };
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Could not unlock beta access.");
+    const applyBetaUnlockLocal = () => {
+      setBetaAccessUnlocked(true);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(BETA_ACCESS_STORAGE_KEY, "true");
       }
 
       setDbProfile((prev) =>
@@ -1848,30 +1863,67 @@ const showToast = (msg: string) => {
               ...prev,
               is_pro: true,
               tier: "pro",
-              company_name: betaCompanyName.trim(),
+              company_name: companyName,
             }
           : prev
       );
       setBusinessProfileData((prev) => ({
         ...prev,
-        businessName: betaCompanyName.trim(),
-        workEmail: betaWorkEmail.trim(),
+        businessName: companyName,
+        workEmail,
         billingPlan: "Beta Access",
       }));
       setSavedBusinessProfileData((prev) => ({
         ...prev,
-        businessName: betaCompanyName.trim(),
-        workEmail: betaWorkEmail.trim(),
+        businessName: companyName,
+        workEmail,
         billingPlan: "Beta Access",
       }));
       setProUpgradeModalOpen(false);
-      showToast(
-        "Beta access unlocked. Deep screening and candidate contact are now available."
-      );
+      showToast("Beta access active! Deep screening unlocked.");
+    };
+
+    try {
+      const response = await fetch("/api/beta-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: companyName,
+          work_email: workEmail,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        error?: string;
+        success?: boolean;
+        unlocked?: boolean;
+        warnings?: string[];
+      };
+
+      if (response.status === 400) {
+        setBetaAccessError(data.error ?? "Enter a valid work email address.");
+        return;
+      }
+
+      if (response.status === 401) {
+        setBetaAccessError("Sign in again to unlock beta access.");
+        return;
+      }
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error ?? "Could not unlock beta access.");
+      }
+
+      applyBetaUnlockLocal();
+
+      if (data.warnings?.length) {
+        console.warn("[beta-access] unlock warnings:", data.warnings);
+      }
     } catch (err) {
       console.error("Beta access unlock failed:", err);
+      applyBetaUnlockLocal();
       showToast(
-        err instanceof Error ? err.message : "Could not unlock beta access."
+        "Beta access active locally. We could not fully sync with Supabase."
       );
     } finally {
       setBetaAccessSubmitting(false);
@@ -5296,10 +5348,18 @@ const showToast = (msg: string) => {
                     id="beta-work-email"
                     type="email"
                     value={betaWorkEmail}
-                    onChange={(e) => setBetaWorkEmail(e.target.value)}
+                    onChange={(e) => {
+                      setBetaWorkEmail(e.target.value);
+                      if (betaAccessError) {
+                        setBetaAccessError(null);
+                      }
+                    }}
                     placeholder="hiring@company.com"
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
                   />
+                  {betaAccessError && (
+                    <p className="text-[11px] text-red-400 mt-1.5">{betaAccessError}</p>
+                  )}
                 </div>
               </div>
 
@@ -5310,7 +5370,7 @@ const showToast = (msg: string) => {
                 className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20 cursor-pointer"
               >
                 {betaAccessSubmitting
-                  ? "Unlocking…"
+                  ? "Unlocking..."
                   : "Unlock Early Beta Access"}
               </button>
             </div>

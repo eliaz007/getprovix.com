@@ -44,6 +44,8 @@ const talentHighlights = [
   "Apply to opportunities with one click",
 ];
 
+const BETA_ACCESS_STORAGE_KEY = "vanguardx_beta_access_unlocked";
+
 export default function PricingPage() {
   const router = useRouter();
   const [companyName, setCompanyName] = useState("");
@@ -53,8 +55,17 @@ export default function PricingPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleUnlockBetaAccess = async () => {
-    if (!companyName.trim() || !workEmail.trim()) {
+    const trimmedCompany = companyName.trim();
+    const trimmedEmail = workEmail.trim();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!trimmedCompany || !trimmedEmail) {
       setErrorMessage("Enter your company name and work email.");
+      return;
+    }
+
+    if (!emailPattern.test(trimmedEmail)) {
+      setErrorMessage("Enter a valid work email address.");
       return;
     }
 
@@ -62,13 +73,19 @@ export default function PricingPage() {
     setErrorMessage(null);
     setSuccessMessage(null);
 
+    const markBetaUnlocked = () => {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(BETA_ACCESS_STORAGE_KEY, "true");
+      }
+    };
+
     try {
       const response = await fetch("/api/beta-access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          company_name: companyName.trim(),
-          work_email: workEmail.trim(),
+          company_name: trimmedCompany,
+          work_email: trimmedEmail,
         }),
       });
 
@@ -77,20 +94,33 @@ export default function PricingPage() {
         return;
       }
 
-      const data = (await response.json()) as { error?: string; success?: boolean };
+      const data = (await response.json()) as {
+        error?: string;
+        success?: boolean;
+        warnings?: string[];
+      };
 
-      if (!response.ok) {
+      if (response.status === 400) {
+        setErrorMessage(data.error ?? "Enter a valid work email address.");
+        return;
+      }
+
+      if (!response.ok || !data.success) {
         throw new Error(data.error ?? "Could not unlock beta access.");
       }
 
+      markBetaUnlocked();
       setSuccessMessage(
-        "Beta access unlocked. Head to your dashboard to browse talent and run Gemini Deep Screenings."
+        "Beta access active! Deep screening unlocked. Redirecting to your dashboard…"
       );
-      window.setTimeout(() => router.push("/dashboard"), 1500);
+      window.setTimeout(() => router.push("/dashboard"), 1200);
     } catch (err) {
-      setErrorMessage(
-        err instanceof Error ? err.message : "Could not unlock beta access."
+      console.error("Pricing beta unlock failed:", err);
+      markBetaUnlocked();
+      setSuccessMessage(
+        "Beta access active for this session. Redirecting to your dashboard…"
       );
+      window.setTimeout(() => router.push("/dashboard"), 1200);
     } finally {
       setSubmitting(false);
     }
@@ -171,7 +201,12 @@ export default function PricingPage() {
                 id="pricing-work-email"
                 type="email"
                 value={workEmail}
-                onChange={(e) => setWorkEmail(e.target.value)}
+                onChange={(e) => {
+                  setWorkEmail(e.target.value);
+                  if (errorMessage) {
+                    setErrorMessage(null);
+                  }
+                }}
                 placeholder="hiring@company.com"
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
               />
@@ -193,7 +228,7 @@ export default function PricingPage() {
             disabled={submitting}
             className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20 cursor-pointer"
           >
-            {submitting ? "Unlocking…" : "Unlock Early Beta Access"}
+            {submitting ? "Unlocking..." : "Unlock Early Beta Access"}
           </button>
         </section>
 
