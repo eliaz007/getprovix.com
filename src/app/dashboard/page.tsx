@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
-import { Check, Copy, FileText, Flame, ShieldCheck, Target } from "lucide-react";
+import { Check, Copy, FileText, Flame, Lock, ShieldCheck, Target } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
@@ -1805,6 +1805,11 @@ const showToast = (msg: string) => {
 
   const runDeepScreening = async () => {
     if (!selectedCandidate) {
+      return;
+    }
+
+    if (!isProEmployerAccount) {
+      setProUpgradeModalOpen(true);
       return;
     }
 
@@ -4626,7 +4631,10 @@ const showToast = (msg: string) => {
                   <button
                     type="button"
                     onClick={runDeepScreening}
-                    disabled={deepScreeningLoading || !primaryMatchingJob}
+                    disabled={
+                      isProEmployerAccount &&
+                      (deepScreeningLoading || !primaryMatchingJob)
+                    }
                     className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {deepScreeningLoading ? (
@@ -4634,18 +4642,29 @@ const showToast = (msg: string) => {
                         <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         Analyzing candidate…
                       </>
-                    ) : (
+                    ) : isProEmployerAccount ? (
                       "Generate AI Deep Screening"
+                    ) : (
+                      <>
+                        <Lock className="w-3.5 h-3.5" aria-hidden />
+                        Unlock AI Deep Screening
+                      </>
                     )}
                   </button>
 
-                  {!primaryMatchingJob && (
-                    <p className="text-[11px] text-amber-400/90">
-                      Post an active job to enable deep screening.
+                  {!isProEmployerAccount ? (
+                    <p className="text-[11px] text-slate-400">
+                      Upgrade to Pro to enable deep screening.
                     </p>
+                  ) : (
+                    !primaryMatchingJob && (
+                      <p className="text-[11px] text-amber-400/90">
+                        Post an active job to enable deep screening.
+                      </p>
+                    )
                   )}
 
-                  {deepScreeningResult && (
+                  {isProEmployerAccount && deepScreeningResult && (
                     <div className="space-y-4 pt-1">
                       <div>
                         <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
