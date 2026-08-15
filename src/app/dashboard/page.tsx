@@ -231,6 +231,7 @@ type TalentPoolCandidate = {
   major: string;
   skills: string[];
   rating: string;
+  execution_score?: number | string | null;
   status: string;
   experienceLevel: string;
   roleType: string;
@@ -240,6 +241,32 @@ type TalentPoolCandidate = {
   demoVideo: string;
   projects: string[];
 };
+
+function formatBaselineMatchLabel(
+  executionScore: number | string | null | undefined,
+  fallbackRating?: string
+): string {
+  if (typeof executionScore === "number" && Number.isFinite(executionScore)) {
+    return `${Math.round(executionScore)}% Match`;
+  }
+
+  if (typeof executionScore === "string" && executionScore.trim()) {
+    const trimmed = executionScore.trim();
+    if (trimmed.toLowerCase().includes("match")) {
+      return trimmed;
+    }
+    const numeric = Number.parseInt(trimmed.replace("%", ""), 10);
+    return Number.isFinite(numeric) ? `${numeric}% Match` : trimmed;
+  }
+
+  if (fallbackRating?.trim()) {
+    const trimmed = fallbackRating.trim();
+    const numeric = Number.parseInt(trimmed.replace("%", ""), 10);
+    return Number.isFinite(numeric) ? `${numeric}% Match` : trimmed;
+  }
+
+  return "94% Match";
+}
 
 type MatchingJob = {
   id: string;
@@ -726,32 +753,25 @@ const showToast = (msg: string) => {
     businessProfileData?.businessName ||
     "your company";
   const isPaidEmployer = isPaidEmployerPlan(businessProfileData.billingPlan);
+  const employerActiveJobs = useMemo(
+    () => jobs.filter((job) => job.employer_id === user?.id),
+    [jobs, user?.id]
+  );
   const primaryMatchingJob = useMemo<MatchingJob | null>(() => {
-    const ownedJobs = jobs.filter((job) => job.employer_id === user?.id);
-    const selectedJob = ownedJobs[0] ?? jobs[0] ?? null;
+    const selectedJob = employerActiveJobs[0] ?? null;
 
-    if (selectedJob) {
-      return {
-        id: selectedJob.id,
-        title: selectedJob.title ?? "Open Role",
-        company: selectedJob.company ?? employerCompanyNameForMatching,
-        tags: Array.isArray(selectedJob.tags) ? selectedJob.tags : [],
-        location: selectedJob.location ?? "",
-      };
-    }
-
-    if (!showTalentPoolNav) {
+    if (!selectedJob) {
       return null;
     }
 
     return {
-      id: "default-role",
-      title: "Software Engineer",
-      company: employerCompanyNameForMatching,
-      tags: ["React", "TypeScript", "Next.js"],
-      location: "Remote",
+      id: selectedJob.id,
+      title: selectedJob.title ?? "Open Role",
+      company: selectedJob.company ?? employerCompanyNameForMatching,
+      tags: Array.isArray(selectedJob.tags) ? selectedJob.tags : [],
+      location: selectedJob.location ?? "",
     };
-  }, [jobs, user?.id, employerCompanyNameForMatching, showTalentPoolNav]);
+  }, [employerActiveJobs, employerCompanyNameForMatching]);
 
   const isCandidateDirty =
     savedCandidateProfile !== null &&
@@ -959,6 +979,7 @@ const showToast = (msg: string) => {
       major: "B.S. Computer Science, Stanford",
       skills: ["Next.js", "Python", "PostgreSQL"],
       rating: "94%",
+      execution_score: 94,
       status: "Open for Hire",
       experienceLevel: "Mid-Level",
       roleType: "Engineering",
@@ -978,6 +999,7 @@ const showToast = (msg: string) => {
       major: "Self-Taught (No Degree)",
       skills: ["Premiere", "TikTok Hooks", "After Effects"],
       rating: "92%",
+      execution_score: 92,
       status: "Interviewing",
       experienceLevel: "Entry-Level",
       roleType: "Design",
@@ -997,6 +1019,7 @@ const showToast = (msg: string) => {
       major: "B.A. Business Admin, NYU",
       skills: ["Zapier", "Logistics", "Notion"],
       rating: "89%",
+      execution_score: 89,
       status: "Open for Hire",
       experienceLevel: "Senior",
       roleType: "Operations",
@@ -1016,6 +1039,7 @@ const showToast = (msg: string) => {
       major: "B.A. Communications",
       skills: ["Cold Calling", "HubSpot", "Outbound"],
       rating: "87%",
+      execution_score: 87,
       status: "Placed",
       experienceLevel: "Mid-Level",
       roleType: "Sales",
@@ -1346,13 +1370,14 @@ const showToast = (msg: string) => {
     talentMatchFetchedRef.current.clear();
     setTalentMatchScores({});
     setTalentMatchLoadingIds({});
-  }, [primaryMatchingJob?.id]);
+  }, [primaryMatchingJob?.id, employerActiveJobs.length]);
 
   useEffect(() => {
     if (
       activeTab !== "talent" ||
       !showTalentPoolNav ||
       !user?.id ||
+      employerActiveJobs.length === 0 ||
       !primaryMatchingJob
     ) {
       return;
@@ -1502,6 +1527,7 @@ const showToast = (msg: string) => {
     showTalentPoolNav,
     user?.id,
     primaryMatchingJob,
+    employerActiveJobs.length,
     candidates,
   ]);
 
@@ -1542,17 +1568,16 @@ const showToast = (msg: string) => {
       : candidates.filter((candidate) => candidate.status === "Open for Hire")
           .length;
 
-  const getTalentMatchLabel = (candidateId: string) => {
-    if (talentMatchLoadingIds[candidateId]) {
-      return "Scoring…";
-    }
-
-    const insight = talentMatchScores[candidateId];
+  const getTalentMatchLabel = (candidate: TalentPoolCandidate) => {
+    const insight = talentMatchScores[candidate.id];
     if (insight) {
       return `${insight.match_percentage}% Match`;
     }
 
-    return "—";
+    return formatBaselineMatchLabel(
+      candidate.execution_score,
+      candidate.rating
+    );
   };
 
   const handleConnectCandidate = (candidateId: string) => {
@@ -2683,7 +2708,7 @@ const showToast = (msg: string) => {
                     Active Openings
                   </span>
                   <span className="text-3xl font-extrabold text-white">
-                    {jobsLoading ? "—" : jobs.length || 24}
+                    {jobsLoading ? "—" : jobs.length}
                   </span>
                 </div>
                 <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
@@ -2695,9 +2720,13 @@ const showToast = (msg: string) => {
                       isMatchEvaluating ? "animate-pulse" : ""
                     }`}
                   >
-                    {isMatchEvaluating && liveMatchingCount === 0
-                      ? "…"
-                      : liveMatchingCount || 8}
+                    {jobsLoading
+                      ? "—"
+                      : jobs.length === 0
+                        ? 0
+                        : isMatchEvaluating && liveMatchingCount === 0
+                          ? "…"
+                          : liveMatchingCount}
                   </span>
                 </div>
                 <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
@@ -4017,23 +4046,28 @@ const showToast = (msg: string) => {
                         return (
                           <div
                             key={col.id}
-                            className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                            className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col min-w-0 overflow-hidden"
                           >
-                            <div className="flex items-start justify-between mb-4">
-                              <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-indigo-400">
+                            <div className="flex items-start justify-between gap-2 mb-4">
+                              <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-indigo-400 shrink-0">
                                 {initials}
                               </div>
-                              <span
-                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                                  col.status === "Open for Hire"
-                                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                    : col.status === "Interviewing"
-                                      ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                                      : "bg-slate-800 text-slate-500"
-                                }`}
-                              >
-                                {col.status}
-                              </span>
+                              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                <span
+                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                    col.status === "Open for Hire"
+                                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                      : col.status === "Interviewing"
+                                        ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                        : "bg-slate-800 text-slate-500 border border-slate-700/50"
+                                  }`}
+                                >
+                                  {col.status}
+                                </span>
+                                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                                  {getTalentMatchLabel(col)}
+                                </span>
+                              </div>
                             </div>
 
                             <div className="mb-1">
@@ -4059,33 +4093,28 @@ const showToast = (msg: string) => {
                               ))}
                             </div>
 
-                            <div className="mt-auto pt-4 flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-mono font-bold text-emerald-400 shrink-0">
-                                {getTalentMatchLabel(col.id)}
-                              </span>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedCandidate(col)}
-                                  className="px-3 py-1.5 text-xs font-semibold rounded-md bg-slate-800 hover:bg-slate-700 text-white transition-colors cursor-pointer"
-                                >
-                                  View Profile
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleConnectCandidate(col.id)}
-                                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer inline-flex items-center gap-1 ${
-                                    isPaidEmployer
-                                      ? "bg-indigo-600 hover:bg-indigo-500 text-white"
-                                      : "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-                                  }`}
-                                >
-                                  {!isPaidEmployer && (
-                                    <Icons.LockSmall />
-                                  )}
-                                  Connect
-                                </button>
-                              </div>
+                            <div className="mt-auto flex gap-2 w-full mt-4 min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedCandidate(col)}
+                                className="flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center transition-all bg-slate-800 hover:bg-slate-700 text-white cursor-pointer"
+                              >
+                                View Profile
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleConnectCandidate(col.id)}
+                                className={`flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer ${
+                                  isPaidEmployer
+                                    ? "bg-indigo-600 hover:bg-indigo-500 text-white"
+                                    : "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+                                }`}
+                              >
+                                {!isPaidEmployer && (
+                                  <Icons.LockSmall />
+                                )}
+                                Connect
+                              </button>
                             </div>
                           </div>
                         );
@@ -4248,7 +4277,7 @@ const showToast = (msg: string) => {
                     {selectedCandidate.status}
                   </span>
                   <span className="font-mono font-bold text-emerald-400">
-                    {getTalentMatchLabel(selectedCandidate.id)} AI Match Score
+                    {getTalentMatchLabel(selectedCandidate)} AI Match Score
                   </span>
                 </div>
 
