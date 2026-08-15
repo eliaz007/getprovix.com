@@ -399,6 +399,7 @@ export default function DashboardPage() {
   const [newJobSalaryRange, setNewJobSalaryRange] = useState("");
   const [newJobTags, setNewJobTags] = useState("");
   const [isCreatingJob, setIsCreatingJob] = useState(false);
+  const [appOrigin, setAppOrigin] = useState("");
 
   // Profile data — client auth gate; middleware refreshes SSR cookies.
   const [user, setUser] = useState<User | null>(null);
@@ -619,6 +620,11 @@ export default function DashboardPage() {
   useEffect(() => {
     setMobileNavOpen(false);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setAppOrigin(window.location.origin);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1734,7 +1740,9 @@ const showToast = (msg: string) => {
       .trim()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "") || "builder";
-  const publicProfileUrl = `https://vanguardx.dev/p/${profileSlug}`;
+  const publicProfileUrl = appOrigin
+    ? `${appOrigin}/p/${profileSlug}`
+    : `/p/${profileSlug}`;
 
   // --- DERIVED VALUES FOR THE SHAREABLE BUSINESS PROFILE CARD ---
   const businessInitials =
@@ -1825,7 +1833,9 @@ const showToast = (msg: string) => {
       .trim()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "") || "company";
-  const publicBusinessProfileUrl = `https://vanguardx.dev/c/${businessSlug}`;
+  const publicBusinessProfileUrl = appOrigin
+    ? `${appOrigin}/c/${businessSlug}`
+    : `/c/${businessSlug}`;
 
   const candidateStatus =
     dbProfile?.status ||
@@ -4451,7 +4461,13 @@ const showToast = (msg: string) => {
                   />
                   <button
                     onClick={() => {
-                      const linkToCopy = isBusinessAccount ? publicBusinessProfileUrl : publicProfileUrl;
+                      const origin =
+                        typeof window !== "undefined"
+                          ? window.location.origin
+                          : appOrigin;
+                      const linkToCopy = isBusinessAccount
+                        ? `${origin}/c/${businessSlug}`
+                        : `${origin}/p/${profileSlug}`;
                       navigator.clipboard.writeText(linkToCopy);
                       showToast("Link copied to clipboard!");
                     }}
