@@ -398,6 +398,8 @@ export default function DashboardPage() {
         const sessionUser = authedUser ?? session?.user ?? null;
 
         if (!sessionUser) {
+          setAuthChecked(true);
+          setLoadingProfile(false);
           router.replace("/login");
           return;
         }
@@ -1556,16 +1558,20 @@ const showToast = (msg: string) => {
     ? "Intended Major / Academic Interest"
     : "Major / Specialization";
 
-  if (!authChecked || loadingProfile) {
+  if (!authChecked) {
+    return <div className="min-h-screen bg-[#0A0A0A]" aria-busy="true" />;
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  if (loadingProfile) {
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
         <p className="text-sm text-slate-500">Loading...</p>
       </div>
     );
-  }
-
-  if (!user) {
-    return null;
   }
 
   const sidebarNavContent = (

@@ -3,62 +3,56 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
+import { Code2, Shield, Zap } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import SignOutButton from "@/components/SignOutButton";
 
-function CodeIcon() {
-  return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-    </svg>
-  );
-}
-
-function BoltIcon() {
-  return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-    </svg>
-  );
-}
+type PreviewCandidate = {
+  alias: string;
+  score: number | string | null;
+  skills: string[] | null;
+};
 
 const features = [
   {
-    icon: CodeIcon,
+    icon: Code2,
     title: "AI Code Execution",
     description:
       "Every candidate is benchmarked against real, runnable challenges. No resumes to guess from — just verified execution scores.",
   },
   {
-    icon: ShieldIcon,
+    icon: Shield,
     title: "Anonymized Matching",
     description:
       "Names, photos, and social links stay hidden until a hire is committed to, so every match starts on merit alone.",
   },
   {
-    icon: BoltIcon,
+    icon: Zap,
     title: "Instant Direct Hiring",
     description:
       "Skip the recruiter chain entirely. Message vetted talent directly and move from shortlist to signed offer in days.",
   },
 ];
 
+function formatScore(score: PreviewCandidate["score"]): string {
+  if (score == null || score === "") {
+    return "—";
+  }
+
+  if (typeof score === "number") {
+    return `${Math.round(score)}%`;
+  }
+
+  const trimmed = score.trim();
+  return trimmed.endsWith("%") ? trimmed : `${trimmed}%`;
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
-  // `user` starts null before the async session check resolves, which used
-  // to make the header render "Log In" for a beat even when a session
-  // already existed. Gate the auth-dependent UI on this instead of `user`
-  // directly so it never flashes the wrong state before swapping to the
-  // real one.
   const [checkingSession, setCheckingSession] = useState(true);
+  const [previewCandidate, setPreviewCandidate] =
+    useState<PreviewCandidate | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(true);
 
   useEffect(() => {
     const supabase = createClient();
@@ -77,14 +71,40 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const supabase = createClient();
+
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("candidates")
+          .select("alias, score, skills")
+          .order("score", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          console.error("Failed to load dashboard preview candidate:", error);
+          return;
+        }
+
+        if (data) {
+          setPreviewCandidate({
+            alias: data.alias ?? "Anonymous Candidate",
+            score: data.score ?? null,
+            skills: Array.isArray(data.skills) ? data.skills : [],
+          });
+        }
+      } finally {
+        setPreviewLoading(false);
+      }
+    })();
+  }, []);
+
   const isLoggedIn = Boolean(user);
-  // While logged in, both CTAs should drop straight into the real dashboard.
-  // Logged out, they go to /login instead of the old /draft preview, which
-  // showed a locked "create a free account" overlay on top of the landing
-  // page — the whole point here is no more pop-ups blocking the marketing
-  // site, just a clean handoff to the real auth flow.
   const primaryCtaHref = isLoggedIn ? "/dashboard" : "/login";
   const dashboardPreviewHref = isLoggedIn ? "/dashboard" : "/login";
+  const previewSkills = previewCandidate?.skills?.slice(0, 4) ?? [];
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
@@ -188,24 +208,74 @@ export default function Home() {
               </span>
             </div>
             <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-1 space-y-2">
-                <div className="h-2.5 w-3/4 rounded-full bg-zinc-800" />
-                <div className="h-2.5 w-1/2 rounded-full bg-zinc-800" />
-                <div className="h-2.5 w-2/3 rounded-full bg-indigo-500/30" />
-                <div className="h-2.5 w-1/2 rounded-full bg-zinc-800" />
+              <div className="sm:col-span-1 space-y-3 text-left">
+                {previewLoading ? (
+                  <>
+                    <div className="h-2.5 w-3/4 rounded-full bg-zinc-800 animate-pulse" />
+                    <div className="h-2.5 w-1/2 rounded-full bg-zinc-800 animate-pulse" />
+                    <div className="h-2.5 w-2/3 rounded-full bg-zinc-800 animate-pulse" />
+                  </>
+                ) : previewCandidate ? (
+                  <>
+                    <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                      Candidate Alias
+                    </div>
+                    <div className="text-sm font-semibold text-white">
+                      {previewCandidate.alias}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {previewSkills.length > 0 ? (
+                        previewSkills.map((skill) => (
+                          <span
+                            key={skill}
+                            className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                          >
+                            {skill}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-zinc-500">
+                          Skills pending audit
+                        </span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-zinc-500">
+                    No live candidates yet — check back soon.
+                  </div>
+                )}
               </div>
               <div className="sm:col-span-2 grid grid-cols-2 gap-3">
                 <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-left">
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide">Execution Score</div>
-                  <div className="text-lg font-extrabold text-emerald-400 mt-1">94%</div>
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                    Execution Score
+                  </div>
+                  <div className="text-lg font-extrabold text-emerald-400 mt-1">
+                    {previewLoading ? "—" : formatScore(previewCandidate?.score ?? null)}
+                  </div>
                 </div>
                 <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-left">
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide">Open Roles</div>
-                  <div className="text-lg font-extrabold text-white mt-1">128</div>
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                    Skill Tags
+                  </div>
+                  <div className="text-lg font-extrabold text-white mt-1">
+                    {previewLoading
+                      ? "—"
+                      : previewSkills.length > 0
+                        ? previewSkills.length
+                        : 0}
+                  </div>
                 </div>
                 <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 col-span-2 text-left">
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide">Status</div>
-                  <div className="text-sm font-semibold text-indigo-400 mt-1">Anonymized until upgrade</div>
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                    Status
+                  </div>
+                  <div className="text-sm font-semibold text-indigo-400 mt-1">
+                    {previewCandidate
+                      ? "Anonymized until upgrade"
+                      : "Waiting for first candidate audit"}
+                  </div>
                 </div>
               </div>
             </div>
@@ -223,7 +293,7 @@ export default function Home() {
                   className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6"
                 >
                   <div className="w-10 h-10 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4">
-                    <Icon />
+                    <Icon className="w-5 h-5" aria-hidden="true" />
                   </div>
                   <h3 className="text-base font-semibold text-white tracking-tight">
                     {feature.title}
