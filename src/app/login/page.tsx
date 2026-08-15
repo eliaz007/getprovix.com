@@ -1,0 +1,358 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
+import { createClient } from "@/utils/supabase/client";
+import SignOutButton from "@/components/SignOutButton";
+import { signInWithEmail, signUpWithEmail } from "./actions";
+
+type AuthMode = "sign-in" | "sign-up";
+type SignUpType = "candidate" | "business";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [mode, setMode] = useState<AuthMode>("sign-in");
+  const [signUpType, setSignUpType] = useState<SignUpType>("candidate");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Session check for the "already signed in" case — someone landing on
+  // /login (e.g. via a bookmark or back button) while still authenticated
+  // should see the "Welcome back" screen instead of the sign-in form.
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [authedUser, setAuthedUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthedUser(session?.user ?? null);
+      setCheckingSession(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthedUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const goToDashboard = async () => {
+    const supabase = createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setError("Session expired. Please sign in again.");
+        setAuthedUser(null);
+        return;
+      }
+    }
+
+    router.replace("/dashboard");
+  };
+
+  const switchMode = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setSignUpType("candidate");
+    setError(null);
+    setMessage(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+    setLoading(true);
+
+    if (mode === "sign-in") {
+      const result = await signInWithEmail(email, password);
+
+      if (result?.error) {
+        setError(result.error);
+        setLoading(false);
+      }
+      // Successful sign-in redirects from the server action with SSR cookies set.
+      return;
+    }
+
+    const result = await signUpWithEmail(email, password, {
+      role: signUpType,
+      first_name: firstName,
+      last_name: lastName,
+    });
+
+    if (result?.error) {
+      setError(result.error);
+      setLoading(false);
+      return;
+    }
+
+    if (result?.message) {
+      setLoading(false);
+      setMessage(result.message);
+      setMode("sign-in");
+      return;
+    }
+
+    // Successful sign-up redirects from the server action with SSR cookies set.
+  };
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <p className="text-sm text-zinc-500">Loading...</p>
+      </div>
+    );
+  }
+
+  // --- ALREADY SIGNED IN: "Welcome back" screen ---
+  if (authedUser) {
+    const initial = authedUser.email?.charAt(0).toUpperCase() ?? "?";
+
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
+        <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-8 text-center">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-xl mb-5">
+            {initial}
+          </div>
+
+          <h1 className="text-xl font-semibold text-white tracking-tight">
+            Welcome back
+          </h1>
+          <p className="text-sm text-zinc-400 mt-1 mb-6">
+            You&apos;re signed in as
+          </p>
+
+          <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm font-mono text-zinc-200 mb-8 truncate">
+            {authedUser.email}
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => void goToDashboard()}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors shadow-lg shadow-indigo-500/20 cursor-pointer"
+            >
+              Go to Dashboard
+            </button>
+            <SignOutButton
+              redirectTo="/login"
+              className="w-full bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 font-medium text-sm px-4 py-2.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- SIGNED OUT: Sign In / Sign Up form ---
+  return (
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+      <div className="w-full max-w-md px-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-8">
+          {/* Header */}
+          <h1 className="text-2xl font-semibold text-white tracking-tight text-center">
+            Welcome to Vanguard X
+          </h1>
+          <p className="text-sm text-zinc-400 text-center mb-8">
+            {mode === "sign-in"
+              ? "Sign in to access your account"
+              : "Create an account to get started"}
+          </p>
+
+          {/* Sign In / Sign Up Toggle */}
+          <div className="grid grid-cols-2 gap-1 bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-6">
+            <button
+              type="button"
+              onClick={() => switchMode("sign-in")}
+              className={`py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                mode === "sign-in"
+                  ? "bg-indigo-600 text-white"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode("sign-up")}
+              className={`py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+                mode === "sign-up"
+                  ? "bg-indigo-600 text-white"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          {/* Candidate / Business Sign Up Toggle */}
+          {mode === "sign-up" && (
+            <div className="grid grid-cols-2 gap-1 bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-6">
+              <button
+                type="button"
+                onClick={() => setSignUpType("candidate")}
+                className={`py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  signUpType === "candidate"
+                    ? "bg-zinc-800 text-white"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Candidate Sign Up
+              </button>
+              <button
+                type="button"
+                onClick={() => setSignUpType("business")}
+                className={`py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  signUpType === "business"
+                    ? "bg-zinc-800 text-white"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Business Sign Up
+              </button>
+            </div>
+          )}
+
+          {/* Error / Success Banner */}
+          {error && (
+            <div className="mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-2.5">
+              {error}
+            </div>
+          )}
+          {message && (
+            <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm rounded-lg px-4 py-2.5">
+              {message}
+            </div>
+          )}
+
+          {/* Form */}
+          <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+            {mode === "sign-up" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="firstName" className="text-sm font-medium text-zinc-300">
+                    First Name
+                  </label>
+                  <input
+                    id="firstName"
+                    type="text"
+                    name="firstName"
+                    placeholder="Jordan"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="lastName" className="text-sm font-medium text-zinc-300">
+                    Last Name
+                  </label>
+                  <input
+                    id="lastName"
+                    type="text"
+                    name="lastName"
+                    placeholder="Lee"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="email" className="text-sm font-medium text-zinc-300">
+                {mode === "sign-up" && signUpType === "business" ? "Work Email" : "Email"}
+              </label>
+              <input
+                id="email"
+                type="email"
+                name="email"
+                placeholder="name@example.com"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="password" className="text-sm font-medium text-zinc-300">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                name="password"
+                placeholder="••••••••"
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors mt-2 cursor-pointer"
+            >
+              {loading
+                ? "Please wait..."
+                : mode === "sign-in"
+                ? "Sign In"
+                : signUpType === "business"
+                ? "Create Business Account"
+                : "Create Account"}
+            </button>
+          </form>
+
+          {/* Footer Toggle Link */}
+          <p className="mt-6 pt-6 border-t border-zinc-800 text-center text-sm text-zinc-400">
+            {mode === "sign-in" ? (
+              <>
+                No account?{" "}
+                <button
+                  type="button"
+                  onClick={() => switchMode("sign-up")}
+                  className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors cursor-pointer"
+                >
+                  Sign up here
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => switchMode("sign-in")}
+                  className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors cursor-pointer"
+                >
+                  Sign in here
+                </button>
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
