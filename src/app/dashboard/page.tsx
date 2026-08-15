@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
-import { Check, Copy, FileText, Flame, Lock, ShieldCheck, Target } from "lucide-react";
+import { Check, CheckCircle2, Copy, FileText, Flame, Lock, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
@@ -226,7 +226,8 @@ function isPaidEmployerPlan(billingPlan: string): boolean {
     plan.includes("$149") ||
     plan.includes("$15") ||
     plan.includes("pro") ||
-    plan.includes("paid")
+    plan.includes("paid") ||
+    plan.includes("beta")
   );
 }
 
@@ -608,6 +609,9 @@ export default function DashboardPage() {
   // Soft paywall: premium nav items open this modal instead of switching tabs.
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [proUpgradeModalOpen, setProUpgradeModalOpen] = useState(false);
+  const [betaCompanyName, setBetaCompanyName] = useState("");
+  const [betaWorkEmail, setBetaWorkEmail] = useState("");
+  const [betaAccessSubmitting, setBetaAccessSubmitting] = useState(false);
   const [contactModalCandidate, setContactModalCandidate] =
     useState<TalentPoolCandidate | null>(null);
   const [contactEmailCopied, setContactEmailCopied] = useState(false);
@@ -993,6 +997,28 @@ const showToast = (msg: string) => {
     businessProfileData?.businessName ||
     "your company";
   const isProEmployerAccount = isProEmployer(dbProfile, businessProfileData.billingPlan);
+
+  useEffect(() => {
+    if (!proUpgradeModalOpen) {
+      return;
+    }
+
+    setBetaCompanyName(
+      dbProfile?.company_name?.trim() ||
+        businessProfileData.businessName?.trim() ||
+        ""
+    );
+    setBetaWorkEmail(
+      businessProfileData.workEmail?.trim() || user?.email?.trim() || ""
+    );
+  }, [
+    proUpgradeModalOpen,
+    dbProfile?.company_name,
+    businessProfileData.businessName,
+    businessProfileData.workEmail,
+    user?.email,
+  ]);
+
   const employerActiveJobs = useMemo(
     () => jobs.filter((job) => job.employer_id === user?.id),
     [jobs, user?.id]
@@ -1790,6 +1816,66 @@ const showToast = (msg: string) => {
 
     setContactEmailCopied(false);
     setContactModalCandidate(unlockedCandidate);
+  };
+
+  const handleUnlockBetaAccess = async () => {
+    if (!betaCompanyName.trim() || !betaWorkEmail.trim()) {
+      showToast("Enter your company name and work email.");
+      return;
+    }
+
+    setBetaAccessSubmitting(true);
+
+    try {
+      const response = await fetch("/api/beta-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: betaCompanyName.trim(),
+          work_email: betaWorkEmail.trim(),
+        }),
+      });
+
+      const data = (await response.json()) as { error?: string; success?: boolean };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Could not unlock beta access.");
+      }
+
+      setDbProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              is_pro: true,
+              tier: "pro",
+              company_name: betaCompanyName.trim(),
+            }
+          : prev
+      );
+      setBusinessProfileData((prev) => ({
+        ...prev,
+        businessName: betaCompanyName.trim(),
+        workEmail: betaWorkEmail.trim(),
+        billingPlan: "Beta Access",
+      }));
+      setSavedBusinessProfileData((prev) => ({
+        ...prev,
+        businessName: betaCompanyName.trim(),
+        workEmail: betaWorkEmail.trim(),
+        billingPlan: "Beta Access",
+      }));
+      setProUpgradeModalOpen(false);
+      showToast(
+        "Beta access unlocked. Deep screening and candidate contact are now available."
+      );
+    } catch (err) {
+      console.error("Beta access unlock failed:", err);
+      showToast(
+        err instanceof Error ? err.message : "Could not unlock beta access."
+      );
+    } finally {
+      setBetaAccessSubmitting(false);
+    }
   };
 
   const handleCopyContactEmail = async (email: string) => {
@@ -4654,7 +4740,7 @@ const showToast = (msg: string) => {
 
                   {!isProEmployerAccount ? (
                     <p className="text-[11px] text-slate-400">
-                      Upgrade to Pro to enable deep screening.
+                      Unlock beta access to enable deep screening.
                     </p>
                   ) : (
                     !primaryMatchingJob && (
@@ -5119,10 +5205,10 @@ const showToast = (msg: string) => {
           </div>
         )}
 
-        {/* UPGRADE TO PRO MODAL (employer contact unlock) */}
+        {/* UPGRADE / BETA ACCESS MODAL (employer unlock) */}
         {proUpgradeModalOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-sm w-full text-center relative">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-md w-full relative">
               <button
                 type="button"
                 onClick={() => setProUpgradeModalOpen(false)}
@@ -5131,24 +5217,101 @@ const showToast = (msg: string) => {
                 <Icons.XMark />
               </button>
 
-              <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto mb-4">
-                <Icons.LockSmall />
+              <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mb-4">
+                <Sparkles className="w-5 h-5" aria-hidden />
               </div>
 
-              <h3 className="text-xl font-bold text-white">
-                Upgrade to Pro
+              <h3 className="text-xl font-bold text-white leading-tight">
+                Hire Vetted Talent with Zero Upfront Cost
               </h3>
               <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                Pro membership ($149/mo) unlocks direct candidate contact details,
-                including email, phone, and profile links.
+                Browse profiles, view proof-of-work, and generate Gemini Deep
+                Screenings for free during our beta.
               </p>
+
+              <div className="mt-6 space-y-3">
+                <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 flex gap-3">
+                  <Sparkles className="w-4 h-4 shrink-0 text-indigo-400 mt-0.5" aria-hidden />
+                  <div>
+                    <p className="text-xs font-bold text-white">
+                      Zero Upfront Subscription
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      Free account, unlimited profile browsing, and instant AI
+                      screening reports.
+                    </p>
+                  </div>
+                </div>
+                <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 flex gap-3">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-indigo-400 mt-0.5" aria-hidden />
+                  <div>
+                    <p className="text-xs font-bold text-white">
+                      Contract / Hourly Hires
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      Transparent, low-margin hourly rates with built-in
+                      contractor management.
+                    </p>
+                  </div>
+                </div>
+                <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 flex gap-3">
+                  <ShieldCheck className="w-4 h-4 shrink-0 text-indigo-400 mt-0.5" aria-hidden />
+                  <div>
+                    <p className="text-xs font-bold text-white">
+                      Full-Time Placements
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      12% success fee only when you officially hire, backed by a
+                      60-day replacement guarantee.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <div>
+                  <label
+                    htmlFor="beta-company-name"
+                    className="block text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5"
+                  >
+                    Company Name
+                  </label>
+                  <input
+                    id="beta-company-name"
+                    type="text"
+                    value={betaCompanyName}
+                    onChange={(e) => setBetaCompanyName(e.target.value)}
+                    placeholder="Acme Talent Partners"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="beta-work-email"
+                    className="block text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5"
+                  >
+                    Work Email
+                  </label>
+                  <input
+                    id="beta-work-email"
+                    type="email"
+                    value={betaWorkEmail}
+                    onChange={(e) => setBetaWorkEmail(e.target.value)}
+                    placeholder="hiring@company.com"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
+                  />
+                </div>
+              </div>
 
               <button
                 type="button"
-                onClick={() => router.push("/pricing")}
-                className="w-full mt-8 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20 cursor-pointer"
+                onClick={handleUnlockBetaAccess}
+                disabled={betaAccessSubmitting}
+                className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20 cursor-pointer"
               >
-                View Pro Plans
+                {betaAccessSubmitting
+                  ? "Unlocking…"
+                  : "Unlock Early Beta Access"}
               </button>
             </div>
           </div>

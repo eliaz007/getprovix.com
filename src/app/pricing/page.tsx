@@ -1,197 +1,245 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  CheckCircle2,
+  Clock3,
+  ShieldCheck,
+  Sparkles,
+  Users,
+} from "lucide-react";
 
-function CheckIcon() {
-  return (
-    <svg className="w-4 h-4 shrink-0 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-    </svg>
-  );
-}
-
-function XIcon() {
-  return (
-    <svg className="w-4 h-4 shrink-0 text-red-400/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  );
-}
-
-type CardVariant = "default" | "indigo" | "gold";
-
-type PricingCard = {
-  name: string;
-  price: string;
-  cadence: string;
-  badge?: string;
-  variant?: CardVariant;
-  pros: string[];
-  cons?: string[];
+type FeatureHighlight = {
+  title: string;
+  description: string;
+  icon: typeof ShieldCheck;
 };
 
-const employerPlans: PricingCard[] = [
+const employerHighlights: FeatureHighlight[] = [
   {
-    name: "Monthly",
-    price: "$299",
-    cadence: "/ mo",
-    variant: "default",
-    pros: [
-      "Unlimited talent searches",
-      "Raw AI execution scores",
-      "Deep-dive code access",
-      "Zero placement fees",
-    ],
+    title: "Zero Upfront Subscription",
+    description:
+      "Free account, unlimited profile browsing, and instant AI screening reports.",
+    icon: Sparkles,
   },
   {
-    name: "Annual",
-    price: "$2,990",
-    cadence: "/ yr",
-    badge: "Save 17%",
-    variant: "indigo",
-    pros: [
-      "Unlimited talent searches",
-      "Raw AI execution scores",
-      "Deep-dive code access",
-      "Zero placement fees",
-    ],
+    title: "Contract / Hourly Hires",
+    description:
+      "Transparent, low-margin hourly rates with built-in contractor management.",
+    icon: Clock3,
+  },
+  {
+    title: "Full-Time Placements",
+    description:
+      "12% success fee only when you officially hire, backed by a 60-day replacement guarantee.",
+    icon: ShieldCheck,
   },
 ];
 
-const talentPlans: PricingCard[] = [
-  {
-    name: "Base Tier",
-    price: "$0",
-    cadence: "/ mo",
-    variant: "default",
-    pros: ["List profile in talent pool", "Standard AI score"],
-    cons: ["No detailed AI feedback", "No priority placement", "No profile analytics"],
-  },
-  {
-    name: "Vanguard Pro",
-    price: "$15",
-    cadence: "/ mo",
-    badge: "Most Popular",
-    variant: "gold",
-    pros: [
-      "Full AI code review & feedback",
-      "Priority placement (Verified Badge)",
-      "See which agencies view your profile",
-    ],
-  },
+const talentHighlights = [
+  "List your profile in the vetted talent pool",
+  "Get AI match scores against live roles",
+  "Share proof-of-work and portfolio links",
+  "Apply to opportunities with one click",
 ];
-
-const variantStyles: Record<CardVariant, { border: string; badge: string; button: string }> = {
-  default: {
-    border: "border-zinc-800",
-    badge: "bg-zinc-800 text-zinc-300 border border-zinc-700",
-    button: "bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white",
-  },
-  indigo: {
-    border: "border-indigo-500/50",
-    badge: "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30",
-    button: "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20",
-  },
-  gold: {
-    border: "border-amber-400/40",
-    badge: "bg-amber-500/90 text-zinc-950 shadow-lg shadow-amber-500/30",
-    button: "bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-lg shadow-amber-500/20",
-  },
-};
-
-function PricingCardItem({ plan, onGetStarted }: { plan: PricingCard; onGetStarted: () => void }) {
-  const styles = variantStyles[plan.variant ?? "default"];
-
-  return (
-    <div className={`relative bg-zinc-900 border rounded-2xl p-8 shadow-2xl flex flex-col ${styles.border}`}>
-      {plan.badge && (
-        <span className={`absolute -top-3 right-8 text-xs font-bold px-3 py-1 rounded-full ${styles.badge}`}>
-          {plan.badge}
-        </span>
-      )}
-
-      <h3 className="text-lg font-semibold text-white tracking-tight">{plan.name}</h3>
-
-      <div className="mt-4 flex items-baseline gap-1">
-        <span className="text-4xl font-extrabold text-white tracking-tight">{plan.price}</span>
-        <span className="text-base font-medium text-zinc-400">{plan.cadence}</span>
-      </div>
-
-      <ul className="mt-8 flex flex-col gap-3 flex-1">
-        {plan.pros.map((feature) => (
-          <li key={feature} className="flex items-center gap-3 text-sm text-zinc-300">
-            <CheckIcon />
-            {feature}
-          </li>
-        ))}
-        {plan.cons?.map((limitation) => (
-          <li key={limitation} className="flex items-center gap-3 text-sm text-zinc-500">
-            <XIcon />
-            {limitation}
-          </li>
-        ))}
-      </ul>
-
-      <button
-        type="button"
-        onClick={onGetStarted}
-        className={`w-full font-semibold py-3.5 rounded-lg text-sm transition-all mt-8 ${styles.button}`}
-      >
-        Get Started
-      </button>
-    </div>
-  );
-}
 
 export default function PricingPage() {
   const router = useRouter();
-  const goToLogin = () => router.push("/login");
+  const [companyName, setCompanyName] = useState("");
+  const [workEmail, setWorkEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleUnlockBetaAccess = async () => {
+    if (!companyName.trim() || !workEmail.trim()) {
+      setErrorMessage("Enter your company name and work email.");
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const response = await fetch("/api/beta-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: companyName.trim(),
+          work_email: workEmail.trim(),
+        }),
+      });
+
+      if (response.status === 401) {
+        router.push("/login?next=/dashboard");
+        return;
+      }
+
+      const data = (await response.json()) as { error?: string; success?: boolean };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Could not unlock beta access.");
+      }
+
+      setSuccessMessage(
+        "Beta access unlocked. Head to your dashboard to browse talent and run Gemini Deep Screenings."
+      );
+      window.setTimeout(() => router.push("/dashboard"), 1500);
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Could not unlock beta access."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center py-16 px-4">
-      <div className="w-full max-w-6xl mx-auto">
-        {/* --- FOR AGENCIES & EMPLOYERS --- */}
-        <section>
-          <div className="text-center mb-14">
-            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 via-cyan-300 to-indigo-400 bg-clip-text text-transparent">
-              For Agencies &amp; Employers
-            </h1>
-            <p className="text-zinc-400 text-base sm:text-lg mt-4">
-              Hire top-tier, AI-vetted talent with zero placement fees.
-            </p>
+      <div className="w-full max-w-5xl mx-auto space-y-16">
+        <section className="text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-indigo-300 mb-6">
+            <Sparkles className="w-3.5 h-3.5" aria-hidden />
+            Performance-Based Hiring
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            {employerPlans.map((plan) => (
-              <PricingCardItem key={plan.name} plan={plan} onGetStarted={goToLogin} />
-            ))}
-          </div>
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">
+            Hire Vetted Talent with Zero Upfront Cost
+          </h1>
+          <p className="text-zinc-400 text-base sm:text-lg mt-4 max-w-3xl mx-auto leading-relaxed">
+            Browse profiles, view proof-of-work, and generate Gemini Deep
+            Screenings for free during our beta.
+          </p>
         </section>
 
-        {/* --- DIVIDER --- */}
-        <div className="flex items-center gap-4 my-20">
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {employerHighlights.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div
+                key={item.title}
+                className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl"
+              >
+                <div className="w-10 h-10 rounded-xl bg-indigo-600/15 border border-indigo-500/25 text-indigo-400 flex items-center justify-center mb-4">
+                  <Icon className="w-5 h-5" aria-hidden />
+                </div>
+                <h2 className="text-base font-bold text-white">{item.title}</h2>
+                <p className="text-sm text-zinc-400 mt-2 leading-relaxed">
+                  {item.description}
+                </p>
+              </div>
+            );
+          })}
+        </section>
+
+        <section className="bg-zinc-900 border border-indigo-500/30 rounded-2xl p-8 shadow-2xl max-w-xl mx-auto w-full">
+          <h2 className="text-xl font-bold text-white text-center">
+            Unlock Early Beta Access
+          </h2>
+          <p className="text-sm text-zinc-400 text-center mt-2 leading-relaxed">
+            Tell us where you hire from and we&apos;ll enable deep screening,
+            profile browsing, and candidate contact tools instantly.
+          </p>
+
+          <div className="mt-6 space-y-3">
+            <div>
+              <label
+                htmlFor="pricing-company-name"
+                className="block text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5"
+              >
+                Company Name
+              </label>
+              <input
+                id="pricing-company-name"
+                type="text"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Acme Talent Partners"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="pricing-work-email"
+                className="block text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5"
+              >
+                Work Email
+              </label>
+              <input
+                id="pricing-work-email"
+                type="email"
+                value={workEmail}
+                onChange={(e) => setWorkEmail(e.target.value)}
+                placeholder="hiring@company.com"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
+              />
+            </div>
+          </div>
+
+          {errorMessage && (
+            <p className="text-sm text-red-400 mt-4 text-center">{errorMessage}</p>
+          )}
+          {successMessage && (
+            <p className="text-sm text-emerald-400 mt-4 text-center">
+              {successMessage}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={handleUnlockBetaAccess}
+            disabled={submitting}
+            className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20 cursor-pointer"
+          >
+            {submitting ? "Unlocking…" : "Unlock Early Beta Access"}
+          </button>
+        </section>
+
+        <div className="flex items-center gap-4">
           <div className="flex-1 border-t border-zinc-800" />
           <span className="text-xs text-zinc-500 uppercase tracking-widest font-medium">
-            Two Sides, One Platform
+            For Talent &amp; Students
           </span>
           <div className="flex-1 border-t border-zinc-800" />
         </div>
 
-        {/* --- FOR TALENT & STUDENTS --- */}
-        <section>
-          <div className="text-center mb-14">
-            <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">
-              For Talent &amp; Students
-            </h2>
-            <p className="text-zinc-400 text-base sm:text-lg mt-4">
-              Build a verified profile that gets you discovered and hired.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            {talentPlans.map((plan) => (
-              <PricingCardItem key={plan.name} plan={plan} onGetStarted={goToLogin} />
-            ))}
+        <section className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-3xl mx-auto w-full">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <Users className="w-5 h-5" aria-hidden />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">
+                Always Free for Candidates
+              </h2>
+              <p className="text-zinc-400 text-sm mt-2 leading-relaxed">
+                Build a verified profile, get matched to roles, and showcase
+                proof-of-work at no cost.
+              </p>
+              <ul className="mt-5 space-y-3">
+                {talentHighlights.map((item) => (
+                  <li
+                    key={item}
+                    className="flex items-center gap-3 text-sm text-zinc-300"
+                  >
+                    <CheckCircle2
+                      className="w-4 h-4 shrink-0 text-emerald-400"
+                      aria-hidden
+                    />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => router.push("/login")}
+                className="mt-6 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-semibold py-3 px-5 rounded-lg text-sm transition-all cursor-pointer"
+              >
+                Create Candidate Profile
+              </button>
+            </div>
           </div>
         </section>
       </div>
