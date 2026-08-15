@@ -4034,7 +4034,7 @@ const showToast = (msg: string) => {
                       </p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch">
                       {filteredCandidates.map((col) => {
                         const initials = col.name
                           .split(" ")
@@ -4046,13 +4046,13 @@ const showToast = (msg: string) => {
                         return (
                           <div
                             key={col.id}
-                            className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col min-w-0 overflow-hidden"
+                            className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col justify-between h-full min-h-[260px] min-w-0 overflow-hidden"
                           >
                             <div className="flex items-start justify-between gap-2 mb-4">
                               <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-indigo-400 shrink-0">
                                 {initials}
                               </div>
-                              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                              <div className="flex flex-col items-end gap-1 shrink-0">
                                 <span
                                   className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                                     col.status === "Open for Hire"
@@ -4082,7 +4082,7 @@ const showToast = (msg: string) => {
                               </p>
                             </div>
 
-                            <div className="flex flex-wrap gap-1.5 mt-4">
+                            <div className="flex flex-wrap gap-1.5 min-h-[56px] items-start mt-4">
                               {col.skills.slice(0, 3).map((skill) => (
                                 <span
                                   key={skill}
@@ -4091,9 +4091,14 @@ const showToast = (msg: string) => {
                                   {skill}
                                 </span>
                               ))}
+                              {col.skills.length > 3 && (
+                                <span className="px-2 py-0.5 text-[11px] rounded bg-white/5 text-zinc-400 border border-white/5">
+                                  +{col.skills.length - 3} more
+                                </span>
+                              )}
                             </div>
 
-                            <div className="mt-auto flex gap-2 w-full mt-4 min-w-0">
+                            <div className="flex gap-2 w-full mt-auto pt-3 min-w-0">
                               <button
                                 type="button"
                                 onClick={() => setSelectedCandidate(col)}
