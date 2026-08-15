@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { Check, Copy, FileText, Flame, ShieldCheck, Target } from "lucide-react";
@@ -28,7 +28,7 @@ const DEFAULT_BUSINESS_PROFILE_DATA = {
   companyBio: "We build fast, reliable software for high-growth startups — and we hire on proof, not polish.",
   workEmail: "hiring@acmetalent.com",
   phone: "+1 (555) 019-2231",
-  billingPlan: "Monthly Pass — $299/mo"
+  billingPlan: "Free Plan"
 };
 
 // --- Comprehensive Minimalist UI Icons ---
@@ -202,6 +202,57 @@ function isMissingColumnError(error: { message?: string; code?: string } | null)
   );
 }
 
+function isPaidEmployerPlan(billingPlan: string): boolean {
+  const plan = billingPlan.trim().toLowerCase();
+  if (!plan || plan === "free plan" || plan.includes("free tier")) {
+    return false;
+  }
+
+  return (
+    plan.includes("monthly") ||
+    plan.includes("agency") ||
+    plan.includes("$299") ||
+    plan.includes("$15") ||
+    plan.includes("pro") ||
+    plan.includes("paid")
+  );
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
+type TalentPoolCandidate = {
+  id: string;
+  name: string;
+  role: string;
+  major: string;
+  skills: string[];
+  rating: string;
+  status: string;
+  experienceLevel: string;
+  roleType: string;
+  availability: string;
+  bio: string;
+  github: string;
+  demoVideo: string;
+  projects: string[];
+};
+
+type MatchingJob = {
+  id: string;
+  title: string;
+  company?: string | null;
+  tags?: string[] | null;
+  location?: string | null;
+};
+
+function buildTalentMatchKey(candidateId: string, jobId: string | null) {
+  return `${candidateId}:${jobId ?? "default"}`;
+}
+
 async function fetchProfileRow(
   supabase: ReturnType<typeof createClient>,
   userId: string
@@ -361,6 +412,13 @@ export default function DashboardPage() {
   const [matchInsights, setMatchInsights] = useState<Record<string, MatchInsight>>({});
   const [matchLoadingIds, setMatchLoadingIds] = useState<Record<string, boolean>>({});
   const matchFetchedRef = useRef<Set<string>>(new Set());
+  const [talentMatchScores, setTalentMatchScores] = useState<
+    Record<string, MatchInsight>
+  >({});
+  const [talentMatchLoadingIds, setTalentMatchLoadingIds] = useState<
+    Record<string, boolean>
+  >({});
+  const talentMatchFetchedRef = useRef<Set<string>>(new Set());
   // Talent pool visibility — ON by default, even before the profile row loads.
   const [isVisibleInPool, setIsVisibleInPool] = useState(true);
   const [savingVisibility, setSavingVisibility] = useState(false);
@@ -657,6 +715,37 @@ const showToast = (msg: string) => {
   // business name, industry, work email, and phone instead of dev credentials.
   const [businessProfileData, setBusinessProfileData] = useState(DEFAULT_BUSINESS_PROFILE_DATA);
   const [savedBusinessProfileData, setSavedBusinessProfileData] = useState(DEFAULT_BUSINESS_PROFILE_DATA);
+  const employerCompanyNameForMatching =
+    dbProfile?.company_name ||
+    businessProfileData?.businessName ||
+    "your company";
+  const isPaidEmployer = isPaidEmployerPlan(businessProfileData.billingPlan);
+  const primaryMatchingJob = useMemo<MatchingJob | null>(() => {
+    const ownedJobs = jobs.filter((job) => job.employer_id === user?.id);
+    const selectedJob = ownedJobs[0] ?? jobs[0] ?? null;
+
+    if (selectedJob) {
+      return {
+        id: selectedJob.id,
+        title: selectedJob.title ?? "Open Role",
+        company: selectedJob.company ?? employerCompanyNameForMatching,
+        tags: Array.isArray(selectedJob.tags) ? selectedJob.tags : [],
+        location: selectedJob.location ?? "",
+      };
+    }
+
+    if (!showTalentPoolNav) {
+      return null;
+    }
+
+    return {
+      id: "default-role",
+      title: "Software Engineer",
+      company: employerCompanyNameForMatching,
+      tags: ["React", "TypeScript", "Next.js"],
+      location: "Remote",
+    };
+  }, [jobs, user?.id, employerCompanyNameForMatching, showTalentPoolNav]);
 
   const isCandidateDirty =
     savedCandidateProfile !== null &&
@@ -1247,6 +1336,170 @@ const showToast = (msg: string) => {
     profileData.degree,
   ]);
 
+  useEffect(() => {
+    talentMatchFetchedRef.current.clear();
+    setTalentMatchScores({});
+    setTalentMatchLoadingIds({});
+  }, [primaryMatchingJob?.id]);
+
+  useEffect(() => {
+    if (
+      activeTab !== "talent" ||
+      !showTalentPoolNav ||
+      !user?.id ||
+      !primaryMatchingJob
+    ) {
+      return;
+    }
+
+    const jobIdForStorage = isUuid(primaryMatchingJob.id)
+      ? primaryMatchingJob.id
+      : null;
+    let cancelled = false;
+
+    void (async () => {
+      const supabase = createClient();
+
+      let cacheQuery = supabase
+        .from("talent_match_scores")
+        .select(
+          "candidate_id, match_percentage, reasoning, matching_skills, missing_skills"
+        )
+        .eq("employer_id", user.id);
+
+      cacheQuery = jobIdForStorage
+        ? cacheQuery.eq("job_id", jobIdForStorage)
+        : cacheQuery.is("job_id", null);
+
+      const { data: cachedRows, error: cacheError } = await cacheQuery;
+
+      if (cacheError) {
+        console.error("Failed to load talent match scores:", cacheError);
+      }
+
+      if (cancelled) return;
+
+      const cachedByCandidate: Record<string, MatchInsight> = {};
+      for (const row of cachedRows ?? []) {
+        cachedByCandidate[row.candidate_id] = {
+          match_percentage: row.match_percentage,
+          reasoning: row.reasoning ?? "",
+          matching_skills: row.matching_skills ?? [],
+          missing_skills: row.missing_skills ?? [],
+        };
+        talentMatchFetchedRef.current.add(
+          buildTalentMatchKey(row.candidate_id, jobIdForStorage)
+        );
+      }
+
+      if (Object.keys(cachedByCandidate).length > 0) {
+        setTalentMatchScores((prev) => ({ ...prev, ...cachedByCandidate }));
+      }
+
+      const pendingCandidates = candidates.filter((candidate) => {
+        const key = buildTalentMatchKey(candidate.id, jobIdForStorage);
+        return !talentMatchFetchedRef.current.has(key);
+      });
+
+      if (pendingCandidates.length === 0) {
+        return;
+      }
+
+      pendingCandidates.forEach((candidate) => {
+        talentMatchFetchedRef.current.add(
+          buildTalentMatchKey(candidate.id, jobIdForStorage)
+        );
+      });
+
+      setTalentMatchLoadingIds((prev) => {
+        const next = { ...prev };
+        for (const candidate of pendingCandidates) {
+          next[candidate.id] = true;
+        }
+        return next;
+      });
+
+      await Promise.all(
+        pendingCandidates.map(async (candidate) => {
+          try {
+            const response = await fetch("/api/match", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                candidate: {
+                  title: candidate.role,
+                  bio: candidate.bio,
+                  skills: candidate.skills,
+                  degree: candidate.major,
+                },
+                job: {
+                  title: primaryMatchingJob.title,
+                  company: primaryMatchingJob.company ?? "",
+                  tags: primaryMatchingJob.tags ?? [],
+                  location: primaryMatchingJob.location ?? "",
+                },
+              }),
+            });
+
+            if (!response.ok) {
+              throw new Error(`Match request failed (${response.status})`);
+            }
+
+            const data = (await response.json()) as MatchInsight;
+            if (cancelled) return;
+
+            setTalentMatchScores((prev) => ({
+              ...prev,
+              [candidate.id]: data,
+            }));
+
+            const { error: saveError } = await supabase
+              .from("talent_match_scores")
+              .upsert(
+                {
+                  employer_id: user.id,
+                  candidate_id: candidate.id,
+                  job_id: jobIdForStorage,
+                  match_percentage: data.match_percentage,
+                  reasoning: data.reasoning,
+                  matching_skills: data.matching_skills,
+                  missing_skills: data.missing_skills,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "employer_id,candidate_id,job_id" }
+              );
+
+            if (saveError) {
+              console.error("Failed to save talent match score:", saveError);
+            }
+          } catch (err) {
+            console.error(
+              `Failed to fetch talent match for ${candidate.id}:`,
+              err
+            );
+          } finally {
+            if (!cancelled) {
+              setTalentMatchLoadingIds((prev) => ({
+                ...prev,
+                [candidate.id]: false,
+              }));
+            }
+          }
+        })
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTab,
+    showTalentPoolNav,
+    user?.id,
+    primaryMatchingJob,
+    candidates,
+  ]);
+
   const handleApplyToFeedJob = async (job: (typeof jobs)[number]) => {
     if (!user?.id) {
       showToast("You must be logged in to apply.");
@@ -1275,9 +1528,36 @@ const showToast = (msg: string) => {
   };
 
   const savedProfilesCount = 8;
-  const newMatchesCount = candidates.filter(
-    (candidate) => candidate.status === "Open for Hire"
+  const scoredTalentMatches = Object.values(talentMatchScores).filter(
+    (score) => score.match_percentage >= 80
   ).length;
+  const newMatchesCount =
+    scoredTalentMatches > 0
+      ? scoredTalentMatches
+      : candidates.filter((candidate) => candidate.status === "Open for Hire")
+          .length;
+
+  const getTalentMatchLabel = (candidateId: string) => {
+    if (talentMatchLoadingIds[candidateId]) {
+      return "Scoring…";
+    }
+
+    const insight = talentMatchScores[candidateId];
+    if (insight) {
+      return `${insight.match_percentage}% Match`;
+    }
+
+    return "—";
+  };
+
+  const handleConnectCandidate = (candidateId: string) => {
+    if (!isPaidEmployer) {
+      router.push("/pricing");
+      return;
+    }
+
+    showToast(`Connection request sent to ${candidateId}.`);
+  };
 
   const isDrawerOpen = selectedCandidate !== null;
 
@@ -3772,7 +4052,7 @@ const showToast = (msg: string) => {
 
                             <div className="mt-auto pt-5 flex items-center justify-between gap-2">
                               <span className="text-[11px] font-mono font-bold text-emerald-400">
-                                {col.rating}
+                                {getTalentMatchLabel(col.id)}
                               </span>
                               <div className="flex gap-2">
                                 <button
@@ -3784,9 +4064,14 @@ const showToast = (msg: string) => {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => showToast(`Connection request sent to ${col.id}.`)}
-                                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-2 rounded-lg transition-all cursor-pointer shadow-lg shadow-indigo-500/20"
+                                  onClick={() => handleConnectCandidate(col.id)}
+                                  className={`text-[11px] font-bold px-3 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                                    isPaidEmployer
+                                      ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
+                                      : "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+                                  }`}
                                 >
+                                  {!isPaidEmployer && <Icons.LockSmall />}
                                   Connect
                                 </button>
                               </div>
@@ -3952,7 +4237,7 @@ const showToast = (msg: string) => {
                     {selectedCandidate.status}
                   </span>
                   <span className="font-mono font-bold text-emerald-400">
-                    {selectedCandidate.rating} Execution Rating
+                    {getTalentMatchLabel(selectedCandidate.id)} AI Match Score
                   </span>
                 </div>
 
