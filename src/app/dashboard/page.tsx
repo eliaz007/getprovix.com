@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { Check, CheckCircle2, Copy, FileText, Flame, Lock, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
+import {
+  VETTED_CANDIDATE_POOL,
+  type VettedCandidateRecord,
+} from "@/data/vetted-candidates";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
@@ -318,104 +322,34 @@ type TalentPoolCandidate = {
   projects: string[];
 };
 
-const FALLBACK_TALENT_CANDIDATES: TalentPoolCandidate[] = [
-  {
-    id: "C-992",
-    name: "Jordan Lee",
-    email: "jordan.lee@example.com",
-    phone: "+1 (415) 555-0192",
-    linkedin_url: "linkedin.com/in/jordanlee",
-    github_url: "github.com/jordanlee",
-    role: "Software Engineer",
-    major: "B.S. Computer Science, Stanford",
-    skills: ["Next.js", "Python", "PostgreSQL"],
-    rating: "94%",
-    execution_score: 94,
-    status: "Open for Hire",
-    experienceLevel: "Mid-Level",
-    roleType: "Engineering",
-    availability: "Available Now",
-    bio: "Full-stack engineer focused on shipping production-ready Next.js apps fast.",
-    github: "github.com/jordanlee",
-    demoVideo: "youtube.com/watch?v=jordan-demo",
-    projects: [
-      "Built a Next.js SaaS dashboard used by 500+ paying customers.",
-      "Migrated a legacy Rails app to a modern Next.js + Postgres stack.",
-    ],
-  },
-  {
-    id: "C-414",
-    name: "Maya Chen",
-    email: "maya.chen@example.com",
-    phone: "+1 (310) 555-0144",
-    linkedin_url: "linkedin.com/in/mayachen",
-    github_url: "vimeo.com/mayachen",
-    role: "Video Editor / Content",
-    major: "Self-Taught (No Degree)",
-    skills: ["Premiere", "TikTok Hooks", "After Effects"],
-    rating: "92%",
-    execution_score: 92,
-    status: "Interviewing",
-    experienceLevel: "Entry-Level",
-    roleType: "Design",
-    availability: "Interviewing",
-    bio: "Short-form content editor specializing in hook-driven retention edits.",
-    github: "vimeo.com/mayachen",
-    demoVideo: "youtube.com/watch?v=maya-demo",
-    projects: [
-      "Edited 200+ short-form videos averaging 1M+ views.",
-      "Grew a client's TikTok from 0 to 80K followers in 4 months.",
-    ],
-  },
-  {
-    id: "C-771",
-    name: "Riley Ortiz",
-    email: "riley.ortiz@example.com",
-    phone: "+1 (212) 555-0177",
-    linkedin_url: "linkedin.com/in/rileyortiz",
-    github_url: "github.com/rileyops",
-    role: "Operations Lead",
-    major: "B.A. Business Admin, NYU",
-    skills: ["Zapier", "Logistics", "Notion"],
-    rating: "89%",
-    execution_score: 89,
-    status: "Open for Hire",
-    experienceLevel: "Senior",
-    roleType: "Operations",
-    availability: "Available Now",
-    bio: "Operations generalist who automates messy internal workflows.",
-    github: "github.com/rileyops",
-    demoVideo: "youtube.com/watch?v=riley-demo",
-    projects: [
-      "Automated a 12-step onboarding flow into a single Zapier pipeline.",
-      "Reduced fulfillment errors by 40% through process redesign.",
-    ],
-  },
-  {
-    id: "C-205",
-    name: "Sam Patel",
-    email: "sam.patel@example.com",
-    phone: "+1 (646) 555-0205",
-    linkedin_url: "linkedin.com/in/sampatel",
-    github_url: "github.com/sampatel",
-    role: "B2B Sales Rep",
-    major: "B.A. Communications",
-    skills: ["Cold Calling", "HubSpot", "Outbound"],
-    rating: "87%",
-    execution_score: 87,
-    status: "Placed",
-    experienceLevel: "Mid-Level",
-    roleType: "Sales",
-    availability: "Not Available",
-    bio: "Outbound sales rep with a track record of booking qualified demos.",
-    github: "linkedin.com/in/sampatel",
-    demoVideo: "youtube.com/watch?v=sam-demo",
-    projects: [
-      "Booked 150+ qualified demos in a single quarter.",
-      "Built a cold outreach playbook adopted company-wide.",
-    ],
-  },
-];
+function mapVettedToTalentCandidate(
+  candidate: VettedCandidateRecord
+): TalentPoolCandidate {
+  return {
+    id: candidate.id,
+    name: candidate.name,
+    email: candidate.email,
+    phone: candidate.phone,
+    linkedin_url: candidate.linkedin_url,
+    github_url: candidate.github_url,
+    role: candidate.role,
+    major: candidate.major,
+    skills: candidate.skills,
+    rating: candidate.rating,
+    execution_score: candidate.execution_score,
+    status: candidate.status,
+    experienceLevel: candidate.experienceLevel,
+    roleType: candidate.roleType,
+    availability: candidate.availability,
+    bio: candidate.bio,
+    github: candidate.github,
+    demoVideo: candidate.demoVideo,
+    projects: candidate.projects,
+  };
+}
+
+const FALLBACK_TALENT_CANDIDATES: TalentPoolCandidate[] =
+  VETTED_CANDIDATE_POOL.map(mapVettedToTalentCandidate);
 
 function mapProfileRowToTalentCandidate(
   row: ProfileRecord & { id: string }

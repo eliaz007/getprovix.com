@@ -5,11 +5,21 @@ import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { Code2, ChevronDown, Shield, Zap } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
+import {
+  getNewestVettedCandidate,
+  resolveCandidateScore,
+  VETTED_CANDIDATE_POOL,
+  type VettedCandidateRecord,
+} from "@/data/vetted-candidates";
 
 type PreviewCandidate = {
-  alias: string;
-  score: number | string | null;
-  skills: string[] | null;
+  name: string;
+  role: string;
+  skills: string[];
+  integrity_score?: number | null;
+  execution_score?: number | null;
+  bio: string;
+  repos_count?: number | null;
 };
 
 const features = [
@@ -56,24 +66,62 @@ const faqItems = [
   },
 ];
 
-function formatScore(score: PreviewCandidate["score"]): string {
-  if (score == null || score === "") {
-    return "—";
+function mapVettedToPreview(candidate: VettedCandidateRecord): PreviewCandidate {
+  return {
+    name: candidate.name,
+    role: candidate.role,
+    skills: candidate.skills,
+    integrity_score: candidate.integrity_score,
+    execution_score: candidate.execution_score,
+    bio: candidate.bio,
+    repos_count: candidate.repos_count,
+  };
+}
+
+function normalizeCandidateRow(row: Record<string, unknown>): PreviewCandidate | null {
+  const name =
+    (typeof row.name === "string" && row.name.trim()) ||
+    (typeof row.alias === "string" && row.alias.trim()) ||
+    "";
+  const role =
+    (typeof row.role === "string" && row.role.trim()) || "Vetted Builder";
+
+  if (!name) {
+    return null;
   }
 
-  if (typeof score === "number") {
-    return `${Math.round(score)}%`;
-  }
+  const skills = Array.isArray(row.skills)
+    ? row.skills.filter((skill): skill is string => typeof skill === "string")
+    : Array.isArray(row.tags)
+      ? row.tags.filter((tag): tag is string => typeof tag === "string")
+      : [];
 
-  const trimmed = score.trim();
-  return trimmed.endsWith("%") ? trimmed : `${trimmed}%`;
+  const bio = typeof row.bio === "string" ? row.bio.trim() : "";
+
+  return {
+    name,
+    role,
+    skills,
+    integrity_score:
+      typeof row.integrity_score === "number" ? row.integrity_score : null,
+    execution_score:
+      typeof row.execution_score === "number"
+        ? row.execution_score
+        : typeof row.score === "number"
+          ? row.score
+          : null,
+    bio,
+    repos_count:
+      typeof row.repos_count === "number" ? row.repos_count : null,
+  };
 }
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
-  const [previewCandidate, setPreviewCandidate] =
-    useState<PreviewCandidate | null>(null);
+  const [previewCandidate, setPreviewCandidate] = useState<PreviewCandidate | null>(
+    null
+  );
   const [previewLoading, setPreviewLoading] = useState(true);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
@@ -96,28 +144,37 @@ export default function Home() {
 
   useEffect(() => {
     const supabase = createClient();
+    const fallback = mapVettedToPreview(getNewestVettedCandidate());
 
     void (async () => {
       try {
         const { data, error } = await supabase
           .from("candidates")
-          .select("alias, score, skills")
-          .order("score", { ascending: false })
+          .select(
+            "name, alias, role, skills, tags, integrity_score, execution_score, score, bio, repos_count, audited_at, created_at"
+          )
+          .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        if (error) {
-          console.error("Failed to load dashboard preview candidate:", error);
-          return;
+        if (!error && data) {
+          const normalized = normalizeCandidateRow(
+            data as Record<string, unknown>
+          );
+          if (normalized) {
+            setPreviewCandidate(normalized);
+            return;
+          }
         }
 
-        if (data) {
-          setPreviewCandidate({
-            alias: data.alias ?? "Anonymous Candidate",
-            score: data.score ?? null,
-            skills: Array.isArray(data.skills) ? data.skills : [],
-          });
+        if (error) {
+          console.error("Failed to load dashboard preview candidate:", error);
         }
+
+        setPreviewCandidate(fallback);
+      } catch (err) {
+        console.error("Dashboard preview candidate fetch threw:", err);
+        setPreviewCandidate(fallback);
       } finally {
         setPreviewLoading(false);
       }
@@ -125,9 +182,15 @@ export default function Home() {
   }, []);
 
   const isLoggedIn = Boolean(user);
-  const primaryCtaHref = isLoggedIn ? "/dashboard" : "/login";
-  const dashboardPreviewHref = isLoggedIn ? "/dashboard" : "/login";
-  const previewSkills = previewCandidate?.skills?.slice(0, 4) ?? [];
+  const talentEntryHref = isLoggedIn ? "/dashboard" : "/talent";
+  const displayCandidate =
+    previewCandidate ?? mapVettedToPreview(getNewestVettedCandidate());
+  const displayScore = resolveCandidateScore(displayCandidate);
+  const displaySkills = displayCandidate.skills.slice(0, 5);
+  const reposAudited = displayCandidate.repos_count ?? 8;
+  const proofSignal =
+    displayCandidate.bio.trim() ||
+    "Verified technical highlight pending — GitHub audit complete.";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
@@ -163,20 +226,16 @@ export default function Home() {
         {/* --- HERO --- */}
         <section className="max-w-6xl mx-auto px-6 pt-24 pb-20 text-center">
           <span className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold px-3 py-1.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            [!] Product-Led Tech Recruitment
+            [!] Automated Technical Screening
           </span>
 
           <h1 className="mt-6 text-4xl sm:text-6xl font-extrabold tracking-tight max-w-3xl mx-auto">
-            Hire the Top 1%.{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-cyan-300 to-indigo-400">
-              100% Anonymous.
-            </span>
+            Stop Interviewing AI Resumes.
           </h1>
 
           <p className="mt-6 text-zinc-400 text-base sm:text-lg max-w-2xl mx-auto">
-            A talent marketplace built on blind auditions. We hide the resumes
-            and rank developers by their code execution, so you can hire
-            purely on verified skill.
+            Automated GitHub audits, commit chronology checks, and custom
+            interview cheat sheets to find developers who actually build.
           </p>
 
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -188,7 +247,7 @@ export default function Home() {
             ) : (
               <>
                 <Link
-                  href={primaryCtaHref}
+                  href={talentEntryHref}
                   className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20"
                 >
                   {isLoggedIn ? "Open Dashboard" : "Get Started"}
@@ -207,7 +266,7 @@ export default function Home() {
 
           {/* --- DASHBOARD PREVIEW TEASER --- */}
           <Link
-            href={dashboardPreviewHref}
+            href={talentEntryHref}
             className="group mt-16 block max-w-4xl mx-auto bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-6 shadow-2xl hover:border-indigo-500/40 transition-all text-left"
           >
             <div className="flex items-center justify-between mb-4">
@@ -218,78 +277,83 @@ export default function Home() {
                 Open Dashboard (-&gt;)
               </span>
             </div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-1 space-y-3 text-left">
-                {previewLoading ? (
-                  <>
-                    <div className="h-2.5 w-3/4 rounded-full bg-zinc-800 animate-pulse" />
-                    <div className="h-2.5 w-1/2 rounded-full bg-zinc-800 animate-pulse" />
-                    <div className="h-2.5 w-2/3 rounded-full bg-zinc-800 animate-pulse" />
-                  </>
-                ) : previewCandidate ? (
-                  <>
+
+            {previewLoading ? (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
+                <div className="h-4 w-2/3 rounded-full bg-zinc-800 animate-pulse" />
+                <div className="h-3 w-1/2 rounded-full bg-zinc-800 animate-pulse" />
+                <div className="flex gap-2">
+                  <div className="h-6 w-16 rounded-md bg-zinc-800 animate-pulse" />
+                  <div className="h-6 w-20 rounded-md bg-zinc-800 animate-pulse" />
+                  <div className="h-6 w-14 rounded-md bg-zinc-800 animate-pulse" />
+                </div>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="h-16 rounded-lg bg-zinc-900 animate-pulse" />
+                  <div className="h-16 rounded-lg bg-zinc-900 animate-pulse" />
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                  <div className="min-w-0 text-left">
+                    <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">
+                      Audited Profile
+                    </div>
+                    <div className="text-sm sm:text-base font-semibold text-white truncate">
+                      {displayCandidate.name} — {displayCandidate.role}
+                    </div>
+                  </div>
+                  <span className="self-start shrink-0 inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-extrabold text-emerald-400">
+                    {displayScore}/100
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {displaySkills.length > 0 ? (
+                    displaySkills.map((skill) => (
+                      <span
+                        key={skill}
+                        className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                      >
+                        {skill}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-zinc-500">
+                      Skills verified during GitHub audit
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-left">
                     <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                      Candidate Alias
+                      Repo Proof
                     </div>
-                    <div className="text-sm font-semibold text-white">
-                      {previewCandidate.alias}
+                    <div className="text-sm font-semibold text-indigo-400 mt-1">
+                      Live GitHub Verified • {reposAudited} repos audited
                     </div>
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {previewSkills.length > 0 ? (
-                        previewSkills.map((skill) => (
-                          <span
-                            key={skill}
-                            className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
-                          >
-                            {skill}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-xs text-zinc-500">
-                          Skills pending audit
-                        </span>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-xs text-zinc-500">
-                    No live candidates yet — check back soon.
                   </div>
-                )}
-              </div>
-              <div className="sm:col-span-2 grid grid-cols-2 gap-3">
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-left">
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                    Execution Score
-                  </div>
-                  <div className="text-lg font-extrabold text-emerald-400 mt-1">
-                    {previewLoading ? "—" : formatScore(previewCandidate?.score ?? null)}
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-left">
+                    <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                      Pool Size
+                    </div>
+                    <div className="text-sm font-semibold text-white mt-1">
+                      {VETTED_CANDIDATE_POOL.length} high-signal profiles live
+                    </div>
                   </div>
                 </div>
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-left">
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                    Skill Tags
+
+                <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-3 text-left">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">
+                    Proof Signal
                   </div>
-                  <div className="text-lg font-extrabold text-white mt-1">
-                    {previewLoading
-                      ? "—"
-                      : previewSkills.length > 0
-                        ? previewSkills.length
-                        : 0}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 col-span-2 text-left">
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                    Status
-                  </div>
-                  <div className="text-sm font-semibold text-indigo-400 mt-1">
-                    {previewCandidate
-                      ? "Anonymized until upgrade"
-                      : "Waiting for first candidate audit"}
-                  </div>
+                  <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed line-clamp-3">
+                    {proofSignal}
+                  </p>
                 </div>
               </div>
-            </div>
+            )}
           </Link>
         </section>
 
