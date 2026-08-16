@@ -735,6 +735,8 @@ export default function DashboardPage() {
   const [isVisibleInPool, setIsVisibleInPool] = useState(true);
   const [savingVisibility, setSavingVisibility] = useState(false);
   const visibilitySaveRef = useRef(false);
+  const [savingAvailability, setSavingAvailability] = useState(false);
+  const availabilitySaveRef = useRef(false);
 
   // Prefer profiles.role, then auth user_metadata.role.
   const profileRole = accountRole ?? dbProfile?.role;
@@ -1064,6 +1066,55 @@ const showToast = (msg: string) => {
     visibilitySaveRef.current = false;
     setSavingVisibility(false);
   };
+
+  const handleAvailabilityStatusChange = async (
+    nextStatus: AvailabilityStatus
+  ) => {
+    if (availabilitySaveRef.current || nextStatus === availabilityStatus) {
+      return;
+    }
+
+    const previousStatus = availabilityStatus;
+    availabilitySaveRef.current = true;
+    setAvailabilityStatus(nextStatus);
+    setSavingAvailability(true);
+
+    const profileId = dbProfile?.id ?? user?.id;
+    if (!profileId) {
+      setAvailabilityStatus(previousStatus);
+      availabilitySaveRef.current = false;
+      setSavingAvailability(false);
+      showToast("You must be logged in to update availability.");
+      return;
+    }
+
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("profiles")
+      .update({ availability_status: nextStatus })
+      .eq("id", profileId)
+      .select("availability_status")
+      .maybeSingle();
+
+    if (error) {
+      console.error(
+        "Availability status update failed:",
+        JSON.stringify(error, null, 2)
+      );
+      setAvailabilityStatus(previousStatus);
+      showToast("Could not update availability status.");
+    } else {
+      setDbProfile((prev) =>
+        prev ? { ...prev, availability_status: nextStatus } : prev
+      );
+      setSavedCandidateProfile((prev) =>
+        prev ? { ...prev, availabilityStatus: nextStatus } : prev
+      );
+    }
+
+    availabilitySaveRef.current = false;
+    setSavingAvailability(false);
+  };
   // --- SUB-MENU STATE FOR PROFILE TAB ---
   const [profileSubMenu, setProfileSubMenu] = useState<
     "overview" | "academics" | "portfolio" | "settings" | "companyInfo" | "activeListings"
@@ -1191,7 +1242,6 @@ const showToast = (msg: string) => {
       skills !== savedCandidateProfile.skills ||
       portfolioUrl !== savedCandidateProfile.portfolioUrl ||
       experienceLevel !== savedCandidateProfile.experienceLevel ||
-      availabilityStatus !== savedCandidateProfile.availabilityStatus ||
       profileData.gradYear !== savedCandidateProfile.gradYear);
 
   const isDirty = isBusinessAccount
@@ -1251,7 +1301,6 @@ const showToast = (msg: string) => {
         skills: skillsArray,
         portfolio_url: portfolioUrl.trim() || null,
         experience_level: experienceLevel,
-        availability_status: availabilityStatus,
       })
       .eq("id", user.id)
       .select(EXTENDED_PROFILE_COLUMNS)
@@ -3108,31 +3157,6 @@ const showToast = (msg: string) => {
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
-                        Availability Status
-                      </label>
-                      <select
-                        value={availabilityStatus}
-                        onChange={(e) =>
-                          setAvailabilityStatus(
-                            e.target.value as AvailabilityStatus
-                          )
-                        }
-                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
-                      >
-                        {AVAILABILITY_STATUS_OPTIONS.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[11px] text-slate-500 mt-2">
-                        Shown on your talent pool card and used by recruiter
-                        availability filters.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
                         Bio / Headline
                       </label>
                       <textarea
@@ -3301,6 +3325,35 @@ const showToast = (msg: string) => {
                     </h3>
 
                     {!isBusinessAccount && (
+                    <>
+                    <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
+                      <div>
+                        <span className="font-bold text-xs text-white block">
+                          Availability Status
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Shown on your talent pool card and used by recruiter
+                          availability filters.
+                        </span>
+                      </div>
+                      <select
+                        value={availabilityStatus}
+                        onChange={(e) =>
+                          void handleAvailabilityStatusChange(
+                            e.target.value as AvailabilityStatus
+                          )
+                        }
+                        disabled={savingAvailability}
+                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-60"
+                      >
+                        {AVAILABILITY_STATUS_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className="flex items-center justify-between gap-4 p-4 bg-slate-900/50 border border-slate-800 rounded-xl">
                       <div>
                         <span className="font-bold text-xs text-white block">
@@ -3331,6 +3384,7 @@ const showToast = (msg: string) => {
                         />
                       </button>
                     </div>
+                    </>
                     )}
 
                     <button
