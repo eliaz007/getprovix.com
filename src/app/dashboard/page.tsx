@@ -230,6 +230,11 @@ type ProfileRecord = {
   phone?: string | null;
   linkedin_url?: string | null;
   contact_email?: string | null;
+  name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  headline?: string | null;
+  availability?: string | null;
 };
 
 type InterviewCheatSheetQuestion = {
@@ -443,6 +448,11 @@ type TalentPoolCandidate = {
   id: string;
   profileId?: string | null;
   name: string;
+  fullName: string;
+  profileName: string;
+  firstName: string;
+  lastName: string;
+  headline: string;
   email?: string | null;
   phone?: string | null;
   linkedin_url?: string | null;
@@ -462,12 +472,91 @@ type TalentPoolCandidate = {
   projects: string[];
 };
 
+const TALENT_POOL_PROFILE_COLUMNS =
+  "id, full_name, name, first_name, last_name, headline, job_title, major, school, bio, skills, portfolio_url, status, experience_level, availability_status, availability, phone, linkedin_url, contact_email";
+const TALENT_POOL_PROFILE_MID_COLUMNS =
+  "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, experience_level, availability_status, phone, linkedin_url, contact_email";
+const TALENT_POOL_PROFILE_LEGACY_COLUMNS =
+  "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, experience_level, phone, linkedin_url, contact_email";
+
+function splitFullName(fullName: string): { firstName: string; lastName: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { firstName: "", lastName: "" };
+  }
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: "" };
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
+function resolveProfileAvailability(
+  row: Pick<ProfileRecord, "availability_status" | "availability">
+): AvailabilityStatus {
+  return normalizeAvailabilityStatus(
+    row.availability_status ?? row.availability
+  );
+}
+
+function candidateMatchesTalentSearch(
+  candidate: TalentPoolCandidate,
+  query: string
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const searchableValues = [
+    candidate.name,
+    candidate.fullName,
+    candidate.profileName,
+    candidate.headline,
+    candidate.bio,
+    ...candidate.skills,
+  ];
+
+  return searchableValues.some((value) =>
+    value.trim().toLowerCase().includes(normalizedQuery)
+  );
+}
+
+function mergeTalentPoolCandidates(
+  vetted: TalentPoolCandidate[],
+  live: TalentPoolCandidate[]
+): TalentPoolCandidate[] {
+  const liveKeys = new Set(
+    live.map(
+      (candidate) =>
+        candidate.profileId ?? candidate.name.trim().toLowerCase()
+    )
+  );
+
+  const supplementalVetted = vetted.filter((candidate) => {
+    const key = candidate.profileId ?? candidate.name.trim().toLowerCase();
+    return !liveKeys.has(key);
+  });
+
+  return [...live, ...supplementalVetted];
+}
+
 function mapVettedToTalentCandidate(
   candidate: VettedCandidateRecord
 ): TalentPoolCandidate {
+  const { firstName, lastName } = splitFullName(candidate.name);
+
   return {
     id: candidate.id,
     name: candidate.name,
+    fullName: candidate.name,
+    profileName: candidate.name,
+    firstName,
+    lastName,
+    headline: candidate.role,
     email: candidate.email,
     phone: candidate.phone,
     linkedin_url: candidate.linkedin_url,
@@ -498,25 +587,39 @@ function mapProfileRowToTalentCandidate(
   const portfolioUrl = row.portfolio_url?.trim() ?? "";
   const isLinkedIn = portfolioUrl.toLowerCase().includes("linkedin");
   const shortId = row.id.replace(/-/g, "").slice(0, 3).toUpperCase();
+  const resolvedName =
+    row.full_name?.trim() || row.name?.trim() || "Vetted Candidate";
+  const profileName = row.name?.trim() || "";
+  const parsedName = splitFullName(resolvedName);
+  const firstName = row.first_name?.trim() || parsedName.firstName;
+  const lastName = row.last_name?.trim() || parsedName.lastName;
+  const headline =
+    row.headline?.trim() || row.job_title?.trim() || "Open Role Candidate";
+  const availability = resolveProfileAvailability(row);
 
   return {
     id: `C-${shortId}`,
     profileId: row.id,
-    name: row.full_name?.trim() || "Vetted Candidate",
+    name: resolvedName,
+    fullName: resolvedName,
+    profileName,
+    firstName,
+    lastName,
+    headline,
     email: row.contact_email?.trim() || null,
     phone: row.phone?.trim() || null,
     linkedin_url: row.linkedin_url?.trim() || (isLinkedIn ? portfolioUrl : null),
     github_url: !isLinkedIn && portfolioUrl ? portfolioUrl : null,
-    role: row.job_title?.trim() || "Open Role Candidate",
+    role: headline,
     major: row.major?.trim() || row.school?.trim() || "Credentials on file",
     skills,
     rating: "90%",
     execution_score: 90,
-    status: normalizeAvailabilityStatus(row.availability_status),
+    status: availability,
     experienceLevel:
       row.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL,
     roleType: "General",
-    availability: normalizeAvailabilityStatus(row.availability_status),
+    availability,
     bio:
       row.bio?.trim() ||
       "AI-vetted candidate with verified proof-of-work in the talent pool.",
@@ -1003,23 +1106,28 @@ export default function DashboardPage() {
 
     (async () => {
       try {
-        const talentPoolColumns =
-          "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, experience_level, availability_status, phone, linkedin_url, contact_email";
-        const legacyTalentPoolColumns =
-          "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, experience_level, phone, linkedin_url, contact_email";
+        const visiblePoolFilter = 'is_visible_in_pool.is.null,is_visible_in_pool.eq.true';
 
         let { data, error } = await supabase
           .from("profiles")
-          .select(talentPoolColumns)
-          .eq("is_visible_in_pool", true)
-          .in("role", ["candidate", "employee"]);
+          .select(TALENT_POOL_PROFILE_COLUMNS)
+          .or(visiblePoolFilter)
+          .or("role.eq.candidate,role.eq.employee,role.is.null");
 
         if (error && isMissingColumnError(error)) {
           ({ data, error } = await supabase
             .from("profiles")
-            .select(legacyTalentPoolColumns)
-            .eq("is_visible_in_pool", true)
-            .in("role", ["candidate", "employee"]));
+            .select(TALENT_POOL_PROFILE_MID_COLUMNS)
+            .or(visiblePoolFilter)
+            .or("role.eq.candidate,role.eq.employee,role.is.null"));
+        }
+
+        if (error && isMissingColumnError(error)) {
+          ({ data, error } = await supabase
+            .from("profiles")
+            .select(TALENT_POOL_PROFILE_LEGACY_COLUMNS)
+            .or(visiblePoolFilter)
+            .or("role.eq.candidate,role.eq.employee,role.is.null"));
         }
 
         if (!isMounted) {
@@ -1028,18 +1136,23 @@ export default function DashboardPage() {
 
         if (error) {
           console.error("Failed to fetch talent pool profiles:", error);
+          setCandidates(FALLBACK_TALENT_CANDIDATES);
           return;
         }
 
+        console.log("Recruiter talent pool profiles:", data);
+
         const mapped = (data ?? [])
           .filter((row): row is ProfileRecord & { id: string } => !!row.id)
+          .filter((row) => !isEmployerRole(row.role))
           .map((row) => mapProfileRowToTalentCandidate(row));
 
-        if (mapped.length > 0) {
-          setCandidates([...FALLBACK_TALENT_CANDIDATES, ...mapped]);
-        }
+        setCandidates(mergeTalentPoolCandidates(FALLBACK_TALENT_CANDIDATES, mapped));
       } catch (err) {
         console.error("Talent pool fetch threw:", err);
+        if (isMounted) {
+          setCandidates(FALLBACK_TALENT_CANDIDATES);
+        }
       }
     })();
 
@@ -1047,6 +1160,14 @@ export default function DashboardPage() {
       isMounted = false;
     };
   }, [showTalentPoolNav]);
+
+  useEffect(() => {
+    if (!showTalentPoolNav) {
+      return;
+    }
+
+    console.log("Loaded candidates in talent pool:", candidates);
+  }, [candidates, showTalentPoolNav]);
 
   useEffect(() => {
     if (!showTalentPoolNav && activeTab === "talent") {
@@ -1633,11 +1754,10 @@ const showToast = (msg: string) => {
   }, [selectedCandidate?.id]);
 
   const filteredCandidates = candidates.filter((candidate) => {
-    const query = talentSearch.trim().toLowerCase();
-    const matchesSearch =
-      !query ||
-      candidate.role.toLowerCase().includes(query) ||
-      candidate.skills.some((skill) => skill.toLowerCase().includes(query));
+    const matchesSearch = candidateMatchesTalentSearch(
+      candidate,
+      talentSearch
+    );
 
     const matchesExperience =
       experienceFilter === "all" ||
@@ -1646,7 +1766,8 @@ const showToast = (msg: string) => {
       roleTypeFilter === "all" || candidate.roleType === roleTypeFilter;
     const matchesAvailability =
       availabilityFilter === "all" ||
-      candidate.availability === availabilityFilter;
+      normalizeAvailabilityStatus(candidate.availability) ===
+        availabilityFilter;
 
     return (
       matchesSearch && matchesExperience && matchesRoleType && matchesAvailability
