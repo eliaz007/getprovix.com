@@ -92,7 +92,7 @@ Universal rules:
 - Provide 2-4 schools per category.
 - matchReason: 1 concise sentence in second person (You/Your).
 - fitBadge: short label like "Ivy Reach", "Top Flagship", "Strong Program", "Test-Optional", "Transfer Pathway".
-- Weight the student's exact GPA, test scores, major, location preference, and budget preference.
+- Weight the student's exact GPA, test scores, major, location preference, and annual budget preference.
 - Do not invent fictional institutions.
 - Do not include markdown, code fences, or extra keys.`;
 
@@ -235,7 +235,7 @@ ACT Score: ${actLabel}
 Raw Test Scores Field: ${credentials.testScores}
 Intended Major: ${credentials.major}
 Location Preference: ${credentials.locationPreference}
-Budget Preference: ${credentials.budgetPreference}
+Annual Budget Preference: ${credentials.budgetPreference}
 Assigned Credential Tier: ${credentials.tier.toUpperCase()}
 
 Instructions:

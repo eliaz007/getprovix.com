@@ -3956,7 +3956,7 @@ const showToast = (msg: string) => {
 
                   <div>
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
-                      Budget Preference
+                      Annual Budget Preference
                     </label>
                     <input
                       type="text"
