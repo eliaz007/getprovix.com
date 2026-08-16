@@ -470,6 +470,21 @@ type TalentPoolCandidate = {
   projects: string[];
 };
 
+function isEmployerRole(role: string | null | undefined): boolean {
+  return role === "employer" || role === "business";
+}
+
+function isEmployeeRole(role: string | null | undefined): boolean {
+  return role === "employee";
+}
+
+function canAccessTalentPool(role: string | null | undefined): boolean {
+  if (!role || role === "employee" || role === "candidate") {
+    return false;
+  }
+  return isEmployerRole(role);
+}
+
 function isProfileEligibleForTalentPool(row: ProfileRecord): boolean {
   if (row.is_visible_in_pool === false) {
     return false;
@@ -817,21 +832,6 @@ function resolveAccountRole(
   return fromProfile ?? fromMeta;
 }
 
-function isEmployerRole(role: string | null | undefined): boolean {
-  return role === "employer" || role === "business";
-}
-
-function isEmployeeRole(role: string | null | undefined): boolean {
-  return role === "employee";
-}
-
-function canAccessTalentPool(role: string | null | undefined): boolean {
-  if (!role || role === "employee" || role === "candidate") {
-    return false;
-  }
-  return isEmployerRole(role);
-}
-
 export default function DashboardPage() {
   const router = useRouter();
 
@@ -900,6 +900,9 @@ export default function DashboardPage() {
   const isBusinessAccount = isEmployerRole(profileRole);
   const isEmployeeAccount = isEmployeeRole(profileRole);
   const showTalentPoolNav = canAccessTalentPool(profileRole);
+  const [candidates, setCandidates] = useState<TalentPoolCandidate[]>(
+    FALLBACK_TALENT_CANDIDATES
+  );
 
   useEffect(() => {
     const supabase = createClient();
@@ -1508,11 +1511,6 @@ const showToast = (msg: string) => {
   const [evalAccomplishments, setEvalAccomplishments] = useState("");
   const [evaluatingPoW, setEvaluatingPoW] = useState(false);
   const [powResult, setPowResult] = useState(false);
-
-  // --- EMPLOYER TALENT POOL DATA ---
-  const [candidates, setCandidates] = useState<TalentPoolCandidate[]>(
-    FALLBACK_TALENT_CANDIDATES
-  );
 
   const opportunityListings = [
     {
