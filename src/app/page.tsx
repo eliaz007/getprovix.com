@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { Code2, ChevronDown, Shield, Zap } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
-import SignOutButton from "@/components/SignOutButton";
 
 type PreviewCandidate = {
   alias: string;
@@ -16,21 +15,21 @@ type PreviewCandidate = {
 const features = [
   {
     icon: Code2,
-    title: "AI Code Execution",
+    title: "Proof-of-Work Auditing",
     description:
-      "Every candidate is benchmarked against real, runnable challenges. No resumes to guess from — just verified execution scores.",
+      "Automated deep audits of live GitHub repositories, commit chronologies, and code architecture — separating real builders from AI-generated resumes.",
   },
   {
     icon: Shield,
-    title: "Anonymized Matching",
+    title: "AI Integrity Scoring",
     description:
-      "Names, photos, and social links stay hidden until a hire is committed to, so every match starts on merit alone.",
+      "Every profile receives an objective 1–100 credibility rating evaluating timeline plausibility, verified skills, and artifact depth before you spend time interviewing.",
   },
   {
     icon: Zap,
-    title: "Instant Direct Hiring",
+    title: "Interview Enablement",
     description:
-      "Skip the recruiter chain entirely. Message vetted talent directly and move from shortlist to signed offer in days.",
+      "Unlock verified direct contact info alongside tailored technical interview questions and 'what-to-listen-for' rubrics for fast, high-signal hiring.",
   },
 ];
 
@@ -148,26 +147,14 @@ export default function Home() {
             {checkingSession ? (
               <div className="h-4 w-14 rounded bg-zinc-800 animate-pulse" aria-hidden />
             ) : isLoggedIn ? (
-              <>
-                <Link href="/dashboard" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                  Dashboard
-                </Link>
-                <SignOutButton
-                  redirectTo="/"
-                  className="text-sm font-semibold bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white px-4 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                />
-              </>
+              <Link href="/dashboard" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
+                Dashboard
+              </Link>
             ) : (
               <Link href="/login" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
                 Log In
               </Link>
             )}
-            <Link
-              href="/pricing"
-              className="text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg transition-colors"
-            >
-              Pricing
-            </Link>
           </nav>
         </div>
       </header>
