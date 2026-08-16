@@ -407,30 +407,23 @@ export default function Home() {
               Ready to hire on proof, not polish?
             </h2>
             <p className="mt-4 text-zinc-400 text-sm sm:text-base max-w-xl mx-auto">
-              Join Vanguard X and start screening vetted talent with AI-backed
-              integrity scores — free to browse, pay only when you unlock.
+              Screen high-signal technical candidates with AI-backed integrity
+              scores — free to explore, pay only when you hire or unlock contact
+              details.
             </p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div className="mt-8 flex items-center justify-center">
               {checkingSession ? (
                 <div
-                  className="h-[52px] w-full sm:w-44 rounded-lg bg-zinc-800 animate-pulse"
+                  className="h-[52px] w-full sm:w-52 rounded-lg bg-zinc-800 animate-pulse"
                   aria-hidden
                 />
               ) : (
-                <>
-                  <Link
-                    href={primaryCtaHref}
-                    className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20"
-                  >
-                    {isLoggedIn ? "Open Dashboard" : "Get Started Free"}
-                  </Link>
-                  <Link
-                    href="/pricing"
-                    className="w-full sm:w-auto bg-transparent hover:bg-white/5 border border-zinc-700 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all"
-                  >
-                    View Pricing
-                  </Link>
-                </>
+                <Link
+                  href="/talent"
+                  className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20"
+                >
+                  Browse Vetted Talent
+                </Link>
               )}
             </div>
           </div>
