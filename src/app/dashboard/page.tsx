@@ -2046,10 +2046,12 @@ const showToast = (msg: string) => {
       return;
     }
 
-    if (!primaryMatchingJob) {
-      showToast("Post an active job to run AI deep screening.");
-      return;
-    }
+    const screeningJob = primaryMatchingJob ?? {
+      title: selectedCandidate.role || "General Talent Evaluation",
+      company: employerCompanyNameForMatching,
+      tags: selectedCandidate.skills.slice(0, 8),
+      location: "",
+    };
 
     setDeepScreeningLoading(true);
     setDeepScreeningResult(null);
@@ -2072,10 +2074,10 @@ const showToast = (msg: string) => {
             github: selectedCandidate.github ?? "",
           },
           job: {
-            title: primaryMatchingJob.title,
-            company: primaryMatchingJob.company,
-            tags: primaryMatchingJob.tags,
-            location: primaryMatchingJob.location,
+            title: screeningJob.title,
+            company: screeningJob.company,
+            tags: screeningJob.tags,
+            location: screeningJob.location,
           },
         }),
       });
@@ -4924,7 +4926,7 @@ const showToast = (msg: string) => {
                         Gemini Deep Screening
                       </div>
                       <p className="text-xs text-slate-400 leading-relaxed">
-                        Generate strengths, gaps, and interview questions against your active job post.
+                        Run live GitHub artifact audits and integrity scoring for this candidate.
                       </p>
                     </div>
                   </div>
@@ -4932,10 +4934,7 @@ const showToast = (msg: string) => {
                   <button
                     type="button"
                     onClick={runDeepScreening}
-                    disabled={
-                      isProEmployerAccount &&
-                      (deepScreeningLoading || !primaryMatchingJob)
-                    }
+                    disabled={hasBetaAccess && deepScreeningLoading}
                     className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {deepScreeningLoading ? (
@@ -4953,16 +4952,10 @@ const showToast = (msg: string) => {
                     )}
                   </button>
 
-                  {!hasBetaAccess ? (
+                  {!hasBetaAccess && (
                     <p className="text-[11px] text-slate-400">
                       Unlock beta access to enable deep screening.
                     </p>
-                  ) : (
-                    !primaryMatchingJob && (
-                      <p className="text-[11px] text-amber-400/90">
-                        Post an active job to enable deep screening.
-                      </p>
-                    )
                   )}
 
                   {hasBetaAccess && deepScreeningResult && (
