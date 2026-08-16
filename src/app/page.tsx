@@ -199,7 +199,7 @@ export default function Home() {
       <header className="border-b border-zinc-800/80 sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="hover:opacity-90 transition-opacity">
-            <ProvixLogo className="text-lg" />
+            <ProvixLogo />
           </Link>
 
           <nav className="flex items-center gap-6">
@@ -479,7 +479,7 @@ export default function Home() {
 
       <footer className="border-t border-zinc-800/80 py-8">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500">
-          <ProvixLogo className="text-xs" />
+          <ProvixLogo className="h-6 w-6" showText={false} />
           <span>Product-led tech recruitment · Hire the top 1%.</span>
         </div>
       </footer>

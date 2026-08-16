@@ -1,53 +1,47 @@
-type ProvixLogoProps = {
-  showText?: boolean;
+export function ProvixLogo({
+  className = "h-8 w-8",
+  showText = true,
+}: {
   className?: string;
-};
-
-export function ProvixLogo({ showText = true, className = "" }: ProvixLogoProps) {
+  showText?: boolean;
+}) {
   return (
-    <div className={`flex items-center gap-2.5 ${className}`}>
-      <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 shadow-[0_0_18px_rgba(99,102,241,0.25)]">
+    <div className="flex items-center gap-3">
+      <div className="relative flex items-center justify-center">
         <svg
-          viewBox="0 0 32 32"
+          viewBox="0 0 36 36"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          className="h-5 w-5"
+          className={className}
           aria-hidden="true"
         >
-          <defs>
-            <linearGradient
-              id="provix-mark-gradient"
-              x1="6"
-              y1="4"
-              x2="24"
-              y2="28"
-              gradientUnits="userSpaceOnUse"
-            >
-              <stop stopColor="#6366F1" />
-              <stop offset="1" stopColor="#06B6D4" />
-            </linearGradient>
-          </defs>
-
-          <path
-            d="M9 6.5H16.5C20.0899 6.5 23 9.41015 23 13C23 16.5899 20.0899 19.5 16.5 19.5H13V25.5H9V6.5Z"
-            fill="url(#provix-mark-gradient)"
-          />
-          <path
-            d="M13 10H16C17.6569 10 19 11.3431 19 13C19 14.6569 17.6569 16 16 16H13V10Z"
-            fill="#09090B"
+          {/* Tile background */}
+          <rect
+            width="36"
+            height="36"
+            rx="8"
+            fill="#18181B"
+            stroke="#27272A"
+            strokeWidth="1"
           />
 
-          <circle cx="24.5" cy="7.5" r="2.25" fill="#22D3EE" />
+          {/* Geometric 'P' path */}
           <path
-            d="M26.8 3.6L27.35 5.05L28.8 5.6L27.35 6.15L26.8 7.6L26.25 6.15L24.8 5.6L26.25 5.05L26.8 3.6Z"
-            fill="#67E8F9"
+            d="M12 25V11H19.5C22.5 11 24.5 13 24.5 16C24.5 19 22.5 21 19.5 21H12"
+            stroke="#6366F1"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
+
+          {/* Accent dot */}
+          <circle cx="18.5" cy="16" r="1.5" fill="#38BDF8" />
         </svg>
       </div>
 
-      {showText ? (
-        <span className="font-bold tracking-wider text-white uppercase">PROVIX</span>
-      ) : null}
+      {showText && (
+        <span className="text-xl font-bold tracking-wider text-white">PROVIX</span>
+      )}
     </div>
   );
 }
