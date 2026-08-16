@@ -733,10 +733,6 @@ export default function DashboardPage() {
   const talentMatchFetchedRef = useRef<Set<string>>(new Set());
   // Talent pool visibility — ON by default, even before the profile row loads.
   const [isVisibleInPool, setIsVisibleInPool] = useState(true);
-  const [savingVisibility, setSavingVisibility] = useState(false);
-  const visibilitySaveRef = useRef(false);
-  const [savingAvailability, setSavingAvailability] = useState(false);
-  const availabilitySaveRef = useRef(false);
 
   // Prefer profiles.role, then auth user_metadata.role.
   const profileRole = accountRole ?? dbProfile?.role;
@@ -792,9 +788,8 @@ export default function DashboardPage() {
         setDbProfile(profileWithRole);
         setAccountRole(resolvedRole);
 
-        if (!visibilitySaveRef.current) {
-          setIsVisibleInPool(profileWithRole?.is_visible_in_pool !== false);
-        }
+        const loadedVisibleInPool = profileWithRole?.is_visible_in_pool !== false;
+        setIsVisibleInPool(loadedVisibleInPool);
 
         const displayName = displayNameFromSources(profileWithRole, sessionUser);
         const loadedName = displayName || DEFAULT_PROFILE_DATA.name;
@@ -847,6 +842,7 @@ export default function DashboardPage() {
           portfolioUrl: loadedPortfolioUrl,
           experienceLevel: loadedExperienceLevel,
           availabilityStatus: loadedAvailabilityStatus,
+          visibleInPool: loadedVisibleInPool,
           gradYear: loadedGradYear,
         });
 
@@ -1025,46 +1021,8 @@ const showToast = (msg: string) => {
   setTimeout(() => setToastMessage(null), 3000);
 };
 
-  const handleVisibilityToggle = async () => {
-    if (visibilitySaveRef.current) return;
-
-    const nextValue = !isVisibleInPool;
-    visibilitySaveRef.current = true;
-    setIsVisibleInPool(nextValue);
-    setSavingVisibility(true);
-
-    const supabase = createClient();
-    const profileId = dbProfile?.id;
-    if (!profileId) {
-      console.error("No profile id available for visibility update.");
-      setIsVisibleInPool(!nextValue);
-      visibilitySaveRef.current = false;
-      setSavingVisibility(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .update({ is_visible_in_pool: nextValue })
-      .eq("id", profileId)
-      .select();
-
-    console.log("Update response data:", data);
-    if (error) {
-      console.error("Full Error:", JSON.stringify(error, null, 2));
-    }
-
-    if (error || !data || data.length === 0) {
-      setIsVisibleInPool(!nextValue);
-      showToast("Could not update talent pool visibility.");
-    } else {
-      setDbProfile((prev) =>
-        prev ? { ...prev, is_visible_in_pool: nextValue } : prev
-      );
-    }
-
-    visibilitySaveRef.current = false;
-    setSavingVisibility(false);
+  const handleVisibilityToggle = () => {
+    setIsVisibleInPool((current) => !current);
   };
   // --- SUB-MENU STATE FOR PROFILE TAB ---
   const [profileSubMenu, setProfileSubMenu] = useState<
@@ -1094,6 +1052,7 @@ const showToast = (msg: string) => {
     portfolioUrl: string;
     experienceLevel: string;
     availabilityStatus: string;
+    visibleInPool: boolean;
     gradYear: string;
   } | null>(null);
 
@@ -1194,58 +1153,14 @@ const showToast = (msg: string) => {
       portfolioUrl !== savedCandidateProfile.portfolioUrl ||
       experienceLevel !== savedCandidateProfile.experienceLevel ||
       availabilityStatus !== savedCandidateProfile.availabilityStatus ||
+      isVisibleInPool !== savedCandidateProfile.visibleInPool ||
       profileData.gradYear !== savedCandidateProfile.gradYear);
 
   const isDirty = isBusinessAccount
     ? JSON.stringify(businessProfileData) !== JSON.stringify(savedBusinessProfileData)
     : isCandidateDirty;
 
-  const handleAvailabilityStatusChange = async (
-    nextStatus: AvailabilityStatus
-  ) => {
-    if (availabilitySaveRef.current || nextStatus === availabilityStatus) {
-      return;
-    }
-
-    availabilitySaveRef.current = true;
-    setAvailabilityStatus(nextStatus);
-    setSavingAvailability(true);
-
-    const profileId = dbProfile?.id ?? user?.id;
-    if (!profileId) {
-      availabilitySaveRef.current = false;
-      setSavingAvailability(false);
-      showToast("You must be logged in to update availability.");
-      return;
-    }
-
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("profiles")
-      .update({ availability_status: nextStatus })
-      .eq("id", profileId)
-      .select("availability_status")
-      .maybeSingle();
-
-    if (error) {
-      console.error(
-        "Availability status update failed:",
-        JSON.stringify(error, null, 2)
-      );
-      showToast("Could not update availability status. Use Save Changes to retry.");
-    } else {
-      setDbProfile((prev) =>
-        prev ? { ...prev, availability_status: nextStatus } : prev
-      );
-      setSavedCandidateProfile((prev) =>
-        prev ? { ...prev, availabilityStatus: nextStatus } : prev
-      );
-      showToast("✓ Saved");
-    }
-
-    availabilitySaveRef.current = false;
-    setSavingAvailability(false);
-  };
+  const hasUnsavedChanges = isDirty;
 
   // Hydrate business profile data from LocalStorage once the component mounts on the client.
   useEffect(() => {
@@ -1290,17 +1205,22 @@ const showToast = (msg: string) => {
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const parsedGradYear = Number.parseInt(profileData.gradYear, 10);
+
     const { data, error } = await supabase
       .from("profiles")
       .update({
+        full_name: profileData.name.trim() || null,
+        job_title: title.trim() || null,
         bio: bio.trim() || null,
-        title: title.trim() || null,
         school: school.trim() || null,
-        degree: degree.trim() || null,
+        major: degree.trim() || null,
         skills: skillsArray,
         portfolio_url: portfolioUrl.trim() || null,
         experience_level: experienceLevel,
         availability_status: availabilityStatus,
+        is_visible_in_pool: isVisibleInPool,
+        graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
       })
       .eq("id", user.id)
       .select(EXTENDED_PROFILE_COLUMNS)
@@ -1319,7 +1239,14 @@ const showToast = (msg: string) => {
 
     if (data) {
       setDbProfile((prev) =>
-        prev ? { ...prev, ...(data as ProfileRecord) } : (data as ProfileRecord)
+        prev
+          ? {
+              ...prev,
+              ...(data as ProfileRecord),
+              is_visible_in_pool: isVisibleInPool,
+              availability_status: availabilityStatus,
+            }
+          : (data as ProfileRecord)
       );
     }
 
@@ -1333,6 +1260,7 @@ const showToast = (msg: string) => {
       portfolioUrl,
       experienceLevel,
       availabilityStatus,
+      visibleInPool: isVisibleInPool,
       gradYear: profileData.gradYear,
     };
     setSavedCandidateProfile(snapshot);
@@ -1344,7 +1272,7 @@ const showToast = (msg: string) => {
       degree,
       github: portfolioUrl,
     });
-    showToast("Profile saved successfully!");
+    showToast("✓ Saved");
   };
 
   // --- EMPLOYER JOB LISTINGS STATE (Business accounts only) ---
@@ -2849,16 +2777,24 @@ const showToast = (msg: string) => {
               <button
                 type="button"
                 onClick={handleSaveProfile}
-                disabled={!isDirty || isSaving}
-                title={isDirty ? "Save your unsaved changes" : "No changes to save"}
+                disabled={!hasUnsavedChanges || isSaving}
+                title={
+                  hasUnsavedChanges
+                    ? "Save your unsaved changes"
+                    : "No changes to save"
+                }
                 className={`text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2 ${
-                  isDirty && !isSaving
-                    ? "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+                  hasUnsavedChanges && !isSaving
+                    ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-indigo-500/25"
                     : "bg-slate-800 text-slate-500 cursor-not-allowed shadow-none"
                 }`}
               >
-                {isSaving ? null : isDirty ? <Icons.Save /> : <Icons.Check />}
-                {isSaving ? "Saving..." : isDirty ? "Save Changes" : "Saved"}
+                {isSaving ? null : hasUnsavedChanges ? <Icons.Save /> : <Icons.Check />}
+                {isSaving
+                  ? "Saving..."
+                  : hasUnsavedChanges
+                    ? "Save Changes"
+                    : "No Unsaved Changes"}
               </button>
               <button
                 onClick={() => setShowPublicProfile(true)}
@@ -3339,12 +3275,11 @@ const showToast = (msg: string) => {
                       <select
                         value={availabilityStatus}
                         onChange={(e) =>
-                          void handleAvailabilityStatusChange(
+                          setAvailabilityStatus(
                             e.target.value as AvailabilityStatus
                           )
                         }
-                        disabled={savingAvailability}
-                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500 disabled:opacity-60"
+                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
                       >
                         {AVAILABILITY_STATUS_OPTIONS.map((option) => (
                           <option key={option} value={option}>
@@ -3371,7 +3306,7 @@ const showToast = (msg: string) => {
                         onClick={handleVisibilityToggle}
                         className={`relative h-6 w-11 shrink-0 rounded-full transition-colors cursor-pointer ${
                           isVisibleInPool ? "bg-emerald-500" : "bg-zinc-700"
-                        } ${savingVisibility ? "opacity-70" : ""}`}
+                        }`}
                       >
                         <span
                           aria-hidden
@@ -3390,17 +3325,17 @@ const showToast = (msg: string) => {
                     <button
                       type="button"
                       onClick={handleSaveProfile}
-                      disabled={!isDirty || isSaving}
+                      disabled={!hasUnsavedChanges || isSaving}
                       className={`w-full font-bold py-3 rounded-xl text-xs transition-all ${
-                        isDirty && !isSaving
-                          ? "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                        hasUnsavedChanges && !isSaving
+                          ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-lg shadow-indigo-500/25"
                           : "bg-slate-800 text-slate-500 cursor-not-allowed"
                       }`}
                     >
                       {isSaving
                         ? "Saving..."
-                        : isDirty
-                          ? "Save All Changes"
+                        : hasUnsavedChanges
+                          ? "Save Changes"
                           : "No Unsaved Changes"}
                     </button>
 
