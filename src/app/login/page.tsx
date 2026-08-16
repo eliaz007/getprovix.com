@@ -330,6 +330,26 @@ export default function LoginPage() {
                 ? "Create Business Account"
                 : "Create Account"}
             </button>
+
+            {mode === "sign-up" && (
+              <p className="text-xs text-zinc-400 text-center mt-3 leading-relaxed">
+                By creating an account, you agree to our{" "}
+                <a
+                  href="/terms"
+                  className="underline text-zinc-300 hover:text-white"
+                >
+                  Terms of Service
+                </a>{" "}
+                and{" "}
+                <a
+                  href="/privacy"
+                  className="underline text-zinc-300 hover:text-white"
+                >
+                  Privacy Policy
+                </a>
+                .
+              </p>
+            )}
           </form>
 
           {/* Footer Toggle Link */}
