@@ -301,6 +301,85 @@ const EXTENDED_PROFILE_COLUMNS =
   "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, experience_level, availability_status, is_visible_in_pool, company_name, tier, is_pro, phone, linkedin_url, contact_email";
 const LEGACY_EXTENDED_PROFILE_COLUMNS =
   "id, full_name, role, graduation_year, major, is_visible_in_pool, company_name";
+const PROFILE_SAVE_SELECT_COLUMNS =
+  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, experience_level, availability_status, is_visible_in_pool";
+const PROFILE_SAVE_LEGACY_SELECT_COLUMNS =
+  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, is_visible_in_pool";
+
+type CandidateProfileSaveInput = {
+  fullName: string;
+  jobTitle: string;
+  bio: string;
+  school: string;
+  major: string;
+  skills: string[];
+  portfolioUrl: string;
+  experienceLevel: string;
+  availabilityStatus: string;
+  isVisibleInPool: boolean;
+  gradYear: string;
+};
+
+function buildCandidateProfileUpdatePayload(input: CandidateProfileSaveInput) {
+  const parsedGradYear = Number.parseInt(input.gradYear, 10);
+
+  return {
+    full_name: input.fullName.trim() || null,
+    job_title: input.jobTitle.trim() || null,
+    bio: input.bio.trim() || null,
+    school: input.school.trim() || null,
+    major: input.major.trim() || null,
+    skills: input.skills,
+    portfolio_url: input.portfolioUrl.trim() || null,
+    experience_level: input.experienceLevel,
+    availability_status: normalizeAvailabilityStatus(input.availabilityStatus),
+    is_visible_in_pool: input.isVisibleInPool,
+    graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
+  };
+}
+
+async function persistCandidateProfile(
+  supabase: ReturnType<typeof createClient>,
+  profileId: string,
+  payload: ReturnType<typeof buildCandidateProfileUpdatePayload>
+) {
+  let attemptPayload: Record<
+    string,
+    string | number | boolean | string[] | null
+  > = { ...payload };
+  const optionalColumnKeys = ["availability_status", "experience_level"] as const;
+
+  for (let attempt = 0; attempt <= optionalColumnKeys.length; attempt++) {
+    const selectColumns =
+      attempt === 0
+        ? PROFILE_SAVE_SELECT_COLUMNS
+        : PROFILE_SAVE_LEGACY_SELECT_COLUMNS;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .update(attemptPayload)
+      .eq("id", profileId)
+      .select(selectColumns)
+      .maybeSingle();
+
+    if (!error) {
+      return { data, error: null };
+    }
+
+    if (!isMissingColumnError(error) || attempt >= optionalColumnKeys.length) {
+      return { data: null, error };
+    }
+
+    const keyToDrop = optionalColumnKeys[attempt];
+    const { [keyToDrop]: _removed, ...rest } = attemptPayload;
+    attemptPayload = rest;
+  }
+
+  return {
+    data: null,
+    error: { message: "Profile save failed after retries." },
+  };
+}
 
 function isMissingColumnError(error: { message?: string; code?: string } | null) {
   if (!error) return false;
@@ -1177,7 +1256,7 @@ const showToast = (msg: string) => {
   }, []);
 
   const handleSaveProfile = async () => {
-    if (!isDirty || isSaving) return;
+    if (!hasUnsavedChanges || isSaving) return;
 
     if (isBusinessAccount) {
       try {
@@ -1193,86 +1272,89 @@ const showToast = (msg: string) => {
       return;
     }
 
-    if (!user?.id) {
+    const profileId = dbProfile?.id ?? user?.id;
+    if (!profileId) {
       showToast("You must be logged in to save your profile.");
       return;
     }
 
     setIsSaving(true);
-    const supabase = createClient();
-    const skillsArray = (skills ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
 
-    const parsedGradYear = Number.parseInt(profileData.gradYear, 10);
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .update({
-        full_name: profileData.name.trim() || null,
-        job_title: title.trim() || null,
-        bio: bio.trim() || null,
-        school: school.trim() || null,
-        major: degree.trim() || null,
+    try {
+      const supabase = createClient();
+      const skillsArray = (skills ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const normalizedAvailability = normalizeAvailabilityStatus(
+        availabilityStatus
+      );
+      const payload = buildCandidateProfileUpdatePayload({
+        fullName: profileData.name,
+        jobTitle: title,
+        bio,
+        school,
+        major: degree,
         skills: skillsArray,
-        portfolio_url: portfolioUrl.trim() || null,
-        experience_level: experienceLevel,
-        availability_status: availabilityStatus,
-        is_visible_in_pool: isVisibleInPool,
-        graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
-      })
-      .eq("id", user.id)
-      .select(EXTENDED_PROFILE_COLUMNS)
-      .maybeSingle();
+        portfolioUrl,
+        experienceLevel,
+        availabilityStatus: normalizedAvailability,
+        isVisibleInPool,
+        gradYear: profileData.gradYear,
+      });
 
-    setIsSaving(false);
-
-    if (error) {
-      console.error(
-        "Save profile error details:",
-        JSON.stringify(error, null, 2)
+      const { data, error } = await persistCandidateProfile(
+        supabase,
+        profileId,
+        payload
       );
-      showToast("Could not save profile. Please try again.");
-      return;
-    }
 
-    if (data) {
-      setDbProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              ...(data as ProfileRecord),
-              is_visible_in_pool: isVisibleInPool,
-              availability_status: availabilityStatus,
-            }
-          : (data as ProfileRecord)
-      );
-    }
+      if (error) {
+        console.error("Supabase Save Error:", error);
+        showToast("Could not save profile. Please try again.");
+        return;
+      }
 
-    const snapshot = {
-      fullName: profileData.name,
-      title,
-      bio,
-      school,
-      degree,
-      skills,
-      portfolioUrl,
-      experienceLevel,
-      availabilityStatus,
-      visibleInPool: isVisibleInPool,
-      gradYear: profileData.gradYear,
-    };
-    setSavedCandidateProfile(snapshot);
-    setSavedProfileData({
-      ...profileData,
-      role: title,
-      bio,
-      school,
-      degree,
-      github: portfolioUrl,
-    });
-    showToast("✓ Saved");
+      if (data) {
+        setDbProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...(data as ProfileRecord),
+                is_visible_in_pool: isVisibleInPool,
+                availability_status: normalizedAvailability,
+              }
+            : (data as ProfileRecord)
+        );
+      }
+
+      const snapshot = {
+        fullName: profileData.name,
+        title,
+        bio,
+        school,
+        degree,
+        skills,
+        portfolioUrl,
+        experienceLevel,
+        availabilityStatus: normalizedAvailability,
+        visibleInPool: isVisibleInPool,
+        gradYear: profileData.gradYear,
+      };
+      setSavedCandidateProfile(snapshot);
+      setSavedProfileData({
+        ...profileData,
+        role: title,
+        bio,
+        school,
+        degree,
+        github: portfolioUrl,
+      });
+      setAvailabilityStatus(normalizedAvailability);
+      showToast("✓ Saved");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // --- EMPLOYER JOB LISTINGS STATE (Business accounts only) ---
