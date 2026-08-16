@@ -20,6 +20,11 @@ import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { createClient } from "@/utils/supabase/client";
 import {
+  DEFAULT_EXPERIENCE_LEVEL,
+  EXPERIENCE_LEVEL_OPTIONS,
+  type ExperienceLevel,
+} from "@/lib/experience-level";
+import {
   VETTED_CANDIDATE_POOL,
   type VettedCandidateRecord,
 } from "@/data/vetted-candidates";
@@ -209,6 +214,7 @@ type ProfileRecord = {
   school?: string | null;
   skills?: string[] | null;
   portfolio_url?: string | null;
+  experience_level?: string | null;
   is_visible_in_pool?: boolean | null;
   company_name?: string | null;
   tier?: string | null;
@@ -284,7 +290,7 @@ type MatchInsight = {
 
 const BASE_PROFILE_COLUMNS = "id, full_name, role, graduation_year";
 const EXTENDED_PROFILE_COLUMNS =
-  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, is_visible_in_pool, company_name, tier, is_pro, phone, linkedin_url, contact_email";
+  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, experience_level, is_visible_in_pool, company_name, tier, is_pro, phone, linkedin_url, contact_email";
 const LEGACY_EXTENDED_PROFILE_COLUMNS =
   "id, full_name, role, graduation_year, major, is_visible_in_pool, company_name";
 
@@ -420,7 +426,8 @@ function mapProfileRowToTalentCandidate(
     rating: "90%",
     execution_score: 90,
     status: row.status?.trim() || "Open for Hire",
-    experienceLevel: "Mid-Level",
+    experienceLevel:
+      row.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL,
     roleType: "General",
     availability: "Available Now",
     bio:
@@ -789,6 +796,8 @@ export default function DashboardPage() {
           ? profileWithRole.skills.join(", ")
           : "";
         const loadedPortfolioUrl = profileWithRole?.portfolio_url ?? "";
+        const loadedExperienceLevel =
+          profileWithRole?.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL;
         const loadedGradYear =
           profileWithRole?.graduation_year != null
             ? String(profileWithRole.graduation_year)
@@ -800,6 +809,7 @@ export default function DashboardPage() {
         setDegree(loadedDegree);
         setSkills(loadedSkills);
         setPortfolioUrl(loadedPortfolioUrl);
+        setExperienceLevel(loadedExperienceLevel as ExperienceLevel);
 
         const hydratedProfile = {
           ...DEFAULT_PROFILE_DATA,
@@ -821,6 +831,7 @@ export default function DashboardPage() {
           degree: loadedDegree,
           skills: loadedSkills,
           portfolioUrl: loadedPortfolioUrl,
+          experienceLevel: loadedExperienceLevel,
           gradYear: loadedGradYear,
         });
 
@@ -905,7 +916,7 @@ export default function DashboardPage() {
         const { data, error } = await supabase
           .from("profiles")
           .select(
-            "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, phone, linkedin_url, contact_email"
+            "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, experience_level, phone, linkedin_url, contact_email"
           )
           .eq("is_visible_in_pool", true)
           .in("role", ["candidate", "employee"]);
@@ -1041,6 +1052,9 @@ const showToast = (msg: string) => {
   const [degree, setDegree] = useState("");
   const [skills, setSkills] = useState("");
   const [portfolioUrl, setPortfolioUrl] = useState("");
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(
+    DEFAULT_EXPERIENCE_LEVEL
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [savedCandidateProfile, setSavedCandidateProfile] = useState<{
     fullName: string;
@@ -1050,6 +1064,7 @@ const showToast = (msg: string) => {
     degree: string;
     skills: string;
     portfolioUrl: string;
+    experienceLevel: string;
     gradYear: string;
   } | null>(null);
 
@@ -1148,6 +1163,7 @@ const showToast = (msg: string) => {
       degree !== savedCandidateProfile.degree ||
       skills !== savedCandidateProfile.skills ||
       portfolioUrl !== savedCandidateProfile.portfolioUrl ||
+      experienceLevel !== savedCandidateProfile.experienceLevel ||
       profileData.gradYear !== savedCandidateProfile.gradYear);
 
   const isDirty = isBusinessAccount
@@ -1206,6 +1222,7 @@ const showToast = (msg: string) => {
         degree: degree.trim() || null,
         skills: skillsArray,
         portfolio_url: portfolioUrl.trim() || null,
+        experience_level: experienceLevel,
       })
       .eq("id", user.id)
       .select(EXTENDED_PROFILE_COLUMNS)
@@ -1236,6 +1253,7 @@ const showToast = (msg: string) => {
       degree,
       skills,
       portfolioUrl,
+      experienceLevel,
       gradYear: profileData.gradYear,
     };
     setSavedCandidateProfile(snapshot);
@@ -3040,6 +3058,25 @@ const showToast = (msg: string) => {
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                        Experience Level
+                      </label>
+                      <select
+                        value={experienceLevel}
+                        onChange={(e) =>
+                          setExperienceLevel(e.target.value as ExperienceLevel)
+                        }
+                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      >
+                        {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
                         Bio / Headline
                       </label>
                       <textarea
@@ -4691,9 +4728,11 @@ const showToast = (msg: string) => {
                       className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
                     >
                       <option value="all">All Levels</option>
-                      <option value="Entry-Level">Entry-Level</option>
-                      <option value="Mid-Level">Mid-Level</option>
-                      <option value="Senior">Senior</option>
+                      {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -4812,7 +4851,10 @@ const showToast = (msg: string) => {
                               <p className="text-xs text-indigo-400 font-medium mt-0.5">
                                 {col.role}
                               </p>
-                              <p className="text-[11px] text-slate-500 mt-1">
+                              <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                                {col.experienceLevel}
+                              </span>
+                              <p className="text-[11px] text-slate-500 mt-2">
                                 {col.major}
                               </p>
                             </div>
@@ -4989,6 +5031,9 @@ const showToast = (msg: string) => {
                       <p className="text-xs text-indigo-400 font-medium mt-0.5">
                         {selectedCandidate.role}
                       </p>
+                      <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                        {selectedCandidate.experienceLevel}
+                      </span>
                       {hasBetaAccess ? (
                         <button
                           type="button"

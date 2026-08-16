@@ -4,6 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/client";
+import {
+  DEFAULT_EXPERIENCE_LEVEL,
+  EXPERIENCE_LEVEL_OPTIONS,
+  type ExperienceLevel,
+} from "@/lib/experience-level";
 
 type AccountRole = "candidate" | "business";
 
@@ -61,6 +66,9 @@ export default function OnboardingPage() {
   const [fullName, setFullName] = useState("");
   const [graduationYear, setGraduationYear] = useState("");
   const [jobTitle, setJobTitle] = useState("");
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(
+    DEFAULT_EXPERIENCE_LEVEL
+  );
 
   const [companyName, setCompanyName] = useState("");
   const [industry, setIndustry] = useState(INDUSTRIES[0]);
@@ -117,6 +125,7 @@ export default function OnboardingPage() {
       full_name: fullName,
       graduation_year: graduationYear ? Number(graduationYear) : null,
       job_title: jobTitle,
+      experience_level: experienceLevel,
       role: "candidate",
     });
 
@@ -313,6 +322,28 @@ export default function OnboardingPage() {
                 onChange={(e) => setJobTitle(e.target.value)}
                 className={inputClass}
               />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="experienceLevel" className="text-sm font-medium text-zinc-300">
+                Experience Level
+              </label>
+              <select
+                id="experienceLevel"
+                name="experienceLevel"
+                required
+                value={experienceLevel}
+                onChange={(e) =>
+                  setExperienceLevel(e.target.value as ExperienceLevel)
+                }
+                className={inputClass}
+              >
+                {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <button
