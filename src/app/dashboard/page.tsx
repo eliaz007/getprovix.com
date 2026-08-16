@@ -472,12 +472,17 @@ type TalentPoolCandidate = {
   projects: string[];
 };
 
-const TALENT_POOL_PROFILE_COLUMNS =
-  "id, full_name, name, first_name, last_name, headline, job_title, major, school, bio, skills, portfolio_url, status, experience_level, availability_status, availability, phone, linkedin_url, contact_email";
-const TALENT_POOL_PROFILE_MID_COLUMNS =
-  "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, experience_level, availability_status, phone, linkedin_url, contact_email";
-const TALENT_POOL_PROFILE_LEGACY_COLUMNS =
-  "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, experience_level, phone, linkedin_url, contact_email";
+function isProfileEligibleForTalentPool(row: ProfileRecord): boolean {
+  if (row.is_visible_in_pool === false) {
+    return false;
+  }
+
+  if (isEmployerRole(row.role)) {
+    return false;
+  }
+
+  return true;
+}
 
 function splitFullName(fullName: string): { firstName: string; lastName: string } {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -1106,29 +1111,7 @@ export default function DashboardPage() {
 
     (async () => {
       try {
-        const visiblePoolFilter = 'is_visible_in_pool.is.null,is_visible_in_pool.eq.true';
-
-        let { data, error } = await supabase
-          .from("profiles")
-          .select(TALENT_POOL_PROFILE_COLUMNS)
-          .or(visiblePoolFilter)
-          .or("role.eq.candidate,role.eq.employee,role.is.null");
-
-        if (error && isMissingColumnError(error)) {
-          ({ data, error } = await supabase
-            .from("profiles")
-            .select(TALENT_POOL_PROFILE_MID_COLUMNS)
-            .or(visiblePoolFilter)
-            .or("role.eq.candidate,role.eq.employee,role.is.null"));
-        }
-
-        if (error && isMissingColumnError(error)) {
-          ({ data, error } = await supabase
-            .from("profiles")
-            .select(TALENT_POOL_PROFILE_LEGACY_COLUMNS)
-            .or(visiblePoolFilter)
-            .or("role.eq.candidate,role.eq.employee,role.is.null"));
-        }
+        const { data, error } = await supabase.from("profiles").select("*");
 
         if (!isMounted) {
           return;
@@ -1144,7 +1127,7 @@ export default function DashboardPage() {
 
         const mapped = (data ?? [])
           .filter((row): row is ProfileRecord & { id: string } => !!row.id)
-          .filter((row) => !isEmployerRole(row.role))
+          .filter(isProfileEligibleForTalentPool)
           .map((row) => mapProfileRowToTalentCandidate(row));
 
         setCandidates(mergeTalentPoolCandidates(FALLBACK_TALENT_CANDIDATES, mapped));
