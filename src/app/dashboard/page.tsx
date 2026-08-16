@@ -14,6 +14,13 @@ const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
 const BETA_UNLOCK_STORAGE_KEY = "beta_unlocked_session";
 const BETA_LEAD_STORAGE_KEY = "beta_unlocked_lead";
+const AUDIT_STORAGE_PREFIX = "vanguardx_audit_";
+
+const DEEP_SCREENING_STAGES = [
+  "Auditing GitHub repositories & branch structure...",
+  "Verifying commit chronology & code authenticity...",
+  "Synthesizing 1–100 score & founder interview rubrics...",
+] as const;
 
 const DEFAULT_PROFILE_DATA = {
   name: "Alex Morgan",
@@ -217,6 +224,26 @@ type DeepScreeningResult = {
     fetch_warnings: string[];
   } | null;
 };
+
+function getCandidateScreeningKey(candidate: TalentPoolCandidate): string {
+  return candidate.profileId ?? candidate.id;
+}
+
+function parseStoredScreeningResult(raw: string): DeepScreeningResult | null {
+  try {
+    const parsed = JSON.parse(raw) as DeepScreeningResult;
+    if (
+      typeof parsed.integrity_score === "number" &&
+      Array.isArray(parsed.timeline_flags) &&
+      typeof parsed.artifact_analysis === "string"
+    ) {
+      return parsed;
+    }
+  } catch {
+    // Ignore malformed cache entries.
+  }
+  return null;
+}
 
 function getIntegrityScoreClass(score: number): string {
   if (score >= 80) {
@@ -631,6 +658,15 @@ export default function DashboardPage() {
   const [deepScreeningLoading, setDeepScreeningLoading] = useState(false);
   const [deepScreeningResult, setDeepScreeningResult] =
     useState<DeepScreeningResult | null>(null);
+  const [deepScreeningStage, setDeepScreeningStage] = useState(0);
+  const [deepScreeningError, setDeepScreeningError] = useState<string | null>(
+    null
+  );
+  const [deepScreeningShowResults, setDeepScreeningShowResults] = useState(false);
+  const deepScreeningIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
+  const deepScreeningAbortRef = useRef<AbortController | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [postJobModalOpen, setPostJobModalOpen] = useState(false);
   const [newJobTitle, setNewJobTitle] = useState("");
@@ -1394,8 +1430,91 @@ const showToast = (msg: string) => {
     useState<TalentPoolCandidate | null>(null);
 
   useEffect(() => {
-    setDeepScreeningResult(null);
+    if (!selectedCandidate) {
+      setDeepScreeningResult(null);
+      setDeepScreeningShowResults(false);
+      setDeepScreeningError(null);
+      setDeepScreeningLoading(false);
+      setDeepScreeningStage(0);
+      return;
+    }
+
+    const screeningKey = getCandidateScreeningKey(selectedCandidate);
+    let cancelled = false;
+
+    const applyCachedResult = () => {
+      if (typeof window === "undefined") {
+        return false;
+      }
+
+      const cached = localStorage.getItem(`${AUDIT_STORAGE_PREFIX}${screeningKey}`);
+      if (!cached) {
+        return false;
+      }
+
+      const parsed = parseStoredScreeningResult(cached);
+      if (!parsed) {
+        return false;
+      }
+
+      if (!cancelled) {
+        setDeepScreeningResult(parsed);
+        setDeepScreeningShowResults(true);
+      }
+      return true;
+    };
+
+    setDeepScreeningError(null);
     setDeepScreeningLoading(false);
+    setDeepScreeningStage(0);
+
+    if (applyCachedResult()) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setDeepScreeningResult(null);
+    setDeepScreeningShowResults(false);
+
+    void (async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("candidate_screenings")
+          .select("audit_data")
+          .eq("candidate_key", screeningKey)
+          .maybeSingle();
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!error && data?.audit_data) {
+          const audit = data.audit_data as DeepScreeningResult;
+          setDeepScreeningResult(audit);
+          setDeepScreeningShowResults(true);
+          if (typeof window !== "undefined") {
+            localStorage.setItem(
+              `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
+              JSON.stringify(audit)
+            );
+          }
+          return;
+        }
+
+        applyCachedResult();
+      } catch (err) {
+        console.error("Failed to load persisted screening:", err);
+        if (!cancelled) {
+          applyCachedResult();
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedCandidate?.id]);
 
   const filteredCandidates = candidates.filter((candidate) => {
@@ -1986,6 +2105,15 @@ const showToast = (msg: string) => {
     }
   };
 
+  const clearDeepScreeningTimers = () => {
+    if (deepScreeningIntervalRef.current) {
+      clearInterval(deepScreeningIntervalRef.current);
+      deepScreeningIntervalRef.current = null;
+    }
+    deepScreeningAbortRef.current?.abort();
+    deepScreeningAbortRef.current = null;
+  };
+
   const runDeepScreening = async () => {
     if (!selectedCandidate) {
       return;
@@ -2003,13 +2131,27 @@ const showToast = (msg: string) => {
       location: "",
     };
 
+    clearDeepScreeningTimers();
     setDeepScreeningLoading(true);
+    setDeepScreeningError(null);
+    setDeepScreeningShowResults(false);
     setDeepScreeningResult(null);
+    setDeepScreeningStage(0);
+
+    deepScreeningIntervalRef.current = setInterval(() => {
+      setDeepScreeningStage((prev) => (prev < DEEP_SCREENING_STAGES.length - 1 ? prev + 1 : prev));
+    }, 1400);
+
+    const controller = new AbortController();
+    deepScreeningAbortRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+    const screeningKey = getCandidateScreeningKey(selectedCandidate);
 
     try {
       const response = await fetch("/api/screen", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           candidate: {
             name: selectedCandidate.name,
@@ -2029,6 +2171,8 @@ const showToast = (msg: string) => {
             tags: screeningJob.tags,
             location: screeningJob.location,
           },
+          candidate_key: screeningKey,
+          profile_id: selectedCandidate.profileId ?? undefined,
         }),
       });
 
@@ -2037,11 +2181,30 @@ const showToast = (msg: string) => {
       }
 
       const data = (await response.json()) as DeepScreeningResult;
+      setDeepScreeningStage(DEEP_SCREENING_STAGES.length - 1);
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
       setDeepScreeningResult(data);
+      setDeepScreeningShowResults(true);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(
+          `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
+          JSON.stringify(data)
+        );
+      }
     } catch (err) {
       console.error("Deep screening request failed:", err);
-      showToast("Could not generate deep screening. Please try again.");
+      const isTimeout =
+        err instanceof DOMException && err.name === "AbortError";
+      setDeepScreeningError(
+        isTimeout
+          ? "The live audit timed out before Gemini could finish. Please retry."
+          : "Could not complete the live audit. Check your connection and retry."
+      );
+      setDeepScreeningShowResults(false);
+      showToast("Deep screening failed. Use retry to run the audit again.");
     } finally {
+      window.clearTimeout(timeoutId);
+      clearDeepScreeningTimers();
       setDeepScreeningLoading(false);
     }
   };
@@ -4835,10 +4998,12 @@ const showToast = (msg: string) => {
                     {deepScreeningLoading ? (
                       <>
                         <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Auditing repositories…
+                        Running live audit…
                       </>
                     ) : isProEmployerAccount ? (
-                      "Generate AI Deep Screening"
+                      deepScreeningShowResults
+                        ? "Re-run Live Audit"
+                        : "Generate AI Deep Screening"
                     ) : (
                       <>
                         <Lock className="w-3.5 h-3.5" aria-hidden />
@@ -4853,8 +5018,77 @@ const showToast = (msg: string) => {
                     </p>
                   )}
 
-                  {hasBetaAccess && deepScreeningResult && (
-                    <div className="space-y-4 pt-1">
+                  {hasBetaAccess && deepScreeningLoading && (
+                    <div className="space-y-2.5 pt-1">
+                      {DEEP_SCREENING_STAGES.map((stageLabel, index) => {
+                        const isComplete = index < deepScreeningStage;
+                        const isActive = index === deepScreeningStage;
+
+                        return (
+                          <div
+                            key={stageLabel}
+                            className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-all duration-300 ${
+                              isComplete
+                                ? "border-emerald-500/25 bg-emerald-500/5"
+                                : isActive
+                                  ? "border-indigo-500/30 bg-indigo-500/10"
+                                  : "border-slate-800 bg-[#0A0A0A]"
+                            }`}
+                          >
+                            <span
+                              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
+                                isComplete
+                                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+                                  : isActive
+                                    ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-300"
+                                    : "border-slate-700 text-slate-600"
+                              }`}
+                            >
+                              {isComplete ? (
+                                <Check className="h-3 w-3" aria-hidden />
+                              ) : isActive ? (
+                                <span className="h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />
+                              ) : (
+                                index + 1
+                              )}
+                            </span>
+                            <p
+                              className={`text-xs leading-relaxed ${
+                                isComplete
+                                  ? "text-emerald-200"
+                                  : isActive
+                                    ? "text-indigo-100"
+                                    : "text-slate-500"
+                              }`}
+                            >
+                              {stageLabel}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {hasBetaAccess && deepScreeningError && !deepScreeningLoading && (
+                    <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 space-y-3">
+                      <p className="text-xs text-red-200 leading-relaxed">
+                        {deepScreeningError}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={runDeepScreening}
+                        className="w-full bg-red-500/10 hover:bg-red-500/15 border border-red-500/25 text-red-200 font-semibold py-2 rounded-lg text-xs transition-all cursor-pointer"
+                      >
+                        Retry Live Audit
+                      </button>
+                    </div>
+                  )}
+
+                  {hasBetaAccess &&
+                    deepScreeningShowResults &&
+                    deepScreeningResult &&
+                    !deepScreeningLoading && (
+                    <div className="space-y-4 pt-1 animate-in fade-in duration-500">
                       <div
                         className={`rounded-xl border p-4 text-center ${getIntegrityScoreClass(deepScreeningResult.integrity_score)}`}
                       >
@@ -4983,8 +5217,6 @@ const showToast = (msg: string) => {
                     </div>
                   )}
                 </div>
-
-                {/* Verified Projects */}
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
                     Verified Projects

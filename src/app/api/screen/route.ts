@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
 
 type CandidatePayload = {
   name?: string;
@@ -135,6 +136,7 @@ const SCREEN_RESPONSE_SCHEMA = {
 
 const MODEL_CANDIDATES = [
   "gemini-2.5-flash",
+  "gemini-1.5-flash",
   "gemini-3.6-flash",
   "gemini-2.0-flash",
 ] as const;
@@ -499,7 +501,12 @@ function buildFallbackScreen(
 
 function isValidRequestBody(
   body: unknown
-): body is { candidate: CandidatePayload; job: JobPayload } {
+): body is {
+  candidate: CandidatePayload;
+  job: JobPayload;
+  candidate_key?: string;
+  profile_id?: string;
+} {
   if (!body || typeof body !== "object") {
     return false;
   }
@@ -515,6 +522,58 @@ function isValidRequestBody(
     !!record.job &&
     typeof record.job === "object"
   );
+}
+
+async function persistScreeningResult(
+  candidateKey: string | undefined,
+  profileId: string | undefined,
+  result: ScreenResult
+): Promise<boolean> {
+  if (!candidateKey?.trim()) {
+    return false;
+  }
+
+  try {
+    const supabase = await createClient();
+    const key = candidateKey.trim();
+    const payload = result as unknown as Record<string, unknown>;
+
+    const { error: screeningError } = await supabase
+      .from("candidate_screenings")
+      .upsert(
+        {
+          candidate_key: key,
+          profile_id: profileId?.trim() || null,
+          integrity_score: result.integrity_score,
+          audit_data: payload,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "candidate_key" }
+      );
+
+    if (screeningError) {
+      console.error("[screen] candidate_screenings upsert failed:", screeningError);
+    }
+
+    if (profileId?.trim()) {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          integrity_score: result.integrity_score,
+          audit_data: payload,
+        })
+        .eq("id", profileId.trim());
+
+      if (profileError) {
+        console.error("[screen] profiles audit update failed:", profileError);
+      }
+    }
+
+    return !screeningError;
+  } catch (error) {
+    console.error("[screen] persistScreeningResult threw:", error);
+    return false;
+  }
 }
 
 async function generateGeminiScreen(
@@ -611,7 +670,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const { candidate, job } = body;
+  const record = body as {
+    candidate: CandidatePayload;
+    job: JobPayload;
+    candidate_key?: string;
+    profile_id?: string;
+  };
+
+  const { candidate, job, candidate_key, profile_id } = record;
 
   const githubUrl = resolveCandidateGitHubUrl(candidate);
   let githubAudit: GitHubAuditContext | null = null;
@@ -626,11 +692,20 @@ export async function POST(request: Request) {
 
   try {
     const result = await generateGeminiScreen(candidate, job, githubAudit);
-    return NextResponse.json(result);
+    const persisted = await persistScreeningResult(
+      candidate_key,
+      profile_id,
+      result
+    );
+    return NextResponse.json({ ...result, persisted });
   } catch (error) {
     console.error("Gemini screen API failed, using fallback:", error);
-    return NextResponse.json(
-      buildFallbackScreen(candidate, job, githubAudit)
+    const fallback = buildFallbackScreen(candidate, job, githubAudit);
+    const persisted = await persistScreeningResult(
+      candidate_key,
+      profile_id,
+      fallback
     );
+    return NextResponse.json({ ...fallback, persisted });
   }
 }
