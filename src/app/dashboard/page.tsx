@@ -230,6 +230,7 @@ type ProfileRecord = {
   phone?: string | null;
   linkedin_url?: string | null;
   contact_email?: string | null;
+  email?: string | null;
   name?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -301,15 +302,17 @@ type MatchInsight = {
   missing_skills: string[];
 };
 
-const BASE_PROFILE_COLUMNS = "id, full_name, role, graduation_year";
-const EXTENDED_PROFILE_COLUMNS =
-  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, experience_level, availability_status, is_visible_in_pool, company_name, tier, is_pro, phone, linkedin_url, contact_email";
-const LEGACY_EXTENDED_PROFILE_COLUMNS =
-  "id, full_name, role, graduation_year, major, is_visible_in_pool, company_name";
-const PROFILE_SAVE_SELECT_COLUMNS =
-  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, experience_level, availability_status, is_visible_in_pool";
-const PROFILE_SAVE_LEGACY_SELECT_COLUMNS =
-  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, is_visible_in_pool";
+function resolveProfileContactEmail(
+  row: Pick<ProfileRecord, "contact_email" | "email">
+): string | null {
+  const contactEmail = row.contact_email?.trim();
+  if (contactEmail) {
+    return contactEmail;
+  }
+
+  const email = row.email?.trim();
+  return email || null;
+}
 
 type CandidateProfileSaveInput = {
   fullName: string;
@@ -355,16 +358,11 @@ async function persistCandidateProfile(
   const optionalColumnKeys = ["availability_status", "experience_level"] as const;
 
   for (let attempt = 0; attempt <= optionalColumnKeys.length; attempt++) {
-    const selectColumns =
-      attempt === 0
-        ? PROFILE_SAVE_SELECT_COLUMNS
-        : PROFILE_SAVE_LEGACY_SELECT_COLUMNS;
-
     const { data, error } = await supabase
       .from("profiles")
       .update(attemptPayload)
       .eq("id", profileId)
-      .select(selectColumns)
+      .select("*")
       .maybeSingle();
 
     if (!error) {
@@ -611,7 +609,7 @@ function mapProfileRowToTalentCandidate(
     firstName,
     lastName,
     headline,
-    email: row.contact_email?.trim() || null,
+    email: resolveProfileContactEmail(row),
     phone: row.phone?.trim() || null,
     linkedin_url: row.linkedin_url?.trim() || (isLinkedIn ? portfolioUrl : null),
     github_url: !isLinkedIn && portfolioUrl ? portfolioUrl : null,
@@ -734,31 +732,7 @@ async function fetchProfileRow(
   supabase: ReturnType<typeof createClient>,
   userId: string
 ) {
-  const extended = await supabase
-    .from("profiles")
-    .select(EXTENDED_PROFILE_COLUMNS)
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (!extended.error || !isMissingColumnError(extended.error)) {
-    return extended;
-  }
-
-  const legacyExtended = await supabase
-    .from("profiles")
-    .select(LEGACY_EXTENDED_PROFILE_COLUMNS)
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (!legacyExtended.error || !isMissingColumnError(legacyExtended.error)) {
-    return legacyExtended;
-  }
-
-  return supabase
-    .from("profiles")
-    .select(BASE_PROFILE_COLUMNS)
-    .eq("id", userId)
-    .maybeSingle();
+  return supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
 }
 
 async function ensureUserProfile(
@@ -794,7 +768,7 @@ async function ensureUserProfile(
   let upsertResult = await supabase
     .from("profiles")
     .upsert(extendedPayload, { onConflict: "id" })
-    .select(EXTENDED_PROFILE_COLUMNS)
+    .select("*")
     .maybeSingle();
 
   if (upsertResult.error && isMissingColumnError(upsertResult.error)) {
@@ -804,7 +778,7 @@ async function ensureUserProfile(
         { id: user.id, full_name: fullName, role },
         { onConflict: "id" }
       )
-      .select(BASE_PROFILE_COLUMNS)
+      .select("*")
       .maybeSingle();
   }
 
@@ -2166,32 +2140,32 @@ const showToast = (msg: string) => {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("profiles")
-        .select(
-          "full_name, contact_email, phone, linkedin_url, portfolio_url, bio, skills, job_title, major"
-        )
+        .select("*")
         .eq("id", candidate.profileId)
         .maybeSingle();
 
       if (!error && data) {
+        const profile = data as ProfileRecord;
         unlockedCandidate = {
           ...candidate,
-          name: data.full_name?.trim() || candidate.name,
-          email: data.contact_email?.trim() || candidate.email || null,
-          phone: data.phone?.trim() || candidate.phone || null,
+          name: profile.full_name?.trim() || candidate.name,
+          email:
+            resolveProfileContactEmail(profile) || candidate.email || null,
+          phone: profile.phone?.trim() || candidate.phone || null,
           linkedin_url:
-            data.linkedin_url?.trim() ||
+            profile.linkedin_url?.trim() ||
             candidate.linkedin_url ||
             null,
           github_url:
-            data.portfolio_url?.trim() ||
+            profile.portfolio_url?.trim() ||
             candidate.github_url ||
             candidate.github ||
             null,
-          bio: data.bio?.trim() || candidate.bio,
-          role: data.job_title?.trim() || candidate.role,
-          major: data.major?.trim() || candidate.major,
-          skills: Array.isArray(data.skills)
-            ? data.skills
+          bio: profile.bio?.trim() || candidate.bio,
+          role: profile.job_title?.trim() || candidate.role,
+          major: profile.major?.trim() || candidate.major,
+          skills: Array.isArray(profile.skills)
+            ? profile.skills
             : candidate.skills,
         };
       }
