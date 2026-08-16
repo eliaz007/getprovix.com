@@ -3,7 +3,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
-import { Check, CheckCircle2, Copy, FileText, Flame, Lock, ShieldCheck, Sparkles, Target } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Copy,
+  FileText,
+  Flame,
+  Lock,
+  ShieldCheck,
+  Sparkles,
+  Target,
+} from "lucide-react";
+import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { createClient } from "@/utils/supabase/client";
 import {
   VETTED_CANDIDATE_POOL,
@@ -20,6 +32,12 @@ const DEEP_SCREENING_STAGES = [
   "Auditing GitHub repositories & branch structure...",
   "Verifying commit chronology & code authenticity...",
   "Synthesizing 1–100 score & founder interview rubrics...",
+] as const;
+
+const COLLEGE_FIT_STAGES = [
+  "Analyzing academic stats...",
+  "Evaluating reach & target programs...",
+  "Building tailored strategy breakdown...",
 ] as const;
 
 const DEFAULT_PROFILE_DATA = {
@@ -1287,27 +1305,15 @@ const showToast = (msg: string) => {
   const [fitLocationPreference, setFitLocationPreference] = useState("");
   const [fitBudgetPreference, setFitBudgetPreference] = useState("");
   const [generatingCollegeFit, setGeneratingCollegeFit] = useState(false);
-  const [collegeFitReport, setCollegeFitReport] = useState<{
-    summary: string;
-    reachSchools: {
-      name: string;
-      location: string;
-      matchReason: string;
-      fitBadge: string;
-    }[];
-    targetSchools: {
-      name: string;
-      location: string;
-      matchReason: string;
-      fitBadge: string;
-    }[];
-    safetySchools: {
-      name: string;
-      location: string;
-      matchReason: string;
-      fitBadge: string;
-    }[];
-  } | null>(null);
+  const [collegeFitReport, setCollegeFitReport] = useState<CollegeFitResult | null>(
+    null
+  );
+  const [collegeFitStage, setCollegeFitStage] = useState(0);
+  const [collegeFitError, setCollegeFitError] = useState<string | null>(null);
+  const collegeFitIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null
+  );
+  const collegeFitAbortRef = useRef<AbortController | null>(null);
 
   // --- EMPLOYER SCREENING STATE ---
   const [evalRole, setEvalRole] = useState("");
@@ -2250,19 +2256,42 @@ const showToast = (msg: string) => {
     ? essayText.trim().split(/\s+/).filter(Boolean).length
     : 0;
 
+  const clearCollegeFitTimers = () => {
+    if (collegeFitIntervalRef.current) {
+      clearInterval(collegeFitIntervalRef.current);
+      collegeFitIntervalRef.current = null;
+    }
+    collegeFitAbortRef.current?.abort();
+    collegeFitAbortRef.current = null;
+  };
+
   const generateCollegeFitReport = async () => {
     if (!fitGpa.trim() || !fitMajor.trim()) {
       showToast("Enter your GPA and intended major to generate a fit report.");
       return;
     }
 
+    clearCollegeFitTimers();
     setGeneratingCollegeFit(true);
     setCollegeFitReport(null);
+    setCollegeFitError(null);
+    setCollegeFitStage(0);
+
+    collegeFitIntervalRef.current = setInterval(() => {
+      setCollegeFitStage((prev) =>
+        prev < COLLEGE_FIT_STAGES.length - 1 ? prev + 1 : prev
+      );
+    }, 1400);
+
+    const controller = new AbortController();
+    collegeFitAbortRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
 
     try {
       const response = await fetch("/api/college-fit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           gpa: fitGpa.trim(),
           major: fitMajor.trim(),
@@ -2276,12 +2305,23 @@ const showToast = (msg: string) => {
         throw new Error(`College fit request failed (${response.status})`);
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as CollegeFitResult;
+      setCollegeFitStage(COLLEGE_FIT_STAGES.length - 1);
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
       setCollegeFitReport(data);
     } catch (err) {
       console.error("College fit request failed:", err);
+      const isTimeout =
+        err instanceof DOMException && err.name === "AbortError";
+      setCollegeFitError(
+        isTimeout
+          ? "The fit report timed out before Gemini could finish. Please retry."
+          : "Could not generate fit report. Check your connection and retry."
+      );
       showToast("Could not generate fit report. Please try again.");
     } finally {
+      window.clearTimeout(timeoutId);
+      clearCollegeFitTimers();
       setGeneratingCollegeFit(false);
     }
   };
@@ -4038,23 +4078,91 @@ const showToast = (msg: string) => {
                 </div>
 
                 <div className="lg:col-span-8 space-y-6">
+                  {collegeFitError && !generatingCollegeFit && (
+                    <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 space-y-3">
+                      <p className="text-xs text-red-200 leading-relaxed">
+                        {collegeFitError}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={generateCollegeFitReport}
+                        className="w-full bg-red-500/10 hover:bg-red-500/15 border border-red-500/25 text-red-200 font-semibold py-2 rounded-lg text-xs transition-all cursor-pointer"
+                      >
+                        Retry Fit Report
+                      </button>
+                    </div>
+                  )}
+
                   {generatingCollegeFit ? (
-                    <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-10 shadow-lg flex flex-col items-center justify-center min-h-[320px] text-center">
-                      <div className="relative mb-4">
-                        <div className="w-16 h-16 rounded-full border-2 border-indigo-500/30 flex items-center justify-center animate-pulse">
-                          <Icons.GraduationCap />
+                    <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-6 sm:p-8 shadow-lg space-y-5 min-h-[320px]">
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <div className="w-12 h-12 rounded-full border-2 border-indigo-500/30 flex items-center justify-center animate-pulse">
+                            <Icons.GraduationCap />
+                          </div>
+                          <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500" />
+                          </span>
                         </div>
-                        <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500" />
-                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-white">
+                            College Fit Radar
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Gemini is building your personalized strategy
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-sm font-medium text-slate-300">
-                        Gemini is building your college list…
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Sorting reach, target, and safety matches
-                      </p>
+
+                      <div className="space-y-2.5">
+                        {COLLEGE_FIT_STAGES.map((stageLabel, index) => {
+                          const isComplete = index < collegeFitStage;
+                          const isActive = index === collegeFitStage;
+
+                          return (
+                            <div
+                              key={stageLabel}
+                              className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-all duration-300 ${
+                                isComplete
+                                  ? "border-emerald-500/25 bg-emerald-500/5"
+                                  : isActive
+                                    ? "border-indigo-500/30 bg-indigo-500/10"
+                                    : "border-slate-800 bg-[#0A0A0A]"
+                              }`}
+                            >
+                              <span
+                                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
+                                  isComplete
+                                    ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+                                    : isActive
+                                      ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-300"
+                                      : "border-slate-700 text-slate-600"
+                                }`}
+                              >
+                                {isComplete ? (
+                                  <Check className="h-3 w-3" aria-hidden />
+                                ) : isActive ? (
+                                  <span className="h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />
+                                ) : (
+                                  index + 1
+                                )}
+                              </span>
+                              <p
+                                className={`text-xs leading-relaxed ${
+                                  isComplete
+                                    ? "text-emerald-200"
+                                    : isActive
+                                      ? "text-indigo-100"
+                                      : "text-slate-500"
+                                }`}
+                              >
+                                {stageLabel}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   ) : collegeFitReport ? (
                     <>
@@ -4109,15 +4217,15 @@ const showToast = (msg: string) => {
                               No {section.title.toLowerCase()} schools returned.
                             </p>
                           ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4">
                               {section.schools.map((school) => (
                                 <div
                                   key={`${section.title}-${school.name}`}
-                                  className="rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-4"
+                                  className="rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-4 sm:p-5"
                                 >
-                                  <div className="flex items-start justify-between gap-3 mb-2">
+                                  <div className="flex items-start justify-between gap-3 mb-3">
                                     <div className="min-w-0">
-                                      <h4 className="font-bold text-white text-sm truncate">
+                                      <h4 className="font-bold text-white text-sm">
                                         {school.name}
                                       </h4>
                                       <p className="text-[11px] text-slate-500 mt-0.5">
@@ -4130,9 +4238,77 @@ const showToast = (msg: string) => {
                                       {school.fitBadge}
                                     </span>
                                   </div>
-                                  <p className="text-xs text-slate-300 leading-relaxed">
+
+                                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
                                     {school.matchReason}
                                   </p>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-slate-800/80">
+                                    <div className="rounded-lg border border-slate-800/60 bg-[#111111] p-3">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
+                                        Acceptance Odds
+                                      </span>
+                                      <p className="text-xs text-slate-300 leading-relaxed">
+                                        {school.acceptanceOdds}
+                                      </p>
+                                    </div>
+                                    <div className="rounded-lg border border-slate-800/60 bg-[#111111] p-3">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
+                                        Financial Profile
+                                      </span>
+                                      <p className="text-xs text-slate-300 leading-relaxed">
+                                        {school.financialProfile}
+                                      </p>
+                                    </div>
+                                    <div className="md:col-span-2 rounded-lg border border-slate-800/60 bg-[#111111] p-3">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
+                                        Departmental Strengths
+                                      </span>
+                                      <p className="text-xs text-slate-300 leading-relaxed">
+                                        {school.departmentalStrengths}
+                                      </p>
+                                    </div>
+                                    <div className="md:col-span-2 rounded-lg border border-indigo-500/15 bg-indigo-500/5 p-3">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 block mb-2">
+                                        Essay Angles
+                                      </span>
+                                      <ul className="space-y-1.5">
+                                        {school.essayAngles.map((angle) => (
+                                          <li
+                                            key={`${school.name}-${angle}`}
+                                            className="text-xs text-indigo-100/90 leading-relaxed flex items-start gap-2"
+                                          >
+                                            <Sparkles
+                                              className="w-3 h-3 mt-0.5 shrink-0 text-indigo-400"
+                                              aria-hidden
+                                            />
+                                            <span>{angle}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                    {school.profileRedFlags.length > 0 && (
+                                      <div className="md:col-span-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 block mb-2">
+                                          Profile Red Flags
+                                        </span>
+                                        <ul className="space-y-1.5">
+                                          {school.profileRedFlags.map((flag) => (
+                                            <li
+                                              key={`${school.name}-${flag}`}
+                                              className="text-xs text-amber-100/90 leading-relaxed flex items-start gap-2"
+                                            >
+                                              <AlertTriangle
+                                                className="w-3 h-3 mt-0.5 shrink-0 text-amber-400"
+                                                aria-hidden
+                                              />
+                                              <span>{flag}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               ))}
                             </div>
