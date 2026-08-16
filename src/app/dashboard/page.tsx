@@ -31,10 +31,6 @@ import {
   EXPERIENCE_LEVEL_OPTIONS,
   type ExperienceLevel,
 } from "@/lib/experience-level";
-import {
-  VETTED_CANDIDATE_POOL,
-  type VettedCandidateRecord,
-} from "@/data/vetted-candidates";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
@@ -543,61 +539,6 @@ function candidateMatchesTalentSearch(
   );
 }
 
-function mergeTalentPoolCandidates(
-  vetted: TalentPoolCandidate[],
-  live: TalentPoolCandidate[]
-): TalentPoolCandidate[] {
-  const liveKeys = new Set(
-    live.map(
-      (candidate) =>
-        candidate.profileId ?? candidate.name.trim().toLowerCase()
-    )
-  );
-
-  const supplementalVetted = vetted.filter((candidate) => {
-    const key = candidate.profileId ?? candidate.name.trim().toLowerCase();
-    return !liveKeys.has(key);
-  });
-
-  return [...live, ...supplementalVetted];
-}
-
-function mapVettedToTalentCandidate(
-  candidate: VettedCandidateRecord
-): TalentPoolCandidate {
-  const { firstName, lastName } = splitFullName(candidate.name);
-
-  return {
-    id: candidate.id,
-    name: candidate.name,
-    fullName: candidate.name,
-    profileName: candidate.name,
-    firstName,
-    lastName,
-    headline: candidate.role,
-    email: candidate.email,
-    phone: candidate.phone,
-    linkedin_url: candidate.linkedin_url,
-    github_url: candidate.github_url,
-    role: candidate.role,
-    major: candidate.major,
-    skills: candidate.skills,
-    rating: candidate.rating,
-    execution_score: candidate.execution_score,
-    status: candidate.status,
-    experienceLevel: candidate.experienceLevel,
-    roleType: candidate.roleType,
-    availability: candidate.availability,
-    bio: candidate.bio,
-    github: candidate.github,
-    demoVideo: candidate.demoVideo,
-    projects: candidate.projects,
-  };
-}
-
-const FALLBACK_TALENT_CANDIDATES: TalentPoolCandidate[] =
-  VETTED_CANDIDATE_POOL.map(mapVettedToTalentCandidate);
-
 function mapProfileRowToTalentCandidate(
   row: ProfileRecord & { id: string }
 ): TalentPoolCandidate {
@@ -606,7 +547,7 @@ function mapProfileRowToTalentCandidate(
   const isLinkedIn = portfolioUrl.toLowerCase().includes("linkedin");
   const shortId = row.id.replace(/-/g, "").slice(0, 3).toUpperCase();
   const resolvedName =
-    row.full_name?.trim() || row.name?.trim() || "Vetted Candidate";
+    row.full_name?.trim() || row.name?.trim() || "Unnamed Candidate";
   const profileName = row.name?.trim() || "";
   const parsedName = splitFullName(resolvedName);
   const firstName = row.first_name?.trim() || parsedName.firstName;
@@ -900,9 +841,7 @@ export default function DashboardPage() {
   const isBusinessAccount = isEmployerRole(profileRole);
   const isEmployeeAccount = isEmployeeRole(profileRole);
   const showTalentPoolNav = canAccessTalentPool(profileRole);
-  const [candidates, setCandidates] = useState<TalentPoolCandidate[]>(
-    FALLBACK_TALENT_CANDIDATES
-  );
+  const [candidates, setCandidates] = useState<TalentPoolCandidate[]>([]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -1096,7 +1035,7 @@ export default function DashboardPage() {
 
         if (error) {
           console.error("Failed to fetch talent pool profiles:", error);
-          setCandidates(FALLBACK_TALENT_CANDIDATES);
+          setCandidates([]);
           return;
         }
 
@@ -1107,11 +1046,11 @@ export default function DashboardPage() {
           .filter(isProfileEligibleForTalentPool)
           .map((row) => mapProfileRowToTalentCandidate(row));
 
-        setCandidates(mergeTalentPoolCandidates(FALLBACK_TALENT_CANDIDATES, mapped));
+        setCandidates(mapped);
       } catch (err) {
         console.error("Talent pool fetch threw:", err);
         if (isMounted) {
-          setCandidates(FALLBACK_TALENT_CANDIDATES);
+          setCandidates([]);
         }
       }
     })();

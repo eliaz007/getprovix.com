@@ -99,11 +99,16 @@ function mapVettedToPreview(candidate: VettedCandidateRecord): PreviewCandidate 
 
 function normalizeCandidateRow(row: Record<string, unknown>): PreviewCandidate | null {
   const name =
+    (typeof row.full_name === "string" && row.full_name.trim()) ||
     (typeof row.name === "string" && row.name.trim()) ||
     (typeof row.alias === "string" && row.alias.trim()) ||
     "";
   const role =
-    (typeof row.role === "string" && row.role.trim()) || "Vetted Builder";
+    (typeof row.job_title === "string" && row.job_title.trim()) ||
+    (typeof row.headline === "string" && row.headline.trim()) ||
+    (typeof row.role === "string" && row.role.trim()) ||
+    (typeof row.major === "string" && row.major.trim()) ||
+    "Vetted Builder";
 
   if (!name) {
     return null;
@@ -168,11 +173,9 @@ export default function Home() {
     void (async () => {
       try {
         const { data, error } = await supabase
-          .from("candidates")
-          .select(
-            "name, alias, role, skills, tags, integrity_score, execution_score, score, bio, repos_count, audited_at, created_at"
-          )
-          .order("created_at", { ascending: false })
+          .from("profiles")
+          .select("*")
+          .order("updated_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 
@@ -186,13 +189,8 @@ export default function Home() {
           }
         }
 
-        if (error) {
-          console.error("Failed to load dashboard preview candidate:", error);
-        }
-
         setPreviewCandidate(fallback);
-      } catch (err) {
-        console.error("Dashboard preview candidate fetch threw:", err);
+      } catch {
         setPreviewCandidate(fallback);
       } finally {
         setPreviewLoading(false);
