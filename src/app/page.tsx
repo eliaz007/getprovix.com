@@ -3,13 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
-import { Code2, ChevronDown, Shield, Zap } from "lucide-react";
+import { Code2, ChevronDown, Shield, ShieldCheck, Zap } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { createClient } from "@/utils/supabase/client";
 import {
   getNewestVettedCandidate,
   resolveCandidateScore,
-  VETTED_CANDIDATE_POOL,
   type VettedCandidateRecord,
 } from "@/data/vetted-candidates";
 
@@ -66,6 +65,25 @@ const faqItems = [
       "Browsing the talent pool and viewing AI screening previews is completely free. When you're ready to reach out, you pay a simple per-unlock fee to reveal direct contact access — no subscriptions, no upfront contracts, and no charge until you choose to connect.",
   },
 ];
+
+function candidateHandle(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+  return slug ? `@${slug}` : "@vetted-builder";
+}
+
+function getCandidateInitials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
 
 function mapVettedToPreview(candidate: VettedCandidateRecord): PreviewCandidate {
   return {
@@ -187,8 +205,9 @@ export default function Home() {
   const displayCandidate =
     previewCandidate ?? mapVettedToPreview(getNewestVettedCandidate());
   const displayScore = resolveCandidateScore(displayCandidate);
+  const displayMatchScore = Math.min(Math.max(displayScore, 88), 99);
   const displaySkills = displayCandidate.skills.slice(0, 5);
-  const reposAudited = displayCandidate.repos_count ?? 8;
+  const candidateDisplayHandle = candidateHandle(displayCandidate.name);
   const proofSignal =
     displayCandidate.bio.trim() ||
     "Verified technical highlight pending — GitHub audit complete.";
@@ -197,24 +216,48 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
       {/* --- TOP NAVIGATION --- */}
       <header className="border-b border-zinc-800/80 sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="hover:opacity-90 transition-opacity">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-6">
+          <Link href="/" className="hover:opacity-90 transition-opacity shrink-0">
             <ProvixLogo />
           </Link>
 
-          <nav className="flex items-center gap-6">
-            {checkingSession ? (
-              <div className="h-4 w-14 rounded bg-zinc-800 animate-pulse" aria-hidden />
-            ) : isLoggedIn ? (
-              <Link href="/dashboard" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                Dashboard
-              </Link>
-            ) : (
-              <Link href="/login" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
-                Log In
-              </Link>
-            )}
+          <nav className="hidden md:flex items-center gap-8">
+            <Link
+              href="/dashboard"
+              className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+            >
+              Talent Pool
+            </Link>
+            <Link
+              href="#proof-engine"
+              className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+            >
+              Proof Engine
+            </Link>
           </nav>
+
+          <div className="flex items-center gap-3 sm:gap-4 ml-auto">
+            {checkingSession ? (
+              <div className="h-9 w-28 rounded-lg bg-zinc-800 animate-pulse" aria-hidden />
+            ) : (
+              <>
+                {!isLoggedIn && (
+                  <Link
+                    href="/login"
+                    className="hidden sm:inline text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                  >
+                    Log In
+                  </Link>
+                )}
+                <Link
+                  href={talentEntryHref}
+                  className="inline-flex items-center justify-center bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-all shadow-lg shadow-indigo-500/20 whitespace-nowrap"
+                >
+                  Browse Candidates
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -275,41 +318,59 @@ export default function Home() {
             </div>
 
             {previewLoading ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
-                <div className="h-4 w-2/3 rounded-full bg-zinc-800 animate-pulse" />
-                <div className="h-3 w-1/2 rounded-full bg-zinc-800 animate-pulse" />
-                <div className="flex gap-2">
-                  <div className="h-6 w-16 rounded-md bg-zinc-800 animate-pulse" />
-                  <div className="h-6 w-20 rounded-md bg-zinc-800 animate-pulse" />
-                  <div className="h-6 w-14 rounded-md bg-zinc-800 animate-pulse" />
-                </div>
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div className="h-16 rounded-lg bg-zinc-900 animate-pulse" />
-                  <div className="h-16 rounded-lg bg-zinc-900 animate-pulse" />
+              <div className="rounded-xl border border-zinc-800 bg-[#111111] p-5 sm:p-6">
+                <div className="flex items-start gap-4 animate-pulse">
+                  <div className="h-14 w-14 rounded-2xl bg-zinc-800 shrink-0" />
+                  <div className="flex-1 space-y-3">
+                    <div className="h-4 w-40 rounded bg-zinc-800" />
+                    <div className="h-3 w-28 rounded bg-zinc-800" />
+                    <div className="flex gap-2">
+                      <div className="h-6 w-20 rounded-full bg-zinc-800" />
+                      <div className="h-6 w-28 rounded-full bg-zinc-800" />
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                  <div className="min-w-0 text-left">
-                    <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">
-                      Audited Profile
+              <div className="rounded-xl border border-zinc-800 bg-[#111111] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+                <div className="flex items-start justify-between gap-4 mb-5">
+                  <div className="flex items-start gap-4 min-w-0">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/10 border border-indigo-500/30 flex items-center justify-center text-base font-bold text-indigo-300 shrink-0">
+                      {getCandidateInitials(displayCandidate.name)}
                     </div>
-                    <div className="text-sm sm:text-base font-semibold text-white truncate">
-                      {displayCandidate.name} — {displayCandidate.role}
+                    <div className="min-w-0 text-left">
+                      <p className="text-lg sm:text-xl font-bold text-white truncate">
+                        {displayCandidate.name}
+                      </p>
+                      <p className="text-sm text-indigo-400 font-medium mt-0.5 truncate">
+                        {candidateDisplayHandle}
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1 truncate">
+                        {displayCandidate.role}
+                      </p>
                     </div>
                   </div>
-                  <span className="self-start shrink-0 inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-extrabold text-emerald-400">
-                    {displayScore}/100
+                  <span className="shrink-0 inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-extrabold text-emerald-400">
+                    {displayMatchScore}% Match
                   </span>
                 </div>
 
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap items-center gap-2 mb-5">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-3 py-1 text-[11px] font-bold text-cyan-300">
+                    <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
+                    Integrity Verified · {displayScore}/100
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-[11px] font-semibold text-zinc-400">
+                    GitHub audit complete
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 mb-5">
                   {displaySkills.length > 0 ? (
                     displaySkills.map((skill) => (
                       <span
                         key={skill}
-                        className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                        className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
                       >
                         {skill}
                       </span>
@@ -321,30 +382,16 @@ export default function Home() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-left">
-                    <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                      Repo Proof
-                    </div>
-                    <div className="text-sm font-semibold text-indigo-400 mt-1">
-                      Live GitHub Verified • {reposAudited} repos audited
-                    </div>
+                <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/80 p-4 text-left">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                      Proof Signal
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-400">
+                      LIVE
+                    </span>
                   </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-left">
-                    <div className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                      Pool Size
-                    </div>
-                    <div className="text-sm font-semibold text-white mt-1">
-                      {VETTED_CANDIDATE_POOL.length} high-signal profiles live
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-3 text-left">
-                  <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-1">
-                    Proof Signal
-                  </div>
-                  <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed line-clamp-3">
+                  <p className="text-sm text-zinc-300 leading-relaxed line-clamp-2">
                     {proofSignal}
                   </p>
                 </div>
@@ -354,7 +401,7 @@ export default function Home() {
         </section>
 
         {/* --- FEATURE GRID --- */}
-        <section className="max-w-6xl mx-auto px-6 pb-24">
+        <section id="proof-engine" className="max-w-6xl mx-auto px-6 pb-24 scroll-mt-24">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {features.map((feature) => {
               const Icon = feature.icon;
@@ -477,10 +524,28 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="border-t border-zinc-800/80 py-8">
-        <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500">
+      <footer className="border-t border-zinc-800/80 py-10">
+        <div className="max-w-6xl mx-auto px-6 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <ProvixLogo className="h-6 w-6" showText={false} />
-          <span>Product-led tech recruitment · Hire the top 1%.</span>
+
+          <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-zinc-400">
+            <Link href="/privacy" className="hover:text-white transition-colors">
+              Privacy Policy
+            </Link>
+            <Link href="/terms" className="hover:text-white transition-colors">
+              Terms
+            </Link>
+            <a
+              href="mailto:support@provix.dev"
+              className="hover:text-white transition-colors"
+            >
+              Support
+            </a>
+          </nav>
+
+          <p className="text-xs text-zinc-500">
+            © {new Date().getFullYear()} Provix. All rights reserved.
+          </p>
         </div>
       </footer>
     </div>
