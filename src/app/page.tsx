@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
-import { Code2, Shield, Zap } from "lucide-react";
+import { Code2, ChevronDown, Shield, Zap } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import SignOutButton from "@/components/SignOutButton";
 
@@ -34,6 +34,29 @@ const features = [
   },
 ];
 
+const faqItems = [
+  {
+    question: "How does the AI Deep Screening verify candidates?",
+    answer:
+      "Deep Screening runs a live GitHub repository audit on each candidate's public work — analyzing commit history for consistency, verifying authorship patterns, and reviewing code architecture for production readiness. The result is an evidence-backed profile, not a self-reported resume.",
+  },
+  {
+    question: "What does the Integrity Score mean?",
+    answer:
+      "The Integrity Score is a 1–100 rubric that measures how trustworthy a candidate's story is. It weighs timeline plausibility (do their dates and roles add up?), verifiable metrics (can claims be checked against repos or demos?), and proof-of-work depth (is there real output behind the headline skills?).",
+  },
+  {
+    question: "What is included in the Employer Interview Cheat Sheet?",
+    answer:
+      "Every screened candidate comes with a role-specific Interview Cheat Sheet: three tailored technical questions plus coaching notes on what to listen for in strong vs. weak answers — so hiring managers can run a sharp interview in minutes, even without a dedicated tech lead in the room.",
+  },
+  {
+    question: "How does pricing and candidate unlocking work?",
+    answer:
+      "Browsing the talent pool and viewing AI screening previews is completely free. When you're ready to reach out, you pay a simple per-unlock fee to reveal direct contact access — no subscriptions, no upfront contracts, and no charge until you choose to connect.",
+  },
+];
+
 function formatScore(score: PreviewCandidate["score"]): string {
   if (score == null || score === "") {
     return "—";
@@ -53,6 +76,7 @@ export default function Home() {
   const [previewCandidate, setPreviewCandidate] =
     useState<PreviewCandidate | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   useEffect(() => {
     const supabase = createClient();
@@ -306,7 +330,119 @@ export default function Home() {
             })}
           </div>
         </section>
+
+        {/* --- FAQ ACCORDION --- */}
+        <section className="max-w-3xl mx-auto px-6 pb-24">
+          <div className="text-center mb-10">
+            <span className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold px-3 py-1.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              FAQ
+            </span>
+            <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+              How Vanguard X works
+            </h2>
+            <p className="mt-3 text-sm text-zinc-400 max-w-xl mx-auto">
+              Everything employers and candidates need to know about screening,
+              scoring, and unlocking talent.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {faqItems.map((item, index) => {
+              const isOpen = openFaqIndex === index;
+
+              return (
+                <div
+                  key={item.question}
+                  className={`rounded-2xl border transition-colors duration-300 ${
+                    isOpen
+                      ? "border-indigo-500/30 bg-zinc-900 shadow-lg shadow-indigo-500/5"
+                      : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenFaqIndex(isOpen ? null : index)
+                    }
+                    aria-expanded={isOpen}
+                    className="w-full flex items-center justify-between gap-4 px-5 sm:px-6 py-4 text-left cursor-pointer"
+                  >
+                    <span className="text-sm sm:text-base font-semibold text-white leading-snug">
+                      {item.question}
+                    </span>
+                    <span
+                      className={`shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center transition-all duration-300 ${
+                        isOpen
+                          ? "border-indigo-500/30 bg-indigo-500/10 text-indigo-400 rotate-180"
+                          : "border-zinc-700 bg-zinc-950 text-zinc-400"
+                      }`}
+                    >
+                      <ChevronDown className="w-4 h-4" aria-hidden="true" />
+                    </span>
+                  </button>
+
+                  <div
+                    className={`grid transition-all duration-300 ease-in-out ${
+                      isOpen
+                        ? "grid-rows-[1fr] opacity-100"
+                        : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      <p className="px-5 sm:px-6 pb-5 text-sm text-zinc-400 leading-relaxed border-t border-zinc-800/80 pt-4">
+                        {item.answer}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* --- FINAL CTA --- */}
+        <section className="border-t border-zinc-800/80 bg-zinc-900/40">
+          <div className="max-w-6xl mx-auto px-6 py-16 sm:py-20 text-center">
+            <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white max-w-2xl mx-auto">
+              Ready to hire on proof, not polish?
+            </h2>
+            <p className="mt-4 text-zinc-400 text-sm sm:text-base max-w-xl mx-auto">
+              Join Vanguard X and start screening vetted talent with AI-backed
+              integrity scores — free to browse, pay only when you unlock.
+            </p>
+            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+              {checkingSession ? (
+                <div
+                  className="h-[52px] w-full sm:w-44 rounded-lg bg-zinc-800 animate-pulse"
+                  aria-hidden
+                />
+              ) : (
+                <>
+                  <Link
+                    href={primaryCtaHref}
+                    className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20"
+                  >
+                    {isLoggedIn ? "Open Dashboard" : "Get Started Free"}
+                  </Link>
+                  <Link
+                    href="/pricing"
+                    className="w-full sm:w-auto bg-transparent hover:bg-white/5 border border-zinc-700 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all"
+                  >
+                    View Pricing
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
       </main>
+
+      <footer className="border-t border-zinc-800/80 py-8">
+        <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500">
+          <span className="font-semibold text-zinc-400">VANGUARD X</span>
+          <span>Product-led tech recruitment · Hire the top 1%.</span>
+        </div>
+      </footer>
     </div>
   );
 }
