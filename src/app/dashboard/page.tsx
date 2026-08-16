@@ -1066,55 +1066,6 @@ const showToast = (msg: string) => {
     visibilitySaveRef.current = false;
     setSavingVisibility(false);
   };
-
-  const handleAvailabilityStatusChange = async (
-    nextStatus: AvailabilityStatus
-  ) => {
-    if (availabilitySaveRef.current || nextStatus === availabilityStatus) {
-      return;
-    }
-
-    const previousStatus = availabilityStatus;
-    availabilitySaveRef.current = true;
-    setAvailabilityStatus(nextStatus);
-    setSavingAvailability(true);
-
-    const profileId = dbProfile?.id ?? user?.id;
-    if (!profileId) {
-      setAvailabilityStatus(previousStatus);
-      availabilitySaveRef.current = false;
-      setSavingAvailability(false);
-      showToast("You must be logged in to update availability.");
-      return;
-    }
-
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("profiles")
-      .update({ availability_status: nextStatus })
-      .eq("id", profileId)
-      .select("availability_status")
-      .maybeSingle();
-
-    if (error) {
-      console.error(
-        "Availability status update failed:",
-        JSON.stringify(error, null, 2)
-      );
-      setAvailabilityStatus(previousStatus);
-      showToast("Could not update availability status.");
-    } else {
-      setDbProfile((prev) =>
-        prev ? { ...prev, availability_status: nextStatus } : prev
-      );
-      setSavedCandidateProfile((prev) =>
-        prev ? { ...prev, availabilityStatus: nextStatus } : prev
-      );
-    }
-
-    availabilitySaveRef.current = false;
-    setSavingAvailability(false);
-  };
   // --- SUB-MENU STATE FOR PROFILE TAB ---
   const [profileSubMenu, setProfileSubMenu] = useState<
     "overview" | "academics" | "portfolio" | "settings" | "companyInfo" | "activeListings"
@@ -1242,11 +1193,59 @@ const showToast = (msg: string) => {
       skills !== savedCandidateProfile.skills ||
       portfolioUrl !== savedCandidateProfile.portfolioUrl ||
       experienceLevel !== savedCandidateProfile.experienceLevel ||
+      availabilityStatus !== savedCandidateProfile.availabilityStatus ||
       profileData.gradYear !== savedCandidateProfile.gradYear);
 
   const isDirty = isBusinessAccount
     ? JSON.stringify(businessProfileData) !== JSON.stringify(savedBusinessProfileData)
     : isCandidateDirty;
+
+  const handleAvailabilityStatusChange = async (
+    nextStatus: AvailabilityStatus
+  ) => {
+    if (availabilitySaveRef.current || nextStatus === availabilityStatus) {
+      return;
+    }
+
+    availabilitySaveRef.current = true;
+    setAvailabilityStatus(nextStatus);
+    setSavingAvailability(true);
+
+    const profileId = dbProfile?.id ?? user?.id;
+    if (!profileId) {
+      availabilitySaveRef.current = false;
+      setSavingAvailability(false);
+      showToast("You must be logged in to update availability.");
+      return;
+    }
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("profiles")
+      .update({ availability_status: nextStatus })
+      .eq("id", profileId)
+      .select("availability_status")
+      .maybeSingle();
+
+    if (error) {
+      console.error(
+        "Availability status update failed:",
+        JSON.stringify(error, null, 2)
+      );
+      showToast("Could not update availability status. Use Save Changes to retry.");
+    } else {
+      setDbProfile((prev) =>
+        prev ? { ...prev, availability_status: nextStatus } : prev
+      );
+      setSavedCandidateProfile((prev) =>
+        prev ? { ...prev, availabilityStatus: nextStatus } : prev
+      );
+      showToast("✓ Saved");
+    }
+
+    availabilitySaveRef.current = false;
+    setSavingAvailability(false);
+  };
 
   // Hydrate business profile data from LocalStorage once the component mounts on the client.
   useEffect(() => {
@@ -1301,6 +1300,7 @@ const showToast = (msg: string) => {
         skills: skillsArray,
         portfolio_url: portfolioUrl.trim() || null,
         experience_level: experienceLevel,
+        availability_status: availabilityStatus,
       })
       .eq("id", user.id)
       .select(EXTENDED_PROFILE_COLUMNS)
