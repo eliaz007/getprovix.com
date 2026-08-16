@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
+import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
+import { ProvixLogo } from "@/components/ProvixLogo";
 import SignOutButton from "@/components/SignOutButton";
 import { signInWithEmail, signUpWithEmail } from "./actions";
 
@@ -164,9 +166,14 @@ export default function LoginPage() {
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <div className="w-full max-w-md px-6">
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-8">
+          <div className="flex justify-center mb-6">
+            <Link href="/" className="hover:opacity-90 transition-opacity">
+              <ProvixLogo />
+            </Link>
+          </div>
           {/* Header */}
           <h1 className="text-2xl font-semibold text-white tracking-tight text-center">
-            Welcome to Vanguard X
+            Welcome to Provix
           </h1>
           <p className="text-sm text-zinc-400 text-center mb-8">
             {mode === "sign-in"

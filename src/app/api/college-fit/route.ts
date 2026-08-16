@@ -123,7 +123,7 @@ const MODEL_CANDIDATES = [
   "gemini-2.0-flash",
 ] as const;
 
-const BASE_SYSTEM_RULES = `You are an expert college admissions counselor for Vanguard X. Build a comprehensive, personalized college fit report using ONLY real, accredited U.S. colleges and universities that actually exist.
+const BASE_SYSTEM_RULES = `You are an expert college admissions counselor for Provix. Build a comprehensive, personalized college fit report using ONLY real, accredited U.S. colleges and universities that actually exist.
 
 Return strict JSON only in this exact structure:
 {

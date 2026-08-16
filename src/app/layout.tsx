@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VideoScore AI",
-  description: "Analyze your YouTube hook and script before you hit upload.",
+  title: "Provix — Verified Candidate Intelligence",
+  description:
+    "Automated proof-of-work screening, repository integrity analysis, and candidate scoring.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

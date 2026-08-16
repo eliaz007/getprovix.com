@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import {
@@ -16,6 +17,7 @@ import {
   Target,
 } from "lucide-react";
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
+import { ProvixLogo } from "@/components/ProvixLogo";
 import { createClient } from "@/utils/supabase/client";
 import {
   VETTED_CANDIDATE_POOL,
@@ -1396,8 +1398,8 @@ const showToast = (msg: string) => {
     {
       id: "O-106",
       title: "Junior Software Engineer",
-      company: "Vanguard X Partner Network",
-      initials: "VX",
+      company: "Provix Partner Network",
+      initials: "PX",
       salary: "$78,000 – $92,000",
       location: "Remote · US",
       remote: true,
@@ -2550,15 +2552,12 @@ const showToast = (msg: string) => {
 
   const sidebarNavContent = (
     <div className="p-6">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-800 text-white flex items-center justify-center font-extrabold text-xs shadow-[0_0_15px_rgba(79,70,229,0.4)]">
-          VX
-        </div>
-        <div>
-          <span className="font-extrabold text-[15px] tracking-tight text-white block leading-none">Vanguard X</span>
-          <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase mt-1 block">Lifecycle Hub</span>
-        </div>
-      </div>
+      <Link href="/" className="block mb-8 hover:opacity-90 transition-opacity">
+        <ProvixLogo />
+        <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase mt-2 block">
+          Verified Intelligence
+        </span>
+      </Link>
 
       <div className="space-y-8">
         {/* Personal / Company Hub */}
@@ -2672,14 +2671,9 @@ const showToast = (msg: string) => {
 
       {/* Mobile header */}
       <header className="flex md:hidden items-center justify-between px-4 py-3 bg-[#111111] border-b border-slate-800/60 shrink-0 z-20">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-800 text-white flex items-center justify-center font-extrabold text-xs shadow-[0_0_15px_rgba(79,70,229,0.4)] shrink-0">
-            VX
-          </div>
-          <span className="font-extrabold text-[15px] tracking-tight text-white truncate">
-            Vanguard X
-          </span>
-        </div>
+        <Link href="/" className="flex items-center gap-3 min-w-0 hover:opacity-90 transition-opacity">
+          <ProvixLogo />
+        </Link>
         <button
           type="button"
           onClick={() => setMobileNavOpen(true)}
@@ -3271,7 +3265,7 @@ const showToast = (msg: string) => {
                       <div className="pt-4 flex items-center justify-between">
                         <div>
                           <span className="font-bold text-xs text-white block">
-                            Sign out of Vanguard X
+                            Sign out of Provix
                           </span>
                           <span className="text-[11px] text-slate-500">
                             You&apos;ll be returned to the login screen on this device.
@@ -5596,7 +5590,7 @@ const showToast = (msg: string) => {
               </p>
               <h3 className="text-xl font-extrabold text-white">Post New Job</h3>
               <p className="text-sm text-slate-400 mt-2 mb-6">
-                Publish a role to the Vanguard X opportunities feed.
+                Publish a role to the Provix opportunities feed.
               </p>
 
               <form onSubmit={handleCreateJob} className="space-y-4">

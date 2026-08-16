@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { Code2, ChevronDown, Shield, Zap } from "lucide-react";
+import { ProvixLogo } from "@/components/ProvixLogo";
 import { createClient } from "@/utils/supabase/client";
 import {
   getNewestVettedCandidate,
@@ -197,13 +198,8 @@ export default function Home() {
       {/* --- TOP NAVIGATION --- */}
       <header className="border-b border-zinc-800/80 sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-800 flex items-center justify-center font-extrabold text-white text-xs shadow-[0_0_15px_rgba(79,70,229,0.4)]">
-              VX
-            </div>
-            <span className="font-extrabold text-lg tracking-tight text-white">
-              VANGUARD X
-            </span>
+          <Link href="/" className="hover:opacity-90 transition-opacity">
+            <ProvixLogo className="text-lg" />
           </Link>
 
           <nav className="flex items-center gap-6">
@@ -389,7 +385,7 @@ export default function Home() {
               FAQ
             </span>
             <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-              How Vanguard X works
+              How Provix works
             </h2>
             <p className="mt-3 text-sm text-zinc-400 max-w-xl mx-auto">
               Everything employers and candidates need to know about screening,
@@ -483,7 +479,7 @@ export default function Home() {
 
       <footer className="border-t border-zinc-800/80 py-8">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500">
-          <span className="font-semibold text-zinc-400">VANGUARD X</span>
+          <ProvixLogo className="text-xs" />
           <span>Product-led tech recruitment · Hire the top 1%.</span>
         </div>
       </footer>

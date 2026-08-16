@@ -57,7 +57,7 @@ export type ScreenResult = {
   github_audit?: GitHubAuditContext | null;
 };
 
-const SYSTEM_PROMPT = `You are a rigorous Technical & Academic Auditor for Vanguard X employer screening.
+const SYSTEM_PROMPT = `You are a rigorous Technical & Academic Auditor for Provix employer screening.
 
 You receive:
 - Candidate profile claims (skills, bio, degree, experience level, projects)
@@ -318,7 +318,7 @@ function parseGitHubRepoUrl(
 function githubHeaders(): HeadersInit {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
-    "User-Agent": "VanguardX-Screening/1.0",
+    "User-Agent": "Provix-Screening/1.0",
   };
 
   const token = process.env.GITHUB_TOKEN?.trim();

@@ -21,7 +21,7 @@ export type EssayReviewResult = {
   lineFeedback: LineFeedback[];
 };
 
-const SYSTEM_PROMPT = `You are an expert college admissions essay coach for Vanguard X. Review the student's essay draft against the provided college prompt.
+const SYSTEM_PROMPT = `You are an expert college admissions essay coach for Provix. Review the student's essay draft against the provided college prompt.
 
 Return strict JSON only in this exact structure:
 {
