@@ -20,6 +20,13 @@ import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { createClient } from "@/utils/supabase/client";
 import {
+  AVAILABILITY_STATUS_OPTIONS,
+  DEFAULT_AVAILABILITY_STATUS,
+  getAvailabilityBadgeClass,
+  normalizeAvailabilityStatus,
+  type AvailabilityStatus,
+} from "@/lib/availability-status";
+import {
   DEFAULT_EXPERIENCE_LEVEL,
   EXPERIENCE_LEVEL_OPTIONS,
   type ExperienceLevel,
@@ -215,6 +222,7 @@ type ProfileRecord = {
   skills?: string[] | null;
   portfolio_url?: string | null;
   experience_level?: string | null;
+  availability_status?: string | null;
   is_visible_in_pool?: boolean | null;
   company_name?: string | null;
   tier?: string | null;
@@ -290,7 +298,7 @@ type MatchInsight = {
 
 const BASE_PROFILE_COLUMNS = "id, full_name, role, graduation_year";
 const EXTENDED_PROFILE_COLUMNS =
-  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, experience_level, is_visible_in_pool, company_name, tier, is_pro, phone, linkedin_url, contact_email";
+  "id, full_name, role, graduation_year, major, job_title, bio, school, skills, portfolio_url, experience_level, availability_status, is_visible_in_pool, company_name, tier, is_pro, phone, linkedin_url, contact_email";
 const LEGACY_EXTENDED_PROFILE_COLUMNS =
   "id, full_name, role, graduation_year, major, is_visible_in_pool, company_name";
 
@@ -425,11 +433,11 @@ function mapProfileRowToTalentCandidate(
     skills,
     rating: "90%",
     execution_score: 90,
-    status: row.status?.trim() || "Open for Hire",
+    status: normalizeAvailabilityStatus(row.availability_status),
     experienceLevel:
       row.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL,
     roleType: "General",
-    availability: "Available Now",
+    availability: normalizeAvailabilityStatus(row.availability_status),
     bio:
       row.bio?.trim() ||
       "AI-vetted candidate with verified proof-of-work in the talent pool.",
@@ -798,6 +806,9 @@ export default function DashboardPage() {
         const loadedPortfolioUrl = profileWithRole?.portfolio_url ?? "";
         const loadedExperienceLevel =
           profileWithRole?.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL;
+        const loadedAvailabilityStatus = normalizeAvailabilityStatus(
+          profileWithRole?.availability_status
+        );
         const loadedGradYear =
           profileWithRole?.graduation_year != null
             ? String(profileWithRole.graduation_year)
@@ -810,6 +821,7 @@ export default function DashboardPage() {
         setSkills(loadedSkills);
         setPortfolioUrl(loadedPortfolioUrl);
         setExperienceLevel(loadedExperienceLevel as ExperienceLevel);
+        setAvailabilityStatus(loadedAvailabilityStatus);
 
         const hydratedProfile = {
           ...DEFAULT_PROFILE_DATA,
@@ -832,6 +844,7 @@ export default function DashboardPage() {
           skills: loadedSkills,
           portfolioUrl: loadedPortfolioUrl,
           experienceLevel: loadedExperienceLevel,
+          availabilityStatus: loadedAvailabilityStatus,
           gradYear: loadedGradYear,
         });
 
@@ -913,13 +926,24 @@ export default function DashboardPage() {
 
     (async () => {
       try {
-        const { data, error } = await supabase
+        const talentPoolColumns =
+          "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, experience_level, availability_status, phone, linkedin_url, contact_email";
+        const legacyTalentPoolColumns =
+          "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, experience_level, phone, linkedin_url, contact_email";
+
+        let { data, error } = await supabase
           .from("profiles")
-          .select(
-            "id, full_name, job_title, major, school, bio, skills, portfolio_url, status, experience_level, phone, linkedin_url, contact_email"
-          )
+          .select(talentPoolColumns)
           .eq("is_visible_in_pool", true)
           .in("role", ["candidate", "employee"]);
+
+        if (error && isMissingColumnError(error)) {
+          ({ data, error } = await supabase
+            .from("profiles")
+            .select(legacyTalentPoolColumns)
+            .eq("is_visible_in_pool", true)
+            .in("role", ["candidate", "employee"]));
+        }
 
         if (!isMounted) {
           return;
@@ -1055,6 +1079,8 @@ const showToast = (msg: string) => {
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(
     DEFAULT_EXPERIENCE_LEVEL
   );
+  const [availabilityStatus, setAvailabilityStatus] =
+    useState<AvailabilityStatus>(DEFAULT_AVAILABILITY_STATUS);
   const [isSaving, setIsSaving] = useState(false);
   const [savedCandidateProfile, setSavedCandidateProfile] = useState<{
     fullName: string;
@@ -1065,6 +1091,7 @@ const showToast = (msg: string) => {
     skills: string;
     portfolioUrl: string;
     experienceLevel: string;
+    availabilityStatus: string;
     gradYear: string;
   } | null>(null);
 
@@ -1164,6 +1191,7 @@ const showToast = (msg: string) => {
       skills !== savedCandidateProfile.skills ||
       portfolioUrl !== savedCandidateProfile.portfolioUrl ||
       experienceLevel !== savedCandidateProfile.experienceLevel ||
+      availabilityStatus !== savedCandidateProfile.availabilityStatus ||
       profileData.gradYear !== savedCandidateProfile.gradYear);
 
   const isDirty = isBusinessAccount
@@ -1223,6 +1251,7 @@ const showToast = (msg: string) => {
         skills: skillsArray,
         portfolio_url: portfolioUrl.trim() || null,
         experience_level: experienceLevel,
+        availability_status: availabilityStatus,
       })
       .eq("id", user.id)
       .select(EXTENDED_PROFILE_COLUMNS)
@@ -1254,6 +1283,7 @@ const showToast = (msg: string) => {
       skills,
       portfolioUrl,
       experienceLevel,
+      availabilityStatus,
       gradYear: profileData.gradYear,
     };
     setSavedCandidateProfile(snapshot);
@@ -1945,8 +1975,9 @@ const showToast = (msg: string) => {
   const newMatchesCount =
     scoredTalentMatches > 0
       ? scoredTalentMatches
-      : candidates.filter((candidate) => candidate.status === "Open for Hire")
-          .length;
+      : candidates.filter(
+          (candidate) => candidate.availability === "Available Now"
+        ).length;
 
   const getTalentMatchLabel = (candidate: TalentPoolCandidate) => {
     const insight = talentMatchScores[candidate.id];
@@ -3073,6 +3104,31 @@ const showToast = (msg: string) => {
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                        Availability Status
+                      </label>
+                      <select
+                        value={availabilityStatus}
+                        onChange={(e) =>
+                          setAvailabilityStatus(
+                            e.target.value as AvailabilityStatus
+                          )
+                        }
+                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      >
+                        {AVAILABILITY_STATUS_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-slate-500 mt-2">
+                        Shown on your talent pool card and used by recruiter
+                        availability filters.
+                      </p>
                     </div>
 
                     <div>
@@ -4828,15 +4884,11 @@ const showToast = (msg: string) => {
                               </div>
                               <div className="flex flex-col items-end gap-1 shrink-0">
                                 <span
-                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                                    col.status === "Open for Hire"
-                                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                      : col.status === "Interviewing"
-                                        ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                                        : "bg-slate-800 text-slate-500 border border-slate-700/50"
-                                  }`}
+                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getAvailabilityBadgeClass(
+                                    col.availability
+                                  )}`}
                                 >
-                                  {col.status}
+                                  {col.availability}
                                 </span>
                                 <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
                                   {getTalentMatchLabel(col)}
@@ -5065,15 +5117,11 @@ const showToast = (msg: string) => {
                 {/* Status + Rating */}
                 <div className="flex items-center justify-between text-xs bg-slate-900/60 px-3.5 py-2.5 rounded-xl border border-slate-800">
                   <span
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                      selectedCandidate.status === "Open for Hire"
-                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                        : selectedCandidate.status === "Interviewing"
-                          ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                          : "bg-slate-800 text-slate-500"
-                    }`}
+                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getAvailabilityBadgeClass(
+                      selectedCandidate.availability
+                    )}`}
                   >
-                    {selectedCandidate.status}
+                    {selectedCandidate.availability}
                   </span>
                   <span className="font-mono font-bold text-emerald-400">
                     {getTalentMatchLabel(selectedCandidate)} AI Match Score
@@ -5548,8 +5596,18 @@ const showToast = (msg: string) => {
                   {/* Status */}
                   <div className="flex items-center justify-between text-xs bg-slate-900/80 px-3 py-2 rounded-lg border border-slate-800">
                     <span className="text-slate-300">
-                      Status:{" "}
-                      <strong className="text-emerald-400">Open for Hire</strong>
+                      Availability:{" "}
+                      <strong
+                        className={
+                          availabilityStatus === "Available Now"
+                            ? "text-emerald-400"
+                            : availabilityStatus === "Interviewing"
+                              ? "text-amber-400"
+                              : "text-slate-400"
+                        }
+                      >
+                        {availabilityStatus}
+                      </strong>
                     </span>
                     <span className="text-slate-400 font-mono">10–15 hrs/wk</span>
                   </div>
