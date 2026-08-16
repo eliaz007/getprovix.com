@@ -188,10 +188,34 @@ type ProfileRecord = {
 };
 
 type DeepScreeningResult = {
-  strengths: string[];
-  gaps: string[];
-  interview_questions: string[];
+  integrity_score: number;
+  timeline_flags: string[];
+  artifact_analysis: string;
+  technical_depth_summary: string;
+  github_audit?: {
+    repo_url: string;
+    owner: string;
+    repo: string;
+    stars: number | null;
+    forks: number | null;
+    created_at: string | null;
+    language: string | null;
+    commit_count_sampled: number;
+    commit_dates: string[];
+    readme_excerpt: string | null;
+    fetch_warnings: string[];
+  } | null;
 };
+
+function getIntegrityScoreClass(score: number): string {
+  if (score >= 80) {
+    return "text-emerald-400 border-emerald-500/30 bg-emerald-500/10";
+  }
+  if (score >= 60) {
+    return "text-amber-400 border-amber-500/30 bg-amber-500/10";
+  }
+  return "text-red-400 border-red-500/30 bg-red-500/10";
+}
 
 type MatchInsight = {
   match_percentage: number;
@@ -2043,6 +2067,9 @@ const showToast = (msg: string) => {
             degree: selectedCandidate.major,
             experience: selectedCandidate.experienceLevel,
             projects: selectedCandidate.projects,
+            github_url:
+              selectedCandidate.github_url ?? selectedCandidate.github ?? "",
+            github: selectedCandidate.github ?? "",
           },
           job: {
             title: primaryMatchingJob.title,
@@ -4914,7 +4941,7 @@ const showToast = (msg: string) => {
                     {deepScreeningLoading ? (
                       <>
                         <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Analyzing candidate…
+                        Auditing repositories…
                       </>
                     ) : isProEmployerAccount ? (
                       "Generate AI Deep Screening"
@@ -4940,55 +4967,88 @@ const showToast = (msg: string) => {
 
                   {hasBetaAccess && deepScreeningResult && (
                     <div className="space-y-4 pt-1">
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
-                          Key Strengths
+                      <div
+                        className={`rounded-xl border p-4 text-center ${getIntegrityScoreClass(deepScreeningResult.integrity_score)}`}
+                      >
+                        <div className="text-[10px] uppercase font-bold tracking-widest mb-1">
+                          Integrity Score
                         </div>
-                        <ul className="space-y-1.5">
-                          {deepScreeningResult.strengths.map((item, index) => (
-                            <li
-                              key={`strength-${index}`}
-                              className="text-xs text-slate-300 leading-relaxed bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2"
-                            >
-                              {item}
-                            </li>
-                          ))}
-                        </ul>
+                        <div className="text-4xl font-extrabold">
+                          {deepScreeningResult.integrity_score}
+                          <span className="text-lg font-semibold opacity-70">
+                            /100
+                          </span>
+                        </div>
+                        {deepScreeningResult.github_audit && (
+                          <p className="text-[11px] mt-2 opacity-80">
+                            Live audit: {deepScreeningResult.github_audit.owner}/
+                            {deepScreeningResult.github_audit.repo}
+                            {deepScreeningResult.github_audit.language
+                              ? ` · ${deepScreeningResult.github_audit.language}`
+                              : ""}
+                          </p>
+                        )}
                       </div>
 
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-2">
-                          Growth Areas
+                      {deepScreeningResult.timeline_flags.length > 0 && (
+                        <div>
+                          <div className="text-[10px] uppercase font-bold text-red-400 tracking-wider mb-2">
+                            Timeline &amp; Repository Flags
+                          </div>
+                          <ul className="space-y-1.5">
+                            {deepScreeningResult.timeline_flags.map(
+                              (flag, index) => (
+                                <li
+                                  key={`flag-${index}`}
+                                  className="text-xs text-red-200 leading-relaxed bg-red-500/5 border border-red-500/20 rounded-lg px-3 py-2"
+                                >
+                                  {flag}
+                                </li>
+                              )
+                            )}
+                          </ul>
                         </div>
-                        <ul className="space-y-1.5">
-                          {deepScreeningResult.gaps.map((item, index) => (
-                            <li
-                              key={`gap-${index}`}
-                              className="text-xs text-slate-300 leading-relaxed bg-amber-500/5 border border-amber-500/10 rounded-lg px-3 py-2"
-                            >
-                              {item}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+                      )}
 
                       <div>
                         <div className="text-[10px] uppercase font-bold text-indigo-300 tracking-wider mb-2">
-                          Interview Questions
+                          Artifact Analysis (Check 1)
                         </div>
-                        <ul className="space-y-1.5">
-                          {deepScreeningResult.interview_questions.map(
-                            (item, index) => (
-                              <li
-                                key={`question-${index}`}
-                                className="text-xs text-slate-300 leading-relaxed bg-indigo-500/5 border border-indigo-500/10 rounded-lg px-3 py-2"
-                              >
-                                {item}
-                              </li>
-                            )
-                          )}
-                        </ul>
+                        <p className="text-xs text-slate-300 leading-relaxed bg-indigo-500/5 border border-indigo-500/10 rounded-lg px-3 py-2">
+                          {deepScreeningResult.artifact_analysis}
+                        </p>
                       </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
+                          Technical Depth Summary
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">
+                          {deepScreeningResult.technical_depth_summary}
+                        </p>
+                      </div>
+
+                      {deepScreeningResult.github_audit?.fetch_warnings &&
+                        deepScreeningResult.github_audit.fetch_warnings.length >
+                          0 && (
+                          <div>
+                            <div className="text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-2">
+                              GitHub Fetch Warnings
+                            </div>
+                            <ul className="space-y-1.5">
+                              {deepScreeningResult.github_audit.fetch_warnings.map(
+                                (warning, index) => (
+                                  <li
+                                    key={`gh-warning-${index}`}
+                                    className="text-xs text-amber-200 leading-relaxed bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2"
+                                  >
+                                    {warning}
+                                  </li>
+                                )
+                              )}
+                            </ul>
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>
