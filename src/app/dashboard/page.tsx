@@ -187,11 +187,18 @@ type ProfileRecord = {
   contact_email?: string | null;
 };
 
+type InterviewCheatSheetQuestion = {
+  question: string;
+  category: string;
+  what_to_listen_for: string;
+};
+
 type DeepScreeningResult = {
   integrity_score: number;
   timeline_flags: string[];
   artifact_analysis: string;
   technical_depth_summary: string;
+  interview_questions: InterviewCheatSheetQuestion[];
   github_audit?: {
     repo_url: string;
     owner: string;
@@ -2022,6 +2029,15 @@ const showToast = (msg: string) => {
       );
     } finally {
       setBetaAccessSubmitting(false);
+    }
+  };
+
+  const handleCopyInterviewQuestion = async (question: string) => {
+    try {
+      await navigator.clipboard.writeText(question);
+      showToast("Interview question copied.");
+    } catch {
+      showToast("Could not copy question.");
     }
   };
 
@@ -5010,6 +5026,49 @@ const showToast = (msg: string) => {
                         <p className="text-xs text-slate-300 leading-relaxed bg-indigo-500/5 border border-indigo-500/10 rounded-lg px-3 py-2">
                           {deepScreeningResult.artifact_analysis}
                         </p>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-purple-300 tracking-wider mb-2">
+                          Employer Interview Cheat Sheet
+                        </div>
+                        <div className="space-y-3">
+                          {(deepScreeningResult.interview_questions ?? []).map(
+                            (item, index) => (
+                              <div
+                                key={`interview-question-${index}`}
+                                className="bg-[#0A0A0A] border border-slate-800 rounded-xl p-3.5 space-y-2.5"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <span className="inline-flex px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 shrink-0">
+                                    {item.category}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleCopyInterviewQuestion(item.question)
+                                    }
+                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                                  >
+                                    <Copy className="w-3 h-3" aria-hidden />
+                                    Copy Question
+                                  </button>
+                                </div>
+                                <p className="text-xs text-white font-medium leading-relaxed">
+                                  {item.question}
+                                </p>
+                                <div className="pt-2 border-t border-slate-800/80">
+                                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+                                    What to listen for
+                                  </p>
+                                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                                    {item.what_to_listen_for}
+                                  </p>
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
                       </div>
 
                       <div>

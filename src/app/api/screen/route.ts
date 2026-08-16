@@ -41,11 +41,18 @@ export type GitHubAuditContext = {
   fetch_warnings: string[];
 };
 
+export type InterviewQuestion = {
+  question: string;
+  category: string;
+  what_to_listen_for: string;
+};
+
 export type ScreenResult = {
   integrity_score: number;
   timeline_flags: string[];
   artifact_analysis: string;
   technical_depth_summary: string;
+  interview_questions: InterviewQuestion[];
   github_audit?: GitHubAuditContext | null;
 };
 
@@ -66,13 +73,25 @@ Return strict JSON only in this exact structure:
   "integrity_score": number (integer 1-100),
   "timeline_flags": ["flag1", "flag2"],
   "artifact_analysis": "Concise paragraph on repository/proof-of-work authenticity.",
-  "technical_depth_summary": "Concise paragraph on demonstrated technical depth vs role requirements."
+  "technical_depth_summary": "Concise paragraph on demonstrated technical depth vs role requirements.",
+  "interview_questions": [
+    {
+      "question": "Tailored interview question",
+      "category": "Architecture / Process | Metric Verification | Technical Depth",
+      "what_to_listen_for": "Concise coaching tip on strong vs weak answers."
+    }
+  ]
 }
+
+Also generate an Employer Interview Cheat Sheet:
+- Provide exactly 3 tailored, role-specific interview questions grounded in the candidate's verified skills, artifacts, GitHub audit (if any), and stated claims.
+- Each question must include a category badge label and a concise what_to_listen_for tip for hiring managers.
 
 Rules:
 - integrity_score: 1-100 integer; lower when red flags dominate, higher when claims align with artifacts.
 - timeline_flags: array of specific red-flag strings; empty array if none.
 - artifact_analysis and technical_depth_summary: single concise sentences or short paragraphs, no markdown.
+- interview_questions: exactly 3 objects; categories should vary (e.g., Architecture / Process, Metric Verification, Technical Depth).
 - Do not include extra keys or markdown fences.`;
 
 const SCREEN_RESPONSE_SCHEMA = {
@@ -92,12 +111,25 @@ const SCREEN_RESPONSE_SCHEMA = {
     technical_depth_summary: {
       type: Type.STRING,
     },
+    interview_questions: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          question: { type: Type.STRING },
+          category: { type: Type.STRING },
+          what_to_listen_for: { type: Type.STRING },
+        },
+        required: ["question", "category", "what_to_listen_for"],
+      },
+    },
   },
   required: [
     "integrity_score",
     "timeline_flags",
     "artifact_analysis",
     "technical_depth_summary",
+    "interview_questions",
   ],
 };
 
@@ -142,7 +174,71 @@ function clampIntegrityScore(value: unknown): number {
   return Math.min(100, Math.max(1, Math.round(numeric)));
 }
 
-function normalizeScreenResult(raw: unknown): ScreenResult {
+function normalizeInterviewQuestions(value: unknown): InterviewQuestion[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const questions: InterviewQuestion[] = [];
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const record = item as Record<string, unknown>;
+    const question =
+      typeof record.question === "string" ? record.question.trim() : "";
+    const category =
+      typeof record.category === "string" ? record.category.trim() : "";
+    const what_to_listen_for =
+      typeof record.what_to_listen_for === "string"
+        ? record.what_to_listen_for.trim()
+        : "";
+
+    if (question && category && what_to_listen_for) {
+      questions.push({ question, category, what_to_listen_for });
+    }
+  }
+
+  return questions.slice(0, 3);
+}
+
+function buildDefaultInterviewQuestions(
+  candidate: CandidatePayload,
+  job: JobPayload
+): InterviewQuestion[] {
+  const roleLabel = job.title ?? candidate.title ?? "this role";
+  const topSkill =
+    normalizeStringArray(candidate.skills, 1)[0] ?? "your primary stack";
+
+  return [
+    {
+      question: `Walk me through how you architected and shipped a recent ${roleLabel} project using ${topSkill}. What trade-offs did you make?`,
+      category: "Architecture / Process",
+      what_to_listen_for:
+        "Strong answers cite concrete components, decision rationale, and constraints. Weak answers stay abstract with no personal ownership.",
+    },
+    {
+      question: `What measurable outcome did you deliver in your most relevant project for ${roleLabel}, and how did you validate it?`,
+      category: "Metric Verification",
+      what_to_listen_for:
+        "Strong answers include baseline, metric, and verification method. Weak answers rely on vanity metrics or cannot explain measurement.",
+    },
+    {
+      question: `Describe a hard technical problem you solved with ${topSkill}. How did you debug it and what would you do differently?`,
+      category: "Technical Depth",
+      what_to_listen_for:
+        "Strong answers show step-by-step debugging and lessons learned. Weak answers skip implementation details or blame external factors.",
+    },
+  ];
+}
+
+function normalizeScreenResult(
+  raw: unknown,
+  candidate: CandidatePayload,
+  job: JobPayload
+): ScreenResult {
   const record =
     raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
@@ -160,11 +256,20 @@ function normalizeScreenResult(raw: unknown): ScreenResult {
       ? record.technical_depth_summary.trim()
       : "Technical depth appears partially aligned with stated skills.";
 
+  let interview_questions = normalizeInterviewQuestions(
+    record.interview_questions
+  );
+  while (interview_questions.length < 3) {
+    const defaults = buildDefaultInterviewQuestions(candidate, job);
+    interview_questions.push(defaults[interview_questions.length]);
+  }
+
   return {
     integrity_score: clampIntegrityScore(record.integrity_score),
     timeline_flags,
     artifact_analysis,
     technical_depth_summary,
+    interview_questions: interview_questions.slice(0, 3),
   };
 }
 
@@ -387,6 +492,7 @@ function buildFallbackScreen(
       ? `Fallback audit of ${githubAudit.owner}/${githubAudit.repo}: ${githubAudit.commit_count_sampled} recent commits sampled, primary language ${githubAudit.language ?? "unknown"}.`
       : "Fallback screening could not verify proof-of-work artifacts against a public GitHub repository.",
     technical_depth_summary: `Skill overlap with ${roleLabel}: ${overlap.join(", ") || skills.slice(0, 2).join(", ") || "limited explicit matches"}.`,
+    interview_questions: buildDefaultInterviewQuestions(candidate, job),
     github_audit: githubAudit,
   };
 }
@@ -470,7 +576,7 @@ async function generateGeminiScreen(
         throw new Error(`Gemini (${model}) returned an empty response.`);
       }
 
-      const normalized = normalizeScreenResult(JSON.parse(text));
+      const normalized = normalizeScreenResult(JSON.parse(text), candidate, job);
       return {
         ...normalized,
         github_audit: githubAudit,
