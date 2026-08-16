@@ -935,7 +935,7 @@ export default function DashboardPage() {
           .map((row) => mapProfileRowToTalentCandidate(row));
 
         if (mapped.length > 0) {
-          setCandidates(mapped);
+          setCandidates([...FALLBACK_TALENT_CANDIDATES, ...mapped]);
         }
       } catch (err) {
         console.error("Talent pool fetch threw:", err);
@@ -5434,7 +5434,7 @@ const showToast = (msg: string) => {
                 </div>
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
-                    Verified Projects
+                    Audited Proof-of-Work Breakdown
                   </div>
                   <ul className="space-y-2">
                     {selectedCandidate.projects.map((project, pIdx) => (
