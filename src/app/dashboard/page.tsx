@@ -1041,7 +1041,7 @@ const showToast = (msg: string) => {
   };
   // --- SUB-MENU STATE FOR PROFILE TAB ---
   const [profileSubMenu, setProfileSubMenu] = useState<
-    "overview" | "academics" | "portfolio" | "settings" | "companyInfo" | "activeListings" | "billing"
+    "overview" | "academics" | "portfolio" | "settings" | "companyInfo" | "activeListings"
   >("overview");
 
   // --- CANDIDATE PROFILE STUDIO STATE (persisted to Supabase) ---
@@ -2611,7 +2611,7 @@ const showToast = (msg: string) => {
               <h1 className="text-3xl font-extrabold tracking-tight text-white">Profile Studio</h1>
               <p className="text-slate-400 text-sm mt-1">
                 {isBusinessAccount
-                  ? "Manage your company profile, hiring requirements, and team subscriptions."
+                  ? "Manage your company profile, hiring requirements, and account settings."
                   : "Manage your credentials, academic status, and proof of work."}
               </p>
             </div>
@@ -2665,17 +2665,6 @@ const showToast = (msg: string) => {
                       }`}
                     >
                       Active Listings
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setProfileSubMenu("billing")}
-                      className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
-                        profileSubMenu === "billing"
-                          ? "text-indigo-400 border-b-2 border-indigo-500"
-                          : "text-slate-500 hover:text-slate-300"
-                      }`}
-                    >
-                      Billing
                     </button>
                   </>
                 ) : (
@@ -2875,50 +2864,6 @@ const showToast = (msg: string) => {
                         </button>
                       </div>
                     ))}
-                  </div>
-                )}
-
-                {profileSubMenu === "billing" && (
-                  <div className="space-y-6 animate-in fade-in">
-                    <h3 className="text-sm font-bold text-white mb-2">
-                      Subscription & Billing
-                    </h3>
-
-                    <div className="flex items-center justify-between p-4 bg-slate-900/50 border border-slate-800 rounded-xl">
-                      <div>
-                        <span className="font-bold text-sm text-white block">
-                          {businessProfileData.billingPlan}
-                        </span>
-                        <span className="text-[11px] text-slate-500">
-                          Next billing date: Sept 12, 2026
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => router.push("/pricing")}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3.5 py-2 rounded-lg transition-all cursor-pointer shrink-0"
-                      >
-                        Manage Plan
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-slate-900/50 border border-slate-800 rounded-xl">
-                      <div>
-                        <span className="font-bold text-xs text-white block">
-                          Payment Method
-                        </span>
-                        <span className="text-[11px] text-slate-500">
-                          Visa ending in 4242
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => showToast("Payment method updates are coming soon.")}
-                        className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer shrink-0"
-                      >
-                        Update
-                      </button>
-                    </div>
                   </div>
                 )}
 
