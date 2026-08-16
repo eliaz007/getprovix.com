@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { ProvixLogo } from "@/components/ProvixLogo";
+import RequestIntroModal from "@/components/RequestIntroModal";
 import { createClient } from "@/utils/supabase/client";
 import {
   AVAILABILITY_STATUS_OPTIONS,
@@ -789,9 +790,8 @@ export default function DashboardPage() {
   const [betaAccessSubmitting, setBetaAccessSubmitting] = useState(false);
   const [betaAccessError, setBetaAccessError] = useState<string | null>(null);
   const [betaAccessUnlocked, setBetaAccessUnlocked] = useState(false);
-  const [contactModalCandidate, setContactModalCandidate] =
+  const [introModalCandidate, setIntroModalCandidate] =
     useState<TalentPoolCandidate | null>(null);
-  const [contactEmailCopied, setContactEmailCopied] = useState(false);
   const [deepScreeningLoading, setDeepScreeningLoading] = useState(false);
   const [deepScreeningResult, setDeepScreeningResult] =
     useState<DeepScreeningResult | null>(null);
@@ -2065,51 +2065,14 @@ const showToast = (msg: string) => {
     );
   };
 
-  const handleConnectCandidate = async (candidate: TalentPoolCandidate) => {
-    if (!isProEmployerAccount) {
-      setProUpgradeModalOpen(true);
-      return;
-    }
+  const openIntroModal = (candidate: TalentPoolCandidate) => {
+    setIntroModalCandidate(candidate);
+  };
 
-    let unlockedCandidate = candidate;
-
-    if (candidate.profileId && isUuid(candidate.profileId)) {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", candidate.profileId)
-        .maybeSingle();
-
-      if (!error && data) {
-        const profile = data as ProfileRecord;
-        unlockedCandidate = {
-          ...candidate,
-          name: profile.full_name?.trim() || candidate.name,
-          email:
-            resolveProfileContactEmail(profile) || candidate.email || null,
-          phone: profile.phone?.trim() || candidate.phone || null,
-          linkedin_url:
-            profile.linkedin_url?.trim() ||
-            candidate.linkedin_url ||
-            null,
-          github_url:
-            profile.portfolio_url?.trim() ||
-            candidate.github_url ||
-            candidate.github ||
-            null,
-          bio: profile.bio?.trim() || candidate.bio,
-          role: profile.job_title?.trim() || candidate.role,
-          major: profile.major?.trim() || candidate.major,
-          skills: Array.isArray(profile.skills)
-            ? profile.skills
-            : candidate.skills,
-        };
-      }
-    }
-
-    setContactEmailCopied(false);
-    setContactModalCandidate(unlockedCandidate);
+  const handleIntroRequestSuccess = () => {
+    showToast(
+      "Introduction requested! Our team will connect you shortly."
+    );
   };
 
   const handleUnlockBetaAccess = async () => {
@@ -2222,17 +2185,6 @@ const showToast = (msg: string) => {
       showToast("Interview question copied.");
     } catch {
       showToast("Could not copy question.");
-    }
-  };
-
-  const handleCopyContactEmail = async (email: string) => {
-    try {
-      await navigator.clipboard.writeText(email);
-      setContactEmailCopied(true);
-      showToast("Email copied to clipboard.");
-      window.setTimeout(() => setContactEmailCopied(false), 2000);
-    } catch {
-      showToast("Could not copy email.");
     }
   };
 
@@ -5023,16 +4975,9 @@ const showToast = (msg: string) => {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleConnectCandidate(col)}
-                                className={`flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer ${
-                                  hasBetaAccess
-                                    ? "bg-indigo-600 hover:bg-indigo-500 text-white"
-                                    : "bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-                                }`}
+                                onClick={() => openIntroModal(col)}
+                                className="flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white"
                               >
-                                {!hasBetaAccess && (
-                                  <Lock className="w-3 h-3" aria-hidden />
-                                )}
                                 Connect
                               </button>
                             </div>
@@ -5172,24 +5117,13 @@ const showToast = (msg: string) => {
                       <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
                         {selectedCandidate.experienceLevel}
                       </span>
-                      {hasBetaAccess ? (
-                        <button
-                          type="button"
-                          onClick={() => handleConnectCandidate(selectedCandidate)}
-                          className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-lg shadow-indigo-500/20"
-                        >
-                          <Icons.Mail /> View Contact &amp; Interview Prep
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setProUpgradeModalOpen(true)}
-                          className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-lg shadow-indigo-500/20"
-                        >
-                          <Lock className="w-3.5 h-3.5" aria-hidden />
-                          Reveal Identity &amp; Contact
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => openIntroModal(selectedCandidate)}
+                        className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-lg shadow-indigo-500/20"
+                      >
+                        Request Introduction
+                      </button>
                     </div>
                   </div>
                   <button
@@ -5301,29 +5235,6 @@ const showToast = (msg: string) => {
                     </div>
                   )}
                 </div>
-
-                {hasBetaAccess && (
-                  <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
-                      Verified Contact
-                    </div>
-                    <div className="bg-[#0A0A0A] border border-slate-800/80 rounded-xl p-3.5 space-y-2 text-xs">
-                      {selectedCandidate.email ? (
-                        <a
-                          href={`mailto:${selectedCandidate.email}`}
-                          className="block text-indigo-300 hover:text-indigo-200"
-                        >
-                          {selectedCandidate.email}
-                        </a>
-                      ) : (
-                        <p className="text-slate-500 italic">Email available in contact card</p>
-                      )}
-                      {selectedCandidate.phone && (
-                        <p className="text-slate-300">{selectedCandidate.phone}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
 
                 {/* AI Deep Screening */}
                 <div className="bg-[#0A0A0A] border border-slate-800/80 rounded-xl p-4 space-y-4">
@@ -5582,15 +5493,12 @@ const showToast = (msg: string) => {
                   </ul>
                 </div>
 
-                {/* Connect — Pro unlocks direct contact details */}
                 <button
                   type="button"
-                  onClick={() => handleConnectCandidate(selectedCandidate)}
+                  onClick={() => openIntroModal(selectedCandidate)}
                   className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Icons.Mail />
-                  {hasBetaAccess ? "Open Contact Card" : "Connect"}
-                  {!hasBetaAccess && <Lock className="w-3.5 h-3.5" aria-hidden />}
+                  Request Introduction
                 </button>
               </div>
             )}
@@ -5878,103 +5786,20 @@ const showToast = (msg: string) => {
           </div>
         )}
 
-        {/* PRO CONTACT UNLOCK MODAL */}
-        {contactModalCandidate && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#121212] border border-slate-800 rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
-              <button
-                type="button"
-                onClick={() => setContactModalCandidate(null)}
-                className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors cursor-pointer"
-              >
-                <Icons.XMark />
-              </button>
-
-              <div className="mb-5">
-                <h3 className="text-lg font-bold text-white">
-                  Candidate Contact Unlocked
-                </h3>
-                <p className="text-sm text-slate-400 mt-1">
-                  Pro access — direct contact details for{" "}
-                  {contactModalCandidate.name}
-                </p>
-              </div>
-
-              <div className="space-y-3 text-sm">
-                <div className="bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3">
-                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
-                    Full Name
-                  </div>
-                  <div className="text-white font-medium">
-                    {contactModalCandidate.name}
-                  </div>
-                </div>
-
-                <div className="bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3">
-                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
-                    Email
-                  </div>
-                  {contactModalCandidate.email ? (
-                    <div className="flex items-center justify-between gap-3">
-                      <a
-                        href={`mailto:${contactModalCandidate.email}`}
-                        className="text-indigo-400 hover:text-indigo-300 break-all"
-                      >
-                        {contactModalCandidate.email}
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleCopyContactEmail(contactModalCandidate.email!)
-                        }
-                        className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-white transition-all cursor-pointer"
-                      >
-                        {contactEmailCopied ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                        Copy Email
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="text-slate-500">Not provided</div>
-                  )}
-                </div>
-
-                <div className="bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3">
-                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
-                    Phone
-                  </div>
-                  <div className="text-slate-200">
-                    {contactModalCandidate.phone || "Not provided"}
-                  </div>
-                </div>
-
-                {getCandidateProfileLink(contactModalCandidate) && (
-                  <div className="bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3">
-                    <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
-                      {contactModalCandidate.linkedin_url
-                        ? "LinkedIn"
-                        : "GitHub / Portfolio"}
-                    </div>
-                    <a
-                      href={getCandidateProfileLink(contactModalCandidate)!}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-indigo-400 hover:text-indigo-300 break-all inline-flex items-center gap-1"
-                    >
-                      {contactModalCandidate.linkedin_url ||
-                        contactModalCandidate.github_url ||
-                        contactModalCandidate.github}
-                      <Icons.ExternalLink />
-                    </a>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        <RequestIntroModal
+          open={Boolean(introModalCandidate)}
+          candidate={
+            introModalCandidate
+              ? {
+                  id: introModalCandidate.id,
+                  profileId: introModalCandidate.profileId,
+                  name: introModalCandidate.name,
+                }
+              : null
+          }
+          onClose={() => setIntroModalCandidate(null)}
+          onSuccess={handleIntroRequestSuccess}
+        />
 
         {/* UPGRADE / BETA ACCESS MODAL (employer unlock) */}
         {proUpgradeModalOpen && (
