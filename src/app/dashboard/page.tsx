@@ -5809,6 +5809,7 @@ const showToast = (msg: string) => {
                   id: introModalCandidate.id,
                   profileId: introModalCandidate.profileId,
                   name: introModalCandidate.name,
+                  fullName: introModalCandidate.fullName,
                 }
               : null
           }

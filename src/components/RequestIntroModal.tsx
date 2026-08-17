@@ -19,6 +19,8 @@ export type IntroRequestCandidate = {
   id: string;
   profileId?: string | null;
   name: string;
+  full_name?: string;
+  fullName?: string;
 };
 
 type RequestIntroModalProps = {
@@ -28,35 +30,27 @@ type RequestIntroModalProps = {
   onSuccess: () => void;
 };
 
-type FormState = {
-  companyName: string;
-  workEmail: string;
-  roleTitle: string;
-  compBand: CompBand | "";
-  agreedToTerms: boolean;
-};
-
-const INITIAL_FORM: FormState = {
-  companyName: "",
-  workEmail: "",
-  roleTitle: "",
-  compBand: "",
-  agreedToTerms: false,
-};
-
 export default function RequestIntroModal({
   open,
   candidate,
   onClose,
   onSuccess,
 }: RequestIntroModalProps) {
-  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [companyName, setCompanyName] = useState("");
+  const [workEmail, setWorkEmail] = useState("");
+  const [roleTitle, setRoleTitle] = useState("");
+  const [compBand, setCompBand] = useState<CompBand | "">("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
-      setForm(INITIAL_FORM);
+      setCompanyName("");
+      setWorkEmail("");
+      setRoleTitle("");
+      setCompBand("");
+      setTermsAccepted(false);
       setSubmitting(false);
       setError(null);
     }
@@ -70,22 +64,22 @@ export default function RequestIntroModal({
     event.preventDefault();
     setError(null);
 
-    const companyName = form.companyName.trim();
-    const workEmail = form.workEmail.trim();
-    const roleTitle = form.roleTitle.trim();
+    const trimmedCompanyName = companyName.trim();
+    const trimmedWorkEmail = workEmail.trim();
+    const trimmedRoleTitle = roleTitle.trim();
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!companyName || !workEmail || !roleTitle || !form.compBand) {
+    if (!trimmedCompanyName || !trimmedWorkEmail || !trimmedRoleTitle || !compBand) {
       setError("Please complete all required fields.");
       return;
     }
 
-    if (!emailPattern.test(workEmail)) {
+    if (!emailPattern.test(trimmedWorkEmail)) {
       setError("Enter a valid work email address.");
       return;
     }
 
-    if (!form.agreedToTerms) {
+    if (!termsAccepted) {
       setError("You must agree to the Provix Placement Terms.");
       return;
     }
@@ -103,15 +97,25 @@ export default function RequestIntroModal({
         return;
       }
 
-      const { error: insertError } = await supabase.from("intro_requests").insert({
+      const payload = {
         user_id: user.id,
-        employer_company: companyName,
-        employer_email: workEmail,
+        candidate_name:
+          candidate.full_name ||
+          candidate.fullName ||
+          candidate.name ||
+          "Candidate",
         candidate_id: candidate.profileId ?? candidate.id,
-        role_title: roleTitle,
-        comp_band: form.compBand,
-        status: "pending",
-      });
+        company_name: trimmedCompanyName,
+        work_email: trimmedWorkEmail,
+        role_title: trimmedRoleTitle,
+        compensation_band: compBand,
+        terms_accepted: termsAccepted,
+        status: "pending" as const,
+      };
+
+      const { error: insertError } = await supabase
+        .from("intro_requests")
+        .insert(payload);
 
       if (insertError) {
         setError("Could not submit your request. Please try again.");
@@ -156,13 +160,8 @@ export default function RequestIntroModal({
             </label>
             <input
               type="text"
-              value={form.companyName}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  companyName: event.target.value,
-                }))
-              }
+              value={companyName}
+              onChange={(event) => setCompanyName(event.target.value)}
               required
               className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
@@ -174,13 +173,8 @@ export default function RequestIntroModal({
             </label>
             <input
               type="email"
-              value={form.workEmail}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  workEmail: event.target.value,
-                }))
-              }
+              value={workEmail}
+              onChange={(event) => setWorkEmail(event.target.value)}
               required
               className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
@@ -192,13 +186,8 @@ export default function RequestIntroModal({
             </label>
             <input
               type="text"
-              value={form.roleTitle}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  roleTitle: event.target.value,
-                }))
-              }
+              value={roleTitle}
+              onChange={(event) => setRoleTitle(event.target.value)}
               placeholder="e.g. Full-Stack Engineer"
               required
               className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
@@ -210,13 +199,8 @@ export default function RequestIntroModal({
               Target Compensation Band
             </label>
             <select
-              value={form.compBand}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  compBand: event.target.value as CompBand,
-                }))
-              }
+              value={compBand}
+              onChange={(event) => setCompBand(event.target.value as CompBand)}
               required
               className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
             >
@@ -234,13 +218,8 @@ export default function RequestIntroModal({
           <label className="flex items-start gap-3 rounded-xl border border-slate-800 bg-[#0A0A0A] p-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={form.agreedToTerms}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  agreedToTerms: event.target.checked,
-                }))
-              }
+              checked={termsAccepted}
+              onChange={(event) => setTermsAccepted(event.target.checked)}
               required
               className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
             />
