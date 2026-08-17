@@ -5,6 +5,11 @@ import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { Code2, ChevronDown, Shield, ShieldCheck, Zap } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
+import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
+import {
+  formatAnonymizedName,
+  getAnonymizedInitials,
+} from "@/lib/candidate-anonymization";
 import { createClient } from "@/utils/supabase/client";
 import {
   getNewestVettedCandidate,
@@ -214,7 +219,14 @@ export default function Home() {
   const displayScore = resolveCandidateScore(displayCandidate);
   const displayMatchScore = Math.min(Math.max(displayScore, 88), 99);
   const displaySkills = displayCandidate.skills.slice(0, 5);
-  const candidateDisplayHandle = candidateHandle(displayCandidate.name);
+  const anonymizedCandidateName = formatAnonymizedName({
+    fullName: displayCandidate.name,
+    candidateId: "PREVIEW",
+  });
+  const candidateDisplayHandle = `@${anonymizedCandidateName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")}`;
   const proofSignal =
     displayCandidate.bio.trim() ||
     "Verified technical highlight pending — GitHub audit complete.";
@@ -350,11 +362,14 @@ export default function Home() {
                 <div className="flex items-start justify-between gap-4 mb-5">
                   <div className="flex items-start gap-4 min-w-0">
                     <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/10 border border-indigo-500/30 flex items-center justify-center text-base font-bold text-indigo-300 shrink-0">
-                      {getCandidateInitials(displayCandidate.name)}
+                      {getAnonymizedInitials({
+                        fullName: displayCandidate.name,
+                        candidateId: "PREVIEW",
+                      })}
                     </div>
                     <div className="min-w-0 text-left">
                       <p className="text-lg sm:text-xl font-bold text-white truncate">
-                        {displayCandidate.name}
+                        {anonymizedCandidateName}
                       </p>
                       <p className="text-sm text-indigo-400 font-medium mt-0.5 truncate">
                         {candidateDisplayHandle}
@@ -370,6 +385,7 @@ export default function Home() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 mb-5">
+                  <VerifiedOnProvixPill />
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-3 py-1 text-[11px] font-bold text-cyan-300">
                     <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
                     Integrity Verified · {displayScore}/100

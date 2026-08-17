@@ -80,7 +80,7 @@ export default function RequestIntroModal({
     }
 
     if (!termsAccepted) {
-      setError("You must agree to the Provix Placement Terms.");
+      setError("You must agree to the Provix terms of service and direct placement policy.");
       return;
     }
 
@@ -97,6 +97,8 @@ export default function RequestIntroModal({
         return;
       }
 
+      const agreedAt = new Date().toISOString();
+
       const payload = {
         user_id: user.id,
         candidate_name:
@@ -109,7 +111,8 @@ export default function RequestIntroModal({
         work_email: trimmedWorkEmail,
         role_title: trimmedRoleTitle,
         compensation_band: compBand,
-        terms_accepted: termsAccepted,
+        terms_accepted: true,
+        terms_agreed_at: agreedAt,
         status: "pending" as const,
       };
 
@@ -224,7 +227,7 @@ export default function RequestIntroModal({
               className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
             />
             <span className="text-xs text-slate-300 leading-relaxed">
-              I agree to the{" "}
+              I agree to{" "}
               <Link
                 href="/terms"
                 target="_blank"
@@ -233,10 +236,9 @@ export default function RequestIntroModal({
                 onMouseDown={(event) => event.stopPropagation()}
                 className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
               >
-                Provix Placement Terms
+                Provix terms of service
               </Link>{" "}
-              (10% first-year base salary, $2,500 minimum fee upon hire or
-              contract placement).
+              and direct placement policy.
             </span>
           </label>
 
@@ -257,7 +259,7 @@ export default function RequestIntroModal({
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !termsAccepted}
               className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {submitting ? "Submitting..." : "Submit Request"}

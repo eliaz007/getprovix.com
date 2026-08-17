@@ -38,7 +38,24 @@ type IntroRequestRow = {
   role_title: string;
   compensation_band: string | null;
   status: IntroRequestStatus;
+  terms_accepted?: boolean | null;
+  terms_agreed_at?: string | null;
   created_at: string;
+  candidate_dossier?: CandidateDossier | null;
+};
+
+type CandidateDossier = {
+  id: string;
+  full_name?: string | null;
+  contact_email?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
+  portfolio_url?: string | null;
+  bio?: string | null;
+  major?: string | null;
+  headline?: string | null;
+  job_title?: string | null;
 };
 
 type StatusFilter = "all" | "pending" | "approved" | "rejected";
@@ -437,7 +454,9 @@ export default function AdminIntroRequestsPage() {
                       >
                         <td className="px-5 py-4 align-top">
                           <div className="font-semibold text-white">
-                            {request.candidate_name || "Candidate"}
+                            {request.candidate_dossier?.full_name ||
+                              request.candidate_name ||
+                              "Candidate"}
                           </div>
                           <div className="text-xs text-slate-400 mt-1">
                             {request.role_title}
@@ -445,6 +464,63 @@ export default function AdminIntroRequestsPage() {
                           <div className="text-[10px] text-slate-600 mt-1">
                             {formatDate(request.created_at)}
                           </div>
+                          {request.terms_accepted && (
+                            <div className="text-[10px] text-emerald-400 mt-2">
+                              Terms agreed
+                              {request.terms_agreed_at
+                                ? ` · ${formatDate(request.terms_agreed_at)}`
+                                : ""}
+                            </div>
+                          )}
+                          {request.candidate_dossier && (
+                            <div className="mt-3 rounded-xl border border-slate-800 bg-[#0A0A0A] p-3 space-y-1.5 text-[11px] text-slate-300">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Candidate dossier
+                              </p>
+                              {(request.candidate_dossier.contact_email ||
+                                request.candidate_dossier.email) && (
+                                <p>
+                                  Email:{" "}
+                                  <a
+                                    href={`mailto:${request.candidate_dossier.contact_email || request.candidate_dossier.email}`}
+                                    className="text-indigo-400 hover:text-indigo-300 break-all"
+                                  >
+                                    {request.candidate_dossier.contact_email ||
+                                      request.candidate_dossier.email}
+                                  </a>
+                                </p>
+                              )}
+                              {request.candidate_dossier.phone && (
+                                <p>Phone: {request.candidate_dossier.phone}</p>
+                              )}
+                              {request.candidate_dossier.linkedin_url && (
+                                <p>
+                                  LinkedIn:{" "}
+                                  <a
+                                    href={request.candidate_dossier.linkedin_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-indigo-400 hover:text-indigo-300 break-all"
+                                  >
+                                    {request.candidate_dossier.linkedin_url}
+                                  </a>
+                                </p>
+                              )}
+                              {request.candidate_dossier.portfolio_url && (
+                                <p>
+                                  Portfolio:{" "}
+                                  <a
+                                    href={request.candidate_dossier.portfolio_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-indigo-400 hover:text-indigo-300 break-all"
+                                  >
+                                    {request.candidate_dossier.portfolio_url}
+                                  </a>
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-5 py-4 align-top text-slate-300">
                           {request.company_name || "—"}

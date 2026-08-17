@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
@@ -21,6 +21,14 @@ import {
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import RequestIntroModal from "@/components/RequestIntroModal";
+import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
+import {
+  formatAnonymizedName,
+  getAnonymizedInitials,
+  isIntroUnlockStatus,
+  isIntroUnlockedForCandidate,
+  splitFullName,
+} from "@/lib/candidate-anonymization";
 import { signOutAndClearSession } from "@/lib/sign-out";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -497,21 +505,6 @@ function isProfileEligibleForTalentPool(row: ProfileRecord): boolean {
   return true;
 }
 
-function splitFullName(fullName: string): { firstName: string; lastName: string } {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) {
-    return { firstName: "", lastName: "" };
-  }
-  if (parts.length === 1) {
-    return { firstName: parts[0], lastName: "" };
-  }
-
-  return {
-    firstName: parts[0],
-    lastName: parts.slice(1).join(" "),
-  };
-}
-
 function resolveProfileAvailability(
   row: Pick<ProfileRecord, "availability_status" | "availability">
 ): AvailabilityStatus {
@@ -796,6 +789,9 @@ export default function DashboardPage() {
   const [betaAccessUnlocked, setBetaAccessUnlocked] = useState(false);
   const [introModalCandidate, setIntroModalCandidate] =
     useState<TalentPoolCandidate | null>(null);
+  const [unlockedCandidateIds, setUnlockedCandidateIds] = useState<Set<string>>(
+    new Set()
+  );
   const [deepScreeningLoading, setDeepScreeningLoading] = useState(false);
   const [deepScreeningResult, setDeepScreeningResult] =
     useState<DeepScreeningResult | null>(null);
@@ -1063,6 +1059,36 @@ export default function DashboardPage() {
       isMounted = false;
     };
   }, [showTalentPoolNav]);
+
+  const fetchIntroUnlocks = useCallback(async (userId: string) => {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("intro_requests")
+      .select("candidate_id, status")
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Intro unlock fetch error:", error);
+      return;
+    }
+
+    const unlocked = new Set<string>();
+    for (const row of data ?? []) {
+      if (isIntroUnlockStatus(row.status)) {
+        unlocked.add(row.candidate_id.trim().toLowerCase());
+      }
+    }
+
+    setUnlockedCandidateIds(unlocked);
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id || !showTalentPoolNav) {
+      return;
+    }
+
+    void fetchIntroUnlocks(user.id);
+  }, [user?.id, showTalentPoolNav, fetchIntroUnlocks]);
 
   useEffect(() => {
     if (!showTalentPoolNav) {
@@ -2075,10 +2101,25 @@ const showToast = (msg: string) => {
   };
 
   const handleIntroRequestSuccess = () => {
+    if (user?.id) {
+      void fetchIntroUnlocks(user.id);
+    }
+
     showToast(
       "Introduction requested! Our team will connect you shortly."
     );
   };
+
+  const getCandidatePublicName = (candidate: TalentPoolCandidate) =>
+    formatAnonymizedName({
+      firstName: candidate.firstName,
+      lastName: candidate.lastName,
+      fullName: candidate.fullName,
+      candidateId: candidate.id,
+    });
+
+  const isCandidateUnlocked = (candidate: TalentPoolCandidate) =>
+    isIntroUnlockedForCandidate(candidate, unlockedCandidateIds);
 
   const handleUnlockBetaAccess = async () => {
     const companyName = betaCompanyName.trim();
@@ -4921,12 +4962,14 @@ const showToast = (msg: string) => {
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch">
                       {filteredCandidates.map((col) => {
-                        const initials = col.name
-                          .split(" ")
-                          .filter(Boolean)
-                          .slice(0, 2)
-                          .map((part) => part[0]?.toUpperCase())
-                          .join("");
+                        const publicName = getCandidatePublicName(col);
+                        const initials = getAnonymizedInitials({
+                          firstName: col.firstName,
+                          lastName: col.lastName,
+                          fullName: col.fullName,
+                          candidateId: col.id,
+                        });
+                        const introUnlocked = isCandidateUnlocked(col);
 
                         return (
                           <div
@@ -4953,11 +4996,18 @@ const showToast = (msg: string) => {
 
                             <div className="mb-1">
                               <h3 className="font-bold text-white text-sm">
-                                Candidate #{col.id.replace(/\D/g, "")}
+                                {introUnlocked
+                                  ? col.fullName || col.name
+                                  : publicName}
                               </h3>
                               <p className="text-xs text-indigo-400 font-medium mt-0.5">
                                 {col.role}
                               </p>
+                              {!introUnlocked && (
+                                <div className="mt-2">
+                                  <VerifiedOnProvixPill />
+                                </div>
+                              )}
                               <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
                                 {col.experienceLevel}
                               </span>
@@ -5100,37 +5150,50 @@ const showToast = (msg: string) => {
           >
             {selectedCandidate && (
               <div className="p-6 space-y-6">
-                {/* Header — identity revealed after beta unlock */}
+                {(() => {
+                  const introUnlocked = isCandidateUnlocked(selectedCandidate);
+                  const publicName = getCandidatePublicName(selectedCandidate);
+                  const displayName = introUnlocked
+                    ? selectedCandidate.fullName || selectedCandidate.name
+                    : publicName;
+                  const displayInitials = introUnlocked
+                    ? getCandidateInitials(displayName)
+                    : getAnonymizedInitials({
+                        firstName: selectedCandidate.firstName,
+                        lastName: selectedCandidate.lastName,
+                        fullName: selectedCandidate.fullName,
+                        candidateId: selectedCandidate.id,
+                      });
+                  const projectLinks =
+                    getCandidateProjectLinks(selectedCandidate);
+                  const contactEmail = selectedCandidate.email?.trim() || null;
+                  const contactPhone = selectedCandidate.phone?.trim() || null;
+
+                  return (
+                    <>
+                {/* Header — full dossier revealed after approved intro */}
                 <div className="flex items-start justify-between pb-5 border-b border-slate-800">
                   <div className="flex items-center gap-3">
-                    {hasBetaAccess ? (
-                      <div className="relative w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 flex items-center justify-center font-bold text-sm shrink-0">
-                        {getCandidateInitials(selectedCandidate.name)}
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setProUpgradeModalOpen(true)}
-                        title="Unlock to reveal this candidate's identity"
-                        className="relative w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden cursor-pointer"
-                      >
-                        <span className="blur-md select-none">
-                          {getCandidateInitials(selectedCandidate.name)}
-                        </span>
-                        <span className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
-                          <Lock className="w-3.5 h-3.5" aria-hidden />
-                        </span>
-                      </button>
-                    )}
+                    <div className="relative w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 flex items-center justify-center font-bold text-sm shrink-0">
+                      {displayInitials}
+                    </div>
                     <div>
                       <h3 className="text-base font-bold text-white leading-tight">
-                        {hasBetaAccess
-                          ? selectedCandidate.name
-                          : `AI-Vetted Candidate #${selectedCandidate.id.replace(/\D/g, "")}`}
+                        {displayName}
                       </h3>
                       <p className="text-xs text-indigo-400 font-medium mt-0.5">
                         {selectedCandidate.role}
                       </p>
+                      {!introUnlocked && (
+                        <div className="mt-2">
+                          <VerifiedOnProvixPill />
+                        </div>
+                      )}
+                      {introUnlocked && (
+                        <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                          Introduction unlocked
+                        </span>
+                      )}
                       <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
                         {selectedCandidate.experienceLevel}
                       </span>
@@ -5197,25 +5260,36 @@ const showToast = (msg: string) => {
                   </div>
                 </div>
 
-                {/* Project Links */}
+                {/* Contact + Project Links */}
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
-                    Project Links
+                    Contact & Proof Links
                   </div>
-                  {hasBetaAccess ? (
+                  {introUnlocked ? (
                     <div className="space-y-2">
-                      {(() => {
-                        const projectLinks =
-                          getCandidateProjectLinks(selectedCandidate);
-                        if (projectLinks.length === 0) {
-                          return (
-                            <p className="text-xs text-slate-500 italic bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5">
-                              No public project links provided.
-                            </p>
-                          );
-                        }
-
-                        return projectLinks.map((link) => (
+                      {contactEmail && (
+                        <a
+                          href={`mailto:${contactEmail}`}
+                          className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-indigo-500/40 transition-all"
+                        >
+                          <span className="text-indigo-300 font-medium">Email</span>
+                          <span className="text-slate-300 break-all text-right ml-3">
+                            {contactEmail}
+                          </span>
+                        </a>
+                      )}
+                      {contactPhone && (
+                        <div className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs">
+                          <span className="text-indigo-300 font-medium">Phone</span>
+                          <span className="text-slate-300">{contactPhone}</span>
+                        </div>
+                      )}
+                      {projectLinks.length === 0 ? (
+                        <p className="text-xs text-slate-500 italic bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5">
+                          No public project links provided.
+                        </p>
+                      ) : (
+                        projectLinks.map((link) => (
                           <a
                             key={`${link.label}-${link.url}`}
                             href={link.url}
@@ -5228,27 +5302,24 @@ const showToast = (msg: string) => {
                             </span>
                             <Icons.ExternalLink />
                           </a>
-                        ));
-                      })()}
+                        ))
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => setProUpgradeModalOpen(true)}
-                        className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-slate-700 transition-all cursor-pointer"
-                      >
-                        <span className="text-zinc-500 italic">Hidden until upgrade</span>
-                        <Lock className="w-3.5 h-3.5 text-zinc-500" aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setProUpgradeModalOpen(true)}
-                        className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-slate-700 transition-all cursor-pointer"
-                      >
-                        <span className="text-zinc-500 italic">Hidden until upgrade</span>
-                        <Lock className="w-3.5 h-3.5 text-zinc-500" aria-hidden />
-                      </button>
+                      <VerifiedOnProvixPill className="mb-1" />
+                      {["LinkedIn", "GitHub", "Email", "Portfolio"].map((label) => (
+                        <div
+                          key={label}
+                          className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs"
+                        >
+                          <span className="text-zinc-500">{label}</span>
+                          <Lock className="w-3.5 h-3.5 text-zinc-500" aria-hidden />
+                        </div>
+                      ))}
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Direct contact links unlock after your introduction request is approved.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -5517,6 +5588,9 @@ const showToast = (msg: string) => {
                 >
                   Request Introduction
                 </button>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -5810,7 +5884,7 @@ const showToast = (msg: string) => {
               ? {
                   id: introModalCandidate.id,
                   profileId: introModalCandidate.profileId,
-                  name: introModalCandidate.name,
+                  name: getCandidatePublicName(introModalCandidate),
                   fullName: introModalCandidate.fullName,
                 }
               : null
