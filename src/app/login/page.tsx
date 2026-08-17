@@ -1,17 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
-import SignOutButton from "@/components/SignOutButton";
+import { createClient } from "@/utils/supabase/client";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 type AuthMode = "sign-in" | "sign-up";
 type SignUpType = "candidate" | "business";
@@ -48,6 +44,20 @@ export default function LoginPage() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const [signOutLoading, setSignOutLoading] = useState(false);
+
+  const handleSignOut = async () => {
+    setSignOutLoading(true);
+
+    try {
+      await supabase.auth.signOut();
+    } catch (signOutError) {
+      console.error("Sign out failed:", signOutError);
+    }
+
+    window.location.href = "/login";
+  };
 
   const goToDashboard = async () => {
     const {
@@ -163,10 +173,14 @@ export default function LoginPage() {
             >
               Go to Dashboard
             </button>
-            <SignOutButton
-              redirectTo="/login"
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={signOutLoading}
               className="w-full bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 font-medium text-sm px-4 py-2.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-            />
+            >
+              {signOutLoading ? "Signing out..." : "Sign Out"}
+            </button>
           </div>
         </div>
       </div>

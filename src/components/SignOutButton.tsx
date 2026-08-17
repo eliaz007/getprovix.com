@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createClient } from "@/utils/supabase/client";
 
 interface SignOutButtonProps {
   className?: string;
@@ -16,16 +17,23 @@ export default function SignOutButton({
 }: SignOutButtonProps) {
   const [loading, setLoading] = useState(false);
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     setLoading(true);
-    const next = encodeURIComponent(redirectTo);
-    window.location.href = `/auth/signout?next=${next}`;
+
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Sign out failed:", error);
+    }
+
+    window.location.href = redirectTo;
   };
 
   return (
     <button
       type="button"
-      onClick={handleSignOut}
+      onClick={() => void handleSignOut()}
       disabled={loading}
       className={className ?? DEFAULT_CLASSES}
     >
