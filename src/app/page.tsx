@@ -6,9 +6,16 @@ import type { User } from "@supabase/supabase-js";
 import { Code2, ChevronDown, Shield, ShieldCheck, Zap } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
+import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import {
-  formatAnonymizedName,
-  getAnonymizedInitials,
+  DEFAULT_PUBLIC_COUNTRY,
+  DEFAULT_PUBLIC_TIMEZONE,
+  generateCodenameAlias,
+} from "@/lib/alias-generator";
+import {
+  getPublicCandidateDisplayName,
+  getPublicCandidateInitials,
+  getPublicCandidateLocation,
 } from "@/lib/candidate-anonymization";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -18,6 +25,7 @@ import {
 } from "@/data/vetted-candidates";
 
 type PreviewCandidate = {
+  profileId: string;
   name: string;
   role: string;
   skills: string[];
@@ -25,7 +33,28 @@ type PreviewCandidate = {
   execution_score?: number | null;
   bio: string;
   repos_count?: number | null;
+  codenameAlias: string;
+  country: string;
+  timezone: string;
 };
+
+function buildPreviewCodename(input: {
+  profileId: string;
+  role: string;
+  codenameAlias?: string | null;
+  skills?: string[];
+}): string {
+  if (input.codenameAlias?.trim()) {
+    return input.codenameAlias.trim();
+  }
+
+  return generateCodenameAlias({
+    profileId: input.profileId,
+    role: input.role,
+    headline: input.role,
+    skills: input.skills,
+  });
+}
 
 const features = [
   {
@@ -71,27 +100,15 @@ const faqItems = [
   },
 ];
 
-function candidateHandle(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-
-  return slug ? `@${slug}` : "@vetted-builder";
-}
-
-function getCandidateInitials(name: string): string {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-}
-
 function mapVettedToPreview(candidate: VettedCandidateRecord): PreviewCandidate {
+  const codenameAlias = buildPreviewCodename({
+    profileId: candidate.id,
+    role: candidate.role,
+    skills: candidate.skills,
+  });
+
   return {
+    profileId: candidate.id,
     name: candidate.name,
     role: candidate.role,
     skills: candidate.skills,
@@ -99,6 +116,9 @@ function mapVettedToPreview(candidate: VettedCandidateRecord): PreviewCandidate 
     execution_score: candidate.execution_score,
     bio: candidate.bio,
     repos_count: candidate.repos_count,
+    codenameAlias,
+    country: DEFAULT_PUBLIC_COUNTRY,
+    timezone: DEFAULT_PUBLIC_TIMEZONE,
   };
 }
 
@@ -126,8 +146,20 @@ function normalizeCandidateRow(row: Record<string, unknown>): PreviewCandidate |
       : [];
 
   const bio = typeof row.bio === "string" ? row.bio.trim() : "";
+  const profileId =
+    (typeof row.id === "string" && row.id.trim()) ||
+    (typeof row.candidate_id === "string" && row.candidate_id.trim()) ||
+    name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const codenameAlias = buildPreviewCodename({
+    profileId,
+    role,
+    codenameAlias:
+      typeof row.codename_alias === "string" ? row.codename_alias : null,
+    skills,
+  });
 
   return {
+    profileId,
     name,
     role,
     skills,
@@ -142,6 +174,13 @@ function normalizeCandidateRow(row: Record<string, unknown>): PreviewCandidate |
     bio,
     repos_count:
       typeof row.repos_count === "number" ? row.repos_count : null,
+    codenameAlias,
+    country:
+      (typeof row.country === "string" && row.country.trim()) ||
+      DEFAULT_PUBLIC_COUNTRY,
+    timezone:
+      (typeof row.timezone === "string" && row.timezone.trim()) ||
+      DEFAULT_PUBLIC_TIMEZONE,
   };
 }
 
@@ -219,11 +258,13 @@ export default function Home() {
   const displayScore = resolveCandidateScore(displayCandidate);
   const displayMatchScore = Math.min(Math.max(displayScore, 88), 99);
   const displaySkills = displayCandidate.skills.slice(0, 5);
-  const anonymizedCandidateName = formatAnonymizedName({
+  const publicCandidateName = getPublicCandidateDisplayName({
+    codenameAlias: displayCandidate.codenameAlias,
+    candidateId: displayCandidate.profileId,
     fullName: displayCandidate.name,
-    candidateId: "PREVIEW",
   });
-  const candidateDisplayHandle = `@${anonymizedCandidateName
+  const publicCandidateLocation = getPublicCandidateLocation(displayCandidate);
+  const candidateDisplayHandle = `@${publicCandidateName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")}`;
@@ -362,17 +403,21 @@ export default function Home() {
                 <div className="flex items-start justify-between gap-4 mb-5">
                   <div className="flex items-start gap-4 min-w-0">
                     <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/10 border border-indigo-500/30 flex items-center justify-center text-base font-bold text-indigo-300 shrink-0">
-                      {getAnonymizedInitials({
+                      {getPublicCandidateInitials({
+                        codenameAlias: displayCandidate.codenameAlias,
+                        candidateId: displayCandidate.profileId,
                         fullName: displayCandidate.name,
-                        candidateId: "PREVIEW",
                       })}
                     </div>
                     <div className="min-w-0 text-left">
                       <p className="text-lg sm:text-xl font-bold text-white truncate">
-                        {anonymizedCandidateName}
+                        {publicCandidateName}
                       </p>
                       <p className="text-sm text-indigo-400 font-medium mt-0.5 truncate">
                         {candidateDisplayHandle}
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1 truncate">
+                        {publicCandidateLocation}
                       </p>
                       <p className="text-xs text-zinc-500 mt-1 truncate">
                         {displayCandidate.role}
@@ -394,6 +439,8 @@ export default function Home() {
                     GitHub audit complete
                   </span>
                 </div>
+
+                <LockedContactDossierBadge className="mb-5" />
 
                 <div className="flex flex-wrap gap-1.5 mb-5">
                   {displaySkills.length > 0 ? (

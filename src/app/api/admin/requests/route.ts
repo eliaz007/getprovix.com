@@ -5,7 +5,7 @@ const INTRO_REQUEST_COLUMNS =
   "id, candidate_name, candidate_id, company_name, work_email, role_title, compensation_band, status, terms_accepted, terms_agreed_at, created_at";
 
 const CANDIDATE_DOSSIER_COLUMNS =
-  "id, full_name, contact_email, email, phone, linkedin_url, portfolio_url, bio, major, headline, job_title";
+  "id, full_name, codename_alias, contact_email, email, phone, linkedin_url, portfolio_url, bio, major, headline, job_title, country, timezone";
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(

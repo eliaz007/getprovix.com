@@ -80,7 +80,9 @@ export default function RequestIntroModal({
     }
 
     if (!termsAccepted) {
-      setError("You must agree to the Provix terms of service and direct placement policy.");
+      setError(
+        "You must agree to the Provix Terms of Service & Placement Policy."
+      );
       return;
     }
 
@@ -236,9 +238,9 @@ export default function RequestIntroModal({
                 onMouseDown={(event) => event.stopPropagation()}
                 className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
               >
-                Provix terms of service
+                Provix Terms of Service &amp; Placement Policy
               </Link>{" "}
-              and direct placement policy.
+              (Employers are responsible for independent pre-hire verification).
             </span>
           </label>
 

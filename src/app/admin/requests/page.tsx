@@ -47,6 +47,7 @@ type IntroRequestRow = {
 type CandidateDossier = {
   id: string;
   full_name?: string | null;
+  codename_alias?: string | null;
   contact_email?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -455,9 +456,15 @@ export default function AdminIntroRequestsPage() {
                         <td className="px-5 py-4 align-top">
                           <div className="font-semibold text-white">
                             {request.candidate_dossier?.full_name ||
+                              request.candidate_dossier?.codename_alias ||
                               request.candidate_name ||
                               "Candidate"}
                           </div>
+                          {request.candidate_dossier?.codename_alias && (
+                            <div className="text-[11px] text-slate-500 mt-1">
+                              Public alias: {request.candidate_dossier.codename_alias}
+                            </div>
+                          )}
                           <div className="text-xs text-slate-400 mt-1">
                             {request.role_title}
                           </div>

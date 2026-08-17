@@ -21,10 +21,16 @@ import {
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import RequestIntroModal from "@/components/RequestIntroModal";
+import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import {
-  formatAnonymizedName,
-  getAnonymizedInitials,
+  buildCodenameAliasInputFromProfile,
+  generateCodenameAlias,
+} from "@/lib/alias-generator";
+import {
+  getPublicCandidateDisplayName,
+  getPublicCandidateInitials,
+  getPublicCandidateLocation,
   isIntroUnlockStatus,
   isIntroUnlockedForCandidate,
   splitFullName,
@@ -244,6 +250,9 @@ type ProfileRecord = {
   last_name?: string | null;
   headline?: string | null;
   availability?: string | null;
+  codename_alias?: string | null;
+  country?: string | null;
+  timezone?: string | null;
 };
 
 type InterviewCheatSheetQuestion = {
@@ -459,6 +468,9 @@ type TalentPoolCandidate = {
   firstName: string;
   lastName: string;
   headline: string;
+  codenameAlias: string;
+  country: string;
+  timezone: string;
   email?: string | null;
   phone?: string | null;
   linkedin_url?: string | null;
@@ -523,11 +535,14 @@ function candidateMatchesTalentSearch(
   }
 
   const searchableValues = [
+    candidate.codenameAlias,
     candidate.name,
     candidate.fullName,
     candidate.profileName,
     candidate.headline,
     candidate.bio,
+    candidate.role,
+    getPublicCandidateLocation(candidate),
     ...candidate.skills,
   ];
 
@@ -552,6 +567,9 @@ function mapProfileRowToTalentCandidate(
   const headline =
     row.headline?.trim() || row.job_title?.trim() || "Open Role Candidate";
   const availability = resolveProfileAvailability(row);
+  const codenameAlias =
+    row.codename_alias?.trim() ||
+    generateCodenameAlias(buildCodenameAliasInputFromProfile(row));
 
   return {
     id: `C-${shortId}`,
@@ -562,6 +580,9 @@ function mapProfileRowToTalentCandidate(
     firstName,
     lastName,
     headline,
+    codenameAlias,
+    country: row.country?.trim() || "United States",
+    timezone: row.timezone?.trim() || "MT (UTC-6)",
     email: resolveProfileContactEmail(row),
     phone: row.phone?.trim() || null,
     linkedin_url: row.linkedin_url?.trim() || (isLinkedIn ? portfolioUrl : null),
@@ -1041,10 +1062,29 @@ export default function DashboardPage() {
 
         console.log("Recruiter talent pool profiles:", data);
 
-        const mapped = (data ?? [])
-          .filter((row): row is ProfileRecord & { id: string } => !!row.id)
-          .filter(isProfileEligibleForTalentPool)
-          .map((row) => mapProfileRowToTalentCandidate(row));
+        const mapped = await Promise.all(
+          (data ?? [])
+            .filter((row): row is ProfileRecord & { id: string } => !!row.id)
+            .filter(isProfileEligibleForTalentPool)
+            .map(async (row) => {
+              let profileRow = row;
+
+              if (!row.codename_alias?.trim()) {
+                const codename_alias = generateCodenameAlias(
+                  buildCodenameAliasInputFromProfile(row)
+                );
+
+                await supabase
+                  .from("profiles")
+                  .update({ codename_alias })
+                  .eq("id", row.id);
+
+                profileRow = { ...row, codename_alias };
+              }
+
+              return mapProfileRowToTalentCandidate(profileRow);
+            })
+        );
 
         setCandidates(mapped);
       } catch (err) {
@@ -2111,12 +2151,25 @@ const showToast = (msg: string) => {
   };
 
   const getCandidatePublicName = (candidate: TalentPoolCandidate) =>
-    formatAnonymizedName({
+    getPublicCandidateDisplayName({
+      codenameAlias: candidate.codenameAlias,
       firstName: candidate.firstName,
       lastName: candidate.lastName,
       fullName: candidate.fullName,
-      candidateId: candidate.id,
+      candidateId: candidate.profileId ?? candidate.id,
     });
+
+  const getCandidatePublicInitials = (candidate: TalentPoolCandidate) =>
+    getPublicCandidateInitials({
+      codenameAlias: candidate.codenameAlias,
+      firstName: candidate.firstName,
+      lastName: candidate.lastName,
+      fullName: candidate.fullName,
+      candidateId: candidate.profileId ?? candidate.id,
+    });
+
+  const getCandidatePublicLocation = (candidate: TalentPoolCandidate) =>
+    getPublicCandidateLocation(candidate);
 
   const isCandidateUnlocked = (candidate: TalentPoolCandidate) =>
     isIntroUnlockedForCandidate(candidate, unlockedCandidateIds);
@@ -4963,12 +5016,8 @@ const showToast = (msg: string) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch">
                       {filteredCandidates.map((col) => {
                         const publicName = getCandidatePublicName(col);
-                        const initials = getAnonymizedInitials({
-                          firstName: col.firstName,
-                          lastName: col.lastName,
-                          fullName: col.fullName,
-                          candidateId: col.id,
-                        });
+                        const initials = getCandidatePublicInitials(col);
+                        const publicLocation = getCandidatePublicLocation(col);
                         const introUnlocked = isCandidateUnlocked(col);
 
                         return (
@@ -5002,6 +5051,9 @@ const showToast = (msg: string) => {
                               </h3>
                               <p className="text-xs text-indigo-400 font-medium mt-0.5">
                                 {col.role}
+                              </p>
+                              <p className="text-[11px] text-slate-500 mt-1">
+                                {publicLocation}
                               </p>
                               {!introUnlocked && (
                                 <div className="mt-2">
@@ -5153,17 +5205,14 @@ const showToast = (msg: string) => {
                 {(() => {
                   const introUnlocked = isCandidateUnlocked(selectedCandidate);
                   const publicName = getCandidatePublicName(selectedCandidate);
+                  const publicLocation =
+                    getCandidatePublicLocation(selectedCandidate);
                   const displayName = introUnlocked
                     ? selectedCandidate.fullName || selectedCandidate.name
                     : publicName;
                   const displayInitials = introUnlocked
                     ? getCandidateInitials(displayName)
-                    : getAnonymizedInitials({
-                        firstName: selectedCandidate.firstName,
-                        lastName: selectedCandidate.lastName,
-                        fullName: selectedCandidate.fullName,
-                        candidateId: selectedCandidate.id,
-                      });
+                    : getCandidatePublicInitials(selectedCandidate);
                   const projectLinks =
                     getCandidateProjectLinks(selectedCandidate);
                   const contactEmail = selectedCandidate.email?.trim() || null;
@@ -5183,6 +5232,9 @@ const showToast = (msg: string) => {
                       </h3>
                       <p className="text-xs text-indigo-400 font-medium mt-0.5">
                         {selectedCandidate.role}
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        {publicLocation}
                       </p>
                       {!introUnlocked && (
                         <div className="mt-2">
@@ -5306,21 +5358,7 @@ const showToast = (msg: string) => {
                       )}
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <VerifiedOnProvixPill className="mb-1" />
-                      {["LinkedIn", "GitHub", "Email", "Portfolio"].map((label) => (
-                        <div
-                          key={label}
-                          className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs"
-                        >
-                          <span className="text-zinc-500">{label}</span>
-                          <Lock className="w-3.5 h-3.5 text-zinc-500" aria-hidden />
-                        </div>
-                      ))}
-                      <p className="text-[11px] text-slate-500 leading-relaxed">
-                        Direct contact links unlock after your introduction request is approved.
-                      </p>
-                    </div>
+                    <LockedContactDossierBadge />
                   )}
                 </div>
 

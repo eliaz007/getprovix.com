@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
+import {
+  buildCodenameAliasInputFromProfile,
+  DEFAULT_PUBLIC_COUNTRY,
+  DEFAULT_PUBLIC_TIMEZONE,
+  generateCodenameAlias,
+} from "@/lib/alias-generator";
 import { createClient } from "@/utils/supabase/client";
 import {
   DEFAULT_EXPERIENCE_LEVEL,
@@ -120,6 +126,11 @@ export default function OnboardingPage() {
     setSaving(true);
 
     const supabase = createClient();
+    const codenameAlias = generateCodenameAlias({
+      profileId: user.id,
+      jobTitle,
+      headline: jobTitle,
+    });
     const { error: saveError } = await supabase.from("profiles").upsert({
       id: user.id,
       full_name: fullName,
@@ -127,6 +138,9 @@ export default function OnboardingPage() {
       job_title: jobTitle,
       experience_level: experienceLevel,
       role: "candidate",
+      codename_alias: codenameAlias,
+      country: DEFAULT_PUBLIC_COUNTRY,
+      timezone: DEFAULT_PUBLIC_TIMEZONE,
     });
 
     if (saveError) {

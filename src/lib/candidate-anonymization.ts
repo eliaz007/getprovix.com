@@ -1,3 +1,16 @@
+import {
+  formatPublicLocation,
+  generateCodenameAlias,
+  getCodenameInitials,
+} from "@/lib/alias-generator";
+
+export {
+  CONTACT_DOSSIER_LOCK_MESSAGE,
+  formatPublicLocation,
+  generateCodenameAlias,
+  getCodenameInitials,
+} from "@/lib/alias-generator";
+
 export function splitFullName(fullName: string): {
   firstName: string;
   lastName: string;
@@ -16,55 +29,49 @@ export function splitFullName(fullName: string): {
   };
 }
 
-export type AnonymizedNameInput = {
+export type PublicCandidateIdentity = {
+  codenameAlias?: string | null;
   firstName?: string | null;
   lastName?: string | null;
   fullName?: string | null;
   candidateId?: string | null;
+  country?: string | null;
+  timezone?: string | null;
 };
 
-export function formatAnonymizedName(input: AnonymizedNameInput): string {
-  const firstName = input.firstName?.trim();
-  const lastName = input.lastName?.trim();
-
-  if (firstName && lastName) {
-    return `${firstName} ${lastName.charAt(0).toUpperCase()}.`;
+export function getPublicCandidateDisplayName(
+  candidate: PublicCandidateIdentity
+): string {
+  const alias = candidate.codenameAlias?.trim();
+  if (alias) {
+    return alias;
   }
 
-  if (firstName) {
-    return firstName;
-  }
-
-  const parsed = splitFullName(input.fullName?.trim() || "");
-  if (parsed.firstName && parsed.lastName) {
-    return `${parsed.firstName} ${parsed.lastName.charAt(0).toUpperCase()}.`;
-  }
-
-  if (parsed.firstName) {
-    return parsed.firstName;
-  }
-
-  const candidateId = input.candidateId?.trim();
-  if (candidateId) {
-    const numeric = candidateId.replace(/\D/g, "");
-    return numeric ? `Candidate #${numeric}` : candidateId;
-  }
-
-  return "Candidate";
+  return generateCodenameAlias({
+    profileId:
+      candidate.candidateId?.replace(/^C-/i, "") ||
+      candidate.fullName ||
+      "candidate",
+    headline: candidate.fullName,
+  });
 }
 
-export function getAnonymizedInitials(input: AnonymizedNameInput): string {
-  const displayName = formatAnonymizedName(input);
+export function getPublicCandidateInitials(
+  candidate: PublicCandidateIdentity
+): string {
+  const alias = candidate.codenameAlias?.trim();
+  if (alias) {
+    return getCodenameInitials(alias);
+  }
 
-  return (
-    displayName
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part.replace(/[^A-Za-z0-9]/g, "").charAt(0)?.toUpperCase())
-      .filter(Boolean)
-      .join("") || "??"
-  );
+  const generated = getPublicCandidateDisplayName(candidate);
+  return getCodenameInitials(generated);
+}
+
+export function getPublicCandidateLocation(
+  candidate: Pick<PublicCandidateIdentity, "country" | "timezone">
+): string {
+  return formatPublicLocation(candidate.country, candidate.timezone);
 }
 
 export function normalizeCandidateProfileKey(
