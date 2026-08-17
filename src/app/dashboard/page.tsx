@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import {
   AlertTriangle,
@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
+  PenTool,
+  Terminal,
 } from "lucide-react";
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { ProvixLogo } from "@/components/ProvixLogo";
@@ -776,6 +778,7 @@ function resolveAccountRole(
 
 export default function DashboardPage() {
   const router = useRouter();
+  const pathname = usePathname();
 
   // Global Navigation State
   const [activeTab, setActiveTab] = useState<DashboardTab>("my_profile");
@@ -2656,20 +2659,32 @@ const showToast = (msg: string) => {
           </nav>
         </div>
 
-        {/* Admissions Hub — candidates only (not employees or employers) */}
+        {/* Career Accelerator — candidates only (not employees or employers) */}
         {!isBusinessAccount && !isEmployeeAccount && (
         <div>
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">College Prep</span>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">Career Accelerator</span>
           <nav className="space-y-1">
-            <button onClick={() => setActiveTab("essay-studio")} className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${activeTab === "essay-studio" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}>
-              <Icons.Pen /> Essay Studio
-            </button>
-            <button onClick={() => setActiveTab("aid-appeals")} className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${activeTab === "aid-appeals" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}>
-              <FileText className="w-4 h-4" aria-hidden="true" /> Appeal Strategist
-            </button>
-            <button onClick={() => setActiveTab("college-fit")} className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${activeTab === "college-fit" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}>
-              <Icons.GraduationCap /> College Fit AI
-            </button>
+            <Link
+              href="/dashboard/pitch-studio"
+              onClick={() => setMobileNavOpen(false)}
+              className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${pathname === "/dashboard/pitch-studio" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}
+            >
+              <PenTool className="w-4 h-4" aria-hidden="true" /> Pitch Studio
+            </Link>
+            <Link
+              href="/dashboard/auditor"
+              onClick={() => setMobileNavOpen(false)}
+              className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${pathname === "/dashboard/auditor" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}
+            >
+              <ShieldCheck className="w-4 h-4" aria-hidden="true" /> GitHub &amp; Resume Auditor
+            </Link>
+            <Link
+              href="/dashboard/interview-prep"
+              onClick={() => setMobileNavOpen(false)}
+              className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${pathname === "/dashboard/interview-prep" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}
+            >
+              <Terminal className="w-4 h-4" aria-hidden="true" /> Interview Simulator
+            </Link>
           </nav>
         </div>
         )}
