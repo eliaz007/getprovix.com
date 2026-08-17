@@ -26,6 +26,7 @@ export type IntroRequestCandidate = {
 type RequestIntroModalProps = {
   open: boolean;
   candidate: IntroRequestCandidate | null;
+  defaultRoleTitle?: string;
   onClose: () => void;
   onSuccess: () => void;
 };
@@ -33,6 +34,7 @@ type RequestIntroModalProps = {
 export default function RequestIntroModal({
   open,
   candidate,
+  defaultRoleTitle = "",
   onClose,
   onSuccess,
 }: RequestIntroModalProps) {
@@ -53,8 +55,11 @@ export default function RequestIntroModal({
       setTermsAccepted(false);
       setSubmitting(false);
       setError(null);
+      return;
     }
-  }, [open, candidate?.id]);
+
+    setRoleTitle(defaultRoleTitle.trim());
+  }, [open, candidate?.id, defaultRoleTitle]);
 
   if (!open || !candidate) {
     return null;
@@ -103,11 +108,7 @@ export default function RequestIntroModal({
 
       const payload = {
         user_id: user.id,
-        candidate_name:
-          candidate.full_name ||
-          candidate.fullName ||
-          candidate.name ||
-          "Candidate",
+        candidate_name: candidate.name || "Candidate",
         candidate_id: candidate.profileId ?? candidate.id,
         company_name: trimmedCompanyName,
         work_email: trimmedWorkEmail,

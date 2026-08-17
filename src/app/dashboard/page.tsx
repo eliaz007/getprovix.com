@@ -21,6 +21,9 @@ import {
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import RequestIntroModal from "@/components/RequestIntroModal";
+import JobApplicantsDrawer, {
+  type JobApplicantView,
+} from "@/components/JobApplicantsDrawer";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import {
@@ -810,6 +813,11 @@ export default function DashboardPage() {
   const [betaAccessUnlocked, setBetaAccessUnlocked] = useState(false);
   const [introModalCandidate, setIntroModalCandidate] =
     useState<TalentPoolCandidate | null>(null);
+  const [introDefaultRoleTitle, setIntroDefaultRoleTitle] = useState("");
+  const [applicantsDrawerJob, setApplicantsDrawerJob] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
   const [unlockedCandidateIds, setUnlockedCandidateIds] = useState<Set<string>>(
     new Set()
   );
@@ -2153,7 +2161,59 @@ const showToast = (msg: string) => {
   };
 
   const openIntroModal = (candidate: TalentPoolCandidate) => {
+    setIntroDefaultRoleTitle("");
     setIntroModalCandidate(candidate);
+  };
+
+  const openApplicantsDrawer = (listing: {
+    id: string;
+    title: string;
+    applicants: number;
+  }) => {
+    if (listing.applicants <= 0) {
+      return;
+    }
+
+    setApplicantsDrawerJob({ id: listing.id, title: listing.title });
+  };
+
+  const handleApplicantIntroRequest = (applicant: JobApplicantView) => {
+    const roleTitle = applicantsDrawerJob?.title ?? applicant.headline;
+    const parsedScore = Number.parseInt(
+      applicant.aiScoreLabel.replace(/\D/g, ""),
+      10
+    );
+    const codename = applicant.codenameAlias;
+    const introCandidate: TalentPoolCandidate = {
+      id: `C-${applicant.profileId.replace(/-/g, "").slice(0, 3).toUpperCase()}`,
+      profileId: applicant.profileId,
+      name: codename,
+      fullName: codename,
+      profileName: codename,
+      firstName: codename.split(/\s+/)[0] ?? codename,
+      lastName: codename.split(/\s+/).slice(1).join(" "),
+      headline: applicant.headline,
+      codenameAlias: codename,
+      country: applicant.location,
+      timezone: applicant.location,
+      role: applicant.headline,
+      major: "Credentials on file",
+      skills: applicant.skills,
+      rating: applicant.aiScoreLabel,
+      execution_score: Number.isFinite(parsedScore) ? parsedScore : 94,
+      status: "Available Now",
+      experienceLevel: DEFAULT_EXPERIENCE_LEVEL,
+      roleType: "General",
+      availability: "Available Now",
+      bio: "Candidate expressed interest in this role via Provix.",
+      github: "",
+      demoVideo: "",
+      projects: [],
+    };
+
+    setApplicantsDrawerJob(null);
+    setIntroDefaultRoleTitle(roleTitle);
+    setIntroModalCandidate(introCandidate);
   };
 
   const handleIntroRequestSuccess = () => {
@@ -3185,9 +3245,18 @@ const showToast = (msg: string) => {
                           <span className="font-bold text-sm text-white block">
                             {listing.title}
                           </span>
-                          <span className="text-[11px] text-slate-500">
-                            {listing.department} · {listing.applicants} interested
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => openApplicantsDrawer(listing)}
+                            disabled={listing.applicants <= 0}
+                            className={`text-[11px] mt-1 font-bold transition-colors ${
+                              listing.applicants > 0
+                                ? "text-indigo-400 hover:text-indigo-300 cursor-pointer"
+                                : "text-slate-600 cursor-not-allowed"
+                            }`}
+                          >
+                            Interested ({listing.applicants})
+                          </button>
                         </div>
                         <button
                           type="button"
@@ -5933,19 +6002,31 @@ const showToast = (msg: string) => {
           </div>
         )}
 
+        <JobApplicantsDrawer
+          open={Boolean(applicantsDrawerJob)}
+          jobId={applicantsDrawerJob?.id ?? null}
+          jobTitle={applicantsDrawerJob?.title ?? "Role"}
+          employerId={user?.id ?? null}
+          onClose={() => setApplicantsDrawerJob(null)}
+          onRequestIntro={handleApplicantIntroRequest}
+        />
+
         <RequestIntroModal
           open={Boolean(introModalCandidate)}
+          defaultRoleTitle={introDefaultRoleTitle}
           candidate={
             introModalCandidate
               ? {
                   id: introModalCandidate.id,
                   profileId: introModalCandidate.profileId,
                   name: getCandidatePublicName(introModalCandidate),
-                  fullName: introModalCandidate.fullName,
                 }
               : null
           }
-          onClose={() => setIntroModalCandidate(null)}
+          onClose={() => {
+            setIntroModalCandidate(null);
+            setIntroDefaultRoleTitle("");
+          }}
           onSuccess={handleIntroRequestSuccess}
         />
 
