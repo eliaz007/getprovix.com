@@ -126,27 +126,36 @@ export default function AdminIntroRequestsPage() {
     setRequestsLoading(true);
     setError(null);
 
-    const { data, error: fetchError } = await supabase
-      .from("intro_requests")
-      .select(
-        "id, candidate_name, candidate_id, company_name, work_email, role_title, compensation_band, status, created_at"
-      )
-      .order("created_at", { ascending: false });
+    try {
+      const response = await fetch("/api/admin/requests", {
+        method: "GET",
+        credentials: "include",
+      });
 
-    if (fetchError) {
+      const payload = (await response.json()) as {
+        data?: IntroRequestRow[];
+        error?: string;
+      };
+
+      if (!response.ok) {
+        setError(payload.error || "Could not load intro requests. Please try again.");
+        setRequests([]);
+        setRequestsLoading(false);
+        return;
+      }
+
+      setRequests(
+        (payload.data ?? []).map((row) => ({
+          ...row,
+          status: normalizeStatus(row.status),
+        }))
+      );
+    } catch {
       setError("Could not load intro requests. Please try again.");
       setRequests([]);
+    } finally {
       setRequestsLoading(false);
-      return;
     }
-
-    setRequests(
-      (data ?? []).map((row) => ({
-        ...row,
-        status: normalizeStatus(row.status),
-      }))
-    );
-    setRequestsLoading(false);
   }, []);
 
   useEffect(() => {

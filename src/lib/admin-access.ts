@@ -38,9 +38,5 @@ export function createServiceRoleClient() {
 }
 
 export function isAllowedAdminUser(user: User | null | undefined): boolean {
-  if (process.env.NODE_ENV === "development") {
-    return true;
-  }
-
   return isAdminUser(user);
 }

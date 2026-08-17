@@ -42,6 +42,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [showResetPassword, setShowResetPassword] = useState(false);
 
   useEffect(() => {
     const handleSession = (session: Session | null) => {
@@ -69,8 +70,29 @@ export default function LoginPage() {
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode);
     setSignUpType("candidate");
+    setShowResetPassword(false);
     setError(null);
     setMessage(null);
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+    setLoading(true);
+
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/callback?next=/update-password`,
+    });
+
+    setLoading(false);
+
+    if (resetError) {
+      setError(resetError.message);
+      return;
+    }
+
+    setMessage("Check your email for a password reset link.");
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -142,14 +164,17 @@ export default function LoginPage() {
             </Link>
           </div>
           <h1 className="text-2xl font-semibold text-white tracking-tight text-center">
-            Welcome to Provix
+            {showResetPassword ? "Reset Password" : "Welcome to Provix"}
           </h1>
           <p className="text-sm text-zinc-400 text-center mb-8">
-            {mode === "sign-in"
+            {showResetPassword
+              ? "Enter your email and we'll send you a reset link."
+              : mode === "sign-in"
               ? "Sign in to access your account"
               : "Create an account to get started"}
           </p>
 
+          {!showResetPassword && (
           <div className="grid grid-cols-2 gap-1 bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-6">
             <button
               type="button"
@@ -174,8 +199,9 @@ export default function LoginPage() {
               Sign Up
             </button>
           </div>
+          )}
 
-          {mode === "sign-up" && (
+          {!showResetPassword && mode === "sign-up" && (
             <div className="grid grid-cols-2 gap-1 bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-6">
               <button
                 type="button"
@@ -213,6 +239,45 @@ export default function LoginPage() {
             </div>
           )}
 
+          {showResetPassword ? (
+            <form className="flex flex-col gap-4" onSubmit={handleResetPasswordSubmit}>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="resetEmail" className="text-sm font-medium text-zinc-300">
+                  Email
+                </label>
+                <input
+                  id="resetEmail"
+                  type="email"
+                  name="resetEmail"
+                  placeholder="name@example.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors mt-2 cursor-pointer"
+              >
+                {loading ? "Sending..." : "Send Reset Link"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetPassword(false);
+                  setError(null);
+                  setMessage(null);
+                }}
+                className="text-sm text-indigo-400 hover:text-indigo-300 font-medium transition-colors cursor-pointer text-center"
+              >
+                ← Back to Sign In
+              </button>
+            </form>
+          ) : (
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             {mode === "sign-up" && (
               <div className="grid grid-cols-2 gap-4">
@@ -294,6 +359,21 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
+              {mode === "sign-in" && (
+                <div className="flex justify-end -mt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowResetPassword(true);
+                      setError(null);
+                      setMessage(null);
+                    }}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
             </div>
 
             <button
@@ -330,7 +410,9 @@ export default function LoginPage() {
               </p>
             )}
           </form>
+          )}
 
+          {!showResetPassword && (
           <p className="mt-6 pt-6 border-t border-zinc-800 text-center text-sm text-zinc-400">
             {mode === "sign-in" ? (
               <>
@@ -356,6 +438,7 @@ export default function LoginPage() {
               </>
             )}
           </p>
+          )}
         </div>
       </div>
     </div>

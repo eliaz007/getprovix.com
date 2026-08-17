@@ -1,33 +1,33 @@
 import { NextResponse } from "next/server";
-import { isAllowedAdminUser } from "@/lib/admin-access";
-import { createClient } from "@/utils/supabase/server";
+import {
+  parseIntroRequestId,
+  requireAdminApiAccess,
+} from "@/lib/admin-api-auth";
 
 type AdminActionBody = {
+  id?: string;
   requestId?: string;
+  introId?: string;
 };
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!isAllowedAdminUser(user)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const access = await requireAdminApiAccess();
+    if (access instanceof NextResponse) {
+      return access;
     }
 
     const body = (await request.json()) as AdminActionBody;
-    const requestId = body.requestId?.trim();
+    const requestId = parseIntroRequestId(body);
 
     if (!requestId) {
       return NextResponse.json(
-        { error: "requestId is required" },
+        { error: "Intro request id is required" },
         { status: 400 }
       );
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await access.dataClient
       .from("intro_requests")
       .update({ status: "rejected" })
       .eq("id", requestId);

@@ -1,8 +1,9 @@
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
-import { isAllowedAdminUser } from "@/lib/admin-access";
-import { createClient } from "@/utils/supabase/server";
+import {
+  parseIntroRequestId,
+  requireAdminApiAccess,
+} from "@/lib/admin-api-auth";
 
 type AdminActionBody = {
   id?: string;
@@ -67,29 +68,6 @@ function buildIntroEmailHtml(input: {
   `.trim();
 }
 
-async function createDataClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    return createClient();
-  }
-
-  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return createSupabaseClient(supabaseUrl, supabaseKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-  }
-
-  // Use the cookie-backed session client so admin RLS policies still apply.
-  return createClient();
-}
-
 async function sendIntroEmail(introRequest: IntroRequestRecord): Promise<void> {
   try {
     const resendApiKey = process.env.RESEND_API_KEY;
@@ -137,17 +115,13 @@ async function sendIntroEmail(introRequest: IntroRequestRecord): Promise<void> {
 
 export async function POST(request: Request) {
   try {
-    const authClient = await createClient();
-    const {
-      data: { user },
-    } = await authClient.auth.getUser();
-
-    if (!isAllowedAdminUser(user)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const access = await requireAdminApiAccess();
+    if (access instanceof NextResponse) {
+      return access;
     }
 
     const body = (await request.json()) as AdminActionBody;
-    const requestId = (body.requestId || body.id || body.introId)?.trim();
+    const requestId = parseIntroRequestId(body);
 
     if (!requestId) {
       return NextResponse.json(
@@ -156,8 +130,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = await createDataClient();
-    const { data: updatedRequest, error: updateError } = await supabase
+    const { data: updatedRequest, error: updateError } = await access.dataClient
       .from("intro_requests")
       .update({ status: "APPROVED" })
       .eq("id", requestId)
