@@ -108,7 +108,9 @@ export default function AdminIntroRequestsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [copiedEmailId, setCopiedEmailId] = useState<string | null>(null);
 
   const fetchRequests = useCallback(async () => {
@@ -154,7 +156,12 @@ export default function AdminIntroRequestsPage() {
         return;
       }
 
-      if (!user) {
+      const isAdmin =
+        !!user &&
+        (user.email === "eliasdiangelo91@gmail.com" ||
+          user.user_metadata?.role === "admin");
+
+      if (!isAdmin) {
         router.replace("/login");
         return;
       }
@@ -198,10 +205,11 @@ export default function AdminIntroRequestsPage() {
 
   const updateRequestStatus = async (
     id: string,
-    status: "approved" | "rejected"
+    status: "rejected"
   ) => {
     setUpdatingId(id);
     setError(null);
+    setSuccessMessage(null);
 
     const supabase = createClient();
     const { error: updateError } = await supabase
@@ -221,6 +229,43 @@ export default function AdminIntroRequestsPage() {
       )
     );
     setUpdatingId(null);
+  };
+
+  const handleApprove = async (id: string) => {
+    setApprovingId(id);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const response = await fetch("/api/send-intro", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ requestId: id }),
+      });
+
+      const payload = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.success) {
+        setError(payload.error || "Could not approve and send intro email.");
+        return;
+      }
+
+      setRequests((current) =>
+        current.map((request) =>
+          request.id === id ? { ...request, status: "approved" } : request
+        )
+      );
+      setSuccessMessage("Intro email sent and request approved.");
+    } catch {
+      setError("Could not approve and send intro email.");
+    } finally {
+      setApprovingId(null);
+    }
   };
 
   const handleCopyEmail = async (id: string, email: string) => {
@@ -319,6 +364,12 @@ export default function AdminIntroRequestsPage() {
           </div>
         )}
 
+        {successMessage && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-300">
+            {successMessage}
+          </div>
+        )}
+
         <div className="bg-[#111111] rounded-2xl border border-slate-800/60 shadow-2xl overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center gap-3 py-20 text-sm text-slate-400">
@@ -348,6 +399,7 @@ export default function AdminIntroRequestsPage() {
                   {filteredRequests.map((request) => {
                     const email = request.work_email ?? "";
                     const isUpdating = updatingId === request.id;
+                    const isApproving = approvingId === request.id;
 
                     return (
                       <tr
@@ -410,19 +462,30 @@ export default function AdminIntroRequestsPage() {
                             <button
                               type="button"
                               disabled={
-                                isUpdating || request.status === "approved"
+                                isApproving ||
+                                isUpdating ||
+                                request.status === "approved"
                               }
-                              onClick={() =>
-                                void updateRequestStatus(request.id, "approved")
-                              }
-                              className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              onClick={() => void handleApprove(request.id)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             >
-                              Approve
+                              {isApproving ? (
+                                <>
+                                  <Loader2
+                                    className="w-3.5 h-3.5 animate-spin"
+                                    aria-hidden
+                                  />
+                                  Sending...
+                                </>
+                              ) : (
+                                "Approve"
+                              )}
                             </button>
                             <button
                               type="button"
                               disabled={
                                 isUpdating ||
+                                isApproving ||
                                 request.status === "rejected" ||
                                 request.status === "declined"
                               }
