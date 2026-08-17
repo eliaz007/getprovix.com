@@ -1,9 +1,7 @@
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
-import {
-  createServiceRoleClient,
-  isAllowedAdminUser,
-} from "@/lib/admin-access";
+import { isAllowedAdminUser } from "@/lib/admin-access";
 import { createClient } from "@/utils/supabase/server";
 
 type AdminActionBody = {
@@ -69,19 +67,87 @@ function buildIntroEmailHtml(input: {
   `.trim();
 }
 
+async function createDataClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    return createClient();
+  }
+
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return createSupabaseClient(supabaseUrl, supabaseKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+  }
+
+  // Use the cookie-backed session client so admin RLS policies still apply.
+  return createClient();
+}
+
+async function sendIntroEmail(introRequest: IntroRequestRecord): Promise<void> {
+  try {
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) {
+      console.warn(
+        "Admin approve: RESEND_API_KEY is not set; skipping intro email."
+      );
+      return;
+    }
+
+    const workEmail = introRequest.work_email?.trim();
+    if (!workEmail) {
+      console.warn(
+        "Admin approve: intro request has no work email; skipping intro email."
+      );
+      return;
+    }
+
+    const candidateName = introRequest.candidate_name?.trim() || "Candidate";
+    const companyName = introRequest.company_name?.trim() || "your company";
+    const roleTitle = introRequest.role_title?.trim() || "Open role";
+    const compensationBand =
+      introRequest.compensation_band?.trim() || "Not specified";
+
+    const resend = new Resend(resendApiKey);
+    const { error: emailError } = await resend.emails.send({
+      from: "onboarding@resend.dev",
+      to: workEmail,
+      subject: `Intro: ${candidateName} x ${companyName}`,
+      html: buildIntroEmailHtml({
+        candidateName,
+        companyName,
+        roleTitle,
+        compensationBand,
+      }),
+    });
+
+    if (emailError) {
+      console.warn("Admin approve email warning:", emailError);
+    }
+  } catch (emailError) {
+    console.warn("Admin approve email warning:", emailError);
+  }
+}
+
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
+    const authClient = await createClient();
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await authClient.auth.getUser();
 
     if (!isAllowedAdminUser(user)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = (await request.json()) as AdminActionBody;
-    const requestId = (body.id || body.requestId || body.introId)?.trim();
+    const requestId = (body.requestId || body.id || body.introId)?.trim();
 
     if (!requestId) {
       return NextResponse.json(
@@ -90,15 +156,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabaseAdmin = createServiceRoleClient();
-    if (!supabaseAdmin) {
-      return NextResponse.json(
-        { error: "Server configuration error" },
-        { status: 500 }
-      );
-    }
-
-    const { data, error: updateError } = await supabaseAdmin
+    const supabase = await createDataClient();
+    const { data: updatedRequest, error: updateError } = await supabase
       .from("intro_requests")
       .update({ status: "APPROVED" })
       .eq("id", requestId)
@@ -113,52 +172,19 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!data) {
+    if (!updatedRequest) {
       return NextResponse.json(
         { error: "Intro request not found" },
         { status: 404 }
       );
     }
 
-    const introRequest = data as IntroRequestRecord;
-    const resendApiKey = process.env.RESEND_API_KEY;
+    await sendIntroEmail(updatedRequest as IntroRequestRecord);
 
-    if (resendApiKey) {
-      const workEmail = introRequest.work_email?.trim();
-
-      if (workEmail) {
-        const candidateName =
-          introRequest.candidate_name?.trim() || "Candidate";
-        const companyName =
-          introRequest.company_name?.trim() || "your company";
-        const roleTitle = introRequest.role_title?.trim() || "Open role";
-        const compensationBand =
-          introRequest.compensation_band?.trim() || "Not specified";
-
-        const resend = new Resend(resendApiKey);
-        const { error: emailError } = await resend.emails.send({
-          from: "onboarding@resend.dev",
-          to: workEmail,
-          subject: `Intro: ${candidateName} x ${companyName}`,
-          html: buildIntroEmailHtml({
-            candidateName,
-            companyName,
-            roleTitle,
-            compensationBand,
-          }),
-        });
-
-        if (emailError) {
-          console.error("Admin approve email error:", emailError);
-          return NextResponse.json(
-            { error: "Status updated but failed to send intro email" },
-            { status: 500 }
-          );
-        }
-      }
-    }
-
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json(
+      { success: true, data: updatedRequest },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("Admin approve error:", error);
     return NextResponse.json(

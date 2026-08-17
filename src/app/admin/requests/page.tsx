@@ -270,8 +270,8 @@ export default function AdminIntroRequestsPage() {
     }
   };
 
-  const handleApprove = async (id: string) => {
-    setApprovingId(id);
+  const handleApprove = async (requestId: string) => {
+    setApprovingId(requestId);
     setError(null);
     setSuccessMessage(null);
 
@@ -282,7 +282,7 @@ export default function AdminIntroRequestsPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id, requestId: id }),
+        body: JSON.stringify({ id: requestId, requestId }),
       });
 
       const payload = (await response.json()) as {
@@ -292,13 +292,14 @@ export default function AdminIntroRequestsPage() {
       };
 
       if (!response.ok || !payload.success) {
+        console.error("Admin approve failed:", payload);
         setError(payload.error || "Could not approve and send intro email.");
         return;
       }
 
       setRequests((current) =>
         current.map((request) =>
-          request.id === id
+          request.id === requestId
             ? {
                 ...request,
                 status: normalizeStatus(payload.data?.status ?? "approved"),
@@ -307,7 +308,8 @@ export default function AdminIntroRequestsPage() {
         )
       );
       setSuccessMessage("Intro email sent and request approved.");
-    } catch {
+    } catch (approveError) {
+      console.error("Admin approve failed:", approveError);
       setError("Could not approve and send intro email.");
     } finally {
       setApprovingId(null);
