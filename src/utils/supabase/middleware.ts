@@ -90,6 +90,8 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isDashboard =
     pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  const isAdmin =
+    pathname === "/admin" || pathname.startsWith("/admin/");
   const isLogin =
     pathname === "/login" || pathname.startsWith("/login/");
   const isHome = pathname === "/";
@@ -103,6 +105,10 @@ export async function updateSession(request: NextRequest) {
 
   // Protected routes: no session → login (cookies still copied on redirect).
   if (isDashboard && !user) {
+    return redirectWithSessionCookies(request, supabaseResponse, "/login");
+  }
+
+  if (isAdmin && !user) {
     return redirectWithSessionCookies(request, supabaseResponse, "/login");
   }
 
