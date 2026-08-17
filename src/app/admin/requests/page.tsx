@@ -57,6 +57,29 @@ type CandidateDossier = {
 };
 
 type StatusFilter = "all" | "pending" | "approved" | "rejected";
+type PipelineTab = "intros" | "job_interest";
+
+type JobInterestApplicant = {
+  id: string;
+  candidate_id: string;
+  created_at: string;
+  candidate_dossier?: CandidateDossier | null;
+};
+
+type JobInterestRow = {
+  job_id: string;
+  title: string;
+  company: string | null;
+  employer_id: string;
+  created_at: string;
+  interest_count: number;
+  applicants: JobInterestApplicant[];
+};
+
+const PIPELINE_TABS: { id: PipelineTab; label: string }[] = [
+  { id: "intros", label: "Warm Intros" },
+  { id: "job_interest", label: "Job Interest" },
+];
 
 const STATUS_TABS: { id: StatusFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -135,6 +158,9 @@ export default function AdminIntroRequestsPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [copiedEmailId, setCopiedEmailId] = useState<string | null>(null);
+  const [pipelineTab, setPipelineTab] = useState<PipelineTab>("intros");
+  const [jobInterestLoading, setJobInterestLoading] = useState(false);
+  const [jobInterestRows, setJobInterestRows] = useState<JobInterestRow[]>([]);
 
   const fetchRequests = useCallback(async () => {
     setRequestsLoading(true);
@@ -188,6 +214,56 @@ export default function AdminIntroRequestsPage() {
       setRequests([]);
     } finally {
       setRequestsLoading(false);
+    }
+  }, []);
+
+  const fetchJobInterest = useCallback(async () => {
+    setJobInterestLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/admin/job-applications", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      let payload: { data?: JobInterestRow[]; error?: string } = {};
+      try {
+        payload = (await response.json()) as {
+          data?: JobInterestRow[];
+          error?: string;
+        };
+      } catch (parseError) {
+        console.error("Admin job interest response parse failed:", parseError);
+      }
+
+      if (response.status === 401) {
+        setAuthState("unauthenticated");
+        setJobInterestRows([]);
+        return;
+      }
+
+      if (response.status === 403) {
+        setAuthState("unauthorized");
+        setError("Unauthorized: Admin access required.");
+        setJobInterestRows([]);
+        return;
+      }
+
+      if (!response.ok) {
+        setError(payload.error || "Could not load job interest submissions.");
+        setJobInterestRows([]);
+        return;
+      }
+
+      setJobInterestRows(payload.data ?? []);
+    } catch (fetchError) {
+      console.error("Admin job interest fetch failed:", fetchError);
+      setError("Could not load job interest submissions.");
+      setJobInterestRows([]);
+    } finally {
+      setJobInterestLoading(false);
     }
   }, []);
 
@@ -258,8 +334,13 @@ export default function AdminIntroRequestsPage() {
       return;
     }
 
-    void fetchRequests();
-  }, [authState, fetchRequests]);
+    if (pipelineTab === "intros") {
+      void fetchRequests();
+      return;
+    }
+
+    void fetchJobInterest();
+  }, [authState, pipelineTab, fetchRequests, fetchJobInterest]);
 
   const filteredRequests = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -286,6 +367,28 @@ export default function AdminIntroRequestsPage() {
       return haystack.includes(query);
     });
   }, [requests, searchQuery, statusFilter]);
+
+  const filteredJobInterestRows = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return jobInterestRows.filter((row) => {
+      if (!query) {
+        return true;
+      }
+
+      const haystack = [row.title, row.company]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+  }, [jobInterestRows, searchQuery]);
+
+  const totalJobInterestCount = useMemo(
+    () => jobInterestRows.reduce((sum, row) => sum + row.interest_count, 0),
+    [jobInterestRows]
+  );
 
   const updateRequestStatus = async (id: string, status: "rejected") => {
     setUpdatingId(id);
@@ -444,17 +547,40 @@ export default function AdminIntroRequestsPage() {
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-3xl font-extrabold tracking-tight text-white">
-                Warm Intro Pipeline
+                Admin Pipeline
               </h1>
               <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-800/60 px-3 py-1 text-xs font-bold text-slate-300">
-                {filteredRequests.length} shown
+                {pipelineTab === "intros"
+                  ? `${filteredRequests.length} intro requests`
+                  : `${totalJobInterestCount} interested candidates`}
               </span>
             </div>
             <p className="text-slate-400 text-sm mt-2">
-              Review employer warm intro requests and approve or reject pipeline
-              entries.
+              {pipelineTab === "intros"
+                ? "Review employer warm intro requests and approve or reject pipeline entries."
+                : "See which candidates expressed interest in each posted role."}
             </p>
           </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {PIPELINE_TABS.map((tab) => {
+            const isActive = pipelineTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setPipelineTab(tab.id)}
+                className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${
+                  isActive
+                    ? "bg-indigo-600 text-white"
+                    : "bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-5 shadow-2xl space-y-4">
@@ -467,30 +593,36 @@ export default function AdminIntroRequestsPage() {
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search candidate, company, or email..."
+              placeholder={
+                pipelineTab === "intros"
+                  ? "Search candidate, company, or email..."
+                  : "Search job title or company..."
+              }
               className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {STATUS_TABS.map((tab) => {
-              const isActive = statusFilter === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setStatusFilter(tab.id)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
-                    isActive
-                      ? "bg-indigo-600 text-white"
-                      : "bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
+          {pipelineTab === "intros" && (
+            <div className="flex flex-wrap gap-2">
+              {STATUS_TABS.map((tab) => {
+                const isActive = statusFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setStatusFilter(tab.id)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                      isActive
+                        ? "bg-indigo-600 text-white"
+                        : "bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {error && (
@@ -506,7 +638,94 @@ export default function AdminIntroRequestsPage() {
         )}
 
         <div className="bg-[#111111] rounded-2xl border border-slate-800/60 shadow-2xl overflow-hidden">
-          {requestsLoading ? (
+          {pipelineTab === "job_interest" ? (
+            jobInterestLoading ? (
+              <div className="flex items-center justify-center gap-3 py-20 text-sm text-slate-400">
+                <Loader2 className="w-5 h-5 animate-spin text-indigo-400" aria-hidden />
+                Loading job interest submissions...
+              </div>
+            ) : filteredJobInterestRows.length === 0 ? (
+              <div className="py-20 text-center px-6">
+                <p className="text-sm text-slate-400">
+                  No job interest submissions match your current filters.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-800/80">
+                {filteredJobInterestRows.map((row) => (
+                  <div key={row.job_id} className="p-5 space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="font-semibold text-white text-lg">
+                          {row.title}
+                        </div>
+                        <div className="text-sm text-slate-400 mt-1">
+                          {row.company || "—"}
+                        </div>
+                        <div className="text-[10px] text-slate-600 mt-1">
+                          Posted {formatDate(row.created_at)}
+                        </div>
+                      </div>
+                      <span className="inline-flex self-start items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-bold text-indigo-300">
+                        {row.interest_count} interested
+                      </span>
+                    </div>
+
+                    {row.applicants.length > 0 ? (
+                      <div className="space-y-3">
+                        {row.applicants.map((applicant) => (
+                          <div
+                            key={applicant.id}
+                            className="rounded-xl border border-slate-800 bg-[#0A0A0A] p-4"
+                          >
+                            <div className="font-medium text-white">
+                              {applicant.candidate_dossier?.full_name ||
+                                applicant.candidate_dossier?.codename_alias ||
+                                "Candidate"}
+                            </div>
+                            {applicant.candidate_dossier?.codename_alias && (
+                              <div className="text-[11px] text-slate-500 mt-1">
+                                Public alias:{" "}
+                                {applicant.candidate_dossier.codename_alias}
+                              </div>
+                            )}
+                            <div className="text-[10px] text-slate-600 mt-1">
+                              Expressed interest {formatDate(applicant.created_at)}
+                            </div>
+                            {applicant.candidate_dossier && (
+                              <div className="mt-3 text-[11px] text-slate-300 space-y-1">
+                                {(applicant.candidate_dossier.contact_email ||
+                                  applicant.candidate_dossier.email) && (
+                                  <p>
+                                    Email:{" "}
+                                    {applicant.candidate_dossier.contact_email ||
+                                      applicant.candidate_dossier.email}
+                                  </p>
+                                )}
+                                {applicant.candidate_dossier.headline && (
+                                  <p>Headline: {applicant.candidate_dossier.headline}</p>
+                                )}
+                                {applicant.candidate_dossier.portfolio_url && (
+                                  <p>
+                                    Portfolio:{" "}
+                                    {applicant.candidate_dossier.portfolio_url}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-500">
+                        No candidates have expressed interest yet.
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
+          ) : requestsLoading ? (
             <div className="flex items-center justify-center gap-3 py-20 text-sm text-slate-400">
               <Loader2 className="w-5 h-5 animate-spin text-indigo-400" aria-hidden />
               Loading intro requests...

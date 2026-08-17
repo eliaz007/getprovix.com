@@ -844,6 +844,9 @@ export default function DashboardPage() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [appliedJobIds, setAppliedJobIds] = useState<string[]>([]);
+  const [jobInterestCounts, setJobInterestCounts] = useState<
+    Record<string, number>
+  >({});
   const [matchInsights, setMatchInsights] = useState<Record<string, MatchInsight>>({});
   const [matchLoadingIds, setMatchLoadingIds] = useState<Record<string, boolean>>({});
   const matchFetchedRef = useRef<Set<string>>(new Set());
@@ -989,16 +992,40 @@ export default function DashboardPage() {
         }
 
         const { data: applicationRows, error: applicationsError } = await supabase
-          .from("applications")
-          .select("job_id")
-          .eq("candidate_id", sessionUser.id);
+          .from("job_applications")
+          .select("job_id, created_at, jobs(title, company, salary_range, location)")
+          .eq("candidate_id", sessionUser.id)
+          .order("created_at", { ascending: false });
 
         if (!isMounted) return;
 
         if (applicationsError) {
-          console.error("Failed to fetch applications:", applicationsError);
+          console.error("Failed to fetch job applications:", applicationsError);
         } else {
           setAppliedJobIds((applicationRows ?? []).map((row) => row.job_id));
+          setAppliedJobs(
+            (applicationRows ?? []).map((row) => {
+              const job = row.jobs as {
+                title?: string | null;
+                company?: string | null;
+                salary_range?: string | null;
+                location?: string | null;
+              } | null;
+
+              return {
+                jobId: row.job_id,
+                title: job?.title ?? "Open Role",
+                company: job?.company ?? "—",
+                salary: job?.salary_range ?? "—",
+                location: job?.location ?? "—",
+                status: "Interest Expressed",
+                appliedAt: new Date(row.created_at).toLocaleDateString(
+                  undefined,
+                  { month: "short", day: "numeric", year: "numeric" }
+                ),
+              };
+            })
+          );
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1037,6 +1064,68 @@ export default function DashboardPage() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isBusinessAccount || !user?.id) {
+      return;
+    }
+
+    const employerJobIds = jobs
+      .filter((job) => job.employer_id === user.id)
+      .map((job) => job.id);
+
+    if (employerJobIds.length === 0) {
+      setJobInterestCounts({});
+      return;
+    }
+
+    let isMounted = true;
+    const supabase = createClient();
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("job_applications")
+        .select("job_id")
+        .in("job_id", employerJobIds);
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (error) {
+        console.error("Failed to fetch job interest counts:", error);
+        return;
+      }
+
+      const counts: Record<string, number> = {};
+      for (const row of data ?? []) {
+        counts[row.job_id] = (counts[row.job_id] ?? 0) + 1;
+      }
+      setJobInterestCounts(counts);
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isBusinessAccount, user?.id, jobs]);
+
+  useEffect(() => {
+    if (!isBusinessAccount || !user?.id) {
+      return;
+    }
+
+    setBusinessListings(
+      jobs
+        .filter((job) => job.employer_id === user.id)
+        .map((job) => ({
+          id: job.id,
+          title: job.title ?? "Untitled Role",
+          department: "General",
+          applicants: jobInterestCounts[job.id] ?? 0,
+          status: job.status === "paused" ? "Paused" : "Active",
+        }))
+    );
+  }, [isBusinessAccount, user?.id, jobs, jobInterestCounts]);
 
   useEffect(() => {
     if (!showTalentPoolNav) {
@@ -1449,11 +1538,15 @@ const showToast = (msg: string) => {
   };
 
   // --- EMPLOYER JOB LISTINGS STATE (Business accounts only) ---
-  const [businessListings, setBusinessListings] = useState([
-    { id: "L-1042", title: "Senior Full-Stack Engineer", department: "Engineering", applicants: 34, status: "Active" },
-    { id: "L-1041", title: "AI / ML Research Intern", department: "Data Science", applicants: 21, status: "Active" },
-    { id: "L-1039", title: "Product Designer (Contract)", department: "Design", applicants: 12, status: "Paused" },
-  ]);
+  const [businessListings, setBusinessListings] = useState<
+    Array<{
+      id: string;
+      title: string;
+      department: string;
+      applicants: number;
+      status: string;
+    }>
+  >([]);
 
   const toggleListingStatus = (id: string) => {
     setBusinessListings((prev) =>
@@ -1522,98 +1615,17 @@ const showToast = (msg: string) => {
   const [evaluatingPoW, setEvaluatingPoW] = useState(false);
   const [powResult, setPowResult] = useState(false);
 
-  const opportunityListings = [
-    {
-      id: "O-101",
-      title: "Senior Frontend Engineer",
-      company: "NovaStack Labs",
-      initials: "NS",
-      salary: "$95,000 – $120,000",
-      location: "Remote · US",
-      remote: true,
-      matchPercent: 95,
-      experienceLevel: "Mid-Level",
-      tags: ["React", "TypeScript", "Next.js"],
-      requirements: ["3+ yrs React", "REST APIs", "Design systems"],
-    },
-    {
-      id: "O-102",
-      title: "Customer Success Manager",
-      company: "BrightPath SaaS",
-      initials: "BP",
-      salary: "$72,000 – $88,000",
-      location: "Austin, TX · Hybrid",
-      remote: false,
-      matchPercent: 88,
-      experienceLevel: "Mid-Level",
-      tags: ["SaaS", "CRM", "Onboarding"],
-      requirements: ["2+ yrs CS", "B2B SaaS", "Salesforce"],
-    },
-    {
-      id: "O-103",
-      title: "Data Analyst",
-      company: "Meridian Health",
-      initials: "MH",
-      salary: "$68,000 – $82,000",
-      location: "Chicago, IL · On-site",
-      remote: false,
-      matchPercent: 91,
-      experienceLevel: "Entry-Level",
-      tags: ["SQL", "Python", "Tableau"],
-      requirements: ["SQL proficiency", "Excel / Sheets", "Healthcare a plus"],
-    },
-    {
-      id: "O-104",
-      title: "Product Designer",
-      company: "Orbit Creative",
-      initials: "OC",
-      salary: "$85,000 – $105,000",
-      location: "New York, NY · Hybrid",
-      remote: false,
-      matchPercent: 93,
-      experienceLevel: "Mid-Level",
-      tags: ["Figma", "UI/UX", "Design Systems"],
-      requirements: ["Portfolio required", "B2B product exp", "Prototyping"],
-    },
-    {
-      id: "O-105",
-      title: "Operations Coordinator",
-      company: "Summit Logistics",
-      initials: "SL",
-      salary: "$55,000 – $62,000",
-      location: "Denver, CO · On-site",
-      remote: false,
-      matchPercent: 79,
-      experienceLevel: "Entry-Level",
-      tags: ["Notion", "Zapier", "Process"],
-      requirements: ["Ops coordination", "Attention to detail", "Async comms"],
-    },
-    {
-      id: "O-106",
-      title: "Junior Software Engineer",
-      company: "Provix Partner Network",
-      initials: "PX",
-      salary: "$78,000 – $92,000",
-      location: "Remote · US",
-      remote: true,
-      matchPercent: 97,
-      experienceLevel: "Entry-Level",
-      tags: ["JavaScript", "APIs", "Git"],
-      requirements: ["CS fundamentals", "Side projects", "Remote-ready"],
-    },
-  ];
-
-  const seedApplications = [
-    {
-      jobId: "J-205",
-      title: "Marketing Associate",
-      company: "Pulse Media Group",
-      salary: "$48,000 – $54,000",
-      location: "Los Angeles, CA · Hybrid",
-      status: "Under Review",
-      appliedAt: "Aug 9, 2026",
-    },
-  ];
+  const [appliedJobs, setAppliedJobs] = useState<
+    Array<{
+      jobId: string;
+      title: string;
+      company: string;
+      salary: string;
+      location: string;
+      status: string;
+      appliedAt: string;
+    }>
+  >([]);
 
   // --- EMPLOYEE OPPORTUNITY RADAR STATE ---
   const [radarSearch, setRadarSearch] = useState("");
@@ -1622,7 +1634,6 @@ const showToast = (msg: string) => {
   const [savedOpportunityIds, setSavedOpportunityIds] = useState<string[]>([]);
   const [opportunitiesSearch, setOpportunitiesSearch] = useState("");
   const [opportunitiesRemoteOnly, setOpportunitiesRemoteOnly] = useState(false);
-  const [appliedJobs, setAppliedJobs] = useState(seedApplications);
   const [talentSearch, setTalentSearch] = useState("");
   const [experienceFilter, setExperienceFilter] = useState("all");
   const [roleTypeFilter, setRoleTypeFilter] = useState("all");
@@ -1739,24 +1750,6 @@ const showToast = (msg: string) => {
     );
   });
 
-  const filteredOpportunities = opportunityListings.filter((opportunity) => {
-    const query = radarSearch.trim().toLowerCase();
-    const matchesSearch =
-      !query ||
-      opportunity.title.toLowerCase().includes(query) ||
-      opportunity.company.toLowerCase().includes(query) ||
-      opportunity.tags.some((tag) => tag.toLowerCase().includes(query));
-    const matchesRemote = !remoteOnly || opportunity.remote;
-    const matchesExperience =
-      radarExperienceFilter === "all" ||
-      opportunity.experienceLevel === radarExperienceFilter;
-
-    return matchesSearch && matchesRemote && matchesExperience;
-  });
-
-  const directMatchesCount = opportunityListings.filter(
-    (opportunity) => opportunity.matchPercent >= 90
-  ).length;
   const profileViewsCount = 28;
 
   const handleSaveOpportunity = (opportunityId: string, title: string) => {
@@ -1769,31 +1762,6 @@ const showToast = (msg: string) => {
       showToast(`Saved ${title} to your radar.`);
       return [...prev, opportunityId];
     });
-  };
-
-  const handleExpressInterest = (
-    opportunity: (typeof opportunityListings)[number]
-  ) => {
-    if (
-      appliedJobs.some((application) => application.jobId === opportunity.id)
-    ) {
-      showToast(`You already expressed interest in ${opportunity.title}.`);
-      return;
-    }
-
-    setAppliedJobs((prev) => [
-      {
-        jobId: opportunity.id,
-        title: opportunity.title,
-        company: opportunity.company,
-        salary: opportunity.salary,
-        location: opportunity.location,
-        status: "Interest Expressed",
-        appliedAt: "Just now",
-      },
-      ...prev,
-    ]);
-    showToast(`Interest sent for ${opportunity.title}.`);
   };
 
   const getMatchBadgeClass = (matchPercent: number) => {
@@ -1821,13 +1789,32 @@ const showToast = (msg: string) => {
     return matchesSearch && matchesRemote;
   });
 
+  const filteredRadarJobFeed = jobs.filter((job) => {
+    const query = radarSearch.trim().toLowerCase();
+    const tags = Array.isArray(job.tags) ? job.tags : [];
+    const matchesSearch =
+      !query ||
+      (job.title ?? "").toLowerCase().includes(query) ||
+      (job.company ?? "").toLowerCase().includes(query) ||
+      tags.some((tag: string) => tag.toLowerCase().includes(query));
+    const matchesRemote =
+      !remoteOnly || (job.location ?? "").toLowerCase().includes("remote");
+
+    return matchesSearch && matchesRemote;
+  });
+
+  const radarDirectMatchesCount = filteredRadarJobFeed.filter((job) => {
+    const insight = matchInsights[job.id];
+    return (insight?.match_percentage ?? 0) >= 90;
+  }).length;
+
   const liveMatchingCount = Object.values(matchInsights).filter(
     (insight) => insight.match_percentage >= 80
   ).length;
   const isMatchEvaluating = Object.values(matchLoadingIds).some(Boolean);
 
   useEffect(() => {
-    if (activeTab !== "opportunities" || jobsLoading || jobs.length === 0) {
+    if (jobsLoading || jobs.length === 0 || isBusinessAccount) {
       return;
     }
 
@@ -1910,6 +1897,7 @@ const showToast = (msg: string) => {
     };
   }, [
     activeTab,
+    isBusinessAccount,
     jobs,
     jobsLoading,
     title,
@@ -2086,31 +2074,59 @@ const showToast = (msg: string) => {
     candidates,
   ]);
 
-  const handleApplyToFeedJob = async (job: (typeof jobs)[number]) => {
+  const handleExpressInterestToJob = async (job: (typeof jobs)[number]) => {
     if (!user?.id) {
-      showToast("You must be logged in to apply.");
+      showToast("You must be logged in to express interest.");
       return;
     }
 
     if (appliedJobIds.includes(job.id)) {
-      showToast(`You already applied to ${job.title}.`);
       return;
     }
 
+    setAppliedJobIds((prev) => [...prev, job.id]);
+    setAppliedJobs((prev) => [
+      {
+        jobId: job.id,
+        title: job.title ?? "Open Role",
+        company: job.company ?? "—",
+        salary: job.salary_range ?? "—",
+        location: job.location ?? "—",
+        status: "Interest Expressed",
+        appliedAt: "Just now",
+      },
+      ...prev,
+    ]);
+    showToast(
+      "Interest submitted. The team will review your proof-of-work dossier."
+    );
+
     const supabase = createClient();
-    const { error } = await supabase.from("applications").insert({
+    const { error } = await supabase.from("job_applications").insert({
       job_id: job.id,
       candidate_id: user.id,
     });
 
     if (error) {
-      console.error("Failed to submit application:", error);
-      showToast("Could not submit application. Please try again.");
-      return;
-    }
+      console.error("Failed to submit job interest:", error);
+      setAppliedJobIds((prev) => prev.filter((id) => id !== job.id));
+      setAppliedJobs((prev) =>
+        prev.filter((application) => application.jobId !== job.id)
+      );
 
-    setAppliedJobIds((prev) => [...prev, job.id]);
-    showToast(`Application submitted for ${job.title}.`);
+      if (error.code === "23505") {
+        setAppliedJobIds((prev) =>
+          prev.includes(job.id) ? prev : [...prev, job.id]
+        );
+        return;
+      }
+
+      showToast("Could not submit interest. Please try again.");
+    }
+  };
+
+  const handleExpressInterest = (job: (typeof jobs)[number]) => {
+    void handleExpressInterestToJob(job);
   };
 
   const savedProfilesCount = 8;
@@ -2670,16 +2686,6 @@ const showToast = (msg: string) => {
 
     if (data) {
       setJobs((prev) => [data, ...prev]);
-      setBusinessListings((prev) => [
-        {
-          id: data.id,
-          title: data.title,
-          department: "General",
-          applicants: 0,
-          status: "Active",
-        },
-        ...prev,
-      ]);
     }
 
     setPostJobModalOpen(false);
@@ -3162,7 +3168,15 @@ const showToast = (msg: string) => {
                       </button>
                     </div>
 
-                    {businessListings.map((listing) => (
+                    {businessListings.length === 0 ? (
+                      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-6 text-center">
+                        <p className="text-sm text-slate-400">
+                          No active listings yet. Post a job to start receiving
+                          candidate interest.
+                        </p>
+                      </div>
+                    ) : (
+                      businessListings.map((listing) => (
                       <div
                         key={listing.id}
                         className="flex items-center justify-between p-4 bg-slate-900/50 border border-slate-800 rounded-xl"
@@ -3172,7 +3186,7 @@ const showToast = (msg: string) => {
                             {listing.title}
                           </span>
                           <span className="text-[11px] text-slate-500">
-                            {listing.department} · {listing.applicants} applicants
+                            {listing.department} · {listing.applicants} interested
                           </span>
                         </div>
                         <button
@@ -3188,7 +3202,8 @@ const showToast = (msg: string) => {
                           {listing.status}
                         </button>
                       </div>
-                    ))}
+                    ))
+                    )}
                   </div>
                 )}
 
@@ -3539,7 +3554,7 @@ const showToast = (msg: string) => {
                   Opportunities
                 </h1>
                 <p className="text-slate-400 text-sm mt-2">
-                  Curated openings matched to your profile — apply in one click.
+                  Curated openings matched to your profile — express interest in one click.
                 </p>
               </div>
 
@@ -3709,7 +3724,7 @@ const showToast = (msg: string) => {
                         <div className="mt-auto flex items-center justify-end pt-4 border-t border-slate-800/60">
                           <button
                             type="button"
-                            onClick={() => handleApplyToFeedJob(job)}
+                            onClick={() => handleExpressInterestToJob(job)}
                             disabled={alreadyApplied}
                             className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
                               alreadyApplied
@@ -3719,11 +3734,11 @@ const showToast = (msg: string) => {
                           >
                             {alreadyApplied ? (
                               <>
-                                Applied
+                                Interest Submitted ✓
                                 <Check className="w-3.5 h-3.5" aria-hidden="true" />
                               </>
                             ) : (
-                              "Apply"
+                              "Express Interest"
                             )}
                           </button>
                         </div>
@@ -4591,10 +4606,10 @@ const showToast = (msg: string) => {
                     Active Roles
                   </span>
                   <span className="text-3xl font-extrabold text-white">
-                    {filteredOpportunities.length}
+                    {jobsLoading ? "—" : filteredRadarJobFeed.length}
                   </span>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    of {opportunityListings.length} total
+                    of {jobsLoading ? "—" : jobs.length} total
                   </p>
                 </div>
                 <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
@@ -4602,7 +4617,7 @@ const showToast = (msg: string) => {
                     Direct Matches
                   </span>
                   <span className="text-3xl font-extrabold text-emerald-400">
-                    {directMatchesCount}
+                    {jobsLoading ? "—" : radarDirectMatchesCount}
                   </span>
                   <p className="text-[11px] text-slate-500 mt-1">90%+ fit score</p>
                 </div>
@@ -4654,62 +4669,81 @@ const showToast = (msg: string) => {
                 </div>
               </div>
 
-              {filteredOpportunities.length === 0 ? (
+              {jobsLoading ? (
+                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-slate-400">
+                    Loading opportunities...
+                  </p>
+                </div>
+              ) : filteredRadarJobFeed.length === 0 ? (
                 <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
                     No opportunities match your filters
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Try clearing search, disabling Remote Only, or broadening experience level.
+                    Try clearing search or disabling Remote Only.
                   </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {filteredOpportunities.map((opportunity) => {
-                    const alreadyInterested = appliedJobs.some(
-                      (application) => application.jobId === opportunity.id
-                    );
-                    const isSaved = savedOpportunityIds.includes(opportunity.id);
+                  {filteredRadarJobFeed.map((job) => {
+                    const alreadyInterested = appliedJobIds.includes(job.id);
+                    const isSaved = savedOpportunityIds.includes(job.id);
+                    const tags = Array.isArray(job.tags) ? job.tags : [];
+                    const insight = matchInsights[job.id];
+                    const matchPercent = insight?.match_percentage ?? 0;
+                    const companyInitials = (job.company ?? "PX")
+                      .split(/\s+/)
+                      .slice(0, 2)
+                      .map((part: string) => part.charAt(0))
+                      .join("")
+                      .toUpperCase();
 
                     return (
                       <div
-                        key={opportunity.id}
+                        key={job.id}
                         className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
                       >
                         <div className="flex items-start justify-between gap-3 mb-4">
                           <div className="flex items-start gap-3 min-w-0">
                             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20 flex items-center justify-center shrink-0">
                               <span className="text-xs font-extrabold text-indigo-300">
-                                {opportunity.initials}
+                                {companyInitials}
                               </span>
                             </div>
                             <div className="min-w-0">
                               <h3 className="font-bold text-white text-base truncate">
-                                {opportunity.title}
+                                {job.title}
                               </h3>
                               <p className="text-sm text-slate-400 font-medium mt-0.5 truncate">
-                                {opportunity.company}
+                                {job.company}
                               </p>
-                              <span className="inline-flex mt-2 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                {opportunity.salary}
-                              </span>
+                              {job.salary_range && (
+                                <span className="inline-flex mt-2 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                  {job.salary_range}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <span
-                            className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-extrabold ${getMatchBadgeClass(opportunity.matchPercent)}`}
+                            className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
+                              insight
+                                ? getMatchBadgeClass(matchPercent)
+                                : "bg-slate-800/80 text-slate-500 border border-slate-700/50"
+                            }`}
                           >
-                            {opportunity.matchPercent}% Match
+                            {insight ? `${matchPercent}% Match` : "Pending"}
                           </span>
                         </div>
 
-                        <p className="text-xs text-slate-500 mb-3">{opportunity.location}</p>
+                        <p className="text-xs text-slate-500 mb-3">{job.location}</p>
 
-                        <div className="mb-3">
+                        <div className="mb-5">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                             Tech Stack
                           </span>
                           <div className="flex flex-wrap gap-1.5">
-                            {opportunity.tags.map((tag) => (
+                            {tags.map((tag: string) => (
                               <span
                                 key={tag}
                                 className="px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
@@ -4720,27 +4754,11 @@ const showToast = (msg: string) => {
                           </div>
                         </div>
 
-                        <div className="mb-5">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
-                            Requirements
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {opportunity.requirements.map((requirement) => (
-                              <span
-                                key={requirement}
-                                className="px-2 py-1 rounded-md text-[10px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/50"
-                              >
-                                {requirement}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
                         <div className="mt-auto flex items-center justify-between gap-3 pt-4 border-t border-slate-800/60">
                           <button
                             type="button"
                             onClick={() =>
-                              handleSaveOpportunity(opportunity.id, opportunity.title)
+                              handleSaveOpportunity(job.id, job.title ?? "Role")
                             }
                             className={`text-[11px] font-bold px-3 py-2 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
                               isSaved
@@ -4753,15 +4771,15 @@ const showToast = (msg: string) => {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleExpressInterest(opportunity)}
+                            onClick={() => handleExpressInterest(job)}
                             disabled={alreadyInterested}
-                            className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-all cursor-pointer ${
+                            className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                               alreadyInterested
-                                ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-not-allowed"
                                 : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
                             }`}
                           >
-                            {alreadyInterested ? "Interest Sent" : "Express Interest"}
+                            {alreadyInterested ? "Interest Submitted ✓" : "Express Interest"}
                           </button>
                         </div>
                       </div>
@@ -4820,7 +4838,7 @@ const showToast = (msg: string) => {
                         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-400">
                           <span>{application.salary}</span>
                           <span>{application.location}</span>
-                          <span>Applied {application.appliedAt}</span>
+                          <span>Interest expressed {application.appliedAt}</span>
                         </div>
                       </div>
                       <span
