@@ -7,7 +7,9 @@ import {
 import { createClient } from "@/utils/supabase/server";
 
 type AdminActionBody = {
+  id?: string;
   requestId?: string;
+  introId?: string;
 };
 
 type IntroRequestRecord = {
@@ -79,28 +81,34 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json()) as AdminActionBody;
-    const requestId = body.requestId?.trim();
+    const requestId = (body.id || body.requestId || body.introId)?.trim();
 
     if (!requestId) {
       return NextResponse.json(
-        { error: "requestId is required" },
+        { error: "Intro request id is required" },
         { status: 400 }
       );
     }
 
-    const serviceSupabase = createServiceRoleClient();
-    const dataClient = serviceSupabase ?? supabase;
-
-    const { data, error: fetchError } = await dataClient
-      .from("intro_requests")
-      .select("*")
-      .eq("id", requestId)
-      .maybeSingle();
-
-    if (fetchError) {
-      console.error("Admin approve fetch error:", fetchError);
+    const supabaseAdmin = createServiceRoleClient();
+    if (!supabaseAdmin) {
       return NextResponse.json(
-        { error: "Could not load intro request" },
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
+    const { data, error: updateError } = await supabaseAdmin
+      .from("intro_requests")
+      .update({ status: "APPROVED" })
+      .eq("id", requestId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error("Admin approve update error:", updateError);
+      return NextResponse.json(
+        { error: "Could not update intro request status" },
         { status: 500 }
       );
     }
@@ -113,62 +121,41 @@ export async function POST(request: Request) {
     }
 
     const introRequest = data as IntroRequestRecord;
-    const workEmail = introRequest.work_email?.trim();
-
-    if (!workEmail) {
-      return NextResponse.json(
-        { error: "Missing employer work email" },
-        { status: 400 }
-      );
-    }
-
-    const candidateName = introRequest.candidate_name?.trim() || "Candidate";
-    const companyName = introRequest.company_name?.trim() || "your company";
-    const roleTitle = introRequest.role_title?.trim() || "Open role";
-    const compensationBand =
-      introRequest.compensation_band?.trim() || "Not specified";
-
-    const updateClient = serviceSupabase ?? supabase;
-    const { error: updateError } = await updateClient
-      .from("intro_requests")
-      .update({ status: "APPROVED" })
-      .eq("id", requestId);
-
-    if (updateError) {
-      console.error("Admin approve update error:", updateError);
-      return NextResponse.json(
-        { error: "Could not update intro request status" },
-        { status: 500 }
-      );
-    }
-
     const resendApiKey = process.env.RESEND_API_KEY;
-    if (!resendApiKey) {
-      return NextResponse.json(
-        { error: "Email service not configured" },
-        { status: 500 }
-      );
-    }
 
-    const resend = new Resend(resendApiKey);
-    const { error: emailError } = await resend.emails.send({
-      from: "onboarding@resend.dev",
-      to: workEmail,
-      subject: `Intro: ${candidateName} x ${companyName}`,
-      html: buildIntroEmailHtml({
-        candidateName,
-        companyName,
-        roleTitle,
-        compensationBand,
-      }),
-    });
+    if (resendApiKey) {
+      const workEmail = introRequest.work_email?.trim();
 
-    if (emailError) {
-      console.error("Admin approve email error:", emailError);
-      return NextResponse.json(
-        { error: "Status updated but failed to send intro email" },
-        { status: 500 }
-      );
+      if (workEmail) {
+        const candidateName =
+          introRequest.candidate_name?.trim() || "Candidate";
+        const companyName =
+          introRequest.company_name?.trim() || "your company";
+        const roleTitle = introRequest.role_title?.trim() || "Open role";
+        const compensationBand =
+          introRequest.compensation_band?.trim() || "Not specified";
+
+        const resend = new Resend(resendApiKey);
+        const { error: emailError } = await resend.emails.send({
+          from: "onboarding@resend.dev",
+          to: workEmail,
+          subject: `Intro: ${candidateName} x ${companyName}`,
+          html: buildIntroEmailHtml({
+            candidateName,
+            companyName,
+            roleTitle,
+            compensationBand,
+          }),
+        });
+
+        if (emailError) {
+          console.error("Admin approve email error:", emailError);
+          return NextResponse.json(
+            { error: "Status updated but failed to send intro email" },
+            { status: 500 }
+          );
+        }
+      }
     }
 
     return NextResponse.json({ success: true }, { status: 200 });

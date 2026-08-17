@@ -282,12 +282,13 @@ export default function AdminIntroRequestsPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ requestId: id }),
+        body: JSON.stringify({ id, requestId: id }),
       });
 
       const payload = (await response.json()) as {
         success?: boolean;
         error?: string;
+        data?: { status?: string };
       };
 
       if (!response.ok || !payload.success) {
@@ -297,7 +298,12 @@ export default function AdminIntroRequestsPage() {
 
       setRequests((current) =>
         current.map((request) =>
-          request.id === id ? { ...request, status: "approved" } : request
+          request.id === id
+            ? {
+                ...request,
+                status: normalizeStatus(payload.data?.status ?? "approved"),
+              }
+            : request
         )
       );
       setSuccessMessage("Intro email sent and request approved.");
