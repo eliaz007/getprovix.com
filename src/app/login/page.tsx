@@ -24,6 +24,12 @@ function BackToHomeLink({ className = "" }: { className?: string }) {
   );
 }
 
+function hasAuthEmail(
+  value: User | null | undefined
+): value is User & { email: string } {
+  return Boolean(value && value.email && value.email.trim());
+}
+
 export default function LoginPage() {
   const [mode, setMode] = useState<AuthMode>("sign-in");
   const [signUpType, setSignUpType] = useState<SignUpType>("candidate");
@@ -44,7 +50,9 @@ export default function LoginPage() {
   const [session, setSession] = useState<Session | null>(null);
 
   const syncAuthState = (nextSession: Session | null) => {
-    const nextUser = nextSession?.user?.email ? nextSession.user : null;
+    const nextUser = hasAuthEmail(nextSession?.user ?? null)
+      ? nextSession!.user
+      : null;
     setSession(nextUser ? nextSession : null);
     setUser(nextUser);
     setCheckingSession(false);
@@ -64,13 +72,12 @@ export default function LoginPage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     setUser(null);
     setSession(null);
     setCheckingSession(false);
-
-    await signOutAndClearSession();
     window.location.href = "/";
+    void signOutAndClearSession();
   };
 
   const goToDashboard = async () => {
@@ -159,7 +166,7 @@ export default function LoginPage() {
   }
 
   // --- ALREADY SIGNED IN: "Welcome back" screen ---
-  if (user?.email) {
+  if (hasAuthEmail(user)) {
     const initial = user.email.charAt(0).toUpperCase();
 
     return (
@@ -192,7 +199,7 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              onClick={() => void handleSignOut()}
+              onClick={handleSignOut}
               className="w-full bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 font-medium text-sm px-4 py-2.5 rounded-lg transition-colors cursor-pointer"
             >
               Sign Out
