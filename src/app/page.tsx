@@ -148,6 +148,15 @@ export default function Home() {
   );
   const [previewLoading, setPreviewLoading] = useState(true);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("passwordUpdated") === "1") {
+      setPasswordUpdated(true);
+      window.history.replaceState({}, "", "/");
+    }
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -260,6 +269,13 @@ export default function Home() {
       </header>
 
       <main className="flex-1">
+        {passwordUpdated && (
+          <div className="max-w-6xl mx-auto px-6 pt-6">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
+              Your password has been updated successfully.
+            </div>
+          </div>
+        )}
         {/* --- HERO --- */}
         <section className="max-w-6xl mx-auto px-6 pt-24 pb-20 text-center">
           <span className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold px-3 py-1.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">

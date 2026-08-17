@@ -93,11 +93,18 @@ export async function updateSession(request: NextRequest) {
   const isLogin =
     pathname === "/login" || pathname.startsWith("/login/");
   const isHome = pathname === "/";
+  const isUpdatePassword =
+    pathname === "/update-password" ||
+    pathname.startsWith("/update-password/");
   const isEmployer =
     pathname === "/employer" || pathname.startsWith("/employer/");
 
   // Unauthenticated users must be allowed to stay on /login (no redirect).
   if (isLogin && !user) {
+    return supabaseResponse;
+  }
+
+  if (isUpdatePassword) {
     return supabaseResponse;
   }
 
@@ -135,6 +142,10 @@ export async function updateSession(request: NextRequest) {
 
   // Home only: active session → dashboard. /login stays put so users can choose.
   if (isHome && user) {
+    if (request.nextUrl.searchParams.get("passwordUpdated") === "1") {
+      return supabaseResponse;
+    }
+
     return redirectWithSessionCookies(request, supabaseResponse, "/dashboard");
   }
 

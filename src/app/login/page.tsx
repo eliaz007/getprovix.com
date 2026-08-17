@@ -45,7 +45,12 @@ export default function LoginPage() {
   const [showResetPassword, setShowResetPassword] = useState(false);
 
   useEffect(() => {
-    const handleSession = (session: Session | null) => {
+    const handleSession = (session: Session | null, event?: string) => {
+      if (event === "PASSWORD_RECOVERY") {
+        window.location.href = "/update-password";
+        return;
+      }
+
       if (hasAuthEmail(session?.user ?? null)) {
         window.location.href = getPostLoginPath(session!.user);
         return;
@@ -60,8 +65,8 @@ export default function LoginPage() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      handleSession(session);
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      handleSession(session, event);
     });
 
     return () => subscription.unsubscribe();

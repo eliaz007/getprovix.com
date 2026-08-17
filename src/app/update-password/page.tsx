@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
@@ -13,13 +13,81 @@ export default function UpdatePasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const ensureRecoverySession = async () => {
+      const hash = window.location.hash.startsWith("#")
+        ? window.location.hash.slice(1)
+        : window.location.hash;
+      const hashParams = new URLSearchParams(hash);
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const type = hashParams.get("type");
+
+      if (type === "recovery" && accessToken && refreshToken) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (sessionError && active) {
+          setError(sessionError.message);
+        }
+
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!active) {
+        return;
+      }
+
+      setHasSession(Boolean(session));
+      setCheckingSession(false);
+
+      if (!session) {
+        setError(
+          "Your reset link is invalid or has expired. Request a new password reset from the sign-in page."
+        );
+      }
+    };
+
+    void ensureRecoverySession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
+        setHasSession(Boolean(session));
+        setCheckingSession(false);
+        setError(null);
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    setMessage(null);
+
+    if (!hasSession) {
+      setError(
+        "Your reset link is invalid or has expired. Request a new password reset from the sign-in page."
+      );
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
@@ -42,11 +110,16 @@ export default function UpdatePasswordPage() {
       return;
     }
 
-    setMessage("Password updated successfully. Redirecting to sign in...");
-    window.setTimeout(() => {
-      window.location.href = "/login";
-    }, 1500);
+    window.location.href = "/?passwordUpdated=1";
   };
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <p className="text-sm text-zinc-500">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
@@ -76,11 +149,6 @@ export default function UpdatePasswordPage() {
               {error}
             </div>
           )}
-          {message && (
-            <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm rounded-lg px-4 py-2.5">
-              {message}
-            </div>
-          )}
 
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-1.5">
@@ -95,9 +163,10 @@ export default function UpdatePasswordPage() {
                   placeholder="••••••••"
                   required
                   minLength={6}
+                  disabled={!hasSession || loading}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-4 pr-11 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-4 pr-11 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:opacity-50"
                 />
                 <button
                   type="button"
@@ -119,7 +188,7 @@ export default function UpdatePasswordPage() {
                 htmlFor="confirmPassword"
                 className="text-sm font-medium text-zinc-300"
               >
-                Confirm Password
+                Confirm New Password
               </label>
               <input
                 id="confirmPassword"
@@ -128,15 +197,16 @@ export default function UpdatePasswordPage() {
                 placeholder="••••••••"
                 required
                 minLength={6}
+                disabled={!hasSession || loading}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:opacity-50"
               />
             </div>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={!hasSession || loading}
               className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors mt-2 cursor-pointer"
             >
               {loading ? "Updating..." : "Update Password"}
