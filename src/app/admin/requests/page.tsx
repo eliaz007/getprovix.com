@@ -349,7 +349,7 @@ export default function AdminIntroRequestsPage() {
           <Link href="/" className="hover:opacity-90 transition-opacity shrink-0">
             <ProvixLogo />
           </Link>
-          <SignOutButton redirectTo="/login" />
+          <SignOutButton redirectTo="/admin/login" />
         </div>
       </header>
 

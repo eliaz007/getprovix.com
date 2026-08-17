@@ -5,6 +5,7 @@ import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
+import { signOutAndClearSession } from "@/lib/sign-out";
 import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
@@ -49,14 +50,10 @@ export default function LoginPage() {
 
   const handleSignOut = async () => {
     setSignOutLoading(true);
+    setAuthedUser(null);
 
-    try {
-      await supabase.auth.signOut();
-    } catch (signOutError) {
-      console.error("Sign out failed:", signOutError);
-    }
-
-    window.location.href = "/login";
+    await signOutAndClearSession();
+    window.location.href = "/admin/login";
   };
 
   const goToDashboard = async () => {

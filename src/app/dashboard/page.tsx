@@ -21,6 +21,7 @@ import {
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import RequestIntroModal from "@/components/RequestIntroModal";
+import { signOutAndClearSession } from "@/lib/sign-out";
 import { createClient } from "@/utils/supabase/client";
 import {
   AVAILABILITY_STATUS_OPTIONS,
@@ -1114,8 +1115,9 @@ export default function DashboardPage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const handleSignOut = () => {
-    window.location.href = "/auth/signout?next=/";
+  const handleSignOut = async () => {
+    await signOutAndClearSession();
+    window.location.href = "/admin/login";
   };
 
 const showToast = (msg: string) => {
@@ -3419,7 +3421,7 @@ const showToast = (msg: string) => {
                         </div>
                         <button
                           type="button"
-                          onClick={handleSignOut}
+                          onClick={() => void handleSignOut()}
                           className="bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
                         >
                           <Icons.Logout /> Sign Out
