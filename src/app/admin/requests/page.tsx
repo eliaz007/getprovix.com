@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Check,
   Copy,
@@ -13,7 +14,11 @@ import {
 } from "lucide-react";
 import SignOutButton from "@/components/SignOutButton";
 import { ProvixLogo } from "@/components/ProvixLogo";
-import { createClient } from "@/utils/supabase/client";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 type IntroRequestStatus =
   | "pending"
@@ -43,15 +48,34 @@ const STATUS_TABS: { id: StatusFilter; label: string }[] = [
   { id: "rejected", label: "Rejected" },
 ];
 
+const ADMIN_EMAILS = [
+  "eliasdiangelo91@gmail.com",
+  "comradeduck1@gmail.com",
+] as const;
+
+function isAuthorizedSession(session: Session | null): boolean {
+  const user = session?.user;
+  if (!user) {
+    return false;
+  }
+
+  return (
+    user.email === ADMIN_EMAILS[0] ||
+    user.email === ADMIN_EMAILS[1] ||
+    user.user_metadata?.role === "admin"
+  );
+}
+
 function normalizeStatus(status: string): IntroRequestStatus {
+  const normalized = status.toLowerCase();
   if (
-    status === "pending" ||
-    status === "approved" ||
-    status === "rejected" ||
-    status === "declined" ||
-    status === "completed"
+    normalized === "pending" ||
+    normalized === "approved" ||
+    normalized === "rejected" ||
+    normalized === "declined" ||
+    normalized === "completed"
   ) {
-    return status;
+    return normalized as IntroRequestStatus;
   }
   return "pending";
 }
@@ -101,9 +125,10 @@ function formatDate(value: string): string {
 }
 
 export default function AdminIntroRequestsPage() {
-  const router = useRouter();
-  const [authChecking, setAuthChecking] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
+  const [loggedInEmail, setLoggedInEmail] = useState<string | undefined>();
+  const [requestsLoading, setRequestsLoading] = useState(false);
   const [requests, setRequests] = useState<IntroRequestRow[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -114,10 +139,9 @@ export default function AdminIntroRequestsPage() {
   const [copiedEmailId, setCopiedEmailId] = useState<string | null>(null);
 
   const fetchRequests = useCallback(async () => {
-    setLoading(true);
+    setRequestsLoading(true);
     setError(null);
 
-    const supabase = createClient();
     const { data, error: fetchError } = await supabase
       .from("intro_requests")
       .select(
@@ -126,11 +150,9 @@ export default function AdminIntroRequestsPage() {
       .order("created_at", { ascending: false });
 
     if (fetchError) {
-      setError(
-        "Could not load intro requests. Ensure your account has admin access."
-      );
+      setError("Could not load intro requests. Please try again.");
       setRequests([]);
-      setLoading(false);
+      setRequestsLoading(false);
       return;
     }
 
@@ -140,42 +162,50 @@ export default function AdminIntroRequestsPage() {
         status: normalizeStatus(row.status),
       }))
     );
-    setLoading(false);
+    setRequestsLoading(false);
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    const applySession = (session: Session | null) => {
+      console.log(session?.user);
+      setLoggedInEmail(session?.user?.email);
 
-    const verifyAndLoad = async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (cancelled) {
+      if (isAuthorizedSession(session)) {
+        setAuthorized(true);
+        setLoading(false);
         return;
       }
 
-      const isAdmin =
-        !!user &&
-        (user.email === "eliasdiangelo91@gmail.com" ||
-          user.user_metadata?.role === "admin");
-
-      if (!isAdmin) {
-        router.replace("/login");
+      if (session === null) {
+        setAuthorized(false);
+        setLoading(false);
         return;
       }
 
-      setAuthChecking(false);
-      await fetchRequests();
+      setAuthorized(false);
+      setLoading(false);
     };
 
-    void verifyAndLoad();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session);
+    });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchRequests, router]);
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      applySession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!authorized) {
+      return;
+    }
+
+    void fetchRequests();
+  }, [authorized, fetchRequests]);
 
   const filteredRequests = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -203,32 +233,41 @@ export default function AdminIntroRequestsPage() {
     });
   }, [requests, searchQuery, statusFilter]);
 
-  const updateRequestStatus = async (
-    id: string,
-    status: "rejected"
-  ) => {
+  const updateRequestStatus = async (id: string, status: "rejected") => {
     setUpdatingId(id);
     setError(null);
     setSuccessMessage(null);
 
-    const supabase = createClient();
-    const { error: updateError } = await supabase
-      .from("intro_requests")
-      .update({ status })
-      .eq("id", id);
+    try {
+      const response = await fetch("/api/admin/reject", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ requestId: id }),
+      });
 
-    if (updateError) {
-      setError("Could not update request status. Please try again.");
+      const payload = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.success) {
+        setError(payload.error || "Could not reject intro request.");
+        return;
+      }
+
+      setRequests((current) =>
+        current.map((request) =>
+          request.id === id ? { ...request, status } : request
+        )
+      );
+    } catch {
+      setError("Could not reject intro request.");
+    } finally {
       setUpdatingId(null);
-      return;
     }
-
-    setRequests((current) =>
-      current.map((request) =>
-        request.id === id ? { ...request, status } : request
-      )
-    );
-    setUpdatingId(null);
   };
 
   const handleApprove = async (id: string) => {
@@ -237,8 +276,9 @@ export default function AdminIntroRequestsPage() {
     setSuccessMessage(null);
 
     try {
-      const response = await fetch("/api/send-intro", {
+      const response = await fetch("/api/admin/approve", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
@@ -278,13 +318,18 @@ export default function AdminIntroRequestsPage() {
     }
   };
 
-  if (authChecking) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] text-slate-200 flex items-center justify-center">
-        <div className="flex items-center gap-3 text-sm text-slate-400">
-          <Loader2 className="w-5 h-5 animate-spin text-indigo-400" aria-hidden />
-          Verifying session...
-        </div>
+      <div className="text-white p-8">Loading admin dashboard...</div>
+    );
+  }
+
+  if (!authorized) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] text-slate-200 flex items-center justify-center p-6">
+        <p className="text-sm text-red-300">
+          Access Denied: Logged in as {loggedInEmail ?? "unknown"}
+        </p>
       </div>
     );
   }
@@ -371,7 +416,7 @@ export default function AdminIntroRequestsPage() {
         )}
 
         <div className="bg-[#111111] rounded-2xl border border-slate-800/60 shadow-2xl overflow-hidden">
-          {loading ? (
+          {requestsLoading ? (
             <div className="flex items-center justify-center gap-3 py-20 text-sm text-slate-400">
               <Loader2 className="w-5 h-5 animate-spin text-indigo-400" aria-hidden />
               Loading intro requests...

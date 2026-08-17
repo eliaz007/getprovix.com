@@ -1,20 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
-import { createClient } from "@/utils/supabase/client";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import SignOutButton from "@/components/SignOutButton";
-import { signInWithEmail, signUpWithEmail } from "./actions";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 type AuthMode = "sign-in" | "sign-up";
 type SignUpType = "candidate" | "business";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("sign-in");
   const [signUpType, setSignUpType] = useState<SignUpType>("candidate");
   const [email, setEmail] = useState("");
@@ -33,8 +35,6 @@ export default function LoginPage() {
   const [authedUser, setAuthedUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-
     supabase.auth.getSession().then(({ data: { session } }) => {
       setAuthedUser(session?.user ?? null);
       setCheckingSession(false);
@@ -50,7 +50,6 @@ export default function LoginPage() {
   }, []);
 
   const goToDashboard = async () => {
-    const supabase = createClient();
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -66,7 +65,7 @@ export default function LoginPage() {
       }
     }
 
-    router.replace("/dashboard");
+    window.location.href = "/admin/requests";
   };
 
   const switchMode = (nextMode: AuthMode) => {
@@ -83,36 +82,47 @@ export default function LoginPage() {
     setLoading(true);
 
     if (mode === "sign-in") {
-      const result = await signInWithEmail(email, password);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      if (result?.error) {
-        setError(result.error);
+      if (error) {
+        setError(error.message);
         setLoading(false);
+        return;
       }
-      // Successful sign-in redirects from the server action with SSR cookies set.
+
+      window.location.href = "/admin/requests";
       return;
     }
 
-    const result = await signUpWithEmail(email, password, {
-      role: signUpType,
-      first_name: firstName,
-      last_name: lastName,
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          role: signUpType,
+          first_name: firstName,
+          last_name: lastName,
+        },
+      },
     });
 
-    if (result?.error) {
-      setError(result.error);
+    if (error) {
+      setError(error.message);
       setLoading(false);
       return;
     }
 
-    if (result?.message) {
+    if (!data.session) {
       setLoading(false);
-      setMessage(result.message);
+      setMessage("Check your email to confirm your account.");
       setMode("sign-in");
       return;
     }
 
-    // Successful sign-up redirects from the server action with SSR cookies set.
+    window.location.href = "/admin/requests";
   };
 
   if (checkingSession) {
