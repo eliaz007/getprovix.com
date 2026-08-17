@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { getPostLoginPath } from "@/lib/admin-access";
@@ -31,6 +32,7 @@ function hasAuthEmail(
 }
 
 export default function LoginPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("sign-in");
   const [signUpType, setSignUpType] = useState<SignUpType>("candidate");
   const [email, setEmail] = useState("");
@@ -100,6 +102,13 @@ export default function LoginPage() {
     setMessage("Check your email for a password reset link.");
   };
 
+  const redirectAfterAuth = async (user: User | null | undefined) => {
+    await supabase.auth.getSession();
+    const destination = getPostLoginPath(user);
+    router.refresh();
+    router.push(destination);
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
@@ -118,7 +127,13 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = getPostLoginPath(data.session?.user ?? null);
+      try {
+        await redirectAfterAuth(data.session?.user ?? null);
+      } catch (redirectError) {
+        console.error("Post-login redirect failed:", redirectError);
+        setError("Signed in, but we could not redirect you. Please refresh and try again.");
+        setLoading(false);
+      }
       return;
     }
 
@@ -147,7 +162,13 @@ export default function LoginPage() {
       return;
     }
 
-    window.location.href = getPostLoginPath(data.session?.user ?? null);
+    try {
+      await redirectAfterAuth(data.session?.user ?? null);
+    } catch (redirectError) {
+      console.error("Post-signup redirect failed:", redirectError);
+      setError("Account created, but we could not redirect you. Please refresh and try again.");
+      setLoading(false);
+    }
   };
 
   if (checkingSession) {

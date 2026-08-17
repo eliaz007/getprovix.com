@@ -1,11 +1,24 @@
 import { createBrowserClient } from "@supabase/ssr";
-
-console.log(
-  "Supabase Client initialized with URL:",
-  process.env.NEXT_PUBLIC_SUPABASE_URL
-);
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+const cookieOptions = {
+  path: "/",
+  sameSite: "lax" as const,
+};
+
+let browserClient: SupabaseClient | undefined;
+
+export function createBrowserSupabaseClient(): SupabaseClient {
+  if (!browserClient) {
+    browserClient = createBrowserClient(supabaseUrl, supabaseAnonKey, {
+      cookieOptions,
+    });
+  }
+
+  return browserClient;
+}
+
+export const supabase = createBrowserSupabaseClient();

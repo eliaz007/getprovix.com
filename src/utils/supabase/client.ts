@@ -1,11 +1,11 @@
-import { supabase } from "@/lib/supabaseClient";
+import { createBrowserSupabaseClient, supabase } from "@/lib/supabaseClient";
 
 export function createClient() {
-  return supabase;
+  return createBrowserSupabaseClient();
 }
 
 export function createClientComponentClient() {
-  return supabase;
+  return createBrowserSupabaseClient();
 }
 
 export { supabase };

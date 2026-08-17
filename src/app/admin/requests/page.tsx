@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -16,11 +15,9 @@ import {
 import SignOutButton from "@/components/SignOutButton";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { isAdminUser } from "@/lib/admin-access";
+import { createClient } from "@/utils/supabase/client";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+type AdminAuthState = "loading" | "authorized" | "unauthorized" | "unauthenticated";
 
 type IntroRequestStatus =
   | "pending"
@@ -128,8 +125,7 @@ function formatDate(value: string): string {
 
 export default function AdminIntroRequestsPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
+  const [authState, setAuthState] = useState<AdminAuthState>("loading");
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requests, setRequests] = useState<IntroRequestRow[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -148,17 +144,35 @@ export default function AdminIntroRequestsPage() {
       const response = await fetch("/api/admin/requests", {
         method: "GET",
         credentials: "include",
+        cache: "no-store",
       });
 
-      const payload = (await response.json()) as {
-        data?: IntroRequestRow[];
-        error?: string;
-      };
+      let payload: { data?: IntroRequestRow[]; error?: string } = {};
+      try {
+        payload = (await response.json()) as {
+          data?: IntroRequestRow[];
+          error?: string;
+        };
+      } catch (parseError) {
+        console.error("Admin requests response parse failed:", parseError);
+      }
+
+      if (response.status === 401) {
+        setAuthState("unauthenticated");
+        setRequests([]);
+        return;
+      }
+
+      if (response.status === 403) {
+        setAuthState("unauthorized");
+        setError("Unauthorized: Admin access required.");
+        setRequests([]);
+        return;
+      }
 
       if (!response.ok) {
         setError(payload.error || "Could not load intro requests. Please try again.");
         setRequests([]);
-        setRequestsLoading(false);
         return;
       }
 
@@ -168,7 +182,8 @@ export default function AdminIntroRequestsPage() {
           status: normalizeStatus(row.status),
         }))
       );
-    } catch {
+    } catch (fetchError) {
+      console.error("Admin requests fetch failed:", fetchError);
       setError("Could not load intro requests. Please try again.");
       setRequests([]);
     } finally {
@@ -177,37 +192,74 @@ export default function AdminIntroRequestsPage() {
   }, []);
 
   useEffect(() => {
-    const applySession = (session: Session | null) => {
-      if (isAdminUser(session?.user ?? null)) {
-        setAuthorized(true);
-        setLoading(false);
+    let active = true;
+    const supabase = createClient();
+
+    const resolveAuthState = (session: Session | null) => {
+      if (!active) {
         return;
       }
 
-      setAuthorized(false);
-      router.replace(session ? "/" : "/login");
+      if (!session?.user) {
+        setAuthState("unauthenticated");
+        return;
+      }
+
+      if (isAdminUser(session.user)) {
+        setAuthState("authorized");
+        return;
+      }
+
+      setAuthState("unauthorized");
     };
+
+    const loadSession = async () => {
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        resolveAuthState(session);
+      } catch (sessionLoadError) {
+        console.error("Admin session check failed:", sessionLoadError);
+        if (active) {
+          setAuthState("unauthenticated");
+        }
+      }
+    };
+
+    void loadSession();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      applySession(session);
+      resolveAuthState(session);
     });
 
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      applySession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [router]);
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
-    if (!authorized) {
+    if (authState === "unauthenticated") {
+      router.replace("/login?next=/admin/requests");
+    }
+  }, [authState, router]);
+
+  useEffect(() => {
+    if (authState !== "authorized") {
       return;
     }
 
     void fetchRequests();
-  }, [authorized, fetchRequests]);
+  }, [authState, fetchRequests]);
 
   const filteredRequests = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -328,10 +380,46 @@ export default function AdminIntroRequestsPage() {
     }
   };
 
-  if (loading || !authorized) {
+  if (authState === "loading") {
     return (
       <div className="min-h-screen bg-[#0A0A0A] text-slate-200 flex items-center justify-center p-6">
-        <p className="text-sm text-slate-400">Loading admin dashboard...</p>
+        <div className="flex items-center gap-3 text-sm text-slate-400">
+          <Loader2 className="w-5 h-5 animate-spin text-indigo-400" aria-hidden />
+          Loading admin dashboard...
+        </div>
+      </div>
+    );
+  }
+
+  if (authState === "unauthenticated") {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] text-slate-200 flex items-center justify-center p-6">
+        <p className="text-sm text-slate-400">Redirecting to sign in...</p>
+      </div>
+    );
+  }
+
+  if (authState === "unauthorized") {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] text-slate-200 flex items-center justify-center p-6">
+        <div className="max-w-md w-full rounded-2xl border border-slate-800 bg-[#111111] p-8 text-center shadow-2xl">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-300">
+            <Shield className="h-5 w-5" aria-hidden />
+          </div>
+          <h1 className="text-xl font-bold text-white">
+            Unauthorized: Admin Access Required
+          </h1>
+          <p className="mt-2 text-sm text-slate-400">
+            Your account is signed in, but it does not have permission to view the
+            admin intro pipeline.
+          </p>
+          <Link
+            href="/"
+            className="mt-6 inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
+          >
+            Back to Home
+          </Link>
+        </div>
       </div>
     );
   }
