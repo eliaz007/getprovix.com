@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Check,
   Copy,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import SignOutButton from "@/components/SignOutButton";
 import { ProvixLogo } from "@/components/ProvixLogo";
+import { isAdminUser } from "@/lib/admin-access";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -47,24 +49,6 @@ const STATUS_TABS: { id: StatusFilter; label: string }[] = [
   { id: "approved", label: "Approved" },
   { id: "rejected", label: "Rejected" },
 ];
-
-const ADMIN_EMAILS = [
-  "eliasdiangelo91@gmail.com",
-  "comradeduck1@gmail.com",
-] as const;
-
-function isAuthorizedSession(session: Session | null): boolean {
-  const user = session?.user;
-  if (!user) {
-    return false;
-  }
-
-  return (
-    user.email === ADMIN_EMAILS[0] ||
-    user.email === ADMIN_EMAILS[1] ||
-    user.user_metadata?.role === "admin"
-  );
-}
 
 function normalizeStatus(status: string): IntroRequestStatus {
   const normalized = status.toLowerCase();
@@ -125,9 +109,9 @@ function formatDate(value: string): string {
 }
 
 export default function AdminIntroRequestsPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
-  const [loggedInEmail, setLoggedInEmail] = useState<string | undefined>();
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requests, setRequests] = useState<IntroRequestRow[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -167,23 +151,14 @@ export default function AdminIntroRequestsPage() {
 
   useEffect(() => {
     const applySession = (session: Session | null) => {
-      console.log(session?.user);
-      setLoggedInEmail(session?.user?.email);
-
-      if (isAuthorizedSession(session)) {
+      if (isAdminUser(session?.user ?? null)) {
         setAuthorized(true);
         setLoading(false);
         return;
       }
 
-      if (session === null) {
-        setAuthorized(false);
-        setLoading(false);
-        return;
-      }
-
       setAuthorized(false);
-      setLoading(false);
+      router.replace(session ? "/" : "/login");
     };
 
     const {
@@ -197,7 +172,7 @@ export default function AdminIntroRequestsPage() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!authorized) {
@@ -326,18 +301,10 @@ export default function AdminIntroRequestsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="text-white p-8">Loading admin dashboard...</div>
-    );
-  }
-
-  if (!authorized) {
+  if (loading || !authorized) {
     return (
       <div className="min-h-screen bg-[#0A0A0A] text-slate-200 flex items-center justify-center p-6">
-        <p className="text-sm text-red-300">
-          Access Denied: Logged in as {loggedInEmail ?? "unknown"}
-        </p>
+        <p className="text-sm text-slate-400">Loading admin dashboard...</p>
       </div>
     );
   }

@@ -5,6 +5,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
+import { getPostLoginPath } from "@/lib/admin-access";
 import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
@@ -45,7 +46,7 @@ export default function LoginPage() {
   useEffect(() => {
     const handleSession = (session: Session | null) => {
       if (hasAuthEmail(session?.user ?? null)) {
-        window.location.href = "/admin";
+        window.location.href = getPostLoginPath(session!.user);
         return;
       }
 
@@ -79,7 +80,7 @@ export default function LoginPage() {
     setLoading(true);
 
     if (mode === "sign-in") {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
@@ -90,7 +91,7 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = "/admin";
+      window.location.href = getPostLoginPath(data.session?.user ?? null);
       return;
     }
 
@@ -119,7 +120,7 @@ export default function LoginPage() {
       return;
     }
 
-    window.location.href = "/admin";
+    window.location.href = getPostLoginPath(data.session?.user ?? null);
   };
 
   if (checkingSession) {
