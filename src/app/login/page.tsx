@@ -5,7 +5,6 @@ import type { Session, User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
-import { signOutAndClearSession } from "@/lib/sign-out";
 import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
@@ -41,64 +40,30 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // Session check for the "already signed in" case — someone landing on
-  // /login (e.g. via a bookmark or back button) while still authenticated
-  // should see the "Welcome back" screen instead of the sign-in form.
   const [checkingSession, setCheckingSession] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-
-  const syncAuthState = (nextSession: Session | null) => {
-    const nextUser = hasAuthEmail(nextSession?.user ?? null)
-      ? nextSession!.user
-      : null;
-    setSession(nextUser ? nextSession : null);
-    setUser(nextUser);
-    setCheckingSession(false);
-  };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: nextSession } }) => {
-      syncAuthState(nextSession);
+    const handleSession = (session: Session | null) => {
+      if (hasAuthEmail(session?.user ?? null)) {
+        window.location.href = "/admin";
+        return;
+      }
+
+      setCheckingSession(false);
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleSession(session);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      syncAuthState(nextSession);
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleSession(session);
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  const handleSignOut = () => {
-    setUser(null);
-    setSession(null);
-    setCheckingSession(false);
-    window.location.href = "/";
-    void signOutAndClearSession();
-  };
-
-  const goToDashboard = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setError("Session expired. Please sign in again.");
-        setUser(null);
-        setSession(null);
-        return;
-      }
-    }
-
-    window.location.href = "/admin/requests";
-  };
 
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode);
@@ -114,22 +79,22 @@ export default function LoginPage() {
     setLoading(true);
 
     if (mode === "sign-in") {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) {
-        setError(error.message);
+      if (signInError) {
+        setError(signInError.message);
         setLoading(false);
         return;
       }
 
-      window.location.href = "/admin/requests";
+      window.location.href = "/admin";
       return;
     }
 
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -141,8 +106,8 @@ export default function LoginPage() {
       },
     });
 
-    if (error) {
-      setError(error.message);
+    if (signUpError) {
+      setError(signUpError.message);
       setLoading(false);
       return;
     }
@@ -154,7 +119,7 @@ export default function LoginPage() {
       return;
     }
 
-    window.location.href = "/admin/requests";
+    window.location.href = "/admin";
   };
 
   if (checkingSession) {
@@ -165,53 +130,6 @@ export default function LoginPage() {
     );
   }
 
-  // --- ALREADY SIGNED IN: "Welcome back" screen ---
-  if (hasAuthEmail(user)) {
-    const initial = user.email.charAt(0).toUpperCase();
-
-    return (
-      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
-        <div className="w-full max-w-md">
-          <BackToHomeLink className="mb-4" />
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-8 text-center">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-xl mb-5">
-            {initial}
-          </div>
-
-          <h1 className="text-xl font-semibold text-white tracking-tight">
-            Welcome back
-          </h1>
-          <p className="text-sm text-zinc-400 mt-1 mb-6">
-            You&apos;re signed in as
-          </p>
-
-          <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm font-mono text-zinc-200 mb-8 truncate">
-            {user.email}
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <button
-              type="button"
-              onClick={() => void goToDashboard()}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors shadow-lg shadow-indigo-500/20 cursor-pointer"
-            >
-              Go to Dashboard
-            </button>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="w-full bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 font-medium text-sm px-4 py-2.5 rounded-lg transition-colors cursor-pointer"
-            >
-              Sign Out
-            </button>
-          </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // --- SIGNED OUT: Sign In / Sign Up form ---
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <div className="w-full max-w-md px-6">
@@ -222,7 +140,6 @@ export default function LoginPage() {
               <ProvixLogo />
             </Link>
           </div>
-          {/* Header */}
           <h1 className="text-2xl font-semibold text-white tracking-tight text-center">
             Welcome to Provix
           </h1>
@@ -232,7 +149,6 @@ export default function LoginPage() {
               : "Create an account to get started"}
           </p>
 
-          {/* Sign In / Sign Up Toggle */}
           <div className="grid grid-cols-2 gap-1 bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-6">
             <button
               type="button"
@@ -258,7 +174,6 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {/* Candidate / Business Sign Up Toggle */}
           {mode === "sign-up" && (
             <div className="grid grid-cols-2 gap-1 bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-6">
               <button
@@ -286,7 +201,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Error / Success Banner */}
           {error && (
             <div className="mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-2.5">
               {error}
@@ -298,7 +212,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Form */}
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             {mode === "sign-up" && (
               <div className="grid grid-cols-2 gap-4">
@@ -417,7 +330,6 @@ export default function LoginPage() {
             )}
           </form>
 
-          {/* Footer Toggle Link */}
           <p className="mt-6 pt-6 border-t border-zinc-800 text-center text-sm text-zinc-400">
             {mode === "sign-in" ? (
               <>

@@ -17,16 +17,16 @@ export default function SignOutButton({
 }: SignOutButtonProps) {
   const [loading, setLoading] = useState(false);
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     setLoading(true);
-    await signOutAndClearSession();
     window.location.href = redirectTo;
+    void signOutAndClearSession();
   };
 
   return (
     <button
       type="button"
-      onClick={() => void handleSignOut()}
+      onClick={handleSignOut}
       disabled={loading}
       className={className ?? DEFAULT_CLASSES}
     >
