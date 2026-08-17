@@ -168,7 +168,7 @@ export default function LoginPage() {
           </h1>
           <p className="text-sm text-zinc-400 text-center mb-8">
             {showResetPassword
-              ? "Enter your email and we'll send you a reset link."
+              ? "Enter your email to receive a password reset link"
               : mode === "sign-in"
               ? "Sign in to access your account"
               : "Create an account to get started"}
@@ -359,22 +359,23 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
-              {mode === "sign-in" && (
-                <div className="flex justify-end -mt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowResetPassword(true);
-                      setError(null);
-                      setMessage(null);
-                    }}
-                    className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-              )}
             </div>
+
+            {mode === "sign-in" && (
+              <div className="flex justify-end -mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowResetPassword(true);
+                    setError(null);
+                    setMessage(null);
+                  }}
+                  className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
 
             <button
               type="submit"
