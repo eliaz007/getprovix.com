@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
@@ -40,28 +40,34 @@ export default function LoginPage() {
   // /login (e.g. via a bookmark or back button) while still authenticated
   // should see the "Welcome back" screen instead of the sign-in form.
   const [checkingSession, setCheckingSession] = useState(true);
-  const [authedUser, setAuthedUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+
+  const syncAuthState = (nextSession: Session | null) => {
+    const nextUser = nextSession?.user?.email ? nextSession.user : null;
+    setSession(nextUser ? nextSession : null);
+    setUser(nextUser);
+    setCheckingSession(false);
+  };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuthedUser(session?.user ?? null);
-      setCheckingSession(false);
+    supabase.auth.getSession().then(({ data: { session: nextSession } }) => {
+      syncAuthState(nextSession);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthedUser(session?.user ?? null);
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      syncAuthState(nextSession);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const [signOutLoading, setSignOutLoading] = useState(false);
-
   const handleSignOut = async () => {
-    setSignOutLoading(true);
-    setAuthedUser(null);
+    setUser(null);
+    setSession(null);
+    setCheckingSession(false);
 
     await signOutAndClearSession();
     window.location.href = "/";
@@ -78,7 +84,8 @@ export default function LoginPage() {
       } = await supabase.auth.getUser();
       if (!user) {
         setError("Session expired. Please sign in again.");
-        setAuthedUser(null);
+        setUser(null);
+        setSession(null);
         return;
       }
     }
@@ -152,8 +159,8 @@ export default function LoginPage() {
   }
 
   // --- ALREADY SIGNED IN: "Welcome back" screen ---
-  if (authedUser) {
-    const initial = authedUser.email?.charAt(0).toUpperCase() ?? "?";
+  if (user?.email) {
+    const initial = user.email.charAt(0).toUpperCase();
 
     return (
       <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
@@ -172,7 +179,7 @@ export default function LoginPage() {
           </p>
 
           <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm font-mono text-zinc-200 mb-8 truncate">
-            {authedUser.email}
+            {user.email}
           </div>
 
           <div className="flex flex-col gap-3">
@@ -186,10 +193,9 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => void handleSignOut()}
-              disabled={signOutLoading}
-              className="w-full bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 font-medium text-sm px-4 py-2.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              className="w-full bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 font-medium text-sm px-4 py-2.5 rounded-lg transition-colors cursor-pointer"
             >
-              {signOutLoading ? "Signing out..." : "Sign Out"}
+              Sign Out
             </button>
           </div>
           </div>
