@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { X } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
@@ -244,8 +245,19 @@ export default function RequestIntroModal({
               className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
             />
             <span className="text-xs text-slate-300 leading-relaxed">
-              I agree to Provix Placement Terms (10% first-year base salary /
-              $2,500 minimum fee upon hire).
+              I agree to the{" "}
+              <Link
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+                className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
+              >
+                Provix Placement Terms
+              </Link>{" "}
+              (10% first-year base salary, $2,500 minimum fee upon hire or
+              contract placement).
             </span>
           </label>
 

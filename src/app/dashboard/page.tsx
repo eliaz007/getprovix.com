@@ -4235,7 +4235,7 @@ const showToast = (msg: string) => {
                             College Fit Radar
                           </p>
                           <p className="text-xs text-slate-500">
-                            Gemini is building your personalized strategy
+                            Provix AI is building your personalized strategy...
                           </p>
                         </div>
                       </div>
