@@ -1117,7 +1117,7 @@ export default function DashboardPage() {
 
   const handleSignOut = async () => {
     await signOutAndClearSession();
-    window.location.href = "/admin/login";
+    window.location.href = "/";
   };
 
 const showToast = (msg: string) => {

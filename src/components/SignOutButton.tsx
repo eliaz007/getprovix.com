@@ -13,7 +13,7 @@ const DEFAULT_CLASSES =
 
 export default function SignOutButton({
   className,
-  redirectTo = "/admin/login",
+  redirectTo = "/",
 }: SignOutButtonProps) {
   const [loading, setLoading] = useState(false);
 

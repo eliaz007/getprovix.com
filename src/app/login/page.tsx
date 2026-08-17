@@ -13,6 +13,17 @@ const supabase = createClient();
 type AuthMode = "sign-in" | "sign-up";
 type SignUpType = "candidate" | "business";
 
+function BackToHomeLink({ className = "" }: { className?: string }) {
+  return (
+    <Link
+      href="/"
+      className={`inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-white transition-colors ${className}`}
+    >
+      ← Back to Home
+    </Link>
+  );
+}
+
 export default function LoginPage() {
   const [mode, setMode] = useState<AuthMode>("sign-in");
   const [signUpType, setSignUpType] = useState<SignUpType>("candidate");
@@ -53,7 +64,7 @@ export default function LoginPage() {
     setAuthedUser(null);
 
     await signOutAndClearSession();
-    window.location.href = "/admin/login";
+    window.location.href = "/";
   };
 
   const goToDashboard = async () => {
@@ -146,7 +157,9 @@ export default function LoginPage() {
 
     return (
       <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-6">
-        <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-8 text-center">
+        <div className="w-full max-w-md">
+          <BackToHomeLink className="mb-4" />
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-8 text-center">
           <div className="w-14 h-14 mx-auto rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-xl mb-5">
             {initial}
           </div>
@@ -179,6 +192,7 @@ export default function LoginPage() {
               {signOutLoading ? "Signing out..." : "Sign Out"}
             </button>
           </div>
+          </div>
         </div>
       </div>
     );
@@ -188,6 +202,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <div className="w-full max-w-md px-6">
+        <BackToHomeLink className="mb-4" />
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-8">
           <div className="flex justify-center mb-6">
             <Link href="/" className="hover:opacity-90 transition-opacity">
