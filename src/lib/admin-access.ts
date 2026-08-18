@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 
 export const ADMIN_EMAILS = [
   "eliasdiangelo91@gmail.com",
+  "eliasdiangelo@gmail.com",
   "comradeduck1@gmail.com",
 ] as const;
 

@@ -1,12 +1,8 @@
--- Contingency placement model for intro requests.
--- Safe to re-run in the Supabase SQL Editor.
+-- Repair script if 0027 partially failed because status updates ran before the constraint was dropped.
 
 alter table public.intro_requests
   add column if not exists agreed_first_year_compensation numeric,
   add column if not exists candidate_bonus_allocated numeric;
-
-comment on column public.intro_requests.agreed_first_year_compensation is 'Agreed first-year compensation recorded when a placement is marked hired.';
-comment on column public.intro_requests.candidate_bonus_allocated is 'Candidate bonus amount allocated for sub-$25k placements.';
 
 alter table public.intro_requests
   drop constraint if exists intro_requests_status_check;
@@ -22,6 +18,9 @@ where lower(status) in ('approved', 'completed');
 update public.intro_requests
 set status = 'passed'
 where lower(status) in ('rejected', 'declined');
+
+alter table public.intro_requests
+  drop constraint if exists intro_requests_status_check;
 
 alter table public.intro_requests
   add constraint intro_requests_status_check

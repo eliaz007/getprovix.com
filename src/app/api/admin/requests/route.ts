@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireAdminApiAccess } from "@/lib/admin-api-auth";
 import {
+  fetchIntroRequests,
+  getIntroRequestById,
+  updateIntroRequestRecord,
+} from "@/lib/admin-intro-requests";
+import {
   INTRO_PIPELINE_STATUSES,
   normalizeIntroPipelineStatus,
   type IntroPipelineStatus,
@@ -11,9 +16,7 @@ import {
   parseCompensationValue,
 } from "@/lib/placement-revenue";
 import { sendIntroEmail } from "@/lib/send-intro-email";
-
-export const INTRO_REQUEST_COLUMNS =
-  "id, candidate_name, candidate_id, company_name, work_email, role_title, compensation_band, status, terms_accepted, terms_agreed_at, agreed_first_year_compensation, candidate_bonus_allocated, created_at";
+import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 
 const CANDIDATE_DOSSIER_COLUMNS =
   "id, full_name, codename_alias, contact_email, email, phone, linkedin_url, portfolio_url, bio, major, headline, job_title, country, timezone";
@@ -24,6 +27,19 @@ function isUuid(value: string): boolean {
   );
 }
 
+function formatFetchError(error: unknown): string {
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+
+  return "Could not load intro requests";
+}
+
 export async function GET() {
   try {
     const access = await requireAdminApiAccess();
@@ -31,20 +47,36 @@ export async function GET() {
       return access;
     }
 
-    const { data, error } = await access.dataClient
-      .from("intro_requests")
-      .select(INTRO_REQUEST_COLUMNS)
-      .order("created_at", { ascending: false });
+    let rows;
+    let schemaWarning: string | null = null;
 
-    if (error) {
+    try {
+      const result = await fetchIntroRequests(access.dataClient);
+      rows = result.rows;
+      schemaWarning = result.schemaWarning;
+    } catch (error) {
       console.error("Admin requests fetch error:", error);
+
+      if (isSupabaseSchemaError(error as { code?: string; message?: string })) {
+        return NextResponse.json(
+          {
+            error:
+              "Intro requests schema is out of date. Run migration 0027 in the Supabase SQL Editor.",
+            details: formatFetchError(error),
+          },
+          { status: 500 }
+        );
+      }
+
       return NextResponse.json(
-        { error: "Could not load intro requests" },
+        {
+          error: "Could not load intro requests",
+          details: formatFetchError(error),
+        },
         { status: 500 }
       );
     }
 
-    const rows = data ?? [];
     const candidateIds = [
       ...new Set(
         rows
@@ -75,11 +107,12 @@ export async function GET() {
         ...row,
         candidate_dossier: dossierById.get(row.candidate_id) ?? null,
       })),
+      warning: schemaWarning,
     });
   } catch (error) {
     console.error("Admin requests error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: formatFetchError(error) },
       { status: 500 }
     );
   }
@@ -118,16 +151,14 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Invalid intro status." }, { status: 400 });
     }
 
-    const { data: existingRequest, error: existingError } = await access.dataClient
-      .from("intro_requests")
-      .select(INTRO_REQUEST_COLUMNS)
-      .eq("id", requestId)
-      .maybeSingle();
+    let existingRequest;
 
-    if (existingError) {
-      console.error("Admin intro status lookup error:", existingError);
+    try {
+      existingRequest = await getIntroRequestById(access.dataClient, requestId);
+    } catch (error) {
+      console.error("Admin intro status lookup error:", error);
       return NextResponse.json(
-        { error: "Could not load intro request" },
+        { error: "Could not load intro request", details: formatFetchError(error) },
         { status: 500 }
       );
     }
@@ -169,17 +200,24 @@ export async function PATCH(request: Request) {
       }
     }
 
-    const { data: updatedRequest, error: updateError } = await access.dataClient
-      .from("intro_requests")
-      .update(updatePayload)
-      .eq("id", requestId)
-      .select(INTRO_REQUEST_COLUMNS)
-      .single();
+    let updatedRequest;
+    let schemaWarning: string | null = null;
 
-    if (updateError) {
-      console.error("Admin intro status update error:", updateError);
+    try {
+      const result = await updateIntroRequestRecord(
+        access.dataClient,
+        requestId,
+        updatePayload
+      );
+      updatedRequest = result.row;
+      schemaWarning = result.schemaWarning;
+    } catch (error) {
+      console.error("Admin intro status update error:", error);
       return NextResponse.json(
-        { error: "Could not update intro request" },
+        {
+          error: "Could not update intro request",
+          details: formatFetchError(error),
+        },
         { status: 500 }
       );
     }
@@ -191,11 +229,15 @@ export async function PATCH(request: Request) {
       await sendIntroEmail(updatedRequest, access.dataClient);
     }
 
-    return NextResponse.json({ success: true, data: updatedRequest });
+    return NextResponse.json({
+      success: true,
+      data: updatedRequest,
+      warning: schemaWarning,
+    });
   } catch (error) {
     console.error("Admin intro status update error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: formatFetchError(error) },
       { status: 500 }
     );
   }

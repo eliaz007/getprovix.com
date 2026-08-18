@@ -143,6 +143,7 @@ export default function AdminIntroRequestsPage() {
   const [compensationDrafts, setCompensationDrafts] = useState<Record<string, string>>(
     {}
   );
+  const [schemaWarning, setSchemaWarning] = useState<string | null>(null);
 
   const fetchRequests = useCallback(async () => {
     setRequestsLoading(true);
@@ -155,11 +156,18 @@ export default function AdminIntroRequestsPage() {
         cache: "no-store",
       });
 
-      let payload: { data?: IntroRequestRow[]; error?: string } = {};
+      let payload: {
+        data?: IntroRequestRow[];
+        error?: string;
+        details?: string;
+        warning?: string | null;
+      } = {};
       try {
         payload = (await response.json()) as {
           data?: IntroRequestRow[];
           error?: string;
+          details?: string;
+          warning?: string | null;
         };
       } catch (parseError) {
         console.error("Admin requests response parse failed:", parseError);
@@ -179,16 +187,44 @@ export default function AdminIntroRequestsPage() {
       }
 
       if (!response.ok) {
-        setError(payload.error || "Could not load intro requests. Please try again.");
+        console.error("Admin requests fetch failed:", {
+          status: response.status,
+          error: payload.error,
+          details: payload.details,
+        });
+        setError(
+          payload.details
+            ? `${payload.error ?? "Could not load intro requests."} (${payload.details})`
+            : payload.error || "Could not load intro requests. Please try again."
+        );
         setRequests([]);
+        setSchemaWarning(null);
         return;
       }
 
-      setRequests(
-        (payload.data ?? []).map((row) => ({
-          ...row,
-          status: normalizeIntroPipelineStatus(row.status),
-        }))
+      setSchemaWarning(payload.warning ?? null);
+      const normalizedRows = (payload.data ?? []).map((row) => ({
+        ...row,
+        candidate_name: row.candidate_name ?? null,
+        company_name: row.company_name ?? null,
+        work_email: row.work_email ?? null,
+        compensation_band: row.compensation_band ?? null,
+        agreed_first_year_compensation:
+          row.agreed_first_year_compensation ?? null,
+        candidate_bonus_allocated: row.candidate_bonus_allocated ?? null,
+        status: normalizeIntroPipelineStatus(row.status),
+      }));
+
+      setRequests(normalizedRows);
+      setCompensationDrafts(
+        Object.fromEntries(
+          normalizedRows
+            .filter((row) => row.agreed_first_year_compensation != null)
+            .map((row) => [
+              row.id,
+              String(row.agreed_first_year_compensation),
+            ])
+        )
       );
     } catch (fetchError) {
       console.error("Admin requests fetch failed:", fetchError);
@@ -419,16 +455,35 @@ export default function AdminIntroRequestsPage() {
       const payload = (await response.json()) as {
         success?: boolean;
         error?: string;
+        details?: string;
+        warning?: string | null;
         data?: IntroRequestRow;
       };
 
       if (!response.ok || !payload.success || !payload.data) {
-        setError(payload.error || "Could not update intro request.");
+        console.error("Admin intro update failed:", {
+          status: response.status,
+          error: payload.error,
+          details: payload.details,
+        });
+        setError(
+          payload.details
+            ? `${payload.error ?? "Could not update intro request."} (${payload.details})`
+            : payload.error || "Could not update intro request."
+        );
         return;
       }
 
       const updatedRequest = {
         ...payload.data,
+        candidate_name: payload.data.candidate_name ?? null,
+        company_name: payload.data.company_name ?? null,
+        work_email: payload.data.work_email ?? null,
+        compensation_band: payload.data.compensation_band ?? null,
+        agreed_first_year_compensation:
+          payload.data.agreed_first_year_compensation ?? null,
+        candidate_bonus_allocated:
+          payload.data.candidate_bonus_allocated ?? null,
         status: normalizeIntroPipelineStatus(payload.data.status),
         candidate_dossier: request.candidate_dossier,
       };
@@ -438,10 +493,26 @@ export default function AdminIntroRequestsPage() {
           entry.id === request.id ? updatedRequest : entry
         )
       );
+      setStatusDrafts((current) => {
+        const next = { ...current };
+        delete next[request.id];
+        return next;
+      });
+      if (updatedRequest.agreed_first_year_compensation != null) {
+        setCompensationDrafts((current) => ({
+          ...current,
+          [request.id]: String(updatedRequest.agreed_first_year_compensation),
+        }));
+      }
+      if (payload.warning) {
+        setSchemaWarning(payload.warning);
+      }
       setSuccessMessage(
         nextStatus === "approved_intro_sent"
           ? "Intro marked as sent and warm intro email dispatched."
-          : "Intro request updated."
+          : nextStatus === "hired"
+            ? "Placement marked hired. Revenue metrics updated."
+            : "Intro request updated."
       );
     } catch {
       setError("Could not update intro request.");
@@ -640,6 +711,12 @@ export default function AdminIntroRequestsPage() {
             </div>
           )}
         </div>
+
+        {schemaWarning && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
+            {schemaWarning}
+          </div>
+        )}
 
         {error && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
