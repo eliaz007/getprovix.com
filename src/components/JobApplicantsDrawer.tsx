@@ -66,6 +66,7 @@ type JobApplicantsDrawerProps = {
   jobTitle: string;
   employerId: string | null;
   onClose: () => void;
+  onRequestIntro: (applicant: JobApplicantView) => void;
 };
 
 function formatAiScoreLabel(
@@ -164,14 +165,11 @@ export default function JobApplicantsDrawer({
   jobTitle,
   employerId,
   onClose,
+  onRequestIntro,
 }: JobApplicantsDrawerProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [applicants, setApplicants] = useState<JobApplicantView[]>([]);
-  const [checkoutApplicationId, setCheckoutApplicationId] = useState<string | null>(
-    null
-  );
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !jobId || !employerId) {
@@ -285,49 +283,8 @@ export default function JobApplicantsDrawer({
       setApplicants([]);
       setError(null);
       setLoading(false);
-      setCheckoutApplicationId(null);
-      setCheckoutError(null);
     }
   }, [open]);
-
-  const handleUnlockContact = async (applicant: JobApplicantView) => {
-    if (!jobId || applicant.unlocked || checkoutApplicationId) {
-      return;
-    }
-
-    setCheckoutError(null);
-    setCheckoutApplicationId(applicant.applicationId);
-
-    try {
-      const response = await fetch("/api/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          candidateId: applicant.candidateId,
-          jobId,
-          applicationId: applicant.applicationId,
-        }),
-      });
-
-      const payload = (await response.json()) as { url?: string; error?: string };
-
-      if (!response.ok || !payload.url) {
-        throw new Error(payload.error ?? "Could not start checkout.");
-      }
-
-      window.location.href = payload.url;
-    } catch (checkoutFailure) {
-      console.error("Checkout failed:", checkoutFailure);
-      setCheckoutError(
-        checkoutFailure instanceof Error
-          ? checkoutFailure.message
-          : "Could not start checkout. Please try again."
-      );
-      setCheckoutApplicationId(null);
-    }
-  };
 
   if (!open || !jobId) {
     return null;
@@ -350,8 +307,8 @@ export default function JobApplicantsDrawer({
             </p>
             <h2 className="text-xl font-extrabold text-white mt-1">{jobTitle}</h2>
             <p className="text-sm text-slate-400 mt-1">
-              Anonymized proof-of-work profiles — pay $49 to unlock contact
-              details.
+              Anonymized proof-of-work profiles — request an intro with no
+              upfront fees under Provix contingency placement terms.
             </p>
           </div>
           <button
@@ -381,13 +338,7 @@ export default function JobApplicantsDrawer({
               </p>
             </div>
           ) : (
-            <>
-              {checkoutError && (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
-                  {checkoutError}
-                </div>
-              )}
-              {applicants.map((applicant) => (
+            applicants.map((applicant) => (
               <div
                 key={applicant.applicationId}
                 className="rounded-2xl border border-slate-800 bg-[#0A0A0A] p-5 space-y-4"
@@ -496,24 +447,15 @@ export default function JobApplicantsDrawer({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => void handleUnlockContact(applicant)}
-                      disabled={checkoutApplicationId === applicant.applicationId}
-                      className="inline-flex items-center gap-2 text-[11px] font-bold px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                      onClick={() => onRequestIntro(applicant)}
+                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer"
                     >
-                      {checkoutApplicationId === applicant.applicationId ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          Redirecting...
-                        </>
-                      ) : (
-                        "Unlock Contact — $49"
-                      )}
+                      Request Intro
                     </button>
                   )}
                 </div>
               </div>
-            ))}
-            </>
+            ))
           )}
         </div>
       </aside>

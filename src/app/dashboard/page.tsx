@@ -21,7 +21,9 @@ import {
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import RequestIntroModal from "@/components/RequestIntroModal";
-import JobApplicantsDrawer from "@/components/JobApplicantsDrawer";
+import JobApplicantsDrawer, {
+  type JobApplicantView,
+} from "@/components/JobApplicantsDrawer";
 import EmployerNotificationBell from "@/components/EmployerNotificationBell";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
@@ -1381,71 +1383,6 @@ const showToast = (msg: string) => {
   setTimeout(() => setToastMessage(null), 3000);
 };
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !user?.id || !isBusinessAccount) {
-      return;
-    }
-
-    const params = new URLSearchParams(window.location.search);
-
-    if (params.get("payment_canceled") === "true") {
-      window.history.replaceState({}, "", "/dashboard");
-      showToast("Checkout canceled.");
-      return;
-    }
-
-    if (params.get("payment_success") !== "true") {
-      return;
-    }
-
-    const applicationId = params.get("application_id")?.trim();
-    if (!applicationId) {
-      return;
-    }
-
-    let active = true;
-
-    const completePaymentUnlock = async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("job_applications")
-        .update({ unlocked: true })
-        .eq("id", applicationId)
-        .select("candidate_id")
-        .maybeSingle();
-
-      window.history.replaceState({}, "", "/dashboard");
-
-      if (!active) {
-        return;
-      }
-
-      if (error) {
-        console.error("Failed to unlock application after payment:", error);
-        showToast(
-          "Payment received, but contact unlock failed. Please contact support."
-        );
-        return;
-      }
-
-      if (data?.candidate_id) {
-        setUnlockedCandidateIds((current) => {
-          const next = new Set(current);
-          next.add(data.candidate_id.trim().toLowerCase());
-          return next;
-        });
-      }
-
-      showToast("Payment successful. Candidate contact unlocked.");
-    };
-
-    void completePaymentUnlock();
-
-    return () => {
-      active = false;
-    };
-  }, [user?.id, isBusinessAccount]);
-
   const handleVisibilityToggle = () => {
     setIsVisibleInPool((current) => !current);
   };
@@ -2459,13 +2396,52 @@ const showToast = (msg: string) => {
     );
   }, [dbProfile, skills, title, user?.id]);
 
+  const handleApplicantIntroRequest = (applicant: JobApplicantView) => {
+    const roleTitle = applicantsDrawerJob?.title ?? applicant.headline;
+    const parsedScore = Number.parseInt(
+      applicant.aiScoreLabel.replace(/\D/g, ""),
+      10
+    );
+    const codename = applicant.codenameAlias;
+    const introCandidate: TalentPoolCandidate = {
+      id: `C-${applicant.profileId.replace(/-/g, "").slice(0, 3).toUpperCase()}`,
+      profileId: applicant.profileId,
+      name: codename,
+      fullName: codename,
+      profileName: codename,
+      firstName: codename.split(/\s+/)[0] ?? codename,
+      lastName: codename.split(/\s+/).slice(1).join(" "),
+      headline: applicant.headline,
+      codenameAlias: codename,
+      country: applicant.location,
+      timezone: applicant.location,
+      role: applicant.headline,
+      major: "Credentials on file",
+      skills: applicant.skills,
+      rating: applicant.aiScoreLabel,
+      execution_score: Number.isFinite(parsedScore) ? parsedScore : 94,
+      status: "Available Now",
+      experienceLevel: DEFAULT_EXPERIENCE_LEVEL,
+      roleType: "General",
+      availability: "Available Now",
+      bio: "Candidate expressed interest in this role via Provix.",
+      github: "",
+      demoVideo: "",
+      projects: [],
+    };
+
+    setApplicantsDrawerJob(null);
+    setIntroDefaultRoleTitle(roleTitle);
+    setIntroModalCandidate(introCandidate);
+  };
+
   const handleIntroRequestSuccess = () => {
     if (user?.id) {
       void fetchIntroUnlocks(user.id);
     }
 
     showToast(
-      "Introduction requested! Our team will connect you shortly."
+      "Intro request submitted. Our team will review it under Provix placement terms."
     );
   };
 
@@ -5547,33 +5523,37 @@ const showToast = (msg: string) => {
           {activeTab === "revenue" && (
             <div className="max-w-3xl">
               <div className="mb-8">
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">Platform Revenue</h1>
-                <p className="text-slate-400 text-sm mt-2">Active employer subscriptions and direct placement fees.</p>
+                <h1 className="text-3xl font-extrabold tracking-tight text-white">Placement Economics</h1>
+                <p className="text-slate-400 text-sm mt-2">
+                  Provix operates on a pure contingency model — no upfront subscriptions or unlock fees.
+                </p>
               </div>
-              <div className="grid grid-cols-2 gap-6 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
                 <div className="bg-[#111111] p-6 rounded-2xl border border-slate-800/60 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Active Subscriptions</span>
-                  <span className="text-4xl font-extrabold text-white">12</span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Above $25k Roles</span>
+                  <span className="text-3xl font-extrabold text-white">10%</span>
+                  <p className="text-xs text-slate-400 mt-2">
+                    of first-year salary upon hire
+                  </p>
                 </div>
                 <div className="bg-[#111111] p-6 rounded-2xl border border-slate-800/60 shadow-lg relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl -mr-10 -mt-10" />
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Monthly Recurring (MRR)</span>
-                  <span className="text-4xl font-extrabold text-emerald-400">$2,400</span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Under $25k Roles</span>
+                  <span className="text-3xl font-extrabold text-emerald-400">$2,500</span>
+                  <p className="text-xs text-slate-400 mt-2">
+                    flat placement fee upon hire
+                  </p>
                 </div>
               </div>
               <div className="bg-[#111111] border border-slate-800/60 rounded-2xl shadow-2xl p-6">
-                <h3 className="text-sm font-bold text-white mb-4">Recent Hiring Activity</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-800">
-                    <div>
-                      <div className="text-xs font-bold text-white">Acme Local Marketing</div>
-                      <div className="text-[10px] text-slate-500 mt-1">Hired Candidate C-414 (Video Editor)</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-mono font-bold text-emerald-400">+$1,000 Placement</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase">Paid</div>
-                    </div>
-                  </div>
+                <h3 className="text-sm font-bold text-white mb-4">How billing works</h3>
+                <div className="space-y-3 text-sm text-slate-300 leading-relaxed">
+                  <p>
+                    Request intros for free. You only pay Provix after a successful hire is confirmed.
+                  </p>
+                  <p>
+                    Candidate bonuses of $250–$500 may be allocated on sub-$25k placements to support verified talent.
+                  </p>
                 </div>
               </div>
             </div>
@@ -6324,6 +6304,7 @@ const showToast = (msg: string) => {
           jobTitle={applicantsDrawerJob?.title ?? "Role"}
           employerId={user?.id ?? null}
           onClose={() => setApplicantsDrawerJob(null)}
+          onRequestIntro={handleApplicantIntroRequest}
         />
 
         <RequestIntroModal
@@ -6374,11 +6355,11 @@ const showToast = (msg: string) => {
                   <Sparkles className="w-4 h-4 shrink-0 text-indigo-400 mt-0.5" aria-hidden />
                   <div>
                     <p className="text-xs font-bold text-white">
-                      Zero Upfront Subscription
+                      Contingency Placement Model
                     </p>
                     <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                      Free account, unlimited profile browsing, and instant AI
-                      screening reports.
+                      No upfront fees. Pay 10% on hire above $25k or a $2,500
+                      flat fee below that threshold.
                     </p>
                   </div>
                 </div>

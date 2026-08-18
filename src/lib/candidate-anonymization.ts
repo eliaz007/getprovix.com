@@ -93,8 +93,7 @@ export function isIntroUnlockedForCandidate(
   return Boolean(displayId && unlockedProfileIds.has(displayId));
 }
 
-export const INTRO_UNLOCK_STATUSES = new Set(["approved", "completed"]);
-
-export function isIntroUnlockStatus(status: string | null | undefined): boolean {
-  return INTRO_UNLOCK_STATUSES.has((status ?? "").trim().toLowerCase());
-}
+export {
+  INTRO_UNLOCK_STATUSES,
+  isIntroUnlockStatus,
+} from "@/lib/intro-request-status";

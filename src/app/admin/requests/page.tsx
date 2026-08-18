@@ -15,16 +15,23 @@ import {
 import SignOutButton from "@/components/SignOutButton";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { isAdminUser } from "@/lib/admin-access";
+import {
+  INTRO_PIPELINE_STATUSES,
+  getIntroStatusBadgeClass,
+  getIntroStatusLabel,
+  normalizeIntroPipelineStatus,
+  type IntroPipelineStatus,
+} from "@/lib/intro-request-status";
+import {
+  CANDIDATE_BONUS_RANGE_LABEL,
+  FLAT_FEE_AMOUNT,
+  FLAT_FEE_THRESHOLD,
+  formatCurrency,
+  summarizePlacementRevenue,
+} from "@/lib/placement-revenue";
 import { createClient } from "@/utils/supabase/client";
 
 type AdminAuthState = "loading" | "authorized" | "unauthorized" | "unauthenticated";
-
-type IntroRequestStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "declined"
-  | "completed";
 
 type IntroRequestRow = {
   id: string;
@@ -34,9 +41,11 @@ type IntroRequestRow = {
   work_email: string | null;
   role_title: string;
   compensation_band: string | null;
-  status: IntroRequestStatus;
+  status: IntroPipelineStatus;
   terms_accepted?: boolean | null;
   terms_agreed_at?: string | null;
+  agreed_first_year_compensation?: number | null;
+  candidate_bonus_allocated?: number | null;
   created_at: string;
   candidate_dossier?: CandidateDossier | null;
 };
@@ -56,7 +65,7 @@ type CandidateDossier = {
   job_title?: string | null;
 };
 
-type StatusFilter = "all" | "pending" | "approved" | "rejected";
+type StatusFilter = "all" | IntroPipelineStatus;
 type PipelineTab = "intros" | "job_interest";
 
 type JobInterestApplicant = {
@@ -83,53 +92,21 @@ const PIPELINE_TABS: { id: PipelineTab; label: string }[] = [
 
 const STATUS_TABS: { id: StatusFilter; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "pending", label: "Pending" },
-  { id: "approved", label: "Approved" },
-  { id: "rejected", label: "Rejected" },
+  ...INTRO_PIPELINE_STATUSES.map((status) => ({
+    id: status.value as StatusFilter,
+    label: status.label,
+  })),
 ];
 
-function normalizeStatus(status: string): IntroRequestStatus {
-  const normalized = status.toLowerCase();
-  if (
-    normalized === "pending" ||
-    normalized === "approved" ||
-    normalized === "rejected" ||
-    normalized === "declined" ||
-    normalized === "completed"
-  ) {
-    return normalized as IntroRequestStatus;
-  }
-  return "pending";
-}
-
 function matchesStatusFilter(
-  status: IntroRequestStatus,
+  status: IntroPipelineStatus,
   filter: StatusFilter
 ): boolean {
   if (filter === "all") {
     return true;
   }
-  if (filter === "rejected") {
-    return status === "rejected" || status === "declined";
-  }
+
   return status === filter;
-}
-
-function getStatusBadgeClass(status: IntroRequestStatus): string {
-  if (status === "approved" || status === "completed") {
-    return "text-emerald-400 bg-emerald-500/10 border-emerald-500/30";
-  }
-  if (status === "rejected" || status === "declined") {
-    return "text-red-400 bg-red-500/10 border-red-500/30";
-  }
-  return "text-amber-400 bg-amber-500/10 border-amber-500/30";
-}
-
-function getStatusLabel(status: IntroRequestStatus): string {
-  if (status === "declined") {
-    return "Rejected";
-  }
-  return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 function formatDate(value: string): string {
@@ -156,11 +133,16 @@ export default function AdminIntroRequestsPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [copiedEmailId, setCopiedEmailId] = useState<string | null>(null);
   const [pipelineTab, setPipelineTab] = useState<PipelineTab>("intros");
   const [jobInterestLoading, setJobInterestLoading] = useState(false);
   const [jobInterestRows, setJobInterestRows] = useState<JobInterestRow[]>([]);
+  const [statusDrafts, setStatusDrafts] = useState<Record<string, IntroPipelineStatus>>(
+    {}
+  );
+  const [compensationDrafts, setCompensationDrafts] = useState<Record<string, string>>(
+    {}
+  );
 
   const fetchRequests = useCallback(async () => {
     setRequestsLoading(true);
@@ -205,7 +187,7 @@ export default function AdminIntroRequestsPage() {
       setRequests(
         (payload.data ?? []).map((row) => ({
           ...row,
-          status: normalizeStatus(row.status),
+          status: normalizeIntroPipelineStatus(row.status),
         }))
       );
     } catch (fetchError) {
@@ -390,86 +372,81 @@ export default function AdminIntroRequestsPage() {
     [jobInterestRows]
   );
 
-  const updateRequestStatus = async (id: string, status: "rejected") => {
-    setUpdatingId(id);
-    setError(null);
-    setSuccessMessage(null);
+  const placementMetrics = useMemo(() => {
+    const hiredRequests = requests.filter((request) => request.status === "hired");
+    return summarizePlacementRevenue(hiredRequests);
+  }, [requests]);
 
-    try {
-      const response = await fetch("/api/admin/reject", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ requestId: id }),
-      });
-
-      const payload = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-      };
-
-      if (!response.ok || !payload.success) {
-        setError(payload.error || "Could not reject intro request.");
-        return;
-      }
-
-      setRequests((current) =>
-        current.map((request) =>
-          request.id === id ? { ...request, status } : request
-        )
-      );
-    } catch {
-      setError("Could not reject intro request.");
-    } finally {
-      setUpdatingId(null);
-    }
+  const handleStatusDraftChange = (
+    requestId: string,
+    status: IntroPipelineStatus
+  ) => {
+    setStatusDrafts((current) => ({ ...current, [requestId]: status }));
   };
 
-  const handleApprove = async (requestId: string) => {
-    setApprovingId(requestId);
+  const handleCompensationDraftChange = (requestId: string, value: string) => {
+    setCompensationDrafts((current) => ({ ...current, [requestId]: value }));
+  };
+
+  const updateIntroRequest = async (request: IntroRequestRow) => {
+    const nextStatus =
+      statusDrafts[request.id] ?? request.status;
+    const compensationDraft =
+      compensationDrafts[request.id] ??
+      (request.agreed_first_year_compensation != null
+        ? String(request.agreed_first_year_compensation)
+        : "");
+
+    setUpdatingId(request.id);
     setError(null);
     setSuccessMessage(null);
 
     try {
-      const response = await fetch("/api/admin/approve", {
-        method: "POST",
+      const response = await fetch("/api/admin/requests", {
+        method: "PATCH",
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id: requestId, requestId }),
+        body: JSON.stringify({
+          requestId: request.id,
+          status: nextStatus,
+          agreed_first_year_compensation:
+            nextStatus === "hired" ? compensationDraft : undefined,
+        }),
       });
 
       const payload = (await response.json()) as {
         success?: boolean;
         error?: string;
-        data?: { status?: string };
+        data?: IntroRequestRow;
       };
 
-      if (!response.ok || !payload.success) {
-        console.error("Admin approve failed:", payload);
-        setError(payload.error || "Could not approve and send intro email.");
+      if (!response.ok || !payload.success || !payload.data) {
+        setError(payload.error || "Could not update intro request.");
         return;
       }
 
+      const updatedRequest = {
+        ...payload.data,
+        status: normalizeIntroPipelineStatus(payload.data.status),
+        candidate_dossier: request.candidate_dossier,
+      };
+
       setRequests((current) =>
-        current.map((request) =>
-          request.id === requestId
-            ? {
-                ...request,
-                status: normalizeStatus(payload.data?.status ?? "approved"),
-              }
-            : request
+        current.map((entry) =>
+          entry.id === request.id ? updatedRequest : entry
         )
       );
-      setSuccessMessage("Intro email sent and request approved.");
-    } catch (approveError) {
-      console.error("Admin approve failed:", approveError);
-      setError("Could not approve and send intro email.");
+      setSuccessMessage(
+        nextStatus === "approved_intro_sent"
+          ? "Intro marked as sent and warm intro email dispatched."
+          : "Intro request updated."
+      );
+    } catch {
+      setError("Could not update intro request.");
     } finally {
-      setApprovingId(null);
+      setUpdatingId(null);
     }
   };
 
@@ -557,11 +534,50 @@ export default function AdminIntroRequestsPage() {
             </div>
             <p className="text-slate-400 text-sm mt-2">
               {pipelineTab === "intros"
-                ? "Review employer warm intro requests and approve or reject pipeline entries."
+                ? "Review employer intro requests, move placements through the pipeline, and track contingency revenue."
                 : "See which candidates expressed interest in each posted role."}
             </p>
           </div>
         </div>
+
+        {pipelineTab === "intros" && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="rounded-2xl border border-slate-800/60 bg-[#111111] p-5 shadow-lg">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500 block mb-2">
+                Platform Revenue
+              </span>
+              <div className="text-3xl font-extrabold text-emerald-400">
+                {formatCurrency(placementMetrics.platformRevenue)}
+              </div>
+              <p className="text-xs text-slate-400 mt-2">
+                10% above {formatCurrency(FLAT_FEE_THRESHOLD)} +{" "}
+                {formatCurrency(FLAT_FEE_AMOUNT)} flat fees below
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#111111] p-5 shadow-lg">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500 block mb-2">
+                Candidate Bonuses Allocated
+              </span>
+              <div className="text-3xl font-extrabold text-indigo-300">
+                {formatCurrency(placementMetrics.candidateBonusesAllocated)}
+              </div>
+              <p className="text-xs text-slate-400 mt-2">
+                {CANDIDATE_BONUS_RANGE_LABEL} per sub-$25k placement
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-800/60 bg-[#111111] p-5 shadow-lg">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500 block mb-2">
+                Confirmed Hires
+              </span>
+              <div className="text-3xl font-extrabold text-white">
+                {placementMetrics.hiredCount}
+              </div>
+              <p className="text-xs text-slate-400 mt-2">
+                Placements marked hired with agreed compensation
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           {PIPELINE_TABS.map((tab) => {
@@ -746,14 +762,20 @@ export default function AdminIntroRequestsPage() {
                     <th className="px-5 py-4 font-bold">Work Email</th>
                     <th className="px-5 py-4 font-bold">Comp Band</th>
                     <th className="px-5 py-4 font-bold">Status</th>
-                    <th className="px-5 py-4 font-bold">Actions</th>
+                    <th className="px-5 py-4 font-bold">Pipeline</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80">
                   {filteredRequests.map((request) => {
                     const email = request.work_email ?? "";
                     const isUpdating = updatingId === request.id;
-                    const isApproving = approvingId === request.id;
+                    const selectedStatus =
+                      statusDrafts[request.id] ?? request.status;
+                    const compensationDraft =
+                      compensationDrafts[request.id] ??
+                      (request.agreed_first_year_compensation != null
+                        ? String(request.agreed_first_year_compensation)
+                        : "");
 
                     return (
                       <tr
@@ -871,49 +893,71 @@ export default function AdminIntroRequestsPage() {
                         </td>
                         <td className="px-5 py-4 align-top">
                           <span
-                            className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${getStatusBadgeClass(request.status)}`}
+                            className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${getIntroStatusBadgeClass(request.status)}`}
                           >
-                            {getStatusLabel(request.status)}
+                            {getIntroStatusLabel(request.status)}
                           </span>
                         </td>
-                        <td className="px-5 py-4 align-top">
-                          <div className="flex flex-wrap gap-2">
+                        <td className="px-5 py-4 align-top min-w-[240px]">
+                          <div className="space-y-3">
+                            <select
+                              value={selectedStatus}
+                              onChange={(event) =>
+                                handleStatusDraftChange(
+                                  request.id,
+                                  event.target.value as IntroPipelineStatus
+                                )
+                              }
+                              disabled={isUpdating}
+                              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                            >
+                              {INTRO_PIPELINE_STATUSES.map((status) => (
+                                <option key={status.value} value={status.value}>
+                                  {status.label}
+                                </option>
+                              ))}
+                            </select>
+
+                            {selectedStatus === "hired" && (
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                                  Agreed First-Year Compensation
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1000"
+                                  value={compensationDraft}
+                                  onChange={(event) =>
+                                    handleCompensationDraftChange(
+                                      request.id,
+                                      event.target.value
+                                    )
+                                  }
+                                  placeholder="e.g. 85000"
+                                  disabled={isUpdating}
+                                  className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                                />
+                              </div>
+                            )}
+
                             <button
                               type="button"
-                              disabled={
-                                isApproving ||
-                                isUpdating ||
-                                request.status === "approved"
-                              }
-                              onClick={() => void handleApprove(request.id)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-bold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              disabled={isUpdating}
+                              onClick={() => void updateIntroRequest(request)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-[11px] font-bold text-indigo-300 hover:bg-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             >
-                              {isApproving ? (
+                              {isUpdating ? (
                                 <>
                                   <Loader2
                                     className="w-3.5 h-3.5 animate-spin"
                                     aria-hidden
                                   />
-                                  Sending...
+                                  Saving...
                                 </>
                               ) : (
-                                "Approve"
+                                "Save Pipeline Update"
                               )}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={
-                                isUpdating ||
-                                isApproving ||
-                                request.status === "rejected" ||
-                                request.status === "declined"
-                              }
-                              onClick={() =>
-                                void updateRequestStatus(request.id, "rejected")
-                              }
-                              className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[11px] font-bold text-red-300 hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                            >
-                              Reject
                             </button>
                           </div>
                         </td>

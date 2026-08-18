@@ -116,7 +116,7 @@ export default function RequestIntroModal({
         compensation_band: compBand,
         terms_accepted: true,
         terms_agreed_at: agreedAt,
-        status: "pending" as const,
+        status: "pending_admin_approval" as const,
       };
 
       const { error: insertError } = await supabase
@@ -155,7 +155,8 @@ export default function RequestIntroModal({
             Request Warm Introduction to {candidate.name}
           </h3>
           <p className="text-sm text-slate-400 mt-1">
-            Our team will review your request and coordinate a warm introduction.
+            No upfront fees. Provix only earns when you hire through our
+            contingency placement model.
           </p>
         </div>
 
@@ -230,7 +231,7 @@ export default function RequestIntroModal({
               className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
             />
             <span className="text-xs text-slate-300 leading-relaxed">
-              I agree to{" "}
+              I agree to the{" "}
               <Link
                 href="/terms"
                 target="_blank"
@@ -239,9 +240,11 @@ export default function RequestIntroModal({
                 onMouseDown={(event) => event.stopPropagation()}
                 className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
               >
-                Provix Terms of Service &amp; Placement Policy
-              </Link>{" "}
-              (Employers are responsible for independent pre-hire verification).
+                Provix Placement Terms
+              </Link>
+              : 10% of first-year salary upon hire, or a $2,500 flat fee for
+              roles under $25,000. Employers remain responsible for independent
+              pre-hire verification.
             </span>
           </label>
 

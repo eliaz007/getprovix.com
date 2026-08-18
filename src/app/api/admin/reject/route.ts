@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
     const { error: updateError } = await access.dataClient
       .from("intro_requests")
-      .update({ status: "rejected" })
+      .update({ status: "passed" })
       .eq("id", requestId);
 
     if (updateError) {
