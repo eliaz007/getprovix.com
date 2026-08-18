@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Check,
   Copy,
   Loader2,
@@ -12,7 +10,6 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { PitchStudioResult } from "@/app/api/pitch-studio/route";
-import { ProvixLogo } from "@/components/ProvixLogo";
 
 const TONE_OPTIONS = [
   "Direct & High Signal",
@@ -134,23 +131,7 @@ export default function PitchStudioPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-slate-200">
-      <header className="border-b border-slate-800/80 bg-[#0A0A0A]/90 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
-          <Link href="/" className="hover:opacity-90 transition-opacity shrink-0">
-            <ProvixLogo />
-          </Link>
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" aria-hidden />
-            Back to Dashboard
-          </Link>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-6 py-10">
+    <div className="w-full max-w-5xl mx-auto space-y-10">
         <div className="mb-8">
           <div className="inline-flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-widest mb-2">
             <PenTool className="w-4 h-4" aria-hidden />
@@ -401,7 +382,6 @@ export default function PitchStudioPage() {
             )}
           </div>
         </div>
-      </main>
     </div>
   );
 }

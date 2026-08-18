@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import {
   AlertTriangle,
@@ -15,16 +15,13 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
-  PenTool,
-  Terminal,
 } from "lucide-react";
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
-import { ProvixLogo } from "@/components/ProvixLogo";
 import RequestIntroModal from "@/components/RequestIntroModal";
 import JobApplicantsDrawer, {
   type JobApplicantView,
 } from "@/components/JobApplicantsDrawer";
-import EmployerNotificationBell from "@/components/EmployerNotificationBell";
+import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import {
@@ -879,15 +876,16 @@ function resolveAccountRole(
 
 export default function DashboardPage() {
   const router = useRouter();
-  const pathname = usePathname();
+  const {
+    activeTab,
+    setActiveTab,
+    setAccountRole: setNavAccountRole,
+    setOnOpenJobApplicants,
+  } = useDashboardNav();
 
-  // Global Navigation State
-  const [activeTab, setActiveTab] = useState<DashboardTab>("my_profile");
   const [showPublicProfile, setShowPublicProfile] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Soft paywall: premium nav items open this modal instead of switching tabs.
-  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [proUpgradeModalOpen, setProUpgradeModalOpen] = useState(false);
   const [betaCompanyName, setBetaCompanyName] = useState("");
   const [betaWorkEmail, setBetaWorkEmail] = useState("");
@@ -916,7 +914,6 @@ export default function DashboardPage() {
     null
   );
   const deepScreeningAbortRef = useRef<AbortController | null>(null);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [postJobModalOpen, setPostJobModalOpen] = useState(false);
   const [newJobTitle, setNewJobTitle] = useState("");
   const [newJobCompany, setNewJobCompany] = useState("");
@@ -957,6 +954,10 @@ export default function DashboardPage() {
   const isEmployeeAccount = isEmployeeRole(profileRole);
   const showTalentPoolNav = canAccessTalentPool(profileRole);
   const [candidates, setCandidates] = useState<TalentPoolCandidate[]>([]);
+
+  useEffect(() => {
+    setNavAccountRole(profileRole);
+  }, [profileRole, setNavAccountRole]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -2365,6 +2366,7 @@ const showToast = (msg: string) => {
       const job = jobs.find((entry) => entry.id === jobId);
       const listing = businessListings.find((entry) => entry.id === jobId);
 
+      router.push("/dashboard");
       setActiveTab("my_profile");
       setProfileSubMenu("activeListings");
       setApplicantsDrawerJob({
@@ -2372,8 +2374,13 @@ const showToast = (msg: string) => {
         title: job?.title ?? listing?.title ?? "Role",
       });
     },
-    [jobs, businessListings]
+    [jobs, businessListings, router, setActiveTab]
   );
+
+  useEffect(() => {
+    setOnOpenJobApplicants(openApplicantsDrawerForJob);
+    return () => setOnOpenJobApplicants(null);
+  }, [openApplicantsDrawerForJob, setOnOpenJobApplicants]);
 
   const getCandidateNotificationAlias = useCallback((): string => {
     if (dbProfile?.codename_alias?.trim()) {
@@ -3040,218 +3047,24 @@ const showToast = (msg: string) => {
     </div>
   );
 
-  const sidebarNavContent = (
-    <div className="p-6">
-      <Link href="/" className="block mb-8 hover:opacity-90 transition-opacity">
-        <ProvixLogo />
-        <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase mt-2 block">
-          Verified Intelligence
-        </span>
-      </Link>
-
-      <div className="space-y-8">
-        {/* Personal / Company Hub */}
-        <div>
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
-            {isBusinessAccount
-              ? "Company Hub"
-              : isEmployeeAccount
-                ? "Employee Dashboard"
-                : "Candidate Dashboard"}
-          </span>
-          <nav className="space-y-1">
-            <button onClick={() => setActiveTab("my_profile")} className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${activeTab === "my_profile" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}>
-              <Icons.User /> {isBusinessAccount ? "Company Profile" : "My Profile"}
-            </button>
-            {!isBusinessAccount && (
-              <button onClick={() => setActiveTab("opportunities")} className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${activeTab === "opportunities" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}>
-                <Icons.Compass /> Opportunities
-              </button>
-            )}
-          </nav>
-        </div>
-
-        {/* Career Accelerator — candidates only (not employees or employers) */}
-        {!isBusinessAccount && !isEmployeeAccount && (
-        <div>
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">Career Accelerator</span>
-          <nav className="space-y-1">
-            <Link
-              href="/dashboard/pitch-studio"
-              onClick={() => setMobileNavOpen(false)}
-              className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${pathname === "/dashboard/pitch-studio" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}
-            >
-              <PenTool className="w-4 h-4" aria-hidden="true" /> Pitch Studio
-            </Link>
-            <Link
-              href="/dashboard/auditor"
-              onClick={() => setMobileNavOpen(false)}
-              className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${pathname === "/dashboard/auditor" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}
-            >
-              <ShieldCheck className="w-4 h-4" aria-hidden="true" /> GitHub &amp; Resume Auditor
-            </Link>
-            <Link
-              href="/dashboard/interview-prep"
-              onClick={() => setMobileNavOpen(false)}
-              className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${pathname === "/dashboard/interview-prep" ? "bg-slate-800/60 text-white font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}
-            >
-              <Terminal className="w-4 h-4" aria-hidden="true" /> Interview Simulator
-            </Link>
-          </nav>
-        </div>
-        )}
-
-        {/* Employee Job Hub */}
-        {isEmployeeAccount && (
-        <div>
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">Opportunity Hub</span>
-          <nav className="space-y-1">
-            <button onClick={() => setActiveTab("opportunity_radar")} className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${activeTab === "opportunity_radar" ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}>
-              <Icons.Radar /> Opportunity Radar
-            </button>
-            <button onClick={() => setActiveTab("applications")} className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${activeTab === "applications" ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}>
-              <Icons.Document /> Applications
-            </button>
-          </nav>
-        </div>
-        )}
-
-        {/* Employer Hub */}
-        {showTalentPoolNav && (
-        <div>
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">Employer Console (B2B)</span>
-          <nav className="space-y-1">
-            <button onClick={() => setActiveTab("talent")} className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${activeTab === "talent" ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}>
-              <Icons.Users /> Vetted Talent Pool
-            </button>
-            <button onClick={() => setActiveTab("evaluator")} className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${activeTab === "evaluator" ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}>
-              <Icons.Document /> AI Screen Candidate
-            </button>
-            <button onClick={() => setActiveTab("revenue")} className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${activeTab === "revenue" ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold" : "text-slate-500 hover:bg-slate-800/30"}`}>
-              <Icons.Briefcase /> Placement Revenue
-            </button>
-          </nav>
-        </div>
-        )}
-
-        {/* Premium Tools (soft paywall) */}
-        <div>
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">Premium Tools</span>
-          <nav className="space-y-1">
-            <button
-              type="button"
-              onClick={() => setUpgradeModalOpen(true)}
-              className="w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center justify-between gap-3 text-[13px] text-slate-600 hover:bg-slate-800/30 cursor-pointer"
-            >
-              <span className="flex items-center gap-3">
-                <Icons.Briefcase /> Advanced Analytics
-              </span>
-              <span className="text-slate-600">
-                <Icons.LockSmall />
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setUpgradeModalOpen(true)}
-              className="w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center justify-between gap-3 text-[13px] text-slate-600 hover:bg-slate-800/30 cursor-pointer"
-            >
-              <span className="flex items-center gap-3">
-                <Icons.Mail /> Direct Messaging
-              </span>
-              <span className="text-slate-600">
-                <Icons.LockSmall />
-              </span>
-            </button>
-          </nav>
-        </div>
-      </div>
-    </div>
-  );
-
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-[#0A0A0A] text-slate-200 font-sans antialiased overflow-hidden selection:bg-indigo-500/30">
-
-      {/* Mobile header */}
-      <header className="flex md:hidden items-center justify-between px-4 py-3 bg-[#111111] border-b border-slate-800/60 shrink-0 z-20">
-        <Link href="/" className="flex items-center gap-3 min-w-0 hover:opacity-90 transition-opacity">
-          <ProvixLogo />
-        </Link>
-        <div className="flex items-center gap-1">
-          {isBusinessAccount && (
-            <EmployerNotificationBell
-              userId={user?.id ?? null}
-              onOpenJobApplicants={openApplicantsDrawerForJob}
-            />
-          )}
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen(true)}
-            aria-label="Open navigation menu"
-            className="p-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors cursor-pointer"
+    <>
+      {isEmployeeAccount && activeTab === "opportunity_radar" && (
+        <div className="sticky top-0 z-20 -mt-4 mb-2 flex justify-center pointer-events-none">
+          <div
+            className={`inline-flex items-center gap-2 backdrop-blur-md text-xs font-bold px-4 py-2 rounded-full shadow-lg border ${
+              isVisibleInPool
+                ? "bg-[#111111]/95 border-emerald-500/25 text-emerald-400"
+                : "bg-[#111111]/95 border-slate-700 text-slate-400"
+            }`}
           >
-            <Icons.Menu />
-          </button>
+            {isVisibleInPool
+              ? "🟢 Open to Work (Visible to Employers)"
+              : "🔴 Profile Hidden from Employers"}
+          </div>
         </div>
-      </header>
-
-      {/* Mobile navigation drawer */}
-      {mobileNavOpen && (
-        <>
-          <button
-            type="button"
-            aria-label="Close navigation menu"
-            onClick={() => setMobileNavOpen(false)}
-            className="fixed inset-0 bg-black/60 z-40 md:hidden cursor-pointer"
-          />
-          <aside className="fixed inset-y-0 left-0 w-[280px] max-w-[85vw] bg-[#111111] border-r border-slate-800/60 flex flex-col z-50 shadow-2xl overflow-y-auto md:hidden">
-            <div className="flex items-center justify-end p-3 border-b border-slate-800/60 shrink-0">
-              <button
-                type="button"
-                onClick={() => setMobileNavOpen(false)}
-                aria-label="Close menu"
-                className="p-2 rounded-lg text-slate-400 hover:bg-slate-800/60 hover:text-white transition-colors cursor-pointer"
-              >
-                <Icons.XMark />
-              </button>
-            </div>
-            {sidebarNavContent}
-          </aside>
-        </>
       )}
-
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-[280px] bg-[#111111] border-r border-slate-800/60 flex-col shrink-0 z-10 shadow-2xl overflow-y-auto">
-        {sidebarNavContent}
-      </aside>
-
-      {/* --- MAIN WORKSPACE STAGE --- */}
-      <main className="relative w-full min-w-0 flex-1 flex flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#0A0A0A] to-[#0A0A0A]">
-        {isBusinessAccount && (
-          <div className="hidden md:flex shrink-0 items-center justify-end px-6 md:px-12 py-3 border-b border-slate-800/60 bg-[#111111]/95">
-            <EmployerNotificationBell
-              userId={user?.id ?? null}
-              onOpenJobApplicants={openApplicantsDrawerForJob}
-            />
-          </div>
-        )}
-
-        <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 md:p-12">
-        {isEmployeeAccount && activeTab === "opportunity_radar" && (
-          <div className="sticky top-0 z-20 -mt-4 mb-2 flex justify-center pointer-events-none">
-            <div
-              className={`inline-flex items-center gap-2 backdrop-blur-md text-xs font-bold px-4 py-2 rounded-full shadow-lg border ${
-                isVisibleInPool
-                  ? "bg-[#111111]/95 border-emerald-500/25 text-emerald-400"
-                  : "bg-[#111111]/95 border-slate-700 text-slate-400"
-              }`}
-            >
-              {isVisibleInPool
-                ? "🟢 Open to Work (Visible to Employers)"
-                : "🔴 Profile Hidden from Employers"}
-            </div>
-          </div>
-        )}
-        <div className="w-full max-w-5xl mx-auto space-y-10 animate-in fade-in duration-500 transition-all duration-300">
+      <div className="w-full max-w-5xl mx-auto space-y-10 animate-in fade-in duration-500 transition-all duration-300">
 
           {/* MY PROFILE TAB WITH NESTED MENU OPTIONS */}
           {activeTab === "my_profile" && (
@@ -6007,7 +5820,6 @@ const showToast = (msg: string) => {
             )}
           </div>
         </div>
-        </div>
 
         {/* PUBLIC PROFILE MODAL */}
         {showPublicProfile && (
@@ -6446,45 +6258,6 @@ const showToast = (msg: string) => {
           </div>
         )}
 
-        {/* SOFT PAYWALL: PREMIUM FEATURE UPGRADE MODAL */}
-        {upgradeModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-sm w-full text-center relative">
-              <button
-                type="button"
-                onClick={() => setUpgradeModalOpen(false)}
-                className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors cursor-pointer"
-              >
-                <Icons.XMark />
-              </button>
-
-              <h3 className="text-xl font-bold text-white">
-                Premium Feature Locked
-              </h3>
-              <p className="text-sm text-slate-400 mt-2">
-                Upgrade your account to access advanced tools and analytics.
-              </p>
-
-              <div className="flex flex-col gap-3 mt-8">
-                <button
-                  type="button"
-                  onClick={() => router.push("/pricing")}
-                  className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-semibold py-3 rounded-lg text-sm transition-all cursor-pointer"
-                >
-                  Upgrade as Talent ($15/mo)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => router.push("/pricing")}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20 cursor-pointer"
-                >
-                  Upgrade as Agency ($299/mo)
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
+    </>
   );
 }
