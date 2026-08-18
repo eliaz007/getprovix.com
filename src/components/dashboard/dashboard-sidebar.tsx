@@ -64,7 +64,6 @@ export default function DashboardSidebar() {
     isEmployeeAccount,
     showTalentPoolNav,
     setMobileNavOpen,
-    setUpgradeModalOpen,
   } = useDashboardNav();
 
   return (
@@ -182,38 +181,6 @@ export default function DashboardSidebar() {
             </nav>
           </div>
         )}
-
-        <div>
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
-            Premium Tools
-          </span>
-          <nav className="space-y-1">
-            <button
-              type="button"
-              onClick={() => setUpgradeModalOpen(true)}
-              className="w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center justify-between gap-3 text-[13px] text-slate-600 hover:bg-slate-800/30 cursor-pointer"
-            >
-              <span className="flex items-center gap-3">
-                <DashboardIcons.Briefcase /> Advanced Analytics
-              </span>
-              <span className="text-slate-600">
-                <DashboardIcons.LockSmall />
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setUpgradeModalOpen(true)}
-              className="w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center justify-between gap-3 text-[13px] text-slate-600 hover:bg-slate-800/30 cursor-pointer"
-            >
-              <span className="flex items-center gap-3">
-                <DashboardIcons.Mail /> Direct Messaging
-              </span>
-              <span className="text-slate-600">
-                <DashboardIcons.LockSmall />
-              </span>
-            </button>
-          </nav>
-        </div>
       </div>
     </div>
   );

@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import EmployerNotificationBell from "@/components/EmployerNotificationBell";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import DashboardSidebar from "@/components/dashboard/dashboard-sidebar";
-import DashboardUpgradeModal from "@/components/dashboard/dashboard-upgrade-modal";
 import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 
@@ -84,8 +83,6 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           {children}
         </div>
       </main>
-
-      <DashboardUpgradeModal />
     </div>
   );
 }

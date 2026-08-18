@@ -24,8 +24,6 @@ type DashboardNavContextValue = {
   setActiveTab: (tab: DashboardTab) => void;
   mobileNavOpen: boolean;
   setMobileNavOpen: (open: boolean) => void;
-  upgradeModalOpen: boolean;
-  setUpgradeModalOpen: (open: boolean) => void;
   accountRole: string | null;
   setAccountRole: (role: string | null) => void;
   userId: string | null;
@@ -55,7 +53,6 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [activeTab, setActiveTab] = useState<DashboardTab>("my_profile");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [onOpenJobApplicants, setOnOpenJobApplicantsState] = useState<
@@ -125,8 +122,6 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
       setActiveTab,
       mobileNavOpen,
       setMobileNavOpen,
-      upgradeModalOpen,
-      setUpgradeModalOpen,
       accountRole,
       setAccountRole,
       userId,
@@ -139,7 +134,6 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
     [
       activeTab,
       mobileNavOpen,
-      upgradeModalOpen,
       accountRole,
       userId,
       isBusinessAccount,
