@@ -1,169 +1,52 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import {
+  buildFallbackMatch,
+  normalizeMatchResult,
+  normalizeStringArray,
+  type MatchCandidatePayload,
+  type MatchJobPayload,
+  type MatchResult,
+} from "@/lib/match-heuristic";
 
-type CandidatePayload = {
-  title?: string;
-  bio?: string;
-  skills?: string[] | string;
-  degree?: string;
-};
-
-type JobPayload = {
-  title?: string;
-  company?: string;
-  tags?: string[] | string;
-  location?: string;
-};
-
-export type MatchResult = {
-  match_percentage: number;
-  reasoning: string;
-  matching_skills: string[];
-  missing_skills: string[];
-};
+export type { MatchResult };
 
 const SYSTEM_PROMPT = `Score candidate vs job fit. Return JSON only:
-{"match_percentage":50-99,"reasoning":"one short sentence","matching_skills":["…"],"missing_skills":["…"]}
-Keep reasoning under 20 words. No markdown.`;
+{"score":50-99,"breakdown":"one short sentence in second person (You/Your)"}
+Keep breakdown under 20 words. No markdown.`;
 
 const MATCH_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    match_percentage: {
+    score: {
       type: Type.INTEGER,
       description: "Integer fit score between 50 and 99.",
     },
-    reasoning: {
+    breakdown: {
       type: Type.STRING,
       description:
         "One concise sentence in second person (You/Your) explaining the match to the candidate.",
     },
-    matching_skills: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-    },
-    missing_skills: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-    },
   },
-  required: [
-    "match_percentage",
-    "reasoning",
-    "matching_skills",
-    "missing_skills",
-  ],
+  required: ["score", "breakdown"],
 };
 
-// gemini-2.5-flash is restricted for new API keys; fall back to current replacements.
 const MODEL_CANDIDATES = [
   "gemini-2.5-flash",
   "gemini-3.6-flash",
   "gemini-2.0-flash",
 ] as const;
 
-function clampMatchPercentage(value: unknown): number {
-  const numeric =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-
-  if (!Number.isFinite(numeric)) {
-    return 65;
-  }
-
-  return Math.min(99, Math.max(50, Math.round(numeric)));
-}
-
-function normalizeStringArray(value: unknown): string[] {
-  if (typeof value === "string") {
-    return value
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function normalizeMatchResult(raw: unknown): MatchResult {
-  const record =
-    raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-
-  const reasoning =
-    typeof record.reasoning === "string" && record.reasoning.trim()
-      ? record.reasoning.trim()
-      : "Your profile partially aligns with this role's requirements.";
-
-  return {
-    match_percentage: clampMatchPercentage(record.match_percentage),
-    reasoning,
-    matching_skills: normalizeStringArray(record.matching_skills),
-    missing_skills: normalizeStringArray(record.missing_skills),
-  };
-}
-
-function buildFallbackMatch(
-  candidate: CandidatePayload,
-  job: JobPayload
-): MatchResult {
-  const candidateSkills = normalizeStringArray(candidate.skills);
-  const jobTags = normalizeStringArray(job.tags);
-
-  const normalizedCandidateSkills = candidateSkills.map((skill) =>
-    skill.toLowerCase()
-  );
-
-  const matching_skills = jobTags.filter((tag) =>
-    normalizedCandidateSkills.some(
-      (skill) =>
-        skill.includes(tag.toLowerCase()) || tag.toLowerCase().includes(skill)
-    )
-  );
-
-  const missing_skills = jobTags.filter(
-    (tag) => !matching_skills.includes(tag)
-  );
-
-  const overlapRatio =
-    jobTags.length > 0 ? matching_skills.length / jobTags.length : 0.5;
-
-  const match_percentage = clampMatchPercentage(
-    50 + Math.round(overlapRatio * 49)
-  );
-
-  const reasoning =
-    matching_skills.length > 0
-      ? `You're a strong fit for ${job.title ?? "this role"} with your ${matching_skills.join(", ")} experience.`
-      : `Your profile currently has limited overlap with the required skills for ${job.title ?? "this role"}.`;
-
-  return {
-    match_percentage,
-    reasoning,
-    matching_skills,
-    missing_skills,
-  };
-}
-
 function isValidRequestBody(
   body: unknown
-): body is { candidate: CandidatePayload; job: JobPayload } {
+): body is { candidate: MatchCandidatePayload; job: MatchJobPayload } {
   if (!body || typeof body !== "object") {
     return false;
   }
 
   const record = body as {
-    candidate?: CandidatePayload;
-    job?: JobPayload;
+    candidate?: MatchCandidatePayload;
+    job?: MatchJobPayload;
   };
 
   return (
@@ -175,15 +58,10 @@ function isValidRequestBody(
 }
 
 async function generateGeminiMatch(
-  candidate: CandidatePayload,
-  job: JobPayload
+  apiKey: string,
+  candidate: MatchCandidatePayload,
+  job: MatchJobPayload
 ): Promise<MatchResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured.");
-  }
-
   const ai = new GoogleGenAI({ apiKey });
 
   const userPrompt = JSON.stringify({
@@ -222,7 +100,20 @@ async function generateGeminiMatch(
         throw new Error(`Gemini (${model}) returned an empty response.`);
       }
 
-      return normalizeMatchResult(JSON.parse(text));
+      const parsed = normalizeMatchResult(JSON.parse(text));
+      const fallbackSkills = buildFallbackMatch(candidate, job);
+
+      return {
+        ...parsed,
+        matching_skills:
+          parsed.matching_skills.length > 0
+            ? parsed.matching_skills
+            : fallbackSkills.matching_skills,
+        missing_skills:
+          parsed.missing_skills.length > 0
+            ? parsed.missing_skills
+            : fallbackSkills.missing_skills,
+      };
     } catch (error) {
       lastError = error;
       console.error(`Gemini match failed for model ${model}:`, error);
@@ -254,9 +145,15 @@ export async function POST(request: Request) {
   }
 
   const { candidate, job } = body;
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+
+  if (!apiKey) {
+    console.warn("GEMINI_API_KEY is not configured — using heuristic fallback.");
+    return NextResponse.json(buildFallbackMatch(candidate, job));
+  }
 
   try {
-    const result = await generateGeminiMatch(candidate, job);
+    const result = await generateGeminiMatch(apiKey, candidate, job);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Gemini match API failed, using fallback:", error);

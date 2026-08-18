@@ -58,6 +58,11 @@ import {
   getYouTubeUrlValidationMessage,
   isValidYouTubeUrl,
 } from "@/lib/validate-youtube-url";
+import {
+  buildFallbackMatch,
+  normalizeMatchResult,
+  type MatchResult,
+} from "@/lib/match-heuristic";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
@@ -324,12 +329,43 @@ function getIntegrityScoreClass(score: number): string {
   return "text-red-400 border-red-500/30 bg-red-500/10";
 }
 
-type MatchInsight = {
-  match_percentage: number;
-  reasoning: string;
-  matching_skills: string[];
-  missing_skills: string[];
-};
+type MatchInsight = MatchResult;
+
+function resolveMatchInsight(
+  raw: unknown,
+  candidate: {
+    title: string;
+    bio: string;
+    skills: string[];
+    degree: string;
+  },
+  job: {
+    title: string;
+    company: string;
+    tags: string[];
+    location: string;
+  }
+): MatchInsight {
+  if (raw && typeof raw === "object" && !("error" in (raw as object))) {
+    const normalized = normalizeMatchResult(raw);
+    if (Number.isFinite(normalized.match_percentage)) {
+      const fallbackSkills = buildFallbackMatch(candidate, job);
+      return {
+        ...normalized,
+        matching_skills:
+          normalized.matching_skills.length > 0
+            ? normalized.matching_skills
+            : fallbackSkills.matching_skills,
+        missing_skills:
+          normalized.missing_skills.length > 0
+            ? normalized.missing_skills
+            : fallbackSkills.missing_skills,
+      };
+    }
+  }
+
+  return buildFallbackMatch(candidate, job);
+}
 
 function resolveProfileContactEmail(
   row: Pick<ProfileRecord, "contact_email" | "email">
@@ -1957,15 +1993,11 @@ const showToast = (msg: string) => {
       degree: degree.trim() || profileData.degree || "",
     };
 
-    const pendingJobs = jobs.filter(
-      (job) => !matchFetchedRef.current.has(job.id)
-    );
+    const pendingJobs = jobs.filter((job) => !matchInsights[job.id]);
 
     if (pendingJobs.length === 0) {
       return;
     }
-
-    pendingJobs.forEach((job) => matchFetchedRef.current.add(job.id));
 
     setMatchLoadingIds((prev) => {
       const next = { ...prev };
@@ -1979,42 +2011,50 @@ const showToast = (msg: string) => {
 
     void Promise.all(
       pendingJobs.map(async (job) => {
+        const jobPayload = {
+          title: job.title ?? "",
+          company: job.company ?? "",
+          tags: Array.isArray(job.tags) ? job.tags : [],
+          location: job.location ?? "",
+        };
+
         try {
           const response = await fetch("/api/match", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               candidate: candidatePayload,
-              job: {
-                title: job.title ?? "",
-                company: job.company ?? "",
-                tags: Array.isArray(job.tags) ? job.tags : [],
-                location: job.location ?? "",
-              },
+              job: jobPayload,
             }),
           });
 
-          if (!response.ok) {
-            throw new Error(`Match request failed (${response.status})`);
-          }
-
-          const data = (await response.json()) as MatchInsight;
+          const raw = (await response.json()) as unknown;
+          const insight = resolveMatchInsight(
+            raw,
+            candidatePayload,
+            jobPayload
+          );
 
           if (cancelled) return;
 
           setMatchInsights((prev) => ({
             ...prev,
-            [job.id]: data,
+            [job.id]: insight,
           }));
+          matchFetchedRef.current.add(job.id);
         } catch (err) {
           console.error(`Failed to fetch match for job ${job.id}:`, err);
+          if (cancelled) return;
+
+          setMatchInsights((prev) => ({
+            ...prev,
+            [job.id]: buildFallbackMatch(candidatePayload, jobPayload),
+          }));
         } finally {
-          if (!cancelled) {
-            setMatchLoadingIds((prev) => ({
-              ...prev,
-              [job.id]: false,
-            }));
-          }
+          setMatchLoadingIds((prev) => ({
+            ...prev,
+            [job.id]: false,
+          }));
         }
       })
     );
@@ -2122,30 +2162,31 @@ const showToast = (msg: string) => {
 
       void Promise.all(
         pendingCandidates.map(async (candidate) => {
+          const candidatePayload = {
+            title: candidate.role,
+            bio: candidate.bio ?? "",
+            skills: candidate.skills,
+            degree: candidate.major,
+          };
+          const jobPayload = {
+            title: primaryMatchingJob.title,
+            company: primaryMatchingJob.company ?? "",
+            tags: primaryMatchingJob.tags ?? [],
+            location: primaryMatchingJob.location ?? "",
+          };
+
           try {
             const response = await fetch("/api/match", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                candidate: {
-                  title: candidate.role,
-                  skills: candidate.skills,
-                  degree: candidate.major,
-                },
-                job: {
-                  title: primaryMatchingJob.title,
-                  company: primaryMatchingJob.company ?? "",
-                  tags: primaryMatchingJob.tags ?? [],
-                  location: primaryMatchingJob.location ?? "",
-                },
+                candidate: candidatePayload,
+                job: jobPayload,
               }),
             });
 
-            if (!response.ok) {
-              throw new Error(`Match request failed (${response.status})`);
-            }
-
-            const data = (await response.json()) as MatchInsight;
+            const raw = (await response.json()) as unknown;
+            const data = resolveMatchInsight(raw, candidatePayload, jobPayload);
             if (cancelled) return;
 
             setTalentMatchScores((prev) => ({
@@ -2177,13 +2218,17 @@ const showToast = (msg: string) => {
               `Failed to fetch talent match for ${candidate.id}:`,
               err
             );
+            if (cancelled) return;
+
+            setTalentMatchScores((prev) => ({
+              ...prev,
+              [candidate.id]: buildFallbackMatch(candidatePayload, jobPayload),
+            }));
           } finally {
-            if (!cancelled) {
-              setTalentMatchLoadingIds((prev) => ({
-                ...prev,
-                [candidate.id]: false,
-              }));
-            }
+            setTalentMatchLoadingIds((prev) => ({
+              ...prev,
+              [candidate.id]: false,
+            }));
           }
         })
       );
@@ -3983,7 +4028,7 @@ const showToast = (msg: string) => {
                                 </p>
                               </div>
                             ) : (
-                              <p className="text-xs text-slate-300 leading-relaxed">
+                              <p className="text-xs text-slate-300 leading-relaxed animate-in fade-in duration-300">
                                 {insight?.reasoning}
                               </p>
                             )}
@@ -4960,6 +5005,7 @@ const showToast = (msg: string) => {
                     const isSaved = savedOpportunityIds.includes(job.id);
                     const tags = Array.isArray(job.tags) ? job.tags : [];
                     const insight = matchInsights[job.id];
+                    const isMatching = matchLoadingIds[job.id];
                     const matchPercent = insight?.match_percentage ?? 0;
                     const companyInitials = (job.company ?? "PX")
                       .split(/\s+/)
@@ -4997,12 +5043,18 @@ const showToast = (msg: string) => {
                           </div>
                           <span
                             className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
-                              insight
-                                ? getMatchBadgeClass(matchPercent)
-                                : "bg-slate-800/80 text-slate-500 border border-slate-700/50"
+                              isMatching
+                                ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 animate-pulse"
+                                : insight
+                                  ? getMatchBadgeClass(matchPercent)
+                                  : "bg-slate-800/80 text-slate-500 border border-slate-700/50"
                             }`}
                           >
-                            {insight ? `${matchPercent}% Match` : "Pending"}
+                            {isMatching
+                              ? "Scoring…"
+                              : insight
+                                ? `${matchPercent}% Match`
+                                : "Pending"}
                           </span>
                         </div>
 
@@ -5023,6 +5075,29 @@ const showToast = (msg: string) => {
                             ))}
                           </div>
                         </div>
+
+                        {(isMatching || insight) && (
+                          <div className="mb-5 rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-3">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">
+                              AI Breakdown / Insight
+                            </span>
+                            {isMatching ? (
+                              <div className="flex items-center gap-2">
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-60" />
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
+                                </span>
+                                <p className="text-xs text-slate-500">
+                                  Analyzing your fit with Gemini…
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-slate-300 leading-relaxed animate-in fade-in duration-300">
+                                {insight?.reasoning}
+                              </p>
+                            )}
+                          </div>
+                        )}
 
                         <div className="mt-auto flex items-center justify-between gap-3 pt-4 border-t border-slate-800/60">
                           <button
