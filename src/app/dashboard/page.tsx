@@ -52,6 +52,7 @@ import {
   EXPERIENCE_LEVEL_OPTIONS,
   type ExperienceLevel,
 } from "@/lib/experience-level";
+import { formatSalaryRange } from "@/lib/format-salary-range";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
@@ -1024,7 +1025,7 @@ export default function DashboardPage() {
                 jobId: row.job_id,
                 title: job?.title ?? "Open Role",
                 company: job?.company ?? "—",
-                salary: job?.salary_range ?? "—",
+                salary: formatSalaryRange(job?.salary_range ?? "") || "—",
                 location: job?.location ?? "—",
                 status: "Interest Expressed",
                 appliedAt: new Date(row.created_at).toLocaleDateString(
@@ -2098,7 +2099,7 @@ const showToast = (msg: string) => {
         jobId: job.id,
         title: job.title ?? "Open Role",
         company: job.company ?? "—",
-        salary: job.salary_range ?? "—",
+        salary: formatSalaryRange(job.salary_range ?? "") || "—",
         location: job.location ?? "—",
         status: "Interest Expressed",
         appliedAt: "Just now",
@@ -2729,7 +2730,7 @@ const showToast = (msg: string) => {
         title: newJobTitle.trim(),
         company: newJobCompany.trim() || null,
         location: newJobLocation.trim() || null,
-        salary_range: newJobSalaryRange.trim() || null,
+        salary_range: formatSalaryRange(newJobSalaryRange.trim()) || null,
         tags: tagsArray,
         employer_id: user.id,
       })
@@ -3719,6 +3720,7 @@ const showToast = (msg: string) => {
                     const insight = matchInsights[job.id];
                     const isMatching = matchLoadingIds[job.id];
                     const matchPercent = insight?.match_percentage ?? 0;
+                    const formattedSalary = formatSalaryRange(job.salary_range);
 
                     return (
                       <div
@@ -3751,9 +3753,11 @@ const showToast = (msg: string) => {
                           </span>
                         </div>
 
-                        <p className="text-sm font-semibold text-emerald-400 mb-1">
-                          {job.salary_range}
-                        </p>
+                        {formattedSalary ? (
+                          <p className="text-sm font-semibold text-emerald-400 mb-1">
+                            {formattedSalary}
+                          </p>
+                        ) : null}
                         <p className="text-xs text-slate-500 mb-4">{job.location}</p>
 
                         <div className="flex flex-wrap gap-1.5 mb-4">
@@ -4767,6 +4771,7 @@ const showToast = (msg: string) => {
                       .map((part: string) => part.charAt(0))
                       .join("")
                       .toUpperCase();
+                    const formattedSalary = formatSalaryRange(job.salary_range);
 
                     return (
                       <div
@@ -4787,9 +4792,9 @@ const showToast = (msg: string) => {
                               <p className="text-sm text-slate-400 font-medium mt-0.5 truncate">
                                 {job.company}
                               </p>
-                              {job.salary_range && (
+                              {formattedSalary && (
                                 <span className="inline-flex mt-2 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                  {job.salary_range}
+                                  {formattedSalary}
                                 </span>
                               )}
                             </div>
@@ -5951,13 +5956,21 @@ const showToast = (msg: string) => {
                     <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
                       Salary Range
                     </label>
-                    <input
-                      type="text"
-                      value={newJobSalaryRange}
-                      onChange={(e) => setNewJobSalaryRange(e.target.value)}
-                      placeholder="$80,000 – $100,000"
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-                    />
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                        $
+                      </span>
+                      <input
+                        type="text"
+                        value={newJobSalaryRange}
+                        onChange={(e) => setNewJobSalaryRange(e.target.value)}
+                        placeholder="80,000 - 100,000 / yr"
+                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl py-3 pr-3 pl-7 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-2">
+                      Example: $80,000 - $100,000 / yr (80k-100k also works)
+                    </p>
                   </div>
                 </div>
 
