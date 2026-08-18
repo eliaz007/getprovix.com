@@ -24,6 +24,7 @@ import RequestIntroModal from "@/components/RequestIntroModal";
 import JobApplicantsDrawer, {
   type JobApplicantView,
 } from "@/components/JobApplicantsDrawer";
+import EmployerNotificationBell from "@/components/EmployerNotificationBell";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import {
@@ -2131,6 +2132,25 @@ const showToast = (msg: string) => {
       }
 
       showToast("Could not submit interest. Please try again.");
+      return;
+    }
+
+    const employerId = job.employer_id as string | undefined;
+    if (employerId && employerId !== user.id) {
+      const alias = getCandidateNotificationAlias();
+      const jobTitle = job.title ?? "Open Role";
+      const { error: notificationError } = await supabase
+        .from("notifications")
+        .insert({
+          user_id: employerId,
+          job_id: job.id,
+          message: `${alias} expressed interest in your role: ${jobTitle}`,
+          is_read: false,
+        });
+
+      if (notificationError) {
+        console.error("Failed to create employer notification:", notificationError);
+      }
     }
   };
 
@@ -2177,6 +2197,42 @@ const showToast = (msg: string) => {
 
     setApplicantsDrawerJob({ id: listing.id, title: listing.title });
   };
+
+  const openApplicantsDrawerForJob = useCallback(
+    (jobId: string) => {
+      const job = jobs.find((entry) => entry.id === jobId);
+      const listing = businessListings.find((entry) => entry.id === jobId);
+
+      setActiveTab("my_profile");
+      setProfileSubMenu("activeListings");
+      setApplicantsDrawerJob({
+        id: jobId,
+        title: job?.title ?? listing?.title ?? "Role",
+      });
+    },
+    [jobs, businessListings]
+  );
+
+  const getCandidateNotificationAlias = useCallback((): string => {
+    if (dbProfile?.codename_alias?.trim()) {
+      return dbProfile.codename_alias.trim();
+    }
+
+    const skillTags = (skills ?? "")
+      .split(",")
+      .map((skill) => skill.trim())
+      .filter(Boolean);
+
+    return generateCodenameAlias(
+      buildCodenameAliasInputFromProfile({
+        id: user?.id ?? "candidate",
+        job_title: title || dbProfile?.job_title,
+        headline: dbProfile?.headline,
+        major: dbProfile?.major,
+        skills: skillTags.length > 0 ? skillTags : dbProfile?.skills,
+      })
+    );
+  }, [dbProfile, skills, title, user?.id]);
 
   const handleApplicantIntroRequest = (applicant: JobApplicantView) => {
     const roleTitle = applicantsDrawerJob?.title ?? applicant.headline;
@@ -2927,14 +2983,22 @@ const showToast = (msg: string) => {
         <Link href="/" className="flex items-center gap-3 min-w-0 hover:opacity-90 transition-opacity">
           <ProvixLogo />
         </Link>
-        <button
-          type="button"
-          onClick={() => setMobileNavOpen(true)}
-          aria-label="Open navigation menu"
-          className="p-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors cursor-pointer"
-        >
-          <Icons.Menu />
-        </button>
+        <div className="flex items-center gap-1">
+          {isBusinessAccount && (
+            <EmployerNotificationBell
+              userId={user?.id ?? null}
+              onOpenJobApplicants={openApplicantsDrawerForJob}
+            />
+          )}
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label="Open navigation menu"
+            className="p-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors cursor-pointer"
+          >
+            <Icons.Menu />
+          </button>
+        </div>
       </header>
 
       {/* Mobile navigation drawer */}
@@ -2969,6 +3033,14 @@ const showToast = (msg: string) => {
 
       {/* --- MAIN WORKSPACE STAGE --- */}
       <main className="relative w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 md:p-12 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#0A0A0A] to-[#0A0A0A]">
+        {isBusinessAccount && (
+          <div className="hidden md:flex sticky top-0 z-30 -mt-4 sm:-mt-6 md:-mt-12 mb-4 items-center justify-end border-b border-slate-800/60 bg-[#0A0A0A]/90 backdrop-blur-md pb-3">
+            <EmployerNotificationBell
+              userId={user?.id ?? null}
+              onOpenJobApplicants={openApplicantsDrawerForJob}
+            />
+          </div>
+        )}
         {isEmployeeAccount && activeTab === "opportunity_radar" && (
           <div className="sticky top-0 z-20 -mt-4 mb-2 flex justify-center pointer-events-none">
             <div
