@@ -2847,6 +2847,37 @@ const showToast = (msg: string) => {
     );
   }
 
+  const renderProfileFormActions = (options?: { showShareLink?: boolean }) => (
+    <div className="mt-6 pt-6 border-t border-slate-800/60 flex flex-col sm:flex-row gap-3">
+      <button
+        type="button"
+        onClick={handleSaveProfile}
+        disabled={!hasUnsavedChanges || isSaving}
+        className={`w-full sm:flex-1 font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
+          hasUnsavedChanges && !isSaving
+            ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-lg shadow-indigo-500/25"
+            : "bg-slate-800 text-slate-500 cursor-not-allowed"
+        }`}
+      >
+        {isSaving ? null : hasUnsavedChanges ? <Icons.Save /> : <Icons.Check />}
+        {isSaving
+          ? "Saving..."
+          : hasUnsavedChanges
+            ? "Save Changes"
+            : "No Unsaved Changes"}
+      </button>
+      {options?.showShareLink && isBusinessAccount && (
+        <button
+          type="button"
+          onClick={() => setShowPublicProfile(true)}
+          className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-4 py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Icons.Link /> Share Profile Link
+        </button>
+      )}
+    </div>
+  );
+
   const sidebarNavContent = (
     <div className="p-6">
       <Link href="/" className="block mb-8 hover:opacity-90 transition-opacity">
@@ -3032,15 +3063,17 @@ const showToast = (msg: string) => {
       </aside>
 
       {/* --- MAIN WORKSPACE STAGE --- */}
-      <main className="relative w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 md:p-12 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#0A0A0A] to-[#0A0A0A]">
+      <main className="relative w-full min-w-0 flex-1 flex flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#0A0A0A] to-[#0A0A0A]">
         {isBusinessAccount && (
-          <div className="hidden md:flex sticky top-0 z-30 -mt-4 sm:-mt-6 md:-mt-12 mb-4 items-center justify-end border-b border-slate-800/60 bg-[#0A0A0A]/90 backdrop-blur-md pb-3">
+          <div className="hidden md:flex shrink-0 items-center justify-end px-6 md:px-12 py-3 border-b border-slate-800/60 bg-[#111111]/95">
             <EmployerNotificationBell
               userId={user?.id ?? null}
               onOpenJobApplicants={openApplicantsDrawerForJob}
             />
           </div>
         )}
+
+        <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 md:p-12">
         {isEmployeeAccount && activeTab === "opportunity_radar" && (
           <div className="sticky top-0 z-20 -mt-4 mb-2 flex justify-center pointer-events-none">
             <div
@@ -3061,48 +3094,16 @@ const showToast = (msg: string) => {
           {/* MY PROFILE TAB WITH NESTED MENU OPTIONS */}
           {activeTab === "my_profile" && (
             <div className="max-w-3xl">
-             {/* Header */}
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-white">Profile Studio</h1>
-              <p className="text-slate-400 text-sm mt-1">
-                {isBusinessAccount
-                  ? "Manage your company profile, hiring requirements, and account settings."
-                  : "Manage your credentials, academic status, and proof of work."}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              {/* Persistent Save Changes button — visible across every Profile Studio tab */}
-              <button
-                type="button"
-                onClick={handleSaveProfile}
-                disabled={!hasUnsavedChanges || isSaving}
-                title={
-                  hasUnsavedChanges
-                    ? "Save your unsaved changes"
-                    : "No changes to save"
-                }
-                className={`text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2 ${
-                  hasUnsavedChanges && !isSaving
-                    ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-indigo-500/25"
-                    : "bg-slate-800 text-slate-500 cursor-not-allowed shadow-none"
-                }`}
-              >
-                {isSaving ? null : hasUnsavedChanges ? <Icons.Save /> : <Icons.Check />}
-                {isSaving
-                  ? "Saving..."
-                  : hasUnsavedChanges
-                    ? "Save Changes"
-                    : "No Unsaved Changes"}
-              </button>
-              <button
-                onClick={() => setShowPublicProfile(true)}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer"
-              >
-                <Icons.Link /> Share Profile Link
-              </button>
-            </div>
-          </div>
+              <div className="mb-8">
+                <h1 className="text-3xl font-extrabold tracking-tight text-white">
+                  Profile Studio
+                </h1>
+                <p className="text-slate-400 text-sm mt-2 max-w-2xl leading-relaxed">
+                  {isBusinessAccount
+                    ? "Manage your company profile, hiring requirements, and account settings."
+                    : "Manage your credentials, academic status, and proof of work."}
+                </p>
+              </div>
 
               {/* HORIZONTAL SUB-MENU BAR */}
               <div className="flex border-b border-slate-800/80 mb-8 space-x-6">
@@ -3283,6 +3284,8 @@ const showToast = (msg: string) => {
                         className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
                       />
                     </div>
+
+                    {renderProfileFormActions({ showShareLink: true })}
                   </div>
                 )}
 
@@ -3435,6 +3438,8 @@ const showToast = (msg: string) => {
                         Comma-separated skills used for job matching.
                       </p>
                     </div>
+
+                    {renderProfileFormActions()}
                   </div>
                 )}
 
@@ -3511,6 +3516,8 @@ const showToast = (msg: string) => {
                         )}
                       </div>
                     </div>
+
+                    {renderProfileFormActions()}
                   </div>
                 )}
 
@@ -3566,6 +3573,8 @@ const showToast = (msg: string) => {
                         className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
                       />
                     </div>
+
+                    {renderProfileFormActions()}
                   </div>
                 )}
 
@@ -3639,22 +3648,7 @@ const showToast = (msg: string) => {
                     </>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={handleSaveProfile}
-                      disabled={!hasUnsavedChanges || isSaving}
-                      className={`w-full font-bold py-3 rounded-xl text-xs transition-all ${
-                        hasUnsavedChanges && !isSaving
-                          ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-lg shadow-indigo-500/25"
-                          : "bg-slate-800 text-slate-500 cursor-not-allowed"
-                      }`}
-                    >
-                      {isSaving
-                        ? "Saving..."
-                        : hasUnsavedChanges
-                          ? "Save Changes"
-                          : "No Unsaved Changes"}
-                    </button>
+                    {renderProfileFormActions()}
 
                     {/* Account Settings */}
                     <div className="pt-4">
@@ -5796,6 +5790,7 @@ const showToast = (msg: string) => {
               </div>
             )}
           </div>
+        </div>
         </div>
 
         {/* PUBLIC PROFILE MODAL */}

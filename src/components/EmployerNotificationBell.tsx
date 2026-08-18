@@ -129,9 +129,10 @@ export default function EmployerNotificationBell({
       >
         <Bell className="w-5 h-5" aria-hidden />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-[10px] font-bold text-white flex items-center justify-center border border-[#0A0A0A]">
-            {unreadCount > 9 ? "9+" : unreadCount}
-          </span>
+          <span
+            className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-[#111111]"
+            aria-hidden
+          />
         )}
       </button>
 
