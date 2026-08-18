@@ -235,6 +235,8 @@ type ProfileRecord = {
   graduation_year: number | null;
   status?: string | null;
   major?: string | null;
+  degree?: string | null;
+  university?: string | null;
   job_title?: string | null;
   bio?: string | null;
   school?: string | null;
@@ -340,8 +342,9 @@ type CandidateProfileSaveInput = {
   fullName: string;
   jobTitle: string;
   bio: string;
-  school: string;
+  university: string;
   major: string;
+  degree: string;
   skills: string[];
   portfolioUrl: string;
   experienceLevel: string;
@@ -357,8 +360,9 @@ function buildCandidateProfileUpdatePayload(input: CandidateProfileSaveInput) {
     full_name: input.fullName.trim() || null,
     job_title: input.jobTitle.trim() || null,
     bio: input.bio.trim() || null,
-    school: input.school.trim() || null,
+    university: input.university.trim() || null,
     major: input.major.trim() || null,
+    degree: input.degree.trim() || null,
     skills: input.skills,
     portfolio_url: input.portfolioUrl.trim() || null,
     experience_level: input.experienceLevel,
@@ -370,20 +374,48 @@ function buildCandidateProfileUpdatePayload(input: CandidateProfileSaveInput) {
 
 async function persistCandidateProfile(
   supabase: ReturnType<typeof createClient>,
-  profileId: string,
+  userId: string,
   payload: ReturnType<typeof buildCandidateProfileUpdatePayload>
 ) {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    return { data: null, error: sessionError };
+  }
+
+  if (!session?.user?.id) {
+    return {
+      data: null,
+      error: { message: "No active session. Please sign in again." },
+    };
+  }
+
+  if (session.user.id !== userId) {
+    return {
+      data: null,
+      error: { message: "Session user does not match profile owner." },
+    };
+  }
+
   let attemptPayload: Record<
     string,
     string | number | boolean | string[] | null
   > = { ...payload };
-  const optionalColumnKeys = ["availability_status", "experience_level"] as const;
+  const optionalColumnKeys = [
+    "availability_status",
+    "experience_level",
+    "university",
+    "degree",
+  ] as const;
 
   for (let attempt = 0; attempt <= optionalColumnKeys.length; attempt++) {
     const { data, error } = await supabase
       .from("profiles")
       .update(attemptPayload)
-      .eq("id", profileId)
+      .eq("id", session.user.id)
       .select("*")
       .maybeSingle();
 
@@ -593,7 +625,12 @@ function mapProfileRowToTalentCandidate(
     linkedin_url: row.linkedin_url?.trim() || (isLinkedIn ? portfolioUrl : null),
     github_url: !isLinkedIn && portfolioUrl ? portfolioUrl : null,
     role: headline,
-    major: row.major?.trim() || row.school?.trim() || "Credentials on file",
+    major:
+      row.major?.trim() ||
+      row.degree?.trim() ||
+      row.university?.trim() ||
+      row.school?.trim() ||
+      "Credentials on file",
     skills,
     rating: "90%",
     execution_score: 90,
@@ -932,8 +969,15 @@ export default function DashboardPage() {
         const loadedName = displayName || DEFAULT_PROFILE_DATA.name;
         const loadedTitle = profileWithRole?.job_title ?? "";
         const loadedBio = profileWithRole?.bio ?? "";
-        const loadedSchool = profileWithRole?.school ?? "";
-        const loadedDegree = profileWithRole?.major ?? "";
+        const loadedSchool =
+          profileWithRole?.university ??
+          profileWithRole?.school ??
+          "";
+        const loadedMajor = profileWithRole?.major ?? "";
+        const loadedDegree =
+          profileWithRole?.degree ??
+          profileWithRole?.major ??
+          "";
         const loadedSkills = Array.isArray(profileWithRole?.skills)
           ? profileWithRole.skills.join(", ")
           : "";
@@ -1472,6 +1516,17 @@ const showToast = (msg: string) => {
 
     try {
       const supabase = createClient();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.user?.id) {
+        console.error("Profile update failed:", sessionError);
+        showToast("You must be logged in to save your profile.");
+        return;
+      }
+
       const skillsArray = (skills ?? "")
         .split(",")
         .map((s) => s.trim())
@@ -1479,12 +1534,14 @@ const showToast = (msg: string) => {
       const normalizedAvailability = normalizeAvailabilityStatus(
         availabilityStatus
       );
+      const academicMajor = degree.trim();
       const payload = buildCandidateProfileUpdatePayload({
         fullName: profileData.name,
         jobTitle: title,
         bio,
-        school,
-        major: degree,
+        university: school,
+        major: academicMajor,
+        degree: academicMajor,
         skills: skillsArray,
         portfolioUrl,
         experienceLevel,
@@ -1495,12 +1552,12 @@ const showToast = (msg: string) => {
 
       const { data, error } = await persistCandidateProfile(
         supabase,
-        profileId,
+        session.user.id,
         payload
       );
 
       if (error) {
-        console.error("Supabase Save Error:", error);
+        console.error("Profile update failed:", error);
         showToast("Could not save profile. Please try again.");
         return;
       }
@@ -1541,7 +1598,10 @@ const showToast = (msg: string) => {
         github: portfolioUrl,
       });
       setAvailabilityStatus(normalizedAvailability);
-      showToast("✓ Saved");
+      showToast("Profile saved successfully.");
+    } catch (error) {
+      console.error("Profile update failed:", error);
+      showToast("Could not save profile. Please try again.");
     } finally {
       setIsSaving(false);
     }
