@@ -21,9 +21,7 @@ import {
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import RequestIntroModal from "@/components/RequestIntroModal";
-import JobApplicantsDrawer, {
-  type JobApplicantView,
-} from "@/components/JobApplicantsDrawer";
+import JobApplicantsDrawer from "@/components/JobApplicantsDrawer";
 import EmployerNotificationBell from "@/components/EmployerNotificationBell";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
@@ -1383,6 +1381,71 @@ const showToast = (msg: string) => {
   setTimeout(() => setToastMessage(null), 3000);
 };
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !user?.id || !isBusinessAccount) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get("payment_canceled") === "true") {
+      window.history.replaceState({}, "", "/dashboard");
+      showToast("Checkout canceled.");
+      return;
+    }
+
+    if (params.get("payment_success") !== "true") {
+      return;
+    }
+
+    const applicationId = params.get("application_id")?.trim();
+    if (!applicationId) {
+      return;
+    }
+
+    let active = true;
+
+    const completePaymentUnlock = async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("job_applications")
+        .update({ unlocked: true })
+        .eq("id", applicationId)
+        .select("candidate_id")
+        .maybeSingle();
+
+      window.history.replaceState({}, "", "/dashboard");
+
+      if (!active) {
+        return;
+      }
+
+      if (error) {
+        console.error("Failed to unlock application after payment:", error);
+        showToast(
+          "Payment received, but contact unlock failed. Please contact support."
+        );
+        return;
+      }
+
+      if (data?.candidate_id) {
+        setUnlockedCandidateIds((current) => {
+          const next = new Set(current);
+          next.add(data.candidate_id.trim().toLowerCase());
+          return next;
+        });
+      }
+
+      showToast("Payment successful. Candidate contact unlocked.");
+    };
+
+    void completePaymentUnlock();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, isBusinessAccount]);
+
   const handleVisibilityToggle = () => {
     setIsVisibleInPool((current) => !current);
   };
@@ -2395,45 +2458,6 @@ const showToast = (msg: string) => {
       })
     );
   }, [dbProfile, skills, title, user?.id]);
-
-  const handleApplicantIntroRequest = (applicant: JobApplicantView) => {
-    const roleTitle = applicantsDrawerJob?.title ?? applicant.headline;
-    const parsedScore = Number.parseInt(
-      applicant.aiScoreLabel.replace(/\D/g, ""),
-      10
-    );
-    const codename = applicant.codenameAlias;
-    const introCandidate: TalentPoolCandidate = {
-      id: `C-${applicant.profileId.replace(/-/g, "").slice(0, 3).toUpperCase()}`,
-      profileId: applicant.profileId,
-      name: codename,
-      fullName: codename,
-      profileName: codename,
-      firstName: codename.split(/\s+/)[0] ?? codename,
-      lastName: codename.split(/\s+/).slice(1).join(" "),
-      headline: applicant.headline,
-      codenameAlias: codename,
-      country: applicant.location,
-      timezone: applicant.location,
-      role: applicant.headline,
-      major: "Credentials on file",
-      skills: applicant.skills,
-      rating: applicant.aiScoreLabel,
-      execution_score: Number.isFinite(parsedScore) ? parsedScore : 94,
-      status: "Available Now",
-      experienceLevel: DEFAULT_EXPERIENCE_LEVEL,
-      roleType: "General",
-      availability: "Available Now",
-      bio: "Candidate expressed interest in this role via Provix.",
-      github: "",
-      demoVideo: "",
-      projects: [],
-    };
-
-    setApplicantsDrawerJob(null);
-    setIntroDefaultRoleTitle(roleTitle);
-    setIntroModalCandidate(introCandidate);
-  };
 
   const handleIntroRequestSuccess = () => {
     if (user?.id) {
@@ -6300,7 +6324,6 @@ const showToast = (msg: string) => {
           jobTitle={applicantsDrawerJob?.title ?? "Role"}
           employerId={user?.id ?? null}
           onClose={() => setApplicantsDrawerJob(null)}
-          onRequestIntro={handleApplicantIntroRequest}
         />
 
         <RequestIntroModal

@@ -16,6 +16,11 @@ import { createClient } from "@/utils/supabase/client";
 type ApplicantProfileRow = {
   id: string;
   codename_alias?: string | null;
+  full_name?: string | null;
+  contact_email?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
   skills?: string[] | null;
   timezone?: string | null;
   country?: string | null;
@@ -33,12 +38,14 @@ type JobApplicationRow = {
   id: string;
   candidate_id: string;
   created_at: string;
+  unlocked?: boolean | null;
   profiles: ApplicantProfileRow | ApplicantProfileRow[] | null;
 };
 
 export type JobApplicantView = {
   applicationId: string;
   profileId: string;
+  candidateId: string;
   codenameAlias: string;
   initials: string;
   location: string;
@@ -46,6 +53,11 @@ export type JobApplicantView = {
   skills: string[];
   aiScoreLabel: string;
   appliedAtLabel: string;
+  unlocked: boolean;
+  fullName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  linkedinUrl?: string | null;
 };
 
 type JobApplicantsDrawerProps = {
@@ -54,7 +66,6 @@ type JobApplicantsDrawerProps = {
   jobTitle: string;
   employerId: string | null;
   onClose: () => void;
-  onRequestIntro: (applicant: JobApplicantView) => void;
 };
 
 function formatAiScoreLabel(
@@ -87,17 +98,28 @@ function resolveProfileRow(
   return Array.isArray(profiles) ? profiles[0] ?? null : profiles;
 }
 
+function resolveContactEmail(profile: ApplicantProfileRow | null): string | null {
+  const contactEmail = profile?.contact_email?.trim();
+  if (contactEmail) {
+    return contactEmail;
+  }
+
+  const email = profile?.email?.trim();
+  return email || null;
+}
+
 function mapApplicationToApplicant(
   row: JobApplicationRow,
   matchByCandidateId: Map<string, number>
 ): JobApplicantView {
   const profile = resolveProfileRow(row.profiles);
   const profileId = profile?.id ?? row.candidate_id;
+  const isUnlocked = Boolean(row.unlocked);
   const codenameAlias = profile
     ? getPublicCandidateDisplayName({
         codenameAlias: profile.codename_alias,
         candidateId: profileId,
-        fullName: null,
+        fullName: isUnlocked ? profile.full_name : null,
       })
     : generateCodenameAlias({
         profileId: row.candidate_id,
@@ -113,8 +135,13 @@ function mapApplicationToApplicant(
   return {
     applicationId: row.id,
     profileId,
+    candidateId: row.candidate_id,
     codenameAlias,
-    initials: getCodenameInitials(codenameAlias),
+    initials: getCodenameInitials(
+      isUnlocked && profile?.full_name?.trim()
+        ? profile.full_name.trim()
+        : codenameAlias
+    ),
     location: getPublicCandidateLocation({
       country: profile?.country,
       timezone: profile?.timezone,
@@ -123,6 +150,11 @@ function mapApplicationToApplicant(
     skills,
     aiScoreLabel: formatAiScoreLabel(matchByCandidateId.get(row.candidate_id)),
     appliedAtLabel: formatAppliedAt(row.created_at),
+    unlocked: isUnlocked,
+    fullName: isUnlocked ? profile?.full_name?.trim() || null : null,
+    email: isUnlocked ? resolveContactEmail(profile) : null,
+    phone: isUnlocked ? profile?.phone?.trim() || null : null,
+    linkedinUrl: isUnlocked ? profile?.linkedin_url?.trim() || null : null,
   };
 }
 
@@ -132,11 +164,14 @@ export default function JobApplicantsDrawer({
   jobTitle,
   employerId,
   onClose,
-  onRequestIntro,
 }: JobApplicantsDrawerProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [applicants, setApplicants] = useState<JobApplicantView[]>([]);
+  const [checkoutApplicationId, setCheckoutApplicationId] = useState<string | null>(
+    null
+  );
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !jobId || !employerId) {
@@ -159,9 +194,15 @@ export default function JobApplicantsDrawer({
               id,
               candidate_id,
               created_at,
+              unlocked,
               profiles (
                 id,
                 codename_alias,
+                full_name,
+                contact_email,
+                email,
+                phone,
+                linkedin_url,
                 skills,
                 timezone,
                 country,
@@ -244,8 +285,49 @@ export default function JobApplicantsDrawer({
       setApplicants([]);
       setError(null);
       setLoading(false);
+      setCheckoutApplicationId(null);
+      setCheckoutError(null);
     }
   }, [open]);
+
+  const handleUnlockContact = async (applicant: JobApplicantView) => {
+    if (!jobId || applicant.unlocked || checkoutApplicationId) {
+      return;
+    }
+
+    setCheckoutError(null);
+    setCheckoutApplicationId(applicant.applicationId);
+
+    try {
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          candidateId: applicant.candidateId,
+          jobId,
+          applicationId: applicant.applicationId,
+        }),
+      });
+
+      const payload = (await response.json()) as { url?: string; error?: string };
+
+      if (!response.ok || !payload.url) {
+        throw new Error(payload.error ?? "Could not start checkout.");
+      }
+
+      window.location.href = payload.url;
+    } catch (checkoutFailure) {
+      console.error("Checkout failed:", checkoutFailure);
+      setCheckoutError(
+        checkoutFailure instanceof Error
+          ? checkoutFailure.message
+          : "Could not start checkout. Please try again."
+      );
+      setCheckoutApplicationId(null);
+    }
+  };
 
   if (!open || !jobId) {
     return null;
@@ -268,8 +350,8 @@ export default function JobApplicantsDrawer({
             </p>
             <h2 className="text-xl font-extrabold text-white mt-1">{jobTitle}</h2>
             <p className="text-sm text-slate-400 mt-1">
-              Anonymized proof-of-work profiles — contact unlocks after intro
-              approval.
+              Anonymized proof-of-work profiles — pay $49 to unlock contact
+              details.
             </p>
           </div>
           <button
@@ -299,7 +381,13 @@ export default function JobApplicantsDrawer({
               </p>
             </div>
           ) : (
-            applicants.map((applicant) => (
+            <>
+              {checkoutError && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
+                  {checkoutError}
+                </div>
+              )}
+              {applicants.map((applicant) => (
               <div
                 key={applicant.applicationId}
                 className="rounded-2xl border border-slate-800 bg-[#0A0A0A] p-5 space-y-4"
@@ -311,7 +399,9 @@ export default function JobApplicantsDrawer({
                     </div>
                     <div className="min-w-0">
                       <h3 className="font-bold text-white text-sm truncate">
-                        {applicant.codenameAlias}
+                        {applicant.unlocked && applicant.fullName
+                          ? applicant.fullName
+                          : applicant.codenameAlias}
                       </h3>
                       <p className="text-xs text-indigo-400 font-medium mt-0.5 truncate">
                         {applicant.headline}
@@ -320,7 +410,13 @@ export default function JobApplicantsDrawer({
                         {applicant.location}
                       </p>
                       <div className="mt-2">
-                        <VerifiedOnProvixPill />
+                        {applicant.unlocked ? (
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                            Contact unlocked
+                          </span>
+                        ) : (
+                          <VerifiedOnProvixPill />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -356,20 +452,68 @@ export default function JobApplicantsDrawer({
                   </div>
                 </div>
 
+                {applicant.unlocked && (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-2">
+                    <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-widest block">
+                      Contact Information
+                    </span>
+                    {applicant.email ? (
+                      <a
+                        href={`mailto:${applicant.email}`}
+                        className="block text-xs text-slate-200 hover:text-white break-all"
+                      >
+                        {applicant.email}
+                      </a>
+                    ) : (
+                      <p className="text-xs text-slate-400">
+                        No email on file for this candidate.
+                      </p>
+                    )}
+                    {applicant.phone && (
+                      <p className="text-xs text-slate-200">{applicant.phone}</p>
+                    )}
+                    {applicant.linkedinUrl && (
+                      <a
+                        href={applicant.linkedinUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-xs text-indigo-300 hover:text-indigo-200 break-all"
+                      >
+                        LinkedIn profile
+                      </a>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between gap-3 pt-1">
                   <span className="text-[11px] text-slate-500">
                     Interest expressed {applicant.appliedAtLabel}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onRequestIntro(applicant)}
-                    className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer"
-                  >
-                    Accept &amp; Request Intro
-                  </button>
+                  {applicant.unlocked ? (
+                    <span className="text-[11px] font-bold text-emerald-300">
+                      Unlocked
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleUnlockContact(applicant)}
+                      disabled={checkoutApplicationId === applicant.applicationId}
+                      className="inline-flex items-center gap-2 text-[11px] font-bold px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {checkoutApplicationId === applicant.applicationId ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Redirecting...
+                        </>
+                      ) : (
+                        "Unlock Contact — $49"
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
-            ))
+            ))}
+            </>
           )}
         </div>
       </aside>
