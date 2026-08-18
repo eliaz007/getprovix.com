@@ -4048,7 +4048,7 @@ const showToast = (msg: string) => {
                           >
                             {alreadyApplied ? (
                               <>
-                                Interest Submitted ✓
+                                Interest Submitted
                                 <Check className="w-3.5 h-3.5" aria-hidden="true" />
                               </>
                             ) : (
@@ -5124,7 +5124,14 @@ const showToast = (msg: string) => {
                                 : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
                             }`}
                           >
-                            {alreadyInterested ? "Interest Submitted ✓" : "Express Interest"}
+                            {alreadyInterested ? (
+                              <>
+                                Interest Submitted
+                                <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                              </>
+                            ) : (
+                              "Express Interest"
+                            )}
                           </button>
                         </div>
                       </div>
