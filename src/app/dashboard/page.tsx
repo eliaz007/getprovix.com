@@ -879,6 +879,7 @@ export default function DashboardPage() {
   const {
     activeTab,
     setActiveTab,
+    setMobileNavOpen,
     setAccountRole: setNavAccountRole,
     setOnOpenJobApplicants,
   } = useDashboardNav();
@@ -956,7 +957,7 @@ export default function DashboardPage() {
   const [candidates, setCandidates] = useState<TalentPoolCandidate[]>([]);
 
   useEffect(() => {
-    setNavAccountRole(profileRole);
+    setNavAccountRole(profileRole ?? null);
   }, [profileRole, setNavAccountRole]);
 
   useEffect(() => {
@@ -1354,7 +1355,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setMobileNavOpen(false);
-  }, [activeTab]);
+  }, [activeTab, setMobileNavOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1372,7 +1373,7 @@ export default function DashboardPage() {
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [setMobileNavOpen]);
 
   const handleSignOut = () => {
     window.location.href = "/";
