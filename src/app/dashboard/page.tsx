@@ -86,7 +86,7 @@ const DEFAULT_PROFILE_DATA = {
   gpa: "3.9",
   gradYear: "2026",
   github: "github.com/alexm",
-  demoVideo: "youtube.com/watch?v=demo123",
+  demoVideo: "",
   projects: "1. Built a Next.js SaaS app with 500 users.\n2. Scaled a local agency's leads by 300% using automations."
 };
 
@@ -246,6 +246,7 @@ type ProfileRecord = {
   school?: string | null;
   skills?: string[] | null;
   portfolio_url?: string | null;
+  youtube_url?: string | null;
   experience_level?: string | null;
   availability_status?: string | null;
   is_visible_in_pool?: boolean | null;
@@ -351,6 +352,7 @@ type CandidateProfileSaveInput = {
   degree: string;
   skills: string[];
   portfolioUrl: string;
+  youtubeUrl: string;
   experienceLevel: string;
   availabilityStatus: string;
   isVisibleInPool: boolean;
@@ -369,6 +371,7 @@ function buildCandidateProfileUpdatePayload(input: CandidateProfileSaveInput) {
     degree: input.degree.trim() || null,
     skills: input.skills,
     portfolio_url: input.portfolioUrl.trim() || null,
+    youtube_url: input.youtubeUrl.trim() || null,
     experience_level: input.experienceLevel,
     availability_status: normalizeAvailabilityStatus(input.availabilityStatus),
     is_visible_in_pool: input.isVisibleInPool,
@@ -413,6 +416,7 @@ async function persistCandidateProfile(
     "experience_level",
     "university",
     "degree",
+    "youtube_url",
   ] as const;
 
   for (let attempt = 0; attempt <= optionalColumnKeys.length; attempt++) {
@@ -647,7 +651,7 @@ function mapProfileRowToTalentCandidate(
       row.bio?.trim() ||
       "AI-vetted candidate with verified proof-of-work in the talent pool.",
     github: portfolioUrl || "",
-    demoVideo: "",
+    demoVideo: row.youtube_url?.trim() || "",
     projects: [],
   };
 }
@@ -986,6 +990,7 @@ export default function DashboardPage() {
           ? profileWithRole.skills.join(", ")
           : "";
         const loadedPortfolioUrl = profileWithRole?.portfolio_url ?? "";
+        const loadedYoutubeUrl = profileWithRole?.youtube_url ?? "";
         const loadedExperienceLevel =
           profileWithRole?.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL;
         const loadedAvailabilityStatus = normalizeAvailabilityStatus(
@@ -1014,6 +1019,7 @@ export default function DashboardPage() {
           degree: loadedDegree,
           github: loadedPortfolioUrl,
           gradYear: loadedGradYear,
+          demoVideo: loadedYoutubeUrl,
         };
         setProfileData(hydratedProfile);
         setSavedProfileData(hydratedProfile);
@@ -1030,7 +1036,7 @@ export default function DashboardPage() {
           visibleInPool: loadedVisibleInPool,
           gradYear: loadedGradYear,
           gpa: hydratedProfile.gpa,
-          demoVideo: hydratedProfile.demoVideo,
+          demoVideo: loadedYoutubeUrl,
           projects: hydratedProfile.projects,
         });
 
@@ -1566,6 +1572,7 @@ const showToast = (msg: string) => {
         degree: academicMajor,
         skills: skillsArray,
         portfolioUrl,
+        youtubeUrl: profileData.demoVideo,
         experienceLevel,
         availabilityStatus: normalizedAvailability,
         isVisibleInPool,
@@ -3653,22 +3660,29 @@ const showToast = (msg: string) => {
                         <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
                           Video Intro / Demo Link
                         </label>
-                        <input
-                          type="text"
-                          value={profileData.demoVideo}
-                          onChange={handleDemoVideoChange}
-                          onPaste={handleDemoVideoPaste}
-                          aria-invalid={Boolean(demoVideoValidationMessage)}
-                          className={`w-full bg-[#0A0A0A] border rounded-xl p-3 text-sm text-white font-mono focus:outline-none ${
-                            demoVideoValidationMessage
-                              ? "border-rose-500/70 focus:border-rose-500"
-                              : "border-slate-800 focus:border-indigo-500"
-                          }`}
-                        />
-                        {demoVideoValidationMessage && (
-                          <p className="mt-2 text-[11px] text-rose-400">
-                            {demoVideoValidationMessage}
-                          </p>
+                        {loadingProfile ? (
+                          <div className="h-11 w-full rounded-xl bg-slate-800 animate-pulse" />
+                        ) : (
+                          <>
+                            <input
+                              type="text"
+                              value={profileData.demoVideo}
+                              onChange={handleDemoVideoChange}
+                              onPaste={handleDemoVideoPaste}
+                              aria-invalid={Boolean(demoVideoValidationMessage)}
+                              placeholder="https://www.youtube.com/watch?v=..."
+                              className={`w-full bg-[#0A0A0A] border rounded-xl p-3 text-sm text-white font-mono focus:outline-none ${
+                                demoVideoValidationMessage
+                                  ? "border-rose-500/70 focus:border-rose-500"
+                                  : "border-slate-800 focus:border-indigo-500"
+                              }`}
+                            />
+                            {demoVideoValidationMessage && (
+                              <p className="mt-2 text-[11px] text-rose-400">
+                                {demoVideoValidationMessage}
+                              </p>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
