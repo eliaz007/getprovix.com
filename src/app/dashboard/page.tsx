@@ -54,6 +54,10 @@ import {
   type ExperienceLevel,
 } from "@/lib/experience-level";
 import { formatSalaryRange } from "@/lib/format-salary-range";
+import {
+  getYouTubeUrlValidationMessage,
+  isValidYouTubeUrl,
+} from "@/lib/validate-youtube-url";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
@@ -1025,6 +1029,9 @@ export default function DashboardPage() {
           availabilityStatus: loadedAvailabilityStatus,
           visibleInPool: loadedVisibleInPool,
           gradYear: loadedGradYear,
+          gpa: hydratedProfile.gpa,
+          demoVideo: hydratedProfile.demoVideo,
+          projects: hydratedProfile.projects,
         });
 
         if (profileWithRole?.company_name) {
@@ -1367,6 +1374,9 @@ const showToast = (msg: string) => {
     availabilityStatus: string;
     visibleInPool: boolean;
     gradYear: string;
+    gpa: string;
+    demoVideo: string;
+    projects: string;
   } | null>(null);
 
   // --- USER PROFILE DATA STATE (name + legacy portfolio fields) ---
@@ -1467,13 +1477,24 @@ const showToast = (msg: string) => {
       experienceLevel !== savedCandidateProfile.experienceLevel ||
       availabilityStatus !== savedCandidateProfile.availabilityStatus ||
       isVisibleInPool !== savedCandidateProfile.visibleInPool ||
-      profileData.gradYear !== savedCandidateProfile.gradYear);
+      profileData.gradYear !== savedCandidateProfile.gradYear ||
+      profileData.gpa !== savedCandidateProfile.gpa ||
+      profileData.demoVideo !== savedCandidateProfile.demoVideo ||
+      profileData.projects !== savedCandidateProfile.projects);
 
   const isDirty = isBusinessAccount
     ? JSON.stringify(businessProfileData) !== JSON.stringify(savedBusinessProfileData)
     : isCandidateDirty;
 
   const hasUnsavedChanges = isDirty;
+  const demoVideoValidationMessage = getYouTubeUrlValidationMessage(
+    profileData.demoVideo
+  );
+  const isDemoVideoValid = isValidYouTubeUrl(profileData.demoVideo);
+  const canSaveProfile =
+    hasUnsavedChanges &&
+    (isBusinessAccount || isDemoVideoValid) &&
+    !isSaving;
 
   // Hydrate business profile data from LocalStorage once the component mounts on the client.
   useEffect(() => {
@@ -1490,7 +1511,8 @@ const showToast = (msg: string) => {
   }, []);
 
   const handleSaveProfile = async () => {
-    if (!hasUnsavedChanges || isSaving) return;
+    if (isSaving || !hasUnsavedChanges) return;
+    if (!isBusinessAccount && !isDemoVideoValid) return;
 
     if (isBusinessAccount) {
       try {
@@ -1587,6 +1609,9 @@ const showToast = (msg: string) => {
         availabilityStatus: normalizedAvailability,
         visibleInPool: isVisibleInPool,
         gradYear: profileData.gradYear,
+        gpa: profileData.gpa,
+        demoVideo: profileData.demoVideo,
+        projects: profileData.projects,
       };
       setSavedCandidateProfile(snapshot);
       setSavedProfileData({
@@ -1605,6 +1630,31 @@ const showToast = (msg: string) => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const updateDemoVideo = (value: string) => {
+    setProfileData((prev) => ({
+      ...prev,
+      demoVideo: value,
+    }));
+  };
+
+  const handleDemoVideoChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    updateDemoVideo(event.target.value);
+  };
+
+  const handleDemoVideoPaste = (
+    event: React.ClipboardEvent<HTMLInputElement>
+  ) => {
+    const pastedText = event.clipboardData.getData("text");
+    if (!pastedText) {
+      return;
+    }
+
+    event.preventDefault();
+    updateDemoVideo(pastedText);
   };
 
   // --- EMPLOYER JOB LISTINGS STATE (Business accounts only) ---
@@ -2912,9 +2962,9 @@ const showToast = (msg: string) => {
       <button
         type="button"
         onClick={handleSaveProfile}
-        disabled={!hasUnsavedChanges || isSaving}
+        disabled={!canSaveProfile}
         className={`w-full sm:flex-1 font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
-          hasUnsavedChanges && !isSaving
+          canSaveProfile
             ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-lg shadow-indigo-500/25"
             : "bg-slate-800 text-slate-500 cursor-not-allowed"
         }`}
@@ -3606,14 +3656,20 @@ const showToast = (msg: string) => {
                         <input
                           type="text"
                           value={profileData.demoVideo}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              demoVideo: e.target.value,
-                            })
-                          }
-                          className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                          onChange={handleDemoVideoChange}
+                          onPaste={handleDemoVideoPaste}
+                          aria-invalid={Boolean(demoVideoValidationMessage)}
+                          className={`w-full bg-[#0A0A0A] border rounded-xl p-3 text-sm text-white font-mono focus:outline-none ${
+                            demoVideoValidationMessage
+                              ? "border-rose-500/70 focus:border-rose-500"
+                              : "border-slate-800 focus:border-indigo-500"
+                          }`}
                         />
+                        {demoVideoValidationMessage && (
+                          <p className="mt-2 text-[11px] text-rose-400">
+                            {demoVideoValidationMessage}
+                          </p>
+                        )}
                       </div>
                     </div>
 
