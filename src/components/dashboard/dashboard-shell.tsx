@@ -10,6 +10,7 @@ import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const {
+    authLoading,
     isBusinessAccount,
     mobileNavOpen,
     setMobileNavOpen,
@@ -24,7 +25,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           <ProvixLogo />
         </Link>
         <div className="flex items-center gap-1">
-          {isBusinessAccount && (
+          {!authLoading && isBusinessAccount && (
             <EmployerNotificationBell
               userId={userId}
               onOpenJobApplicants={(jobId) => onOpenJobApplicants?.(jobId)}
@@ -70,7 +71,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       </aside>
 
       <main className="relative w-full min-w-0 flex-1 flex flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#0A0A0A] to-[#0A0A0A]">
-        {isBusinessAccount && (
+        {!authLoading && isBusinessAccount && (
           <div className="hidden md:flex shrink-0 items-center justify-end px-6 md:px-12 py-3 border-b border-slate-800/60 bg-[#111111]/95">
             <EmployerNotificationBell
               userId={userId}

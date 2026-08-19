@@ -3,6 +3,10 @@ import {
   getPublicCandidateInitials,
 } from "@/lib/candidate-anonymization";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  hasCandidateProofOfWork,
+  isPublishedVerifiedCandidateProfile,
+} from "@/lib/published-candidate-profile";
 
 export type FeaturedBuilder = {
   id: string;
@@ -43,29 +47,16 @@ function truncateBio(value: string, maxLength = 140): string {
 }
 
 function hasProofOfWork(row: FeaturedBuilderRow): boolean {
-  return Boolean(row.portfolio_url?.trim() || row.youtube_url?.trim());
+  return hasCandidateProofOfWork(row);
 }
 
 export function isPublishedVerifiedFeaturedBuilderRow(
   row: FeaturedBuilderRow
 ): boolean {
-  if (!row.id?.trim()) {
-    return false;
-  }
-
-  if (!row.profile_slug?.trim()) {
-    return false;
-  }
-
-  if (!row.job_title?.trim()) {
-    return false;
-  }
-
-  if (!row.bio?.trim()) {
-    return false;
-  }
-
-  return hasProofOfWork(row);
+  return (
+    isPublishedVerifiedCandidateProfile(row) &&
+    Boolean(row.profile_slug?.trim())
+  );
 }
 
 export function mapFeaturedBuilderRow(

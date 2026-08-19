@@ -27,6 +27,7 @@ type DashboardNavContextValue = {
   accountRole: string | null;
   setAccountRole: (role: string | null) => void;
   userId: string | null;
+  authLoading: boolean;
   isBusinessAccount: boolean;
   isEmployeeAccount: boolean;
   showTalentPoolNav: boolean;
@@ -55,6 +56,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [onOpenJobApplicants, setOnOpenJobApplicantsState] = useState<
     ((jobId: string) => void) | null
   >(null);
@@ -75,34 +77,40 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
     const supabase = createClient();
 
     const bootstrapSession = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (!active) {
-        return;
+        if (!active) {
+          return;
+        }
+
+        if (!user) {
+          setUserId(null);
+          setAccountRole(null);
+          router.replace("/login");
+          return;
+        }
+
+        setUserId(user.id);
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!active) {
+          return;
+        }
+
+        setAccountRole(resolveAccountRole(profile?.role, user));
+      } finally {
+        if (active) {
+          setAuthLoading(false);
+        }
       }
-
-      if (!user) {
-        setUserId(null);
-        setAccountRole(null);
-        router.replace("/login");
-        return;
-      }
-
-      setUserId(user.id);
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (!active) {
-        return;
-      }
-
-      setAccountRole(resolveAccountRole(profile?.role, user));
     };
 
     void bootstrapSession();
@@ -125,6 +133,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
       accountRole,
       setAccountRole,
       userId,
+      authLoading,
       isBusinessAccount,
       isEmployeeAccount,
       showTalentPoolNav,
@@ -136,6 +145,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
       mobileNavOpen,
       accountRole,
       userId,
+      authLoading,
       isBusinessAccount,
       isEmployeeAccount,
       showTalentPoolNav,

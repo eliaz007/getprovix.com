@@ -57,14 +57,45 @@ function DashboardTabLink({
   );
 }
 
+function DashboardSidebarSkeleton() {
+  return (
+    <div className="p-6 animate-pulse" aria-hidden="true">
+      <div className="mb-8 space-y-2">
+        <div className="h-7 w-28 rounded-lg bg-slate-800/80" />
+        <div className="h-3 w-36 rounded bg-slate-800/50" />
+      </div>
+
+      <div className="space-y-8">
+        <div className="space-y-3">
+          <div className="h-3 w-24 rounded bg-slate-800/60" />
+          <div className="h-9 rounded-lg bg-slate-800/50" />
+          <div className="h-9 rounded-lg bg-slate-800/40" />
+        </div>
+
+        <div className="space-y-3">
+          <div className="h-3 w-28 rounded bg-slate-800/60" />
+          <div className="h-9 rounded-lg bg-slate-800/50" />
+          <div className="h-9 rounded-lg bg-slate-800/40" />
+          <div className="h-9 rounded-lg bg-slate-800/40" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardSidebar() {
   const pathname = usePathname();
   const {
+    authLoading,
     isBusinessAccount,
     isEmployeeAccount,
     showTalentPoolNav,
     setMobileNavOpen,
   } = useDashboardNav();
+
+  if (authLoading) {
+    return <DashboardSidebarSkeleton />;
+  }
 
   return (
     <div className="p-6">

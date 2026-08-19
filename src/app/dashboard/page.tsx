@@ -68,6 +68,7 @@ import {
   isActiveJob,
   isVisibleToEmployers,
 } from "@/lib/opportunities-metrics";
+import { isPublishedVerifiedCandidateProfile } from "@/lib/published-candidate-profile";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
@@ -276,6 +277,7 @@ type ProfileRecord = {
   profile_slug?: string | null;
   country?: string | null;
   timezone?: string | null;
+  integrity_score?: number | null;
 };
 
 type InterviewCheatSheetQuestion = {
@@ -595,15 +597,7 @@ function canAccessTalentPool(role: string | null | undefined): boolean {
 }
 
 function isProfileEligibleForTalentPool(row: ProfileRecord): boolean {
-  if (row.is_visible_in_pool === false) {
-    return false;
-  }
-
-  if (isEmployerRole(row.role)) {
-    return false;
-  }
-
-  return true;
+  return isPublishedVerifiedCandidateProfile(row);
 }
 
 function resolveProfileAvailability(
@@ -643,22 +637,37 @@ function candidateMatchesTalentSearch(
 function mapProfileRowToTalentCandidate(
   row: ProfileRecord & { id: string }
 ): TalentPoolCandidate {
-  const skills = Array.isArray(row.skills) ? row.skills : [];
+  const skills = Array.isArray(row.skills)
+    ? row.skills.filter((skill) => skill.trim())
+    : [];
   const portfolioUrl = row.portfolio_url?.trim() ?? "";
   const isLinkedIn = portfolioUrl.toLowerCase().includes("linkedin");
   const shortId = row.id.replace(/-/g, "").slice(0, 3).toUpperCase();
   const resolvedName =
-    row.full_name?.trim() || row.name?.trim() || "Unnamed Candidate";
+    row.full_name?.trim() ||
+    row.name?.trim() ||
+    row.codename_alias?.trim() ||
+    "Candidate";
   const profileName = row.name?.trim() || "";
   const parsedName = splitFullName(resolvedName);
   const firstName = row.first_name?.trim() || parsedName.firstName;
   const lastName = row.last_name?.trim() || parsedName.lastName;
-  const headline =
-    row.headline?.trim() || row.job_title?.trim() || "Open Role Candidate";
+  const headline = row.job_title!.trim();
   const availability = resolveProfileAvailability(row);
   const codenameAlias =
     row.codename_alias?.trim() ||
     generateCodenameAlias(buildCodenameAliasInputFromProfile(row));
+  const integrityScore =
+    typeof row.integrity_score === "number" &&
+    Number.isFinite(row.integrity_score)
+      ? Math.round(row.integrity_score)
+      : null;
+  const major =
+    row.major?.trim() ||
+    row.degree?.trim() ||
+    row.university?.trim() ||
+    row.school?.trim() ||
+    "";
 
   return {
     id: `C-${shortId}`,
@@ -677,23 +686,16 @@ function mapProfileRowToTalentCandidate(
     linkedin_url: row.linkedin_url?.trim() || (isLinkedIn ? portfolioUrl : null),
     github_url: !isLinkedIn && portfolioUrl ? portfolioUrl : null,
     role: headline,
-    major:
-      row.major?.trim() ||
-      row.degree?.trim() ||
-      row.university?.trim() ||
-      row.school?.trim() ||
-      "Credentials on file",
+    major,
     skills,
-    rating: "90%",
-    execution_score: 90,
+    rating: integrityScore !== null ? `${integrityScore}%` : "",
+    execution_score: integrityScore,
     status: availability,
     experienceLevel:
       row.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL,
     roleType: "General",
     availability,
-    bio:
-      row.bio?.trim() ||
-      "AI-vetted candidate with verified proof-of-work in the talent pool.",
+    bio: row.bio!.trim(),
     github: portfolioUrl || "",
     demoVideo: row.youtube_url?.trim() || "",
     projects: [],
@@ -966,6 +968,7 @@ export default function DashboardPage() {
   const isEmployeeAccount = isEmployeeRole(profileRole);
   const showTalentPoolNav = canAccessTalentPool(profileRole);
   const [candidates, setCandidates] = useState<TalentPoolCandidate[]>([]);
+  const [talentPoolLoading, setTalentPoolLoading] = useState(false);
 
   useEffect(() => {
     setNavAccountRole(profileRole ?? null);
@@ -1286,15 +1289,24 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!showTalentPoolNav) {
+      setCandidates([]);
+      setTalentPoolLoading(false);
       return;
     }
 
     const supabase = createClient();
     let isMounted = true;
 
+    setTalentPoolLoading(true);
+
     (async () => {
       try {
-        const { data, error } = await supabase.from("profiles").select("*");
+        const { data, error } = await supabase
+          .from("profiles")
+          .select(
+            "id, full_name, name, first_name, last_name, job_title, headline, bio, skills, portfolio_url, youtube_url, experience_level, availability_status, availability, major, degree, university, school, role, is_visible_in_pool, codename_alias, country, timezone, phone, linkedin_url, contact_email, email, integrity_score"
+          )
+          .eq("is_visible_in_pool", true);
 
         if (!isMounted) {
           return;
@@ -1305,8 +1317,6 @@ export default function DashboardPage() {
           setCandidates([]);
           return;
         }
-
-        console.log("Recruiter talent pool profiles:", data);
 
         const mapped = await Promise.all(
           (data ?? [])
@@ -1337,6 +1347,10 @@ export default function DashboardPage() {
         console.error("Talent pool fetch threw:", err);
         if (isMounted) {
           setCandidates([]);
+        }
+      } finally {
+        if (isMounted) {
+          setTalentPoolLoading(false);
         }
       }
     })();
@@ -1375,14 +1389,6 @@ export default function DashboardPage() {
 
     void fetchIntroUnlocks(user.id);
   }, [user?.id, showTalentPoolNav, fetchIntroUnlocks]);
-
-  useEffect(() => {
-    if (!showTalentPoolNav) {
-      return;
-    }
-
-    console.log("Loaded candidates in talent pool:", candidates);
-  }, [candidates, showTalentPoolNav]);
 
   useEffect(() => {
     if (!showTalentPoolNav && activeTab === "talent") {
@@ -2478,10 +2484,17 @@ const showToast = (msg: string) => {
       return `${insight.match_percentage}% Match`;
     }
 
-    return formatBaselineMatchLabel(
-      candidate.execution_score,
-      candidate.rating
-    );
+    if (
+      typeof candidate.execution_score === "number" &&
+      candidate.execution_score > 0
+    ) {
+      return formatBaselineMatchLabel(
+        candidate.execution_score,
+        candidate.rating
+      );
+    }
+
+    return "Match pending";
   };
 
   const openIntroModal = (candidate: TalentPoolCandidate) => {
@@ -5325,13 +5338,41 @@ const showToast = (msg: string) => {
                     />
                   </div>
 
-                  {filteredCandidates.length === 0 ? (
+                  {talentPoolLoading ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {Array.from({ length: 3 }).map((_, index) => (
+                        <div
+                          key={index}
+                          className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 animate-pulse min-h-[260px]"
+                          aria-hidden="true"
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-4">
+                            <div className="w-12 h-12 rounded-full bg-slate-800" />
+                            <div className="space-y-2">
+                              <div className="h-5 w-20 rounded-full bg-slate-800" />
+                              <div className="h-5 w-16 rounded-full bg-slate-800/80" />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="h-4 w-32 rounded bg-slate-800" />
+                            <div className="h-3 w-24 rounded bg-slate-800/80" />
+                            <div className="h-3 w-40 rounded bg-slate-800/60" />
+                          </div>
+                          <div className="flex gap-1.5 mt-6">
+                            <div className="h-6 w-14 rounded-md bg-slate-800/80" />
+                            <div className="h-6 w-16 rounded-md bg-slate-800/80" />
+                            <div className="h-6 w-12 rounded-md bg-slate-800/80" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : filteredCandidates.length === 0 ? (
                     <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
                       <p className="text-sm font-medium text-slate-300">
-                        No candidates match your filters
+                        No published candidates match your filters
                       </p>
                       <p className="text-xs text-slate-500 mt-1">
-                        Try clearing filters or broadening your search.
+                        Only verified, published candidate profiles appear here.
                       </p>
                     </div>
                   ) : (
