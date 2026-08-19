@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { Code2, ChevronDown, Shield, ShieldCheck, Zap } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
+import FeaturedShowcase from "@/components/FeaturedShowcase";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import {
@@ -18,6 +19,10 @@ import {
   getPublicCandidateLocation,
 } from "@/lib/candidate-anonymization";
 import { createClient } from "@/utils/supabase/client";
+import {
+  fetchFeaturedBuilders,
+  type FeaturedBuilder,
+} from "@/lib/featured-builders";
 import {
   getNewestVettedCandidate,
   resolveCandidateScore,
@@ -191,6 +196,10 @@ export default function Home() {
     null
   );
   const [previewLoading, setPreviewLoading] = useState(true);
+  const [featuredBuilders, setFeaturedBuilders] = useState<FeaturedBuilder[]>(
+    []
+  );
+  const [featuredLoading, setFeaturedLoading] = useState(true);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [passwordUpdated, setPasswordUpdated] = useState(false);
 
@@ -247,6 +256,22 @@ export default function Home() {
         setPreviewCandidate(fallback);
       } finally {
         setPreviewLoading(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    void (async () => {
+      try {
+        const builders = await fetchFeaturedBuilders(supabase, 6);
+        setFeaturedBuilders(builders);
+      } catch (error) {
+        console.error("[homepage] featured builders fetch failed:", error);
+        setFeaturedBuilders([]);
+      } finally {
+        setFeaturedLoading(false);
       }
     })();
   }, []);
@@ -476,6 +501,10 @@ export default function Home() {
             )}
           </Link>
         </section>
+
+        {!featuredLoading && featuredBuilders.length > 0 && (
+          <FeaturedShowcase builders={featuredBuilders} />
+        )}
 
         {/* --- FEATURE GRID --- */}
         <section id="proof-engine" className="max-w-6xl mx-auto px-6 pb-24 scroll-mt-24">
