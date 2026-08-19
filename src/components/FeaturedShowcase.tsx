@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, ShieldCheck } from "lucide-react";
 import type { FeaturedBuilder } from "@/lib/featured-builders";
+import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 
 type FeaturedShowcaseProps = {
@@ -61,6 +62,10 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
             </span>
           ))}
         </div>
+      )}
+
+      {builder.hasGitHubRepos && (
+        <LockedGitHubReposBadge className="relative mt-4" />
       )}
 
       <div className="relative mt-5 flex items-center justify-between gap-3">

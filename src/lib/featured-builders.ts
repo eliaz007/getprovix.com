@@ -15,6 +15,7 @@ export type FeaturedBuilder = {
   skills: string[];
   proofScore: number;
   avatarUrl: string | null;
+  hasGitHubRepos: boolean;
 };
 
 type FeaturedBuilderRow = {
@@ -27,6 +28,8 @@ type FeaturedBuilderRow = {
   avatar_url?: string | null;
   codename_alias?: string | null;
   integrity_score?: number | null;
+  has_github_repos?: boolean | null;
+  portfolio_url?: string | null;
   updated_at?: string | null;
 };
 
@@ -72,6 +75,8 @@ export function mapFeaturedBuilderRow(
       integrity_score: row.integrity_score,
     }),
     avatarUrl: row.avatar_url?.trim() || null,
+    hasGitHubRepos:
+      row.has_github_repos === true || Boolean(row.portfolio_url?.trim()),
   };
 }
 
@@ -109,7 +114,7 @@ export async function fetchFeaturedBuilders(
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, profile_slug, full_name, job_title, bio, skills, avatar_url, codename_alias, integrity_score, updated_at"
+      "id, profile_slug, full_name, job_title, bio, skills, avatar_url, codename_alias, integrity_score, portfolio_url, updated_at"
     )
     .eq("is_featured", true)
     .eq("is_visible_in_pool", true)

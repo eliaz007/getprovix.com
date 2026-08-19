@@ -58,6 +58,9 @@ export const DEFAULT_PUBLIC_TIMEZONE = "MT (UTC-6)";
 export const CONTACT_DOSSIER_LOCK_MESSAGE =
   "Full contact dossier unlocks upon approved introduction";
 
+export const GITHUB_REPOS_LOCK_MESSAGE =
+  "🔒 GitHub & Repos Unlocked on Intro Request";
+
 function hashStringToIndex(input: string, modulo: number): number {
   let hash = 2166136261;
 

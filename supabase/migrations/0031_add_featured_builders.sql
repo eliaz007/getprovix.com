@@ -2,7 +2,10 @@
 -- visible_to_employers is represented by is_visible_in_pool.
 
 alter table public.profiles
-  add column if not exists is_featured boolean not null default false;
+  add column if not exists is_featured boolean not null default false,
+  add column if not exists integrity_score integer
+    check (integrity_score is null or (integrity_score between 1 and 100)),
+  add column if not exists audit_data jsonb;
 
 comment on column public.profiles.is_featured is
   'When true, profile may appear in the landing page Featured Builders Showcase. Requires is_visible_in_pool (visible to employers).';

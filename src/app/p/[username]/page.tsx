@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  Code2,
   ExternalLink,
   GraduationCap,
   MapPin,
   PlayCircle,
+  ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
+import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
+import { resolveCandidateScore } from "@/data/vetted-candidates";
 import { getPublicProfileBySlug } from "@/lib/public-profile";
 import { buildPublicProfileUrl } from "@/lib/profile-url";
 import type { Metadata } from "next";
@@ -70,6 +72,9 @@ export default async function PublicCandidateProfilePage({
   const academicLine = [profile.university, profile.major]
     .filter(Boolean)
     .join(" · ");
+  const proofScore = resolveCandidateScore({
+    integrity_score: profile.integrityScore,
+  });
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-slate-200">
@@ -126,6 +131,12 @@ export default async function PublicCandidateProfilePage({
                       className={`rounded-full border px-2.5 py-1 font-bold uppercase tracking-wide ${getAvailabilityClass(profile.availabilityStatus)}`}
                     >
                       {profile.availabilityStatus}
+                    </span>
+                  )}
+                  {profile.hasProofOfWork && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 font-bold text-emerald-300">
+                      <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                      Integrity · {proofScore}/100
                     </span>
                   )}
                 </div>
@@ -194,31 +205,8 @@ export default async function PublicCandidateProfilePage({
 
               {profile.hasProofOfWork ? (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {profile.portfolioUrl && (
-                    <a
-                      href={profile.portfolioUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group flex items-center justify-between rounded-2xl border border-slate-800 bg-[#0A0A0A] px-4 py-4 transition-colors hover:border-indigo-500/40 hover:bg-indigo-500/5"
-                    >
-                      <span className="flex items-center gap-3">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900/80 text-slate-300">
-                          <Code2 className="h-4 w-4" aria-hidden />
-                        </span>
-                        <span>
-                          <span className="block text-sm font-semibold text-white">
-                            GitHub / Portfolio
-                          </span>
-                          <span className="block text-xs text-slate-500">
-                            Verified artifact link
-                          </span>
-                        </span>
-                      </span>
-                      <ExternalLink
-                        className="h-4 w-4 text-slate-500 transition-colors group-hover:text-indigo-300"
-                        aria-hidden
-                      />
-                    </a>
+                  {profile.hasGitHubRepos && (
+                    <LockedGitHubReposBadge className="h-full" />
                   )}
 
                   {profile.youtubeUrl && (
