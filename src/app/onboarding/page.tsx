@@ -8,6 +8,10 @@ import {
   DEFAULT_PUBLIC_COUNTRY,
   generateCodenameAlias,
 } from "@/lib/alias-generator";
+import {
+  normalizeAccountKind,
+  resolveAccountRole as resolveSignupAccountRole,
+} from "@/lib/account-role";
 import { createClient } from "@/utils/supabase/client";
 import {
   DEFAULT_EXPERIENCE_LEVEL,
@@ -42,12 +46,8 @@ function resolveAccountRole(
   profileRole: string | null | undefined,
   metaRole: unknown
 ): AccountRole {
-  const table = (profileRole ?? "").toLowerCase();
-  const meta = typeof metaRole === "string" ? metaRole.toLowerCase() : "";
-
-  if (meta === "business" || meta === "employer") return "business";
-  if (table === "business" || table === "employer") return "business";
-  return "candidate";
+  const resolved = resolveSignupAccountRole(profileRole, metaRole);
+  return normalizeAccountKind(resolved) === "employer" ? "business" : "candidate";
 }
 
 function OnboardingSkeleton() {
@@ -151,6 +151,7 @@ export default function OnboardingPage() {
       job_title: jobTitle,
       experience_level: experienceLevel,
       role: "candidate",
+      is_visible_in_pool: true,
       codename_alias: codenameAlias,
       country: DEFAULT_PUBLIC_COUNTRY,
       work_preference: workPreference,
@@ -184,7 +185,8 @@ export default function OnboardingPage() {
         industry,
         company_size: companySize,
         hiring_preferences: hiringPreferences,
-        role: "business",
+        role: "employer",
+        is_visible_in_pool: false,
       })
       .eq("id", user.id);
 

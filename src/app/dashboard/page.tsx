@@ -27,6 +27,11 @@ import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
 import { resolveCodenameAlias } from "@/lib/alias-generator";
 import {
+  normalizeAccountKind,
+  resolveAccountRole,
+  profileDefaultsForAccountRole,
+} from "@/lib/account-role";
+import {
   getPublicCandidateDisplayName,
   getPublicCandidateInitials,
   getPublicCandidateLocation,
@@ -797,10 +802,33 @@ async function ensureUserProfile(
   const existing = await fetchProfileRow(supabase, user.id);
 
   if (!existing.error && existing.data) {
-    return existing.data as ProfileRecord;
+    const profile = existing.data as ProfileRecord;
+    const metadataRole = resolveAccountRole(null, user);
+    const shouldBeEmployer = normalizeAccountKind(metadataRole) === "employer";
+    const storedAsEmployer = normalizeAccountKind(profile.role) === "employer";
+
+    if (shouldBeEmployer && !storedAsEmployer) {
+      const { data: repaired, error: repairError } = await supabase
+        .from("profiles")
+        .update({ role: "employer", is_visible_in_pool: false })
+        .eq("id", user.id)
+        .select("*")
+        .maybeSingle();
+
+      if (!repairError && repaired) {
+        return repaired as ProfileRecord;
+      }
+    }
+
+    return profile;
   }
 
   if (existing.error) {
+    const retry = await fetchProfileRow(supabase, user.id);
+    if (!retry.error && retry.data) {
+      return retry.data as ProfileRecord;
+    }
+
     console.warn(
       "Profile fetch failed — creating fallback profile:",
       existing.error.message
@@ -811,38 +839,47 @@ async function ensureUserProfile(
     displayNameFromSources(null, user) ||
     user.email?.split("@")[0] ||
     "New User";
-  const role = resolveAccountRole(null, user) ?? "candidate";
+  const { role, is_visible_in_pool } = profileDefaultsForAccountRole(
+    resolveAccountRole(null, user)
+  );
 
   const extendedPayload = {
     id: user.id,
     full_name: fullName,
     role,
-    is_visible_in_pool: true,
+    is_visible_in_pool,
   };
 
-  let upsertResult = await supabase
+  let insertResult = await supabase
     .from("profiles")
-    .upsert(extendedPayload, { onConflict: "id" })
+    .insert(extendedPayload)
     .select("*")
     .maybeSingle();
 
-  if (upsertResult.error && isMissingColumnError(upsertResult.error)) {
-    upsertResult = await supabase
-      .from("profiles")
-      .upsert(
-        { id: user.id, full_name: fullName, role },
-        { onConflict: "id" }
-      )
-      .select("*")
-      .maybeSingle();
+  if (insertResult.error?.code === "23505") {
+    const refetch = await fetchProfileRow(supabase, user.id);
+    return (refetch.data as ProfileRecord | null) ?? null;
   }
 
-  if (upsertResult.error) {
-    console.error("Fallback profile upsert failed:", upsertResult.error.message);
+  if (insertResult.error && isMissingColumnError(insertResult.error)) {
+    insertResult = await supabase
+      .from("profiles")
+      .insert({ id: user.id, full_name: fullName, role })
+      .select("*")
+      .maybeSingle();
+
+    if (insertResult.error?.code === "23505") {
+      const refetch = await fetchProfileRow(supabase, user.id);
+      return (refetch.data as ProfileRecord | null) ?? null;
+    }
+  }
+
+  if (insertResult.error) {
+    console.error("Fallback profile insert failed:", insertResult.error.message);
     return null;
   }
 
-  return (upsertResult.data as ProfileRecord | null) ?? null;
+  return (insertResult.data as ProfileRecord | null) ?? null;
 }
 
 function displayNameFromSources(
@@ -858,18 +895,6 @@ function displayNameFromSources(
     .join(" ")
     .trim();
   return fromMeta;
-}
-
-function resolveAccountRole(
-  profile: ProfileRecord | null,
-  user: User | null
-): string | null {
-  const fromProfile = profile?.role?.trim() || null;
-  const fromMeta =
-    typeof user?.user_metadata?.role === "string"
-      ? user.user_metadata.role.trim()
-      : null;
-  return fromProfile ?? fromMeta;
 }
 
 export default function DashboardPage() {
@@ -998,7 +1023,7 @@ export default function DashboardPage() {
         if (!isMounted) return;
 
         const profile = profileRow ?? null;
-        const resolvedRole = resolveAccountRole(profile, sessionUser);
+        const resolvedRole = resolveAccountRole(profile?.role, sessionUser);
         let profileWithRole =
           profile && !profile.role && resolvedRole
             ? { ...profile, role: resolvedRole }

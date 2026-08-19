@@ -11,6 +11,7 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
+import { resolveAccountRole } from "@/lib/account-role";
 import {
   canAccessTalentPool,
   isEmployeeRole,
@@ -36,18 +37,6 @@ type DashboardNavContextValue = {
 };
 
 const DashboardNavContext = createContext<DashboardNavContextValue | null>(null);
-
-function resolveAccountRole(
-  profileRole: string | null | undefined,
-  user: User | null
-): string | null {
-  const fromProfile = profileRole?.trim() || null;
-  const fromMeta =
-    typeof user?.user_metadata?.role === "string"
-      ? user.user_metadata.role.trim()
-      : null;
-  return fromProfile ?? fromMeta;
-}
 
 export function DashboardNavProvider({ children }: { children: ReactNode }) {
   const router = useRouter();

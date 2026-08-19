@@ -7,6 +7,11 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { getPostLoginPath } from "@/lib/admin-access";
+import {
+  isEmployerSignup,
+  signupMetadataForKind,
+  syncEmployerProfileAfterSignup,
+} from "@/lib/account-role";
 import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
@@ -141,11 +146,10 @@ export default function LoginPage() {
       email,
       password,
       options: {
-        data: {
-          role: signUpType,
+        data: signupMetadataForKind(signUpType, {
           first_name: firstName,
           last_name: lastName,
-        },
+        }),
       },
     });
 
@@ -153,6 +157,10 @@ export default function LoginPage() {
       setError(signUpError.message);
       setLoading(false);
       return;
+    }
+
+    if (data.session?.user && isEmployerSignup(data.session.user)) {
+      await syncEmployerProfileAfterSignup(supabase, data.session.user.id);
     }
 
     if (!data.session) {

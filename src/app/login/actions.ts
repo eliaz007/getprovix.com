@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
+import {
+  isEmployerSignup,
+  signupMetadataForKind,
+  syncEmployerProfileAfterSignup,
+} from "@/lib/account-role";
 import { createClient } from "@/utils/supabase/server";
 
 function authFailure(error?: unknown, err?: unknown): { error: string } {
@@ -66,7 +71,12 @@ export async function signUpWithEmail(
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: rawData },
+      options: {
+        data: signupMetadataForKind(rawData.role, {
+          first_name: rawData.first_name,
+          last_name: rawData.last_name,
+        }),
+      },
     });
 
     if (error) {
@@ -79,6 +89,16 @@ export async function signUpWithEmail(
 
       if (signInError) {
         authError = authFailure(signInError);
+      }
+    }
+
+    if (!authError) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user && isEmployerSignup(user)) {
+        await syncEmployerProfileAfterSignup(supabase, user.id);
       }
     }
   } catch (err) {
