@@ -59,6 +59,11 @@ import {
   getYouTubeUrlValidationMessage,
   isValidYouTubeUrl,
 } from "@/lib/validate-youtube-url";
+import {
+  getGitHubUrlValidationMessage,
+  isValidGitHubUrl,
+  normalizeGitHubUrl,
+} from "@/lib/validate-github-url";
 import { buildFallbackMatch, type MatchResult } from "@/lib/match-heuristic";
 import { createEmployerNotification } from "@/lib/employer-notifications";
 import {
@@ -1059,7 +1064,9 @@ export default function DashboardPage() {
         const loadedVisibleInPool = isVisibleToEmployers(
           profileWithRole?.is_visible_in_pool
         );
-        setIsVisibleInPool(loadedVisibleInPool);
+        setIsVisibleInPool(
+          loadedVisibleInPool && isValidGitHubUrl(loadedPortfolioUrl)
+        );
 
         const loadedName = displayName || DEFAULT_PROFILE_DATA.name;
         const loadedTitle = profileWithRole?.job_title ?? "";
@@ -1439,9 +1446,6 @@ const showToast = (msg: string) => {
   setTimeout(() => setToastMessage(null), 3000);
 };
 
-  const handleVisibilityToggle = () => {
-    setIsVisibleInPool((current) => !current);
-  };
   // --- SUB-MENU STATE FOR PROFILE TAB ---
   const [profileSubMenu, setProfileSubMenu] = useState<
     "overview" | "academics" | "portfolio" | "settings" | "companyInfo" | "activeListings"
@@ -1599,10 +1603,26 @@ const showToast = (msg: string) => {
     profileData.demoVideo
   );
   const isDemoVideoValid = isValidYouTubeUrl(profileData.demoVideo);
+  const githubValidationMessage = getGitHubUrlValidationMessage(portfolioUrl);
+  const isGitHubUrlValid = isValidGitHubUrl(portfolioUrl);
   const canSaveProfile =
     hasUnsavedChanges &&
-    (isBusinessAccount || isDemoVideoValid) &&
+    (isBusinessAccount || (isDemoVideoValid && isGitHubUrlValid)) &&
     !isSaving;
+
+  const handleVisibilityToggle = () => {
+    setIsVisibleInPool((current) => {
+      if (!current && !isValidGitHubUrl(portfolioUrl)) {
+        showToast(
+          getGitHubUrlValidationMessage(portfolioUrl) ??
+            "Add a valid GitHub profile URL before joining the talent pool."
+        );
+        return false;
+      }
+
+      return !current;
+    });
+  };
 
   // Hydrate business profile data from LocalStorage once the component mounts on the client.
   useEffect(() => {
@@ -1621,6 +1641,12 @@ const showToast = (msg: string) => {
   const handleSaveProfile = async () => {
     if (isSaving || !hasUnsavedChanges) return;
     if (!isBusinessAccount && !isDemoVideoValid) return;
+    if (!isBusinessAccount && !isGitHubUrlValid) {
+      showToast(
+        githubValidationMessage ?? "GitHub profile URL is required."
+      );
+      return;
+    }
 
     if (isBusinessAccount) {
       try {
@@ -1665,6 +1691,12 @@ const showToast = (msg: string) => {
         availabilityStatus
       );
       const academicMajor = degree.trim();
+      const normalizedPortfolioUrl = normalizeGitHubUrl(portfolioUrl);
+      const effectiveVisibleInPool =
+        isVisibleInPool && isValidGitHubUrl(normalizedPortfolioUrl);
+      if (isVisibleInPool && !effectiveVisibleInPool) {
+        setIsVisibleInPool(false);
+      }
       const payload = buildCandidateProfileUpdatePayload({
         fullName: profileData.name,
         jobTitle: title,
@@ -1673,13 +1705,13 @@ const showToast = (msg: string) => {
         major: academicMajor,
         degree: academicMajor,
         skills: skillsArray,
-        portfolioUrl,
+        portfolioUrl: normalizedPortfolioUrl,
         youtubeUrl: profileData.demoVideo,
         experienceLevel,
         availabilityStatus: normalizedAvailability,
         workPreference,
         candidateTimezone,
-        isVisibleInPool,
+        isVisibleInPool: effectiveVisibleInPool,
         gradYear: profileData.gradYear,
       });
 
@@ -1701,8 +1733,9 @@ const showToast = (msg: string) => {
             ? {
                 ...prev,
                 ...(data as ProfileRecord),
-                is_visible_in_pool: isVisibleInPool,
+                is_visible_in_pool: effectiveVisibleInPool,
                 availability_status: normalizedAvailability,
+                portfolio_url: normalizedPortfolioUrl,
               }
             : (data as ProfileRecord)
         );
@@ -1715,12 +1748,12 @@ const showToast = (msg: string) => {
         school,
         degree,
         skills,
-        portfolioUrl,
+        portfolioUrl: normalizedPortfolioUrl,
         experienceLevel,
         availabilityStatus: normalizedAvailability,
         workPreference,
         candidateTimezone,
-        visibleInPool: isVisibleInPool,
+        visibleInPool: effectiveVisibleInPool,
         gradYear: profileData.gradYear,
         gpa: profileData.gpa,
         demoVideo: profileData.demoVideo,
@@ -1733,9 +1766,11 @@ const showToast = (msg: string) => {
         bio,
         school,
         degree,
-        github: portfolioUrl,
+        github: normalizedPortfolioUrl,
       });
+      setPortfolioUrl(normalizedPortfolioUrl);
       setAvailabilityStatus(normalizedAvailability);
+      setIsVisibleInPool(effectiveVisibleInPool);
       showToast("Profile saved successfully.");
     } catch (error) {
       console.error("Profile update failed:", error);
@@ -2080,9 +2115,9 @@ const showToast = (msg: string) => {
     [jobs, candidateSkillsForMatching]
   );
 
-  const profileVisibleToEmployers = isVisibleToEmployers(
-    dbProfile?.is_visible_in_pool
-  );
+  const profileVisibleToEmployers =
+    isVisibleToEmployers(dbProfile?.is_visible_in_pool) &&
+    isValidGitHubUrl(portfolioUrl);
 
   const filteredJobFeed = jobs.filter((job) => {
     if (!isJobVisibleInFeed(job)) {
@@ -3611,14 +3646,30 @@ const showToast = (msg: string) => {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
-                          GitHub / Portfolio URL
+                          GitHub Profile URL{" "}
+                          <span className="text-rose-400">*</span>
                         </label>
                         <input
-                          type="text"
+                          type="url"
+                          required
                           value={portfolioUrl}
                           onChange={(e) => setPortfolioUrl(e.target.value)}
-                          className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                          aria-invalid={Boolean(githubValidationMessage)}
+                          placeholder="https://github.com/your-handle"
+                          className={`w-full bg-[#0A0A0A] border rounded-xl p-3 text-sm text-white font-mono focus:outline-none ${
+                            githubValidationMessage
+                              ? "border-rose-500/70 focus:border-rose-500"
+                              : "border-slate-800 focus:border-indigo-500"
+                          }`}
                         />
+                        {githubValidationMessage && (
+                          <p className="mt-2 text-[11px] text-rose-400">
+                            {githubValidationMessage}
+                          </p>
+                        )}
+                        <p className="mt-2 text-[11px] text-slate-500">
+                          Required to save your profile and appear in the employer talent pool.
+                        </p>
                       </div>
                       <div>
                         <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
@@ -3768,7 +3819,7 @@ const showToast = (msg: string) => {
                           Visible to Employers
                         </span>
                         <span className="text-[11px] text-slate-500">
-                          Turn this off if you are hired or no longer want to be contacted by recruiters.
+                          Turn this on to join the talent pool. Requires a valid GitHub profile URL.
                         </span>
                       </div>
                       <button

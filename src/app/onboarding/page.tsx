@@ -26,6 +26,11 @@ import {
   type CandidateTimezone,
   type WorkPreference,
 } from "@/lib/work-preference";
+import {
+  getGitHubUrlValidationMessage,
+  isValidGitHubUrl,
+  normalizeGitHubUrl,
+} from "@/lib/validate-github-url";
 
 type AccountRole = "candidate" | "business";
 
@@ -88,6 +93,7 @@ export default function OnboardingPage() {
   const [candidateTimezone, setCandidateTimezone] = useState<CandidateTimezone>(
     DEFAULT_CANDIDATE_TIMEZONE
   );
+  const [githubUrl, setGithubUrl] = useState("");
 
   const [companyName, setCompanyName] = useState("");
   const [industry, setIndustry] = useState(INDUSTRIES[0]);
@@ -136,6 +142,13 @@ export default function OnboardingPage() {
     if (!user) return;
 
     setError(null);
+
+    const githubValidationMessage = getGitHubUrlValidationMessage(githubUrl);
+    if (githubValidationMessage) {
+      setError(githubValidationMessage);
+      return;
+    }
+
     setSaving(true);
 
     const supabase = createClient();
@@ -151,7 +164,8 @@ export default function OnboardingPage() {
       job_title: jobTitle,
       experience_level: experienceLevel,
       role: "candidate",
-      is_visible_in_pool: true,
+      is_visible_in_pool: false,
+      portfolio_url: normalizeGitHubUrl(githubUrl),
       codename_alias: codenameAlias,
       country: DEFAULT_PUBLIC_COUNTRY,
       work_preference: workPreference,
@@ -428,12 +442,31 @@ export default function OnboardingPage() {
               </div>
             </div>
 
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="githubUrl" className="text-sm font-medium text-zinc-300">
+                GitHub Profile URL <span className="text-rose-400">*</span>
+              </label>
+              <input
+                id="githubUrl"
+                type="url"
+                name="githubUrl"
+                placeholder="https://github.com/your-handle"
+                required
+                value={githubUrl}
+                onChange={(e) => setGithubUrl(e.target.value)}
+                className={inputClass}
+              />
+              <p className="text-[11px] text-zinc-500">
+                Required. Must include github.com (e.g. https://github.com/your-handle).
+              </p>
+            </div>
+
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || !isValidGitHubUrl(githubUrl)}
               className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg w-full mt-4 transition-colors cursor-pointer"
             >
-              {saving ? "Saving..." : "Enter Talent Pool"}
+              {saving ? "Saving..." : "Continue to Dashboard"}
             </button>
           </form>
         )}

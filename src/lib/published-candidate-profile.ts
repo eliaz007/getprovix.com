@@ -3,6 +3,7 @@ import {
   isEmployerRole,
 } from "@/lib/dashboard-account";
 import { isVisibleToEmployers } from "@/lib/opportunities-metrics";
+import { isValidGitHubUrl } from "@/lib/validate-github-url";
 
 export type PublishedCandidateProfileRow = {
   id?: string | null;
@@ -15,10 +16,18 @@ export type PublishedCandidateProfileRow = {
   is_visible_in_pool?: boolean | null;
 };
 
+export function hasCandidateGitHubProfile(
+  row: Pick<PublishedCandidateProfileRow, "portfolio_url">
+): boolean {
+  return isValidGitHubUrl(row.portfolio_url ?? "");
+}
+
 export function hasCandidateProofOfWork(
   row: Pick<PublishedCandidateProfileRow, "portfolio_url" | "youtube_url">
 ): boolean {
-  return Boolean(row.portfolio_url?.trim() || row.youtube_url?.trim());
+  return (
+    hasCandidateGitHubProfile(row) || Boolean(row.youtube_url?.trim())
+  );
 }
 
 export function isPublishedVerifiedCandidateProfile(
@@ -44,5 +53,9 @@ export function isPublishedVerifiedCandidateProfile(
     return false;
   }
 
-  return hasCandidateProofOfWork(row);
+  if (!hasCandidateGitHubProfile(row)) {
+    return false;
+  }
+
+  return true;
 }
