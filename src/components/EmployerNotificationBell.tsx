@@ -3,15 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { formatRelativeTime } from "@/lib/format-relative-time";
+import {
+  fetchEmployerNotifications,
+  markEmployerNotificationRead,
+  type EmployerNotificationRow,
+} from "@/lib/employer-notifications";
 import { createClient } from "@/utils/supabase/client";
 
-export type EmployerNotification = {
-  id: string;
-  message: string;
-  job_id: string | null;
-  is_read: boolean;
-  created_at: string;
-};
+export type EmployerNotification = EmployerNotificationRow;
 
 type EmployerNotificationBellProps = {
   userId: string | null;
@@ -37,20 +36,8 @@ export default function EmployerNotificationBell({
 
     setLoading(true);
     const supabase = createClient();
-
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("id, message, job_id, is_read, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(20);
-
-    if (error) {
-      console.error("Failed to fetch notifications:", error);
-    } else {
-      setNotifications(data ?? []);
-    }
-
+    const rows = await fetchEmployerNotifications(supabase, userId);
+    setNotifications(rows);
     setLoading(false);
   }, [userId]);
 
@@ -95,15 +82,7 @@ export default function EmployerNotificationBell({
 
     if (!notification.is_read) {
       const supabase = createClient();
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("id", notification.id)
-        .eq("user_id", userId);
-
-      if (error) {
-        console.error("Failed to mark notification as read:", error);
-      }
+      await markEmployerNotificationRead(supabase, notification.id, userId);
     }
 
     if (notification.job_id) {

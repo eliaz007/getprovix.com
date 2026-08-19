@@ -25,10 +25,7 @@ import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
-import {
-  buildCodenameAliasInputFromProfile,
-  generateCodenameAlias,
-} from "@/lib/alias-generator";
+import { resolveCodenameAlias } from "@/lib/alias-generator";
 import {
   getPublicCandidateDisplayName,
   getPublicCandidateInitials,
@@ -57,11 +54,17 @@ import {
   getYouTubeUrlValidationMessage,
   isValidYouTubeUrl,
 } from "@/lib/validate-youtube-url";
+import { buildFallbackMatch, type MatchResult } from "@/lib/match-heuristic";
+import { createEmployerNotification } from "@/lib/employer-notifications";
 import {
-  buildFallbackMatch,
-  normalizeMatchResult,
-  type MatchResult,
-} from "@/lib/match-heuristic";
+  fetchTalentMatchInsight,
+  loadCachedTalentMatchScores,
+  saveTalentMatchScore,
+} from "@/lib/talent-match-scores";
+import {
+  fetchEmployerTalentPoolProfiles,
+  type TalentPoolProfileRow,
+} from "@/lib/talent-pool-profiles";
 import {
   countActiveOpenings,
   countJobsMatchingCandidateSkills,
@@ -351,42 +354,6 @@ function getIntegrityScoreClass(score: number): string {
 
 type MatchInsight = MatchResult;
 
-function resolveMatchInsight(
-  raw: unknown,
-  candidate: {
-    title: string;
-    bio: string;
-    skills: string[];
-    degree: string;
-  },
-  job: {
-    title: string;
-    company: string;
-    tags: string[];
-    location: string;
-  }
-): MatchInsight {
-  if (raw && typeof raw === "object" && !("error" in (raw as object))) {
-    const normalized = normalizeMatchResult(raw);
-    if (Number.isFinite(normalized.match_percentage)) {
-      const fallbackSkills = buildFallbackMatch(candidate, job);
-      return {
-        ...normalized,
-        matching_skills:
-          normalized.matching_skills.length > 0
-            ? normalized.matching_skills
-            : fallbackSkills.matching_skills,
-        missing_skills:
-          normalized.missing_skills.length > 0
-            ? normalized.missing_skills
-            : fallbackSkills.missing_skills,
-      };
-    }
-  }
-
-  return buildFallbackMatch(candidate, job);
-}
-
 function resolveProfileContactEmail(
   row: Pick<ProfileRecord, "contact_email" | "email">
 ): string | null {
@@ -673,9 +640,7 @@ function mapProfileRowToTalentCandidate(
   const lastName = row.last_name?.trim() || parsedName.lastName;
   const headline = row.job_title!.trim();
   const availability = resolveProfileAvailability(row);
-  const codenameAlias =
-    row.codename_alias?.trim() ||
-    generateCodenameAlias(buildCodenameAliasInputFromProfile(row));
+  const codenameAlias = resolveCodenameAlias(row);
   const integrityScore =
     typeof row.integrity_score === "number" &&
     Number.isFinite(row.integrity_score)
@@ -1331,46 +1296,22 @@ export default function DashboardPage() {
 
     (async () => {
       try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select(
-            "id, full_name, name, first_name, last_name, job_title, headline, bio, skills, portfolio_url, youtube_url, experience_level, availability_status, availability, major, degree, university, school, role, is_visible_in_pool, codename_alias, country, timezone, work_preference, phone, linkedin_url, contact_email, email, integrity_score"
-          )
-          .eq("is_visible_in_pool", true);
+        const { data } = await fetchEmployerTalentPoolProfiles(supabase);
 
         if (!isMounted) {
           return;
         }
 
-        if (error) {
-          console.error("Failed to fetch talent pool profiles:", error);
-          setCandidates([]);
-          return;
-        }
+        const profileRows = data
+          .filter(
+            (row): row is TalentPoolProfileRow & { id: string } =>
+              typeof row.id === "string" && row.id.length > 0
+          )
+          .map((row) => row as ProfileRecord & { id: string });
 
-        const mapped = await Promise.all(
-          (data ?? [])
-            .filter((row): row is ProfileRecord & { id: string } => !!row.id)
-            .filter(isProfileEligibleForTalentPool)
-            .map(async (row) => {
-              let profileRow = row;
-
-              if (!row.codename_alias?.trim()) {
-                const codename_alias = generateCodenameAlias(
-                  buildCodenameAliasInputFromProfile(row)
-                );
-
-                await supabase
-                  .from("profiles")
-                  .update({ codename_alias })
-                  .eq("id", row.id);
-
-                profileRow = { ...row, codename_alias };
-              }
-
-              return mapProfileRowToTalentCandidate(profileRow);
-            })
-        );
+        const mapped = profileRows
+          .filter(isProfileEligibleForTalentPool)
+          .map(mapProfileRowToTalentCandidate);
 
         setCandidates(mapped);
       } catch (err) {
@@ -2210,18 +2151,7 @@ const showToast = (msg: string) => {
         };
 
         try {
-          const response = await fetch("/api/match", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              candidate: candidatePayload,
-              job: jobPayload,
-            }),
-          });
-
-          const raw = (await response.json()) as unknown;
-          const insight = resolveMatchInsight(
-            raw,
+          const insight = await fetchTalentMatchInsight(
             candidatePayload,
             jobPayload
           );
@@ -2234,7 +2164,7 @@ const showToast = (msg: string) => {
           }));
           matchFetchedRef.current.add(job.id);
         } catch (err) {
-          console.error(`Failed to fetch match for job ${job.id}:`, err);
+          console.warn(`Failed to fetch match for job ${job.id}:`, err);
           if (cancelled) return;
 
           setMatchInsights((prev) => ({
@@ -2292,35 +2222,17 @@ const showToast = (msg: string) => {
     void (async () => {
       const supabase = createClient();
 
-      let cacheQuery = supabase
-        .from("talent_match_scores")
-        .select(
-          "candidate_id, match_percentage, reasoning, matching_skills, missing_skills"
-        )
-        .eq("employer_id", user.id);
-
-      cacheQuery = jobIdForStorage
-        ? cacheQuery.eq("job_id", jobIdForStorage)
-        : cacheQuery.is("job_id", null);
-
-      const { data: cachedRows, error: cacheError } = await cacheQuery;
-
-      if (cacheError) {
-        console.error("Failed to load talent match scores:", cacheError);
-      }
+      const cachedByCandidate = await loadCachedTalentMatchScores(
+        supabase,
+        user.id,
+        jobIdForStorage
+      );
 
       if (cancelled) return;
 
-      const cachedByCandidate: Record<string, MatchInsight> = {};
-      for (const row of cachedRows ?? []) {
-        cachedByCandidate[row.candidate_id] = {
-          match_percentage: row.match_percentage,
-          reasoning: row.reasoning ?? "",
-          matching_skills: row.matching_skills ?? [],
-          missing_skills: row.missing_skills ?? [],
-        };
+      for (const candidateId of Object.keys(cachedByCandidate)) {
         talentMatchFetchedRef.current.add(
-          buildTalentMatchKey(row.candidate_id, jobIdForStorage)
+          buildTalentMatchKey(candidateId, jobIdForStorage)
         );
       }
 
@@ -2367,17 +2279,10 @@ const showToast = (msg: string) => {
           };
 
           try {
-            const response = await fetch("/api/match", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                candidate: candidatePayload,
-                job: jobPayload,
-              }),
-            });
-
-            const raw = (await response.json()) as unknown;
-            const data = resolveMatchInsight(raw, candidatePayload, jobPayload);
+            const data = await fetchTalentMatchInsight(
+              candidatePayload,
+              jobPayload
+            );
             if (cancelled) return;
 
             setTalentMatchScores((prev) => ({
@@ -2385,27 +2290,14 @@ const showToast = (msg: string) => {
               [candidate.id]: data,
             }));
 
-            const { error: saveError } = await supabase
-              .from("talent_match_scores")
-              .upsert(
-                {
-                  employer_id: user.id,
-                  candidate_id: candidate.id,
-                  job_id: jobIdForStorage,
-                  match_percentage: data.match_percentage,
-                  reasoning: data.reasoning,
-                  matching_skills: data.matching_skills,
-                  missing_skills: data.missing_skills,
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: "employer_id,candidate_id,job_id" }
-              );
-
-            if (saveError) {
-              console.error("Failed to save talent match score:", saveError);
-            }
+            await saveTalentMatchScore(supabase, {
+              employerId: user.id,
+              candidateId: candidate.id,
+              jobId: jobIdForStorage,
+              insight: data,
+            });
           } catch (err) {
-            console.error(
+            console.warn(
               `Failed to fetch talent match for ${candidate.id}:`,
               err
             );
@@ -2492,18 +2384,11 @@ const showToast = (msg: string) => {
     if (employerId && employerId !== user.id) {
       const alias = getCandidateNotificationAlias();
       const jobTitle = job.title ?? "Open Role";
-      const { error: notificationError } = await supabase
-        .from("notifications")
-        .insert({
-          user_id: employerId,
-          job_id: job.id,
-          message: `${alias} expressed interest in your role: ${jobTitle}`,
-          is_read: false,
-        });
-
-      if (notificationError) {
-        console.error("Failed to create employer notification:", notificationError);
-      }
+      await createEmployerNotification(supabase, {
+        userId: employerId,
+        jobId: job.id,
+        message: `${alias} expressed interest in your role: ${jobTitle}`,
+      });
     }
   };
 
@@ -2580,24 +2465,20 @@ const showToast = (msg: string) => {
   }, [openApplicantsDrawerForJob, setOnOpenJobApplicants]);
 
   const getCandidateNotificationAlias = useCallback((): string => {
-    if (dbProfile?.codename_alias?.trim()) {
-      return dbProfile.codename_alias.trim();
-    }
-
     const skillTags = (skills ?? "")
       .split(",")
       .map((skill) => skill.trim())
       .filter(Boolean);
 
-    return generateCodenameAlias(
-      buildCodenameAliasInputFromProfile({
-        id: user?.id ?? "candidate",
-        job_title: title || dbProfile?.job_title,
-        headline: dbProfile?.headline,
-        major: dbProfile?.major,
-        skills: skillTags.length > 0 ? skillTags : dbProfile?.skills,
-      })
-    );
+    return resolveCodenameAlias({
+      id: user?.id ?? "candidate",
+      codename_alias: dbProfile?.codename_alias,
+      job_title: title || dbProfile?.job_title,
+      headline: dbProfile?.headline,
+      major: dbProfile?.major,
+      role: dbProfile?.role,
+      skills: skillTags.length > 0 ? skillTags : dbProfile?.skills,
+    });
   }, [dbProfile, skills, title, user?.id]);
 
   const handleApplicantIntroRequest = (applicant: JobApplicantView) => {

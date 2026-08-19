@@ -173,3 +173,48 @@ export function buildCodenameAliasInputFromProfile(input: {
     skills: input.skills,
   };
 }
+
+/** Stored alias when present; otherwise a stable in-memory display alias (no DB write). */
+export function resolveCodenameAlias(profile: {
+  id: string;
+  codename_alias?: string | null;
+  job_title?: string | null;
+  headline?: string | null;
+  major?: string | null;
+  role?: string | null;
+  skills?: string[] | null;
+}): string {
+  const stored = profile.codename_alias?.trim();
+  if (stored) {
+    return stored;
+  }
+
+  return generateCodenameAlias(buildCodenameAliasInputFromProfile(profile));
+}
+
+export function resolveCodenameAlias(
+  storedAlias: string | null | undefined,
+  input: CodenameAliasInput
+): string {
+  const trimmed = storedAlias?.trim();
+  if (trimmed) {
+    return trimmed;
+  }
+
+  return generateCodenameAlias(input);
+}
+
+export function resolveCodenameAliasForProfile(input: {
+  id: string;
+  codename_alias?: string | null;
+  job_title?: string | null;
+  headline?: string | null;
+  major?: string | null;
+  role?: string | null;
+  skills?: string[] | null;
+}): string {
+  return resolveCodenameAlias(
+    input.codename_alias,
+    buildCodenameAliasInputFromProfile(input)
+  );
+}
