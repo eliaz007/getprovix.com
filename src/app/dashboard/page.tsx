@@ -24,6 +24,7 @@ import JobApplicantsDrawer, {
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
+import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
 import {
   buildCodenameAliasInputFromProfile,
   generateCodenameAlias,
@@ -37,6 +38,7 @@ import {
   splitFullName,
 } from "@/lib/candidate-anonymization";
 import { signOutAndClearSession } from "@/lib/sign-out";
+import { buildProfileSlug } from "@/lib/profile-slug";
 import { createClient } from "@/utils/supabase/client";
 import {
   AVAILABILITY_STATUS_OPTIONS,
@@ -265,6 +267,7 @@ type ProfileRecord = {
   headline?: string | null;
   availability?: string | null;
   codename_alias?: string | null;
+  profile_slug?: string | null;
   country?: string | null;
   timezone?: string | null;
 };
@@ -408,6 +411,7 @@ function buildCandidateProfileUpdatePayload(input: CandidateProfileSaveInput) {
     experience_level: input.experienceLevel,
     availability_status: normalizeAvailabilityStatus(input.availabilityStatus),
     is_visible_in_pool: input.isVisibleInPool,
+    profile_slug: buildProfileSlug(input.fullName),
     graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
   };
 }
@@ -450,6 +454,7 @@ async function persistCandidateProfile(
     "university",
     "degree",
     "youtube_url",
+    "profile_slug",
   ] as const;
 
   for (let attempt = 0; attempt <= optionalColumnKeys.length; attempt++) {
@@ -1000,10 +1005,34 @@ export default function DashboardPage() {
 
         const profile = profileRow ?? null;
         const resolvedRole = resolveAccountRole(profile, sessionUser);
-        const profileWithRole =
+        let profileWithRole =
           profile && !profile.role && resolvedRole
             ? { ...profile, role: resolvedRole }
             : profile;
+
+        const displayName = displayNameFromSources(profileWithRole, sessionUser);
+
+        if (profileWithRole?.id && !profileWithRole.profile_slug?.trim()) {
+          const profile_slug = buildProfileSlug(
+            profileWithRole.full_name ?? displayName
+          );
+
+          const { data: slugRow, error: slugError } = await supabase
+            .from("profiles")
+            .update({ profile_slug })
+            .eq("id", profileWithRole.id)
+            .select("*")
+            .maybeSingle();
+
+          if (!slugError && slugRow) {
+            profileWithRole = {
+              ...profileWithRole,
+              ...(slugRow as ProfileRecord),
+            };
+          } else if (!slugError) {
+            profileWithRole = { ...profileWithRole, profile_slug };
+          }
+        }
 
         setDbProfile(profileWithRole);
         setAccountRole(resolvedRole);
@@ -1011,7 +1040,6 @@ export default function DashboardPage() {
         const loadedVisibleInPool = profileWithRole?.is_visible_in_pool !== false;
         setIsVisibleInPool(loadedVisibleInPool);
 
-        const displayName = displayNameFromSources(profileWithRole, sessionUser);
         const loadedName = displayName || DEFAULT_PROFILE_DATA.name;
         const loadedTitle = profileWithRole?.job_title ?? "";
         const loadedBio = profileWithRole?.bio ?? "";
@@ -1152,7 +1180,7 @@ export default function DashboardPage() {
     const supabase = createClient();
     let isMounted = true;
 
-    (async () => {
+    const loadJobs = async () => {
       try {
         const { data } = await supabase.from("jobs").select("*");
         if (!isMounted) return;
@@ -1163,10 +1191,21 @@ export default function DashboardPage() {
       } finally {
         if (isMounted) setJobsLoading(false);
       }
-    })();
+    };
+
+    void loadJobs();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadJobs();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isMounted = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
@@ -1713,15 +1752,65 @@ const showToast = (msg: string) => {
     }>
   >([]);
 
-  const toggleListingStatus = (id: string) => {
+  const toggleListingStatus = async (id: string) => {
+    const listing = businessListings.find((entry) => entry.id === id);
+    if (!listing) {
+      return;
+    }
+
+    const nextStatus = listing.status === "Active" ? "paused" : "active";
+    const previousListings = businessListings;
+    const previousJobs = jobs;
+
     setBusinessListings((prev) =>
-      prev.map((listing) =>
-        listing.id === id
-          ? { ...listing, status: listing.status === "Active" ? "Paused" : "Active" }
-          : listing
+      prev.map((entry) =>
+        entry.id === id
+          ? {
+              ...entry,
+              status: nextStatus === "active" ? "Active" : "Paused",
+            }
+          : entry
       )
     );
-    showToast("Listing status updated.");
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.id === id ? { ...job, status: nextStatus } : job
+      )
+    );
+
+    try {
+      const response = await fetch(`/api/jobs/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+
+      const payload = (await response.json()) as {
+        error?: string;
+        job?: { id: string; status?: string | null };
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not update listing status.");
+      }
+
+      if (payload.job) {
+        setJobs((prev) =>
+          prev.map((job) => (job.id === id ? { ...job, ...payload.job } : job))
+        );
+      }
+
+      showToast(
+        nextStatus === "paused"
+          ? "Listing deactivated. It is hidden from other accounts."
+          : "Listing reactivated."
+      );
+    } catch (error) {
+      console.error("Job status update failed:", error);
+      setBusinessListings(previousListings);
+      setJobs(previousJobs);
+      showToast("Could not update listing status. Please try again.");
+    }
   };
 
   // --- COLLEGE ADMISSIONS STATE ---
@@ -1939,7 +2028,14 @@ const showToast = (msg: string) => {
     return "bg-amber-500/10 text-amber-400 border border-amber-500/25";
   };
 
+  const isJobVisibleInFeed = (job: { status?: string | null }) =>
+    (job.status ?? "active") === "active";
+
   const filteredJobFeed = jobs.filter((job) => {
+    if (!isJobVisibleInFeed(job)) {
+      return false;
+    }
+
     const query = opportunitiesSearch.trim().toLowerCase();
     const tags = Array.isArray(job.tags) ? job.tags : [];
     const matchesSearch =
@@ -1955,6 +2051,10 @@ const showToast = (msg: string) => {
   });
 
   const filteredRadarJobFeed = jobs.filter((job) => {
+    if (!isJobVisibleInFeed(job)) {
+      return false;
+    }
+
     const query = radarSearch.trim().toLowerCase();
     const tags = Array.isArray(job.tags) ? job.tags : [];
     const matchesSearch =
@@ -1995,7 +2095,9 @@ const showToast = (msg: string) => {
       degree: degree.trim() || profileData.degree || "",
     };
 
-    const pendingJobs = jobs.filter((job) => !matchInsights[job.id]);
+    const pendingJobs = jobs.filter(
+      (job) => isJobVisibleInFeed(job) && !matchInsights[job.id]
+    );
 
     if (pendingJobs.length === 0) {
       return;
@@ -2898,11 +3000,9 @@ const showToast = (msg: string) => {
   const featuredProjectDetail = projectLines[1] || bio;
 
   const profileSlug =
-    profileData?.name
-      ?.toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "") || "builder";
+    dbProfile?.profile_slug?.trim() ||
+    buildProfileSlug(profileData?.name) ||
+    "builder";
   const publicProfileUrl = appOrigin
     ? `${appOrigin}/p/${profileSlug}`
     : `/p/${profileSlug}`;
@@ -3070,15 +3170,20 @@ const showToast = (msg: string) => {
           {/* MY PROFILE TAB WITH NESTED MENU OPTIONS */}
           {activeTab === "my_profile" && (
             <div className="max-w-3xl">
-              <div className="mb-8">
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">
-                  Profile Studio
-                </h1>
-                <p className="text-slate-400 text-sm mt-2 max-w-2xl leading-relaxed">
-                  {isBusinessAccount
-                    ? "Manage your company profile, hiring requirements, and account settings."
-                    : "Manage your credentials, academic status, and proof of work."}
-                </p>
+              <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h1 className="text-3xl font-extrabold tracking-tight text-white">
+                    Profile Studio
+                  </h1>
+                  <p className="text-slate-400 text-sm mt-2 max-w-2xl leading-relaxed">
+                    {isBusinessAccount
+                      ? "Manage your company profile, hiring requirements, and account settings."
+                      : "Manage your credentials, academic status, and proof of work."}
+                  </p>
+                </div>
+                {!isBusinessAccount && (
+                  <ShareProfileButton profileSlug={profileSlug} />
+                )}
               </div>
 
               {/* HORIZONTAL SUB-MENU BAR */}
