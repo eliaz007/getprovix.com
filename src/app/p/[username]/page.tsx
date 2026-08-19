@@ -11,6 +11,7 @@ import {
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
+import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
 import { resolveCandidateScore } from "@/data/vetted-candidates";
 import { getPublicProfileBySlug } from "@/lib/public-profile";
 import { buildPublicProfileUrl } from "@/lib/profile-url";
@@ -113,6 +114,11 @@ export default async function PublicCandidateProfilePage({
                     {profile.jobTitle}
                   </p>
                 )}
+
+                <WorkPreferenceTimezoneBadge
+                  workPreference={profile.workPreference}
+                  timezone={profile.timezone}
+                />
 
                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
                   {profile.location && (

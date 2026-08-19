@@ -96,7 +96,7 @@ export default function PrivacyPage() {
         <footer className="mt-12 pt-8 border-t border-zinc-800 text-sm text-zinc-500">
           Questions? Email{" "}
           <a
-            href="mailto:support@provix.app"
+            href="mailto:support@getprovix.com"
             className="text-indigo-400 hover:text-indigo-300 transition-colors"
           >
             support@provix.app

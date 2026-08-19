@@ -7,6 +7,10 @@ import {
   hasCandidateProofOfWork,
   isPublishedVerifiedCandidateProfile,
 } from "@/lib/published-candidate-profile";
+import {
+  normalizeCandidateTimezone,
+  normalizeWorkPreference,
+} from "@/lib/work-preference";
 
 export type FeaturedBuilder = {
   id: string;
@@ -19,6 +23,8 @@ export type FeaturedBuilder = {
   proofScore: number | null;
   avatarUrl: string | null;
   hasGitHubRepos: boolean;
+  workPreference: string;
+  timezone: string;
 };
 
 type FeaturedBuilderRow = {
@@ -34,6 +40,8 @@ type FeaturedBuilderRow = {
   has_github_repos?: boolean | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
+  work_preference?: string | null;
+  timezone?: string | null;
   updated_at?: string | null;
 };
 
@@ -97,6 +105,8 @@ export function mapFeaturedBuilderRow(
     avatarUrl: row.avatar_url?.trim() || null,
     hasGitHubRepos:
       row.has_github_repos === true || Boolean(row.portfolio_url?.trim()),
+    workPreference: normalizeWorkPreference(row.work_preference),
+    timezone: normalizeCandidateTimezone(row.timezone),
   };
 }
 
@@ -137,7 +147,7 @@ export async function fetchFeaturedBuilders(
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, profile_slug, full_name, job_title, bio, skills, avatar_url, codename_alias, integrity_score, portfolio_url, youtube_url, updated_at"
+      "id, profile_slug, full_name, job_title, bio, skills, avatar_url, codename_alias, integrity_score, portfolio_url, youtube_url, work_preference, timezone, updated_at"
     )
     .eq("is_featured", true)
     .eq("is_visible_in_pool", true)

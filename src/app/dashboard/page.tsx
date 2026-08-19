@@ -69,6 +69,17 @@ import {
   isVisibleToEmployers,
 } from "@/lib/opportunities-metrics";
 import { isPublishedVerifiedCandidateProfile } from "@/lib/published-candidate-profile";
+import {
+  DEFAULT_CANDIDATE_TIMEZONE,
+  DEFAULT_WORK_PREFERENCE,
+  TIMEZONE_OPTIONS,
+  WORK_PREFERENCE_OPTIONS,
+  normalizeCandidateTimezone,
+  normalizeWorkPreference,
+  type CandidateTimezone,
+  type WorkPreference,
+} from "@/lib/work-preference";
+import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
@@ -277,6 +288,7 @@ type ProfileRecord = {
   profile_slug?: string | null;
   country?: string | null;
   timezone?: string | null;
+  work_preference?: string | null;
   integrity_score?: number | null;
 };
 
@@ -399,6 +411,8 @@ type CandidateProfileSaveInput = {
   youtubeUrl: string;
   experienceLevel: string;
   availabilityStatus: string;
+  workPreference: string;
+  candidateTimezone: string;
   isVisibleInPool: boolean;
   gradYear: string;
 };
@@ -418,6 +432,8 @@ function buildCandidateProfileUpdatePayload(input: CandidateProfileSaveInput) {
     youtube_url: input.youtubeUrl.trim() || null,
     experience_level: input.experienceLevel,
     availability_status: normalizeAvailabilityStatus(input.availabilityStatus),
+    work_preference: input.workPreference,
+    timezone: input.candidateTimezone,
     is_visible_in_pool: input.isVisibleInPool,
     profile_slug: buildProfileSlug(input.fullName),
     graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
@@ -463,6 +479,8 @@ async function persistCandidateProfile(
     "degree",
     "youtube_url",
     "profile_slug",
+    "work_preference",
+    "timezone",
   ] as const;
 
   for (let attempt = 0; attempt <= optionalColumnKeys.length; attempt++) {
@@ -562,6 +580,7 @@ type TalentPoolCandidate = {
   codenameAlias: string;
   country: string;
   timezone: string;
+  workPreference: string;
   email?: string | null;
   phone?: string | null;
   linkedin_url?: string | null;
@@ -680,7 +699,8 @@ function mapProfileRowToTalentCandidate(
     headline,
     codenameAlias,
     country: row.country?.trim() || "United States",
-    timezone: row.timezone?.trim() || "MT (UTC-6)",
+    timezone: normalizeCandidateTimezone(row.timezone),
+    workPreference: normalizeWorkPreference(row.work_preference),
     email: resolveProfileContactEmail(row),
     phone: row.phone?.trim() || null,
     linkedin_url: row.linkedin_url?.trim() || (isLinkedIn ? portfolioUrl : null),
@@ -1073,6 +1093,12 @@ export default function DashboardPage() {
         const loadedAvailabilityStatus = normalizeAvailabilityStatus(
           profileWithRole?.availability_status
         );
+        const loadedWorkPreference = normalizeWorkPreference(
+          profileWithRole?.work_preference
+        );
+        const loadedCandidateTimezone = normalizeCandidateTimezone(
+          profileWithRole?.timezone
+        );
         const loadedGradYear =
           profileWithRole?.graduation_year != null
             ? String(profileWithRole.graduation_year)
@@ -1086,6 +1112,8 @@ export default function DashboardPage() {
         setPortfolioUrl(loadedPortfolioUrl);
         setExperienceLevel(loadedExperienceLevel as ExperienceLevel);
         setAvailabilityStatus(loadedAvailabilityStatus);
+        setWorkPreference(loadedWorkPreference);
+        setCandidateTimezone(loadedCandidateTimezone);
 
         const hydratedProfile = {
           ...DEFAULT_PROFILE_DATA,
@@ -1110,6 +1138,8 @@ export default function DashboardPage() {
           portfolioUrl: loadedPortfolioUrl,
           experienceLevel: loadedExperienceLevel,
           availabilityStatus: loadedAvailabilityStatus,
+          workPreference: loadedWorkPreference,
+          candidateTimezone: loadedCandidateTimezone,
           visibleInPool: loadedVisibleInPool,
           gradYear: loadedGradYear,
           gpa: hydratedProfile.gpa,
@@ -1304,7 +1334,7 @@ export default function DashboardPage() {
         const { data, error } = await supabase
           .from("profiles")
           .select(
-            "id, full_name, name, first_name, last_name, job_title, headline, bio, skills, portfolio_url, youtube_url, experience_level, availability_status, availability, major, degree, university, school, role, is_visible_in_pool, codename_alias, country, timezone, phone, linkedin_url, contact_email, email, integrity_score"
+            "id, full_name, name, first_name, last_name, job_title, headline, bio, skills, portfolio_url, youtube_url, experience_level, availability_status, availability, major, degree, university, school, role, is_visible_in_pool, codename_alias, country, timezone, work_preference, phone, linkedin_url, contact_email, email, integrity_score"
           )
           .eq("is_visible_in_pool", true);
 
@@ -1463,6 +1493,12 @@ const showToast = (msg: string) => {
   );
   const [availabilityStatus, setAvailabilityStatus] =
     useState<AvailabilityStatus>(DEFAULT_AVAILABILITY_STATUS);
+  const [workPreference, setWorkPreference] = useState<WorkPreference>(
+    DEFAULT_WORK_PREFERENCE
+  );
+  const [candidateTimezone, setCandidateTimezone] = useState<
+    CandidateTimezone | string
+  >(DEFAULT_CANDIDATE_TIMEZONE);
   const [isSaving, setIsSaving] = useState(false);
   const [savedCandidateProfile, setSavedCandidateProfile] = useState<{
     fullName: string;
@@ -1474,6 +1510,8 @@ const showToast = (msg: string) => {
     portfolioUrl: string;
     experienceLevel: string;
     availabilityStatus: string;
+    workPreference: string;
+    candidateTimezone: string;
     visibleInPool: boolean;
     gradYear: string;
     gpa: string;
@@ -1578,6 +1616,8 @@ const showToast = (msg: string) => {
       portfolioUrl !== savedCandidateProfile.portfolioUrl ||
       experienceLevel !== savedCandidateProfile.experienceLevel ||
       availabilityStatus !== savedCandidateProfile.availabilityStatus ||
+      workPreference !== savedCandidateProfile.workPreference ||
+      candidateTimezone !== savedCandidateProfile.candidateTimezone ||
       isVisibleInPool !== savedCandidateProfile.visibleInPool ||
       profileData.gradYear !== savedCandidateProfile.gradYear ||
       profileData.gpa !== savedCandidateProfile.gpa ||
@@ -1671,6 +1711,8 @@ const showToast = (msg: string) => {
         youtubeUrl: profileData.demoVideo,
         experienceLevel,
         availabilityStatus: normalizedAvailability,
+        workPreference,
+        candidateTimezone,
         isVisibleInPool,
         gradYear: profileData.gradYear,
       });
@@ -1710,6 +1752,8 @@ const showToast = (msg: string) => {
         portfolioUrl,
         experienceLevel,
         availabilityStatus: normalizedAvailability,
+        workPreference,
+        candidateTimezone,
         visibleInPool: isVisibleInPool,
         gradYear: profileData.gradYear,
         gpa: profileData.gpa,
@@ -3732,6 +3776,59 @@ const showToast = (msg: string) => {
 
                     {!isBusinessAccount && (
                     <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
+                        <div>
+                          <span className="font-bold text-xs text-white block">
+                            Work Preference
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            Shown on your public builder card and talent pool
+                            profile.
+                          </span>
+                        </div>
+                        <select
+                          value={workPreference}
+                          onChange={(e) =>
+                            setWorkPreference(e.target.value as WorkPreference)
+                          }
+                          className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        >
+                          {WORK_PREFERENCE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
+                        <div>
+                          <span className="font-bold text-xs text-white block">
+                            Timezone
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            Helps employers understand your working hours.
+                          </span>
+                        </div>
+                        <select
+                          value={candidateTimezone}
+                          onChange={(e) =>
+                            setCandidateTimezone(
+                              e.target.value as CandidateTimezone
+                            )
+                          }
+                          className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        >
+                          {TIMEZONE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
                     <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
                       <div>
                         <span className="font-bold text-xs text-white block">
@@ -5380,7 +5477,6 @@ const showToast = (msg: string) => {
                       {filteredCandidates.map((col) => {
                         const publicName = getCandidatePublicName(col);
                         const initials = getCandidatePublicInitials(col);
-                        const publicLocation = getCandidatePublicLocation(col);
                         const introUnlocked = isCandidateUnlocked(col);
 
                         return (
@@ -5415,9 +5511,11 @@ const showToast = (msg: string) => {
                               <p className="text-xs text-indigo-400 font-medium mt-0.5">
                                 {col.role}
                               </p>
-                              <p className="text-[11px] text-slate-500 mt-1">
-                                {publicLocation}
-                              </p>
+                              <WorkPreferenceTimezoneBadge
+                                workPreference={col.workPreference}
+                                timezone={col.timezone}
+                                className="mt-2"
+                              />
                               {!introUnlocked && (
                                 <div className="mt-2">
                                   <VerifiedOnProvixPill />
@@ -5572,8 +5670,6 @@ const showToast = (msg: string) => {
                 {(() => {
                   const introUnlocked = isCandidateUnlocked(selectedCandidate);
                   const publicName = getCandidatePublicName(selectedCandidate);
-                  const publicLocation =
-                    getCandidatePublicLocation(selectedCandidate);
                   const displayName = introUnlocked
                     ? selectedCandidate.fullName || selectedCandidate.name
                     : publicName;
@@ -5600,9 +5696,11 @@ const showToast = (msg: string) => {
                       <p className="text-xs text-indigo-400 font-medium mt-0.5">
                         {selectedCandidate.role}
                       </p>
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        {publicLocation}
-                      </p>
+                      <WorkPreferenceTimezoneBadge
+                        workPreference={selectedCandidate.workPreference}
+                        timezone={selectedCandidate.timezone}
+                        className="mt-2"
+                      />
                       {!introUnlocked && (
                         <div className="mt-2">
                           <VerifiedOnProvixPill />

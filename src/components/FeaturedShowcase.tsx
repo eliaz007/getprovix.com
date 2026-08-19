@@ -3,6 +3,7 @@ import { ArrowUpRight, ShieldCheck } from "lucide-react";
 import type { FeaturedBuilder } from "@/lib/featured-builders";
 import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
+import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
 
 type FeaturedShowcaseProps = {
   builders: FeaturedBuilder[];
@@ -44,6 +45,11 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
           <p className="mt-1 truncate text-sm font-medium text-indigo-400">
             {builder.roleTitle}
           </p>
+          <WorkPreferenceTimezoneBadge
+            workPreference={builder.workPreference}
+            timezone={builder.timezone}
+            className="mt-2"
+          />
         </div>
       </div>
 

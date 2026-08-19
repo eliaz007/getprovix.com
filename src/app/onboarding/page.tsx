@@ -6,7 +6,6 @@ import type { User } from "@supabase/supabase-js";
 import {
   buildCodenameAliasInputFromProfile,
   DEFAULT_PUBLIC_COUNTRY,
-  DEFAULT_PUBLIC_TIMEZONE,
   generateCodenameAlias,
 } from "@/lib/alias-generator";
 import { createClient } from "@/utils/supabase/client";
@@ -15,6 +14,14 @@ import {
   EXPERIENCE_LEVEL_OPTIONS,
   type ExperienceLevel,
 } from "@/lib/experience-level";
+import {
+  DEFAULT_CANDIDATE_TIMEZONE,
+  DEFAULT_WORK_PREFERENCE,
+  TIMEZONE_OPTIONS,
+  WORK_PREFERENCE_OPTIONS,
+  type CandidateTimezone,
+  type WorkPreference,
+} from "@/lib/work-preference";
 
 type AccountRole = "candidate" | "business";
 
@@ -74,6 +81,12 @@ export default function OnboardingPage() {
   const [jobTitle, setJobTitle] = useState("");
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(
     DEFAULT_EXPERIENCE_LEVEL
+  );
+  const [workPreference, setWorkPreference] = useState<WorkPreference>(
+    DEFAULT_WORK_PREFERENCE
+  );
+  const [candidateTimezone, setCandidateTimezone] = useState<CandidateTimezone>(
+    DEFAULT_CANDIDATE_TIMEZONE
   );
 
   const [companyName, setCompanyName] = useState("");
@@ -140,7 +153,8 @@ export default function OnboardingPage() {
       role: "candidate",
       codename_alias: codenameAlias,
       country: DEFAULT_PUBLIC_COUNTRY,
-      timezone: DEFAULT_PUBLIC_TIMEZONE,
+      work_preference: workPreference,
+      timezone: candidateTimezone,
     });
 
     if (saveError) {
@@ -358,6 +372,58 @@ export default function OnboardingPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="workPreference"
+                  className="text-sm font-medium text-zinc-300"
+                >
+                  Work Preference
+                </label>
+                <select
+                  id="workPreference"
+                  name="workPreference"
+                  required
+                  value={workPreference}
+                  onChange={(e) =>
+                    setWorkPreference(e.target.value as WorkPreference)
+                  }
+                  className={inputClass}
+                >
+                  {WORK_PREFERENCE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="candidateTimezone"
+                  className="text-sm font-medium text-zinc-300"
+                >
+                  Timezone
+                </label>
+                <select
+                  id="candidateTimezone"
+                  name="candidateTimezone"
+                  required
+                  value={candidateTimezone}
+                  onChange={(e) =>
+                    setCandidateTimezone(e.target.value as CandidateTimezone)
+                  }
+                  className={inputClass}
+                >
+                  {TIMEZONE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <button

@@ -5,6 +5,10 @@ import {
 } from "@/lib/candidate-anonymization";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { createClient } from "@/utils/supabase/server";
+import {
+  normalizeCandidateTimezone,
+  normalizeWorkPreference,
+} from "@/lib/work-preference";
 
 export type PublicCandidateProfile = {
   id: string;
@@ -21,6 +25,8 @@ export type PublicCandidateProfile = {
   school: string | null;
   experienceLevel: string | null;
   location: string;
+  workPreference: string;
+  timezone: string;
   hasProofOfWork: boolean;
   hasGitHubRepos: boolean;
   integrityScore: number | null;
@@ -43,6 +49,7 @@ type PublicProfileRow = {
   experience_level?: string | null;
   country?: string | null;
   timezone?: string | null;
+  work_preference?: string | null;
   is_visible_in_pool?: boolean | null;
   integrity_score?: number | null;
   has_github_repos?: boolean | null;
@@ -91,6 +98,8 @@ function mapRowToPublicProfile(row: PublicProfileRow): PublicCandidateProfile {
     school: row.school?.trim() || null,
     experienceLevel: row.experience_level?.trim() || null,
     location: getPublicCandidateLocation(identity),
+    workPreference: normalizeWorkPreference(row.work_preference),
+    timezone: normalizeCandidateTimezone(row.timezone),
     hasProofOfWork: Boolean(portfolioUrl || youtubeUrl),
     hasGitHubRepos:
       row.has_github_repos === true || Boolean(portfolioUrl),
@@ -130,7 +139,7 @@ async function fetchViaServiceRole(
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, profile_slug, full_name, job_title, bio, skills, portfolio_url, youtube_url, codename_alias, availability_status, university, major, school, experience_level, country, timezone, is_visible_in_pool, integrity_score"
+      "id, profile_slug, full_name, job_title, bio, skills, portfolio_url, youtube_url, codename_alias, availability_status, university, major, school, experience_level, country, timezone, work_preference, is_visible_in_pool, integrity_score"
     )
     .eq("profile_slug", slug)
     .eq("is_visible_in_pool", true)

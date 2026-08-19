@@ -355,7 +355,7 @@ export default function Home() {
               Terms
             </Link>
             <a
-              href="mailto:support@provix.dev"
+              href="mailto:support@getprovix.com"
               className="hover:text-white transition-colors"
             >
               Support
