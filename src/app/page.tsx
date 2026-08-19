@@ -3,63 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
-import { Code2, ChevronDown, Shield, ShieldCheck, Zap } from "lucide-react";
+import { Code2, ChevronDown, Shield, Zap } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import FeaturedShowcase from "@/components/FeaturedShowcase";
-import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
-import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
-import {
-  DEFAULT_PUBLIC_COUNTRY,
-  DEFAULT_PUBLIC_TIMEZONE,
-  generateCodenameAlias,
-} from "@/lib/alias-generator";
-import {
-  getPublicCandidateDisplayName,
-  getPublicCandidateInitials,
-  getPublicCandidateLocation,
-} from "@/lib/candidate-anonymization";
 import { createClient } from "@/utils/supabase/client";
 import {
   fetchFeaturedBuilders,
   type FeaturedBuilder,
 } from "@/lib/featured-builders";
-import {
-  getNewestVettedCandidate,
-  resolveCandidateScore,
-  type VettedCandidateRecord,
-} from "@/data/vetted-candidates";
-
-type PreviewCandidate = {
-  profileId: string;
-  name: string;
-  role: string;
-  skills: string[];
-  integrity_score?: number | null;
-  execution_score?: number | null;
-  bio: string;
-  repos_count?: number | null;
-  codenameAlias: string;
-  country: string;
-  timezone: string;
-};
-
-function buildPreviewCodename(input: {
-  profileId: string;
-  role: string;
-  codenameAlias?: string | null;
-  skills?: string[];
-}): string {
-  if (input.codenameAlias?.trim()) {
-    return input.codenameAlias.trim();
-  }
-
-  return generateCodenameAlias({
-    profileId: input.profileId,
-    role: input.role,
-    headline: input.role,
-    skills: input.skills,
-  });
-}
 
 const features = [
   {
@@ -105,97 +56,9 @@ const faqItems = [
   },
 ];
 
-function mapVettedToPreview(candidate: VettedCandidateRecord): PreviewCandidate {
-  const codenameAlias = buildPreviewCodename({
-    profileId: candidate.id,
-    role: candidate.role,
-    skills: candidate.skills,
-  });
-
-  return {
-    profileId: candidate.id,
-    name: candidate.name,
-    role: candidate.role,
-    skills: candidate.skills,
-    integrity_score: candidate.integrity_score,
-    execution_score: candidate.execution_score,
-    bio: candidate.bio,
-    repos_count: candidate.repos_count,
-    codenameAlias,
-    country: DEFAULT_PUBLIC_COUNTRY,
-    timezone: DEFAULT_PUBLIC_TIMEZONE,
-  };
-}
-
-function normalizeCandidateRow(row: Record<string, unknown>): PreviewCandidate | null {
-  const name =
-    (typeof row.full_name === "string" && row.full_name.trim()) ||
-    (typeof row.name === "string" && row.name.trim()) ||
-    (typeof row.alias === "string" && row.alias.trim()) ||
-    "";
-  const role =
-    (typeof row.job_title === "string" && row.job_title.trim()) ||
-    (typeof row.headline === "string" && row.headline.trim()) ||
-    (typeof row.role === "string" && row.role.trim()) ||
-    (typeof row.major === "string" && row.major.trim()) ||
-    "Vetted Builder";
-
-  if (!name) {
-    return null;
-  }
-
-  const skills = Array.isArray(row.skills)
-    ? row.skills.filter((skill): skill is string => typeof skill === "string")
-    : Array.isArray(row.tags)
-      ? row.tags.filter((tag): tag is string => typeof tag === "string")
-      : [];
-
-  const bio = typeof row.bio === "string" ? row.bio.trim() : "";
-  const profileId =
-    (typeof row.id === "string" && row.id.trim()) ||
-    (typeof row.candidate_id === "string" && row.candidate_id.trim()) ||
-    name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  const codenameAlias = buildPreviewCodename({
-    profileId,
-    role,
-    codenameAlias:
-      typeof row.codename_alias === "string" ? row.codename_alias : null,
-    skills,
-  });
-
-  return {
-    profileId,
-    name,
-    role,
-    skills,
-    integrity_score:
-      typeof row.integrity_score === "number" ? row.integrity_score : null,
-    execution_score:
-      typeof row.execution_score === "number"
-        ? row.execution_score
-        : typeof row.score === "number"
-          ? row.score
-          : null,
-    bio,
-    repos_count:
-      typeof row.repos_count === "number" ? row.repos_count : null,
-    codenameAlias,
-    country:
-      (typeof row.country === "string" && row.country.trim()) ||
-      DEFAULT_PUBLIC_COUNTRY,
-    timezone:
-      (typeof row.timezone === "string" && row.timezone.trim()) ||
-      DEFAULT_PUBLIC_TIMEZONE,
-  };
-}
-
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
-  const [previewCandidate, setPreviewCandidate] = useState<PreviewCandidate | null>(
-    null
-  );
-  const [previewLoading, setPreviewLoading] = useState(true);
   const [featuredBuilders, setFeaturedBuilders] = useState<FeaturedBuilder[]>(
     []
   );
@@ -230,38 +93,6 @@ export default function Home() {
 
   useEffect(() => {
     const supabase = createClient();
-    const fallback = mapVettedToPreview(getNewestVettedCandidate());
-
-    void (async () => {
-      try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!error && data) {
-          const normalized = normalizeCandidateRow(
-            data as Record<string, unknown>
-          );
-          if (normalized) {
-            setPreviewCandidate(normalized);
-            return;
-          }
-        }
-
-        setPreviewCandidate(fallback);
-      } catch {
-        setPreviewCandidate(fallback);
-      } finally {
-        setPreviewLoading(false);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    const supabase = createClient();
 
     void (async () => {
       try {
@@ -278,24 +109,6 @@ export default function Home() {
 
   const isLoggedIn = Boolean(user);
   const talentEntryHref = isLoggedIn ? "/dashboard" : "/talent";
-  const displayCandidate =
-    previewCandidate ?? mapVettedToPreview(getNewestVettedCandidate());
-  const displayScore = resolveCandidateScore(displayCandidate);
-  const displayMatchScore = Math.min(Math.max(displayScore, 88), 99);
-  const displaySkills = displayCandidate.skills.slice(0, 5);
-  const publicCandidateName = getPublicCandidateDisplayName({
-    codenameAlias: displayCandidate.codenameAlias,
-    candidateId: displayCandidate.profileId,
-    fullName: displayCandidate.name,
-  });
-  const publicCandidateLocation = getPublicCandidateLocation(displayCandidate);
-  const candidateDisplayHandle = `@${publicCandidateName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")}`;
-  const proofSignal =
-    displayCandidate.bio.trim() ||
-    "Verified technical highlight pending — GitHub audit complete.";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
@@ -307,6 +120,12 @@ export default function Home() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-8">
+            <Link
+              href="#featured-builders"
+              className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+            >
+              Featured Builders
+            </Link>
             <Link
               href="/dashboard"
               className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
@@ -395,116 +214,10 @@ export default function Home() {
             )}
           </div>
 
-          {/* --- DASHBOARD PREVIEW TEASER --- */}
-          <Link
-            href={talentEntryHref}
-            className="group mt-16 block max-w-4xl mx-auto bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-6 shadow-2xl hover:border-indigo-500/40 transition-all text-left"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-[10px] font-mono font-semibold uppercase tracking-widest text-zinc-500">
-                [ Live Dashboard Preview ]
-              </span>
-              <span className="text-xs font-semibold text-indigo-400 group-hover:text-indigo-300 transition-colors">
-                Open Dashboard (-&gt;)
-              </span>
-            </div>
-
-            {previewLoading ? (
-              <div className="rounded-xl border border-zinc-800 bg-[#111111] p-5 sm:p-6">
-                <div className="flex items-start gap-4 animate-pulse">
-                  <div className="h-14 w-14 rounded-2xl bg-zinc-800 shrink-0" />
-                  <div className="flex-1 space-y-3">
-                    <div className="h-4 w-40 rounded bg-zinc-800" />
-                    <div className="h-3 w-28 rounded bg-zinc-800" />
-                    <div className="flex gap-2">
-                      <div className="h-6 w-20 rounded-full bg-zinc-800" />
-                      <div className="h-6 w-28 rounded-full bg-zinc-800" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-zinc-800 bg-[#111111] p-5 sm:p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-                <div className="flex items-start justify-between gap-4 mb-5">
-                  <div className="flex items-start gap-4 min-w-0">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/10 border border-indigo-500/30 flex items-center justify-center text-base font-bold text-indigo-300 shrink-0">
-                      {getPublicCandidateInitials({
-                        codenameAlias: displayCandidate.codenameAlias,
-                        candidateId: displayCandidate.profileId,
-                        fullName: displayCandidate.name,
-                      })}
-                    </div>
-                    <div className="min-w-0 text-left">
-                      <p className="text-lg sm:text-xl font-bold text-white truncate">
-                        {publicCandidateName}
-                      </p>
-                      <p className="text-sm text-indigo-400 font-medium mt-0.5 truncate">
-                        {candidateDisplayHandle}
-                      </p>
-                      <p className="text-xs text-zinc-500 mt-1 truncate">
-                        {publicCandidateLocation}
-                      </p>
-                      <p className="text-xs text-zinc-500 mt-1 truncate">
-                        {displayCandidate.role}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="shrink-0 inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-extrabold text-emerald-400">
-                    {displayMatchScore}% Match
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 mb-5">
-                  <VerifiedOnProvixPill />
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-3 py-1 text-[11px] font-bold text-cyan-300">
-                    <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
-                    Integrity Verified · {displayScore}/100
-                  </span>
-                  <span className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-[11px] font-semibold text-zinc-400">
-                    GitHub audit complete
-                  </span>
-                </div>
-
-                <LockedContactDossierBadge className="mb-5" />
-
-                <div className="flex flex-wrap gap-1.5 mb-5">
-                  {displaySkills.length > 0 ? (
-                    displaySkills.map((skill) => (
-                      <span
-                        key={skill}
-                        className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
-                      >
-                        {skill}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-zinc-500">
-                      Skills verified during GitHub audit
-                    </span>
-                  )}
-                </div>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/80 p-4 text-left">
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                      Proof Signal
-                    </span>
-                    <span className="text-[10px] font-mono text-emerald-400">
-                      LIVE
-                    </span>
-                  </div>
-                  <p className="text-sm text-zinc-300 leading-relaxed line-clamp-2">
-                    {proofSignal}
-                  </p>
-                </div>
-              </div>
-            )}
-          </Link>
+          {!featuredLoading && featuredBuilders.length > 0 && (
+            <FeaturedShowcase builders={featuredBuilders} embedded />
+          )}
         </section>
-
-        {!featuredLoading && featuredBuilders.length > 0 && (
-          <FeaturedShowcase builders={featuredBuilders} />
-        )}
 
         {/* --- FEATURE GRID --- */}
         <section id="proof-engine" className="max-w-6xl mx-auto px-6 pb-24 scroll-mt-24">

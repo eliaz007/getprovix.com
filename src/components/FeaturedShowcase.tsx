@@ -5,6 +5,7 @@ import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 
 type FeaturedShowcaseProps = {
   builders: FeaturedBuilder[];
+  embedded?: boolean;
 };
 
 function BuilderAvatar({ builder }: { builder: FeaturedBuilder }) {
@@ -80,7 +81,10 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
   );
 }
 
-export default function FeaturedShowcase({ builders }: FeaturedShowcaseProps) {
+export default function FeaturedShowcase({
+  builders,
+  embedded = false,
+}: FeaturedShowcaseProps) {
   if (builders.length === 0) {
     return null;
   }
@@ -88,7 +92,11 @@ export default function FeaturedShowcase({ builders }: FeaturedShowcaseProps) {
   return (
     <section
       id="featured-builders"
-      className="max-w-6xl mx-auto px-6 pb-24 scroll-mt-24"
+      className={
+        embedded
+          ? "mt-16 max-w-6xl mx-auto scroll-mt-24 text-left"
+          : "max-w-6xl mx-auto px-6 pb-24 scroll-mt-24"
+      }
     >
       <div className="mb-10 text-center">
         <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-1.5 text-xs font-mono font-semibold text-indigo-400">
