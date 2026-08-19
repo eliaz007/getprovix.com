@@ -62,6 +62,12 @@ import {
   normalizeMatchResult,
   type MatchResult,
 } from "@/lib/match-heuristic";
+import {
+  countActiveOpenings,
+  countJobsMatchingCandidateSkills,
+  isActiveJob,
+  isVisibleToEmployers,
+} from "@/lib/opportunities-metrics";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
@@ -951,8 +957,8 @@ export default function DashboardPage() {
     Record<string, boolean>
   >({});
   const talentMatchFetchedRef = useRef<Set<string>>(new Set());
-  // Talent pool visibility — ON by default, even before the profile row loads.
-  const [isVisibleInPool, setIsVisibleInPool] = useState(true);
+  // Talent pool visibility — synced from profiles.is_visible_in_pool (visible to employers).
+  const [isVisibleInPool, setIsVisibleInPool] = useState(false);
 
   // Prefer profiles.role, then auth user_metadata.role.
   const profileRole = accountRole ?? dbProfile?.role;
@@ -1037,7 +1043,9 @@ export default function DashboardPage() {
         setDbProfile(profileWithRole);
         setAccountRole(resolvedRole);
 
-        const loadedVisibleInPool = profileWithRole?.is_visible_in_pool !== false;
+        const loadedVisibleInPool = isVisibleToEmployers(
+          profileWithRole?.is_visible_in_pool
+        );
         setIsVisibleInPool(loadedVisibleInPool);
 
         const loadedName = displayName || DEFAULT_PROFILE_DATA.name;
@@ -1182,7 +1190,12 @@ export default function DashboardPage() {
 
     const loadJobs = async () => {
       try {
-        const { data } = await supabase.from("jobs").select("*");
+        const { data, error } = await supabase.from("jobs").select("*");
+
+        if (error) {
+          throw error;
+        }
+
         if (!isMounted) return;
         setJobs(data ?? []);
       } catch (err) {
@@ -2028,8 +2041,32 @@ const showToast = (msg: string) => {
     return "bg-amber-500/10 text-amber-400 border border-amber-500/25";
   };
 
-  const isJobVisibleInFeed = (job: { status?: string | null }) =>
-    (job.status ?? "active") === "active";
+  const isJobVisibleInFeed = isActiveJob;
+
+  const candidateSkillsForMatching = useMemo(() => {
+    if (Array.isArray(dbProfile?.skills) && dbProfile.skills.length > 0) {
+      return dbProfile.skills;
+    }
+
+    return (skills ?? "")
+      .split(",")
+      .map((skill) => skill.trim())
+      .filter(Boolean);
+  }, [dbProfile?.skills, skills]);
+
+  const activeOpeningsCount = useMemo(
+    () => countActiveOpenings(jobs),
+    [jobs]
+  );
+
+  const skillMatchingJobsCount = useMemo(
+    () => countJobsMatchingCandidateSkills(jobs, candidateSkillsForMatching),
+    [jobs, candidateSkillsForMatching]
+  );
+
+  const profileVisibleToEmployers = isVisibleToEmployers(
+    dbProfile?.is_visible_in_pool
+  );
 
   const filteredJobFeed = jobs.filter((job) => {
     if (!isJobVisibleInFeed(job)) {
@@ -3794,25 +3831,15 @@ const showToast = (msg: string) => {
                     Active Openings
                   </span>
                   <span className="text-3xl font-extrabold text-white">
-                    {jobsLoading ? "—" : jobs.length}
+                    {jobsLoading ? "—" : activeOpeningsCount}
                   </span>
                 </div>
                 <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Matching Your Skills
                   </span>
-                  <span
-                    className={`text-3xl font-extrabold text-indigo-400 ${
-                      isMatchEvaluating ? "animate-pulse" : ""
-                    }`}
-                  >
-                    {jobsLoading
-                      ? "—"
-                      : jobs.length === 0
-                        ? 0
-                        : isMatchEvaluating && liveMatchingCount === 0
-                          ? "…"
-                          : liveMatchingCount}
+                  <span className="text-3xl font-extrabold text-indigo-400">
+                    {jobsLoading ? "—" : skillMatchingJobsCount}
                   </span>
                 </div>
                 <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
@@ -3821,10 +3848,16 @@ const showToast = (msg: string) => {
                   </span>
                   <span
                     className={`text-sm font-extrabold ${
-                      isVisibleInPool ? "text-emerald-400" : "text-slate-400"
+                      profileVisibleToEmployers
+                        ? "text-emerald-400"
+                        : "text-slate-400"
                     }`}
                   >
-                    {isVisibleInPool ? "Active 🟢" : "Hidden"}
+                    {loadingProfile
+                      ? "—"
+                      : profileVisibleToEmployers
+                        ? "Active 🟢"
+                        : "Hidden"}
                   </span>
                 </div>
               </div>
