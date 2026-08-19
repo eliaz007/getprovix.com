@@ -69,6 +69,12 @@ import {
   normalizeGitHubUrl,
 } from "@/lib/validate-github-url";
 import { buildFallbackMatch, type MatchResult } from "@/lib/match-heuristic";
+import {
+  buildFallbackOpportunityMatch,
+  fetchOpportunityMatch,
+  getFitVerdictBadgeClass,
+  type OpportunityMatchResult,
+} from "@/lib/opportunity-match";
 import { createEmployerNotification } from "@/lib/employer-notifications";
 import {
   fetchTalentMatchInsight,
@@ -367,7 +373,7 @@ function getIntegrityScoreClass(score: number): string {
   return "text-red-400 border-red-500/30 bg-red-500/10";
 }
 
-type MatchInsight = MatchResult;
+type MatchInsight = OpportunityMatchResult;
 
 function resolveProfileContactEmail(
   row: Pick<ProfileRecord, "contact_email" | "email">
@@ -862,7 +868,7 @@ export default function DashboardPage() {
   const [matchLoadingIds, setMatchLoadingIds] = useState<Record<string, boolean>>({});
   const matchFetchedRef = useRef<Set<string>>(new Set());
   const [talentMatchScores, setTalentMatchScores] = useState<
-    Record<string, MatchInsight>
+    Record<string, MatchResult>
   >({});
   const [talentMatchLoadingIds, setTalentMatchLoadingIds] = useState<
     Record<string, boolean>
@@ -1981,15 +1987,8 @@ const showToast = (msg: string) => {
     });
   };
 
-  const getMatchBadgeClass = (matchPercent: number) => {
-    if (matchPercent >= 90) {
-      return "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25";
-    }
-    if (matchPercent >= 80) {
-      return "bg-indigo-500/10 text-indigo-400 border border-indigo-500/25";
-    }
-    return "bg-amber-500/10 text-amber-400 border border-amber-500/25";
-  };
+  const getMatchBadgeClass = (insight: MatchInsight) =>
+    getFitVerdictBadgeClass(insight.fit_verdict);
 
   const isJobVisibleInFeed = isActiveJob;
 
@@ -2057,11 +2056,13 @@ const showToast = (msg: string) => {
 
   const radarDirectMatchesCount = filteredRadarJobFeed.filter((job) => {
     const insight = matchInsights[job.id];
-    return (insight?.match_percentage ?? 0) >= 90;
+    return insight?.fit_verdict === "Strong Fit";
   }).length;
 
   const liveMatchingCount = Object.values(matchInsights).filter(
-    (insight) => insight.match_percentage >= 80
+    (insight) =>
+      insight.fit_verdict === "Strong Fit" ||
+      insight.fit_verdict === "Moderate Fit"
   ).length;
   const isMatchEvaluating = Object.values(matchLoadingIds).some(Boolean);
 
@@ -2078,8 +2079,17 @@ const showToast = (msg: string) => {
     const candidatePayload = {
       title: title.trim() || profileData.role || "",
       bio: bio.trim() || profileData.bio || "",
-      skills: candidateSkills,
-      degree: degree.trim() || profileData.degree || "",
+      skills: candidateSkills.length > 0 ? candidateSkills : candidateSkillsForMatching,
+      role_type:
+        dbProfile?.role_type?.trim() ||
+        profileData.role?.trim() ||
+        title.trim() ||
+        "",
+      github_url: portfolioUrl.trim() || dbProfile?.portfolio_url?.trim() || "",
+      experience_level:
+        dbProfile?.experience_level?.trim() ||
+        experienceLevel.trim() ||
+        "",
     };
 
     const pendingJobs = jobs.filter(
@@ -2107,10 +2117,12 @@ const showToast = (msg: string) => {
           company: job.company ?? "",
           tags: Array.isArray(job.tags) ? job.tags : [],
           location: job.location ?? "",
+          description: job.description ?? "",
+          salary_range: job.salary_range ?? "",
         };
 
         try {
-          const insight = await fetchTalentMatchInsight(
+          const insight = await fetchOpportunityMatch(
             candidatePayload,
             jobPayload
           );
@@ -2128,7 +2140,10 @@ const showToast = (msg: string) => {
 
           setMatchInsights((prev) => ({
             ...prev,
-            [job.id]: buildFallbackMatch(candidatePayload, jobPayload),
+            [job.id]: buildFallbackOpportunityMatch(
+              candidatePayload,
+              jobPayload
+            ),
           }));
         } finally {
           setMatchLoadingIds((prev) => ({
@@ -2151,6 +2166,12 @@ const showToast = (msg: string) => {
     bio,
     skills,
     degree,
+    experienceLevel,
+    portfolioUrl,
+    dbProfile?.role_type,
+    dbProfile?.portfolio_url,
+    dbProfile?.experience_level,
+    candidateSkillsForMatching,
     profileData.role,
     profileData.bio,
     profileData.degree,
@@ -3878,7 +3899,7 @@ const showToast = (msg: string) => {
                     const tags = Array.isArray(job.tags) ? job.tags : [];
                     const insight = matchInsights[job.id];
                     const isMatching = matchLoadingIds[job.id];
-                    const matchPercent = insight?.match_percentage ?? 0;
+                    const matchScore = insight?.match_score ?? 0;
                     const formattedSalary = formatSalaryRange(job.salary_range);
 
                     return (
@@ -3895,21 +3916,28 @@ const showToast = (msg: string) => {
                               {job.company}
                             </p>
                           </div>
-                          <span
-                            className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
-                              isMatching
-                                ? "bg-indigo-500/10 text-indigo-300 border-indigo-500/30 animate-pulse"
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
+                                isMatching
+                                  ? "bg-indigo-500/10 text-indigo-300 border-indigo-500/30 animate-pulse"
+                                  : insight
+                                    ? getMatchBadgeClass(insight)
+                                    : "bg-slate-800/80 text-slate-500 border-slate-700/50"
+                              }`}
+                            >
+                              {isMatching
+                                ? "Scoring…"
                                 : insight
-                                  ? getMatchBadgeClass(matchPercent)
-                                  : "bg-slate-800/80 text-slate-500 border-slate-700/50"
-                            }`}
-                          >
-                            {isMatching
-                              ? "Scoring…"
-                              : insight
-                                ? `${matchPercent}% Match`
-                                : "Pending"}
-                          </span>
+                                  ? insight.fit_verdict
+                                  : "Pending"}
+                            </span>
+                            {insight && !isMatching ? (
+                              <span className="text-[10px] font-bold text-slate-500">
+                                {matchScore}% match
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
 
                         {formattedSalary ? (
@@ -3932,8 +3960,8 @@ const showToast = (msg: string) => {
 
                         {(isMatching || insight) && (
                           <div className="mb-4 rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-3">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">
-                              AI Breakdown / Insight
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                              AI Match Analysis
                             </span>
                             {isMatching ? (
                               <div className="flex items-center gap-2">
@@ -3942,13 +3970,21 @@ const showToast = (msg: string) => {
                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
                                 </span>
                                 <p className="text-xs text-slate-500">
-                                  Analyzing your fit with Gemini…
+                                  Evaluating your profile against this role with Gemini…
                                 </p>
                               </div>
                             ) : (
-                              <p className="text-xs text-slate-300 leading-relaxed animate-in fade-in duration-300">
-                                {insight?.reasoning}
-                              </p>
+                              <ul className="space-y-1.5 animate-in fade-in duration-300">
+                                {insight?.match_reasons.map((reason, index) => (
+                                  <li
+                                    key={`${job.id}-reason-${index}`}
+                                    className="flex items-start gap-2 text-xs text-slate-300 leading-relaxed"
+                                  >
+                                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-indigo-400" />
+                                    <span>{reason}</span>
+                                  </li>
+                                ))}
+                              </ul>
                             )}
                           </div>
                         )}
@@ -4924,7 +4960,7 @@ const showToast = (msg: string) => {
                     const tags = Array.isArray(job.tags) ? job.tags : [];
                     const insight = matchInsights[job.id];
                     const isMatching = matchLoadingIds[job.id];
-                    const matchPercent = insight?.match_percentage ?? 0;
+                    const matchScore = insight?.match_score ?? 0;
                     const companyInitials = (job.company ?? "PX")
                       .split(/\s+/)
                       .slice(0, 2)
@@ -4959,21 +4995,28 @@ const showToast = (msg: string) => {
                               )}
                             </div>
                           </div>
-                          <span
-                            className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
-                              isMatching
-                                ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/30 animate-pulse"
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
+                                isMatching
+                                  ? "bg-indigo-500/10 text-indigo-300 border-indigo-500/30 animate-pulse"
+                                  : insight
+                                    ? getMatchBadgeClass(insight)
+                                    : "bg-slate-800/80 text-slate-500 border-slate-700/50"
+                              }`}
+                            >
+                              {isMatching
+                                ? "Scoring…"
                                 : insight
-                                  ? getMatchBadgeClass(matchPercent)
-                                  : "bg-slate-800/80 text-slate-500 border border-slate-700/50"
-                            }`}
-                          >
-                            {isMatching
-                              ? "Scoring…"
-                              : insight
-                                ? `${matchPercent}% Match`
-                                : "Pending"}
-                          </span>
+                                  ? insight.fit_verdict
+                                  : "Pending"}
+                            </span>
+                            {insight && !isMatching ? (
+                              <span className="text-[10px] font-bold text-slate-500">
+                                {matchScore}% match
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
 
                         <p className="text-xs text-slate-500 mb-3">{job.location}</p>
@@ -4996,8 +5039,8 @@ const showToast = (msg: string) => {
 
                         {(isMatching || insight) && (
                           <div className="mb-5 rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-3">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">
-                              AI Breakdown / Insight
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                              AI Match Analysis
                             </span>
                             {isMatching ? (
                               <div className="flex items-center gap-2">
@@ -5006,13 +5049,21 @@ const showToast = (msg: string) => {
                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
                                 </span>
                                 <p className="text-xs text-slate-500">
-                                  Analyzing your fit with Gemini…
+                                  Evaluating your profile against this role with Gemini…
                                 </p>
                               </div>
                             ) : (
-                              <p className="text-xs text-slate-300 leading-relaxed animate-in fade-in duration-300">
-                                {insight?.reasoning}
-                              </p>
+                              <ul className="space-y-1.5 animate-in fade-in duration-300">
+                                {insight?.match_reasons.map((reason, index) => (
+                                  <li
+                                    key={`${job.id}-reason-${index}`}
+                                    className="flex items-start gap-2 text-xs text-slate-300 leading-relaxed"
+                                  >
+                                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-indigo-400" />
+                                    <span>{reason}</span>
+                                  </li>
+                                ))}
+                              </ul>
                             )}
                           </div>
                         )}

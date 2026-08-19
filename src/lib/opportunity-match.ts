@@ -1,0 +1,241 @@
+import type { GitHubAuditContext } from "@/lib/github-audit";
+import { normalizeStringArray } from "@/lib/match-heuristic";
+
+export type FitVerdict = "Strong Fit" | "Moderate Fit" | "Growth Fit";
+
+export type OpportunityMatchCandidatePayload = {
+  title?: string;
+  bio?: string;
+  skills?: string[] | string;
+  role_type?: string;
+  github_url?: string;
+  experience_level?: string;
+};
+
+export type OpportunityMatchJobPayload = {
+  title?: string;
+  company?: string;
+  tags?: string[] | string;
+  location?: string;
+  description?: string;
+  salary_range?: string;
+};
+
+export type OpportunityMatchResult = {
+  match_score: number;
+  fit_verdict: FitVerdict;
+  match_reasons: string[];
+};
+
+const FIT_VERDICTS: FitVerdict[] = [
+  "Strong Fit",
+  "Moderate Fit",
+  "Growth Fit",
+];
+
+export function clampMatchScore(value: unknown): number {
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+
+  if (!Number.isFinite(numeric)) {
+    return 55;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(numeric)));
+}
+
+export function scoreToFitVerdict(score: number): FitVerdict {
+  if (score >= 75) {
+    return "Strong Fit";
+  }
+  if (score >= 50) {
+    return "Moderate Fit";
+  }
+  return "Growth Fit";
+}
+
+export function normalizeFitVerdict(value: unknown, score: number): FitVerdict {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (FIT_VERDICTS.includes(normalized as FitVerdict)) {
+      return normalized as FitVerdict;
+    }
+  }
+
+  return scoreToFitVerdict(score);
+}
+
+export function normalizeMatchReasons(value: unknown): string[] {
+  const reasons = normalizeStringArray(value)
+    .map((reason) => reason.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+
+  if (reasons.length >= 2) {
+    return reasons;
+  }
+
+  if (reasons.length === 1) {
+    return [
+      reasons[0],
+      "Your verified profile signals align with parts of this role's requirements.",
+    ];
+  }
+
+  return [
+    "Your skills partially overlap with this role's stack.",
+    "Completing your bio and GitHub audit can sharpen match accuracy.",
+  ];
+}
+
+export function normalizeOpportunityMatchResult(
+  raw: unknown
+): OpportunityMatchResult {
+  const record =
+    raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+
+  const scoreSource =
+    record.match_score ?? record.score ?? record.match_percentage;
+  const match_score = clampMatchScore(scoreSource);
+  const fit_verdict = normalizeFitVerdict(record.fit_verdict, match_score);
+
+  return {
+    match_score,
+    fit_verdict,
+    match_reasons: normalizeMatchReasons(
+      record.match_reasons ?? record.reasons ?? record.matching_skills
+    ),
+  };
+}
+
+export function getFitVerdictBadgeClass(verdict: FitVerdict): string {
+  switch (verdict) {
+    case "Strong Fit":
+      return "bg-emerald-500/10 text-emerald-400 border-emerald-500/25";
+    case "Moderate Fit":
+      return "bg-indigo-500/10 text-indigo-400 border-indigo-500/25";
+    case "Growth Fit":
+      return "bg-amber-500/10 text-amber-400 border-amber-500/25";
+  }
+}
+
+export function buildFallbackOpportunityMatch(
+  candidate: OpportunityMatchCandidatePayload,
+  job: OpportunityMatchJobPayload,
+  githubAudit?: GitHubAuditContext | null
+): OpportunityMatchResult {
+  const candidateSkills = normalizeStringArray(candidate.skills);
+  const jobTags = normalizeStringArray(job.tags);
+  const roleType = candidate.role_type?.trim() ?? "";
+
+  const normalizedCandidateSkills = candidateSkills.map((skill) =>
+    skill.toLowerCase()
+  );
+
+  const matchingTags = jobTags.filter((tag) =>
+    normalizedCandidateSkills.some(
+      (skill) =>
+        skill.includes(tag.toLowerCase()) || tag.toLowerCase().includes(skill)
+    )
+  );
+
+  let match_score = 40;
+  const match_reasons: string[] = [];
+
+  if (matchingTags.length > 0) {
+    match_score += Math.min(35, matchingTags.length * 12);
+    match_reasons.push(
+      `Your ${matchingTags.slice(0, 3).join(", ")} experience overlaps with this role's stack.`
+    );
+  }
+
+  if (roleType && job.title) {
+    const titleLower = job.title.toLowerCase();
+    const roleLower = roleType.toLowerCase();
+    if (titleLower.includes(roleLower) || roleLower.includes(titleLower)) {
+      match_score += 12;
+      match_reasons.push(
+        `Your ${roleType} focus aligns with the ${job.title} track.`
+      );
+    }
+  }
+
+  if (candidate.bio?.trim()) {
+    match_score += 6;
+    match_reasons.push(
+      "Your published bio gives employers context on your builder narrative."
+    );
+  }
+
+  if (githubAudit) {
+    if (githubAudit.language && matchingTags.some((tag) =>
+      tag.toLowerCase().includes(githubAudit.language!.toLowerCase())
+    )) {
+      match_score += 10;
+      match_reasons.push(
+        `GitHub audit shows active ${githubAudit.language} work in ${githubAudit.owner}/${githubAudit.repo}.`
+      );
+    } else if (githubAudit.commit_count_sampled >= 3) {
+      match_score += 8;
+      match_reasons.push(
+        `Verified GitHub activity in ${githubAudit.owner}/${githubAudit.repo} supports your proof-of-work claims.`
+      );
+    } else if (githubAudit.commit_count_sampled <= 1) {
+      match_score -= 8;
+      match_reasons.push(
+        "Limited GitHub commit history — strengthening your repo will improve match confidence."
+      );
+    }
+  } else if (candidate.github_url?.trim()) {
+    match_reasons.push(
+      "Add a public GitHub repo to your profile for stronger verified matching."
+    );
+  }
+
+  if (match_reasons.length < 2) {
+    match_reasons.push(
+      matchingTags.length > 0
+        ? "Express interest to signal availability — employers review verified Provix profiles first."
+        : "Your profile has limited overlap today; this role could be a stretch growth opportunity."
+    );
+  }
+
+  const clampedScore = clampMatchScore(match_score);
+
+  return {
+    match_score: clampedScore,
+    fit_verdict: scoreToFitVerdict(clampedScore),
+    match_reasons: normalizeMatchReasons(match_reasons),
+  };
+}
+
+export async function fetchOpportunityMatch(
+  candidate: OpportunityMatchCandidatePayload,
+  job: OpportunityMatchJobPayload
+): Promise<OpportunityMatchResult> {
+  try {
+    const response = await fetch("/api/opportunities/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidate, job }),
+    });
+
+    if (!response.ok) {
+      return buildFallbackOpportunityMatch(candidate, job);
+    }
+
+    const raw = (await response.json()) as unknown;
+    if (raw && typeof raw === "object" && "error" in (raw as object)) {
+      return buildFallbackOpportunityMatch(candidate, job);
+    }
+
+    return normalizeOpportunityMatchResult(raw);
+  } catch (error) {
+    console.warn("Opportunity match API unavailable, using fallback.", error);
+    return buildFallbackOpportunityMatch(candidate, job);
+  }
+}
