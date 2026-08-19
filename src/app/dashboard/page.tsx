@@ -40,7 +40,11 @@ import {
   splitFullName,
 } from "@/lib/candidate-anonymization";
 import { signOutAndClearSession } from "@/lib/sign-out";
-import { buildProfileSlug } from "@/lib/profile-slug";
+import { buildProfileSlug, buildUniqueProfileSlug } from "@/lib/profile-slug";
+import {
+  buildCandidateProfileUpdatePayload,
+  persistCandidateProfile,
+} from "@/lib/persist-candidate-profile";
 import { createClient } from "@/utils/supabase/client";
 import {
   AVAILABILITY_STATUS_OPTIONS,
@@ -302,6 +306,7 @@ type ProfileRecord = {
   country?: string | null;
   timezone?: string | null;
   work_preference?: string | null;
+  role_type?: string | null;
   integrity_score?: number | null;
 };
 
@@ -374,117 +379,6 @@ function resolveProfileContactEmail(
 
   const email = row.email?.trim();
   return email || null;
-}
-
-type CandidateProfileSaveInput = {
-  fullName: string;
-  jobTitle: string;
-  bio: string;
-  university: string;
-  major: string;
-  degree: string;
-  skills: string[];
-  portfolioUrl: string;
-  youtubeUrl: string;
-  experienceLevel: string;
-  availabilityStatus: string;
-  workPreference: string;
-  candidateTimezone: string;
-  isVisibleInPool: boolean;
-  gradYear: string;
-};
-
-function buildCandidateProfileUpdatePayload(input: CandidateProfileSaveInput) {
-  const parsedGradYear = Number.parseInt(input.gradYear, 10);
-
-  return {
-    full_name: input.fullName.trim() || null,
-    job_title: input.jobTitle.trim() || null,
-    bio: input.bio.trim() || null,
-    university: input.university.trim() || null,
-    major: input.major.trim() || null,
-    degree: input.degree.trim() || null,
-    skills: input.skills,
-    portfolio_url: input.portfolioUrl.trim() || null,
-    youtube_url: input.youtubeUrl.trim() || null,
-    experience_level: input.experienceLevel,
-    availability_status: normalizeAvailabilityStatus(input.availabilityStatus),
-    work_preference: input.workPreference,
-    timezone: input.candidateTimezone,
-    is_visible_in_pool: input.isVisibleInPool,
-    profile_slug: buildProfileSlug(input.fullName),
-    graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
-  };
-}
-
-async function persistCandidateProfile(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-  payload: ReturnType<typeof buildCandidateProfileUpdatePayload>
-) {
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-
-  if (sessionError) {
-    return { data: null, error: sessionError };
-  }
-
-  if (!session?.user?.id) {
-    return {
-      data: null,
-      error: { message: "No active session. Please sign in again." },
-    };
-  }
-
-  if (session.user.id !== userId) {
-    return {
-      data: null,
-      error: { message: "Session user does not match profile owner." },
-    };
-  }
-
-  let attemptPayload: Record<
-    string,
-    string | number | boolean | string[] | null
-  > = { ...payload };
-  const optionalColumnKeys = [
-    "availability_status",
-    "experience_level",
-    "university",
-    "degree",
-    "youtube_url",
-    "profile_slug",
-    "work_preference",
-    "timezone",
-  ] as const;
-
-  for (let attempt = 0; attempt <= optionalColumnKeys.length; attempt++) {
-    const { data, error } = await supabase
-      .from("profiles")
-      .update(attemptPayload)
-      .eq("id", session.user.id)
-      .select("*")
-      .maybeSingle();
-
-    if (!error) {
-      return { data, error: null };
-    }
-
-    if (!isMissingColumnError(error) || attempt >= optionalColumnKeys.length) {
-      return { data: null, error };
-    }
-
-    const keyToDrop = optionalColumnKeys[attempt];
-    const { [keyToDrop]: _removed, ...rest } = attemptPayload;
-    attemptPayload = rest;
-  }
-
-  return {
-    data: null,
-    error: { message: "Profile save failed after retries." },
-  };
 }
 
 function isMissingColumnError(error: { message?: string; code?: string } | null) {
@@ -688,7 +582,7 @@ function mapProfileRowToTalentCandidate(
     status: availability,
     experienceLevel:
       row.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL,
-    roleType: "General",
+    roleType: row.role_type?.trim() || "General",
     availability,
     bio: row.bio!.trim(),
     github: portfolioUrl || "",
@@ -1037,8 +931,9 @@ export default function DashboardPage() {
         const displayName = displayNameFromSources(profileWithRole, sessionUser);
 
         if (profileWithRole?.id && !profileWithRole.profile_slug?.trim()) {
-          const profile_slug = buildProfileSlug(
-            profileWithRole.full_name ?? displayName
+          const profile_slug = buildUniqueProfileSlug(
+            profileWithRole.full_name ?? displayName,
+            profileWithRole.id
           );
 
           const { data: slugRow, error: slugError } = await supabase
@@ -1697,25 +1592,29 @@ const showToast = (msg: string) => {
       if (isVisibleInPool && !effectiveVisibleInPool) {
         setIsVisibleInPool(false);
       }
-      const payload = buildCandidateProfileUpdatePayload({
-        fullName: profileData.name,
-        jobTitle: title,
-        bio,
-        university: school,
-        major: academicMajor,
-        degree: academicMajor,
-        skills: skillsArray,
-        portfolioUrl: normalizedPortfolioUrl,
-        youtubeUrl: profileData.demoVideo,
-        experienceLevel,
-        availabilityStatus: normalizedAvailability,
-        workPreference,
-        candidateTimezone,
-        isVisibleInPool: effectiveVisibleInPool,
-        gradYear: profileData.gradYear,
-      });
+      const payload = buildCandidateProfileUpdatePayload(
+        {
+          fullName: profileData.name,
+          jobTitle: title,
+          bio,
+          university: school,
+          major: academicMajor,
+          degree: academicMajor,
+          skills: skillsArray,
+          portfolioUrl: normalizedPortfolioUrl,
+          youtubeUrl: profileData.demoVideo,
+          experienceLevel,
+          availabilityStatus: normalizedAvailability,
+          workPreference,
+          candidateTimezone,
+          isVisibleInPool: effectiveVisibleInPool,
+          gradYear: profileData.gradYear,
+        },
+        session.user.id,
+        { existingProfileSlug: dbProfile?.profile_slug }
+      );
 
-      const { data, error } = await persistCandidateProfile(
+      const { data, error, userMessage } = await persistCandidateProfile(
         supabase,
         session.user.id,
         payload
@@ -1723,7 +1622,7 @@ const showToast = (msg: string) => {
 
       if (error) {
         console.error("Profile update failed:", error);
-        showToast("Could not save profile. Please try again.");
+        showToast(userMessage ?? "Could not save profile. Please try again.");
         return;
       }
 
@@ -5438,7 +5337,7 @@ const showToast = (msg: string) => {
 
                         return (
                           <div
-                            key={col.id}
+                            key={col.profileId}
                             className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col justify-between h-full min-h-[260px] min-w-0 overflow-hidden"
                           >
                             <div className="flex items-start justify-between gap-2 mb-4">
@@ -5600,7 +5499,7 @@ const showToast = (msg: string) => {
                     Request intros for free. You only pay Provix after a successful hire is confirmed.
                   </p>
                   <p>
-                    Candidate bonuses of $250–$500 may be allocated on sub-$25k placements to support verified talent.
+                    Candidate bonuses of $350 may be allocated on sub-$25k placements to support verified talent.
                   </p>
                 </div>
               </div>

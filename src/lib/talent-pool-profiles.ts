@@ -5,6 +5,7 @@ import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 export type TalentPoolProfileRow = {
   id?: string | null;
   is_visible_in_pool?: boolean | null;
+  role_type?: string | null;
   [key: string]: unknown;
 };
 
@@ -37,6 +38,7 @@ const OPTIONAL_SELECT_COLUMNS = [
   "country",
   "timezone",
   "work_preference",
+  "role_type",
   "phone",
   "linkedin_url",
   "contact_email",
