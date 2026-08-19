@@ -68,11 +68,17 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
         <LockedGitHubReposBadge className="relative mt-4" />
       )}
 
-      <div className="relative mt-5 flex items-center justify-between gap-3">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">
-          <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-          Proof Score · {builder.proofScore}/100
-        </span>
+      <div
+        className={`relative mt-5 flex items-center gap-3 ${
+          builder.proofScore !== null ? "justify-between" : "justify-end"
+        }`}
+      >
+        {builder.proofScore !== null && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            Proof Score · {builder.proofScore}/100
+          </span>
+        )}
 
         <Link
           href={`/p/${builder.profileSlug}`}
@@ -84,6 +90,18 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
       </div>
     </article>
   );
+}
+
+function getFeaturedGridClass(count: number): string {
+  if (count === 1) {
+    return "grid grid-cols-1 max-w-md mx-auto gap-5";
+  }
+
+  if (count === 2) {
+    return "grid grid-cols-1 gap-5 sm:grid-cols-2 max-w-3xl mx-auto";
+  }
+
+  return "grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3";
 }
 
 export default function FeaturedShowcase({
@@ -116,7 +134,7 @@ export default function FeaturedShowcase({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className={getFeaturedGridClass(builders.length)}>
         {builders.map((builder) => (
           <BuilderCard key={builder.id} builder={builder} />
         ))}
