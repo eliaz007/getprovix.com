@@ -2580,7 +2580,15 @@ const showToast = (msg: string) => {
     introId: string,
     action: "accept" | "decline"
   ) => {
+    const nextStatus = action === "accept" ? "accepted" : "declined";
+    const previousRequests = candidateIntroRequests;
+
     setIntroRespondLoadingId(introId);
+    setCandidateIntroRequests((prev) =>
+      prev.map((request) =>
+        request.id === introId ? { ...request, status: nextStatus } : request
+      )
+    );
 
     try {
       const response = await fetch(`/api/intros/${introId}/respond`, {
@@ -2589,11 +2597,14 @@ const showToast = (msg: string) => {
         body: JSON.stringify({ action }),
       });
       const payload = (await response.json()) as {
+        success?: boolean;
         message?: string;
         error?: string;
+        status?: string;
       };
 
-      if (!response.ok) {
+      if (!response.ok || !payload.success) {
+        setCandidateIntroRequests(previousRequests);
         showToast(payload.error ?? "Could not update intro request.");
         return;
       }
@@ -2610,6 +2621,7 @@ const showToast = (msg: string) => {
       );
     } catch (error) {
       console.error("Candidate intro response failed:", error);
+      setCandidateIntroRequests(previousRequests);
       showToast("Could not update intro request.");
     } finally {
       setIntroRespondLoadingId(null);

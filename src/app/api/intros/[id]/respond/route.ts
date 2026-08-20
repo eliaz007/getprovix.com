@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import {
-  CANDIDATE_INTRO_REQUEST_COLUMNS,
-  normalizeCandidateIntroStatus,
+  toCandidateIntroStatus,
+  type CandidateIntroStatus,
 } from "@/lib/candidate-intro-requests";
 import { getPublicProfileBaseUrl } from "@/lib/profile-url";
+import {
+  fetchCandidateIntroRequestById,
+  isPendingCandidateIntroStatus,
+  updateCandidateIntroRequestStatus,
+} from "@/lib/respond-candidate-intro";
 import { sendIntroEmail } from "@/lib/send-intro-email";
 import { createClient } from "@/utils/supabase/server";
 
@@ -47,153 +52,21 @@ function buildRespondHtml(input: {
 </html>`;
 }
 
-async function resolveIntroRequest(id: string, token?: string | null) {
-  const serviceClient = createServiceRoleClient();
-  if (!serviceClient) {
-    return { error: NextResponse.json({ error: "Server misconfigured" }, { status: 500 }) };
-  }
-
-  let query = serviceClient
-    .from("intro_requests")
-    .select(CANDIDATE_INTRO_REQUEST_COLUMNS)
-    .eq("id", id);
-
-  if (token?.trim()) {
-    query = query.eq("response_token", token.trim());
-  }
-
-  const { data, error } = await query.maybeSingle();
-
-  if (error) {
-    console.error("Intro respond fetch error:", error);
-    return {
-      error: NextResponse.json(
-        { error: "Could not load intro request." },
-        { status: 500 }
-      ),
-    };
-  }
-
-  if (!data) {
-    return {
-      error: NextResponse.json(
-        { error: "Intro request not found." },
-        { status: 404 }
-      ),
-    };
-  }
-
-  return { introRequest: data, serviceClient };
-}
-
-async function authorizeCandidateOwnership(
-  candidateId: string
-): Promise<NextResponse | null> {
-  const authClient = await createClient();
-  const {
-    data: { user },
-  } = await authClient.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  if (user.id !== candidateId) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  return null;
-}
-
-async function handleIntroResponse(
-  id: string,
-  action: IntroRespondAction,
-  token?: string | null,
-  wantsHtml = false
-) {
-  const resolved = await resolveIntroRequest(id, token);
-  if ("error" in resolved && resolved.error) {
-    return resolved.error;
-  }
-
-  const { introRequest, serviceClient } = resolved as {
-    introRequest: Record<string, unknown>;
-    serviceClient: NonNullable<ReturnType<typeof createServiceRoleClient>>;
-  };
-
-  const candidateId = String(introRequest.candidate_id ?? "");
-  const currentStatus = normalizeCandidateIntroStatus(
-    typeof introRequest.status === "string" ? introRequest.status : null
-  );
-  const dashboardUrl = `${getPublicProfileBaseUrl()}/dashboard?tab=intro_requests`;
-
-  if (!token?.trim()) {
-    const authError = await authorizeCandidateOwnership(candidateId);
-    if (authError) {
-      return authError;
-    }
-  }
-
-  if (currentStatus !== "pending") {
-    const message =
-      currentStatus === "accepted"
-        ? "This intro request was already accepted."
-        : "This intro request was already declined.";
-
-    if (wantsHtml) {
-      return new NextResponse(
-        buildRespondHtml({
-          title: "Intro request already handled",
-          message,
-          dashboardUrl,
-        }),
-        { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        success: true,
-        status: currentStatus,
-        message,
-      },
-      { status: 200 }
-    );
-  }
-
-  const nextStatus = action === "accept" ? "accepted" : "declined";
-
-  const { data: updatedRequest, error: updateError } = await serviceClient
-    .from("intro_requests")
-    .update({ status: nextStatus })
-    .eq("id", id)
-    .select(CANDIDATE_INTRO_REQUEST_COLUMNS)
-    .single();
-
-  if (updateError || !updatedRequest) {
-    console.error("Intro respond update error:", updateError);
-    return NextResponse.json(
-      { error: "Could not update intro request." },
-      { status: 500 }
-    );
-  }
-
-  if (nextStatus === "accepted") {
-    await sendIntroEmail(updatedRequest, serviceClient);
-  }
-
-  const title =
-    nextStatus === "accepted"
-      ? "Intro accepted"
-      : "Intro declined";
-  const message =
-    nextStatus === "accepted"
-      ? "You're connected. Check your inbox for the mutual introduction email with employer contact details."
-      : "The employer has been notified that you declined this introduction request.";
-
-  if (wantsHtml) {
+function buildSuccessResponse(input: {
+  status: CandidateIntroStatus;
+  message: string;
+  data?: unknown;
+  wantsHtml: boolean;
+  title: string;
+  dashboardUrl: string;
+}) {
+  if (input.wantsHtml) {
     return new NextResponse(
-      buildRespondHtml({ title, message, dashboardUrl }),
+      buildRespondHtml({
+        title: input.title,
+        message: input.message,
+        dashboardUrl: input.dashboardUrl,
+      }),
       { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
     );
   }
@@ -201,12 +74,118 @@ async function handleIntroResponse(
   return NextResponse.json(
     {
       success: true,
-      status: nextStatus,
-      message,
-      data: updatedRequest,
+      status: input.status,
+      message: input.message,
+      data: input.data,
     },
     { status: 200 }
   );
+}
+
+async function handleIntroResponse(
+  id: string,
+  action: IntroRespondAction,
+  options?: {
+    token?: string | null;
+    wantsHtml?: boolean;
+  }
+) {
+  const wantsHtml = options?.wantsHtml ?? false;
+  const dashboardUrl = `${getPublicProfileBaseUrl()}/dashboard?tab=intro_requests`;
+  const token = options?.token?.trim() || null;
+
+  let introRequest = null;
+  let dataClient = createServiceRoleClient();
+  let emailClient = dataClient;
+
+  if (token) {
+    if (!dataClient) {
+      return NextResponse.json(
+        { error: "Server misconfigured for email intro responses." },
+        { status: 500 }
+      );
+    }
+
+    introRequest = await fetchCandidateIntroRequestById(dataClient, id, {
+      responseToken: token,
+    });
+  } else {
+    const authClient = await createClient();
+    const {
+      data: { user },
+    } = await authClient.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    dataClient = dataClient ?? authClient;
+    emailClient = createServiceRoleClient() ?? authClient;
+
+    introRequest = await fetchCandidateIntroRequestById(authClient, id, {
+      candidateId: user.id,
+    });
+  }
+
+  if (!dataClient) {
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+  }
+
+  if (!introRequest) {
+    return NextResponse.json(
+      { error: "Intro request not found." },
+      { status: 404 }
+    );
+  }
+
+  const currentStatus = toCandidateIntroStatus(introRequest.status);
+
+  if (!isPendingCandidateIntroStatus(introRequest.status)) {
+    const message =
+      currentStatus === "accepted"
+        ? "This intro request was already accepted."
+        : "This intro request was already declined.";
+
+    return buildSuccessResponse({
+      status: currentStatus,
+      message,
+      wantsHtml,
+      title: "Intro request already handled",
+      dashboardUrl,
+    });
+  }
+
+  const updated = await updateCandidateIntroRequestStatus(
+    dataClient,
+    id,
+    action
+  );
+
+  if (!updated) {
+    return NextResponse.json(
+      { error: "Could not update intro request." },
+      { status: 500 }
+    );
+  }
+
+  if (updated.status === "accepted") {
+    await sendIntroEmail(updated.row, emailClient ?? dataClient);
+  }
+
+  const title = updated.status === "accepted" ? "Intro accepted" : "Intro declined";
+  const message =
+    updated.status === "accepted"
+      ? "You're connected. Check your inbox for the mutual introduction email with employer contact details."
+      : "The employer has been notified that you declined this introduction request.";
+
+  return buildSuccessResponse({
+    status: updated.status,
+    message,
+    data: updated.row,
+    wantsHtml,
+    title,
+    dashboardUrl,
+  });
 }
 
 export async function GET(
@@ -232,7 +211,18 @@ export async function GET(
     );
   }
 
-  return handleIntroResponse(id.trim(), action, token, true);
+  try {
+    return await handleIntroResponse(id.trim(), action, {
+      token,
+      wantsHtml: true,
+    });
+  } catch (error) {
+    console.error("Intro respond GET error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(
@@ -254,7 +244,10 @@ export async function POST(
       );
     }
 
-    return handleIntroResponse(id.trim(), action, body.token, false);
+    return await handleIntroResponse(id.trim(), action, {
+      token: body.token,
+      wantsHtml: false,
+    });
   } catch (error) {
     console.error("Intro respond POST error:", error);
     return NextResponse.json(

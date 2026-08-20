@@ -24,6 +24,9 @@ export const CANDIDATE_INTRO_REQUEST_COLUMNS =
 export const CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS =
   "id, candidate_id, candidate_name, company_name, company_email, work_email, target_role, role_title, compensation_range, compensation_band, status, tos_accepted_at, terms_agreed_at, created_at";
 
+export const INTRO_REQUEST_LEGACY_SELECT_COLUMNS =
+  "id, candidate_id, candidate_name, company_name, work_email, role_title, compensation_band, status, terms_agreed_at, created_at";
+
 export function resolveIntroCompanyEmail(
   row: Pick<CandidateIntroRequestRow, "company_email" | "work_email">
 ): string {
@@ -69,6 +72,26 @@ export function normalizeCandidateIntroStatus(
   }
 
   return "pending";
+}
+
+export function isPendingCandidateIntroStatus(
+  status: string | null | undefined
+): boolean {
+  return normalizeCandidateIntroStatus(status) === "pending";
+}
+
+export function getCandidateIntroStatusUpdates(
+  action: "accept" | "decline"
+): string[] {
+  return action === "accept"
+    ? ["accepted", "approved_intro_sent", "approved"]
+    : ["declined", "passed", "rejected"];
+}
+
+export function toCandidateIntroStatus(
+  storedStatus: string
+): CandidateIntroStatus {
+  return normalizeCandidateIntroStatus(storedStatus);
 }
 
 export function getCandidateIntroStatusLabel(
