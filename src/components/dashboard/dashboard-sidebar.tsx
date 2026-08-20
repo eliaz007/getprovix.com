@@ -122,11 +122,18 @@ export default function DashboardSidebar() {
               icon={<DashboardIcons.User />}
             />
             {!isBusinessAccount && (
-              <DashboardTabLink
-                tab="opportunities"
-                label="Opportunities"
-                icon={<DashboardIcons.Compass />}
-              />
+              <>
+                <DashboardTabLink
+                  tab="opportunities"
+                  label="Opportunities"
+                  icon={<DashboardIcons.Compass />}
+                />
+                <DashboardTabLink
+                  tab="intro_requests"
+                  label="Intro Requests"
+                  icon={<DashboardIcons.Mail />}
+                />
+              </>
             )}
           </nav>
         </div>

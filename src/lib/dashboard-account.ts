@@ -1,6 +1,7 @@
 export type DashboardTab =
   | "my_profile"
   | "opportunities"
+  | "intro_requests"
   | "essay-studio"
   | "aid-appeals"
   | "college-fit"

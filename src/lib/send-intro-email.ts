@@ -1,14 +1,23 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import {
+  resolveIntroCompanyEmail,
+  resolveIntroCompensationRange,
+  resolveIntroTargetRole,
+} from "@/lib/candidate-intro-requests";
+import { getPublicProfileBaseUrl } from "@/lib/profile-url";
 
 export type IntroRequestEmailRecord = {
   id: string;
   candidate_id: string;
   candidate_name: string | null;
   company_name: string | null;
-  work_email: string | null;
-  role_title: string;
-  compensation_band: string | null;
+  work_email?: string | null;
+  company_email?: string | null;
+  role_title?: string;
+  target_role?: string | null;
+  compensation_band?: string | null;
+  compensation_range?: string | null;
   status: string;
 };
 
@@ -127,6 +136,148 @@ function renderContactValue(
     `.trim();
 }
 
+function resolveEmployerEmail(introRequest: IntroRequestEmailRecord): string {
+  return resolveIntroCompanyEmail(introRequest);
+}
+
+function resolveRoleTitle(introRequest: IntroRequestEmailRecord): string {
+  return resolveIntroTargetRole(introRequest);
+}
+
+function resolveCompensationBand(introRequest: IntroRequestEmailRecord): string {
+  return resolveIntroCompensationRange(introRequest);
+}
+
+export function buildCandidateIntroRequestEmailHtml(input: {
+  candidateName: string;
+  companyName: string;
+  companyEmail: string;
+  targetRole: string;
+  compensationRange: string;
+  acceptUrl: string;
+  declineUrl: string;
+  dashboardUrl: string;
+}): string {
+  const safeCandidateName = escapeHtml(input.candidateName);
+  const safeCompanyName = escapeHtml(input.companyName);
+  const safeCompanyEmail = escapeHtml(input.companyEmail);
+  const safeTargetRole = escapeHtml(input.targetRole);
+  const safeCompensationRange = escapeHtml(input.compensationRange);
+  const safeAcceptUrl = escapeHtml(input.acceptUrl);
+  const safeDeclineUrl = escapeHtml(input.declineUrl);
+  const safeDashboardUrl = escapeHtml(input.dashboardUrl);
+
+  return `
+    <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #111827; max-width: 640px; margin: 0 auto; padding: 24px;">
+      <p style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #6366f1; font-weight: 700; margin: 0 0 12px;">
+        Provix Intro Request
+      </p>
+      <h1 style="font-size: 24px; margin: 0 0 16px;">
+        ${safeCompanyName} wants to connect with you
+      </h1>
+      <p style="margin: 0 0 16px;">
+        Hi ${safeCandidateName}, a verified employer submitted a warm introduction request through Provix. Review the details below and choose whether to accept.
+      </p>
+      <table style="width: 100%; border-collapse: collapse; margin: 0 0 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px;">
+        <tr>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #6b7280; width: 140px;">Company</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${safeCompanyName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">Contact</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${safeCompanyEmail}</td>
+        </tr>
+        <tr>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">Role</td>
+          <td style="padding: 14px 16px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${safeTargetRole}</td>
+        </tr>
+        <tr>
+          <td style="padding: 14px 16px; font-size: 12px; color: #6b7280;">Compensation</td>
+          <td style="padding: 14px 16px; font-weight: 600;">${safeCompensationRange}</td>
+        </tr>
+      </table>
+      <div style="display: flex; gap: 12px; margin: 0 0 20px;">
+        <a href="${safeAcceptUrl}" style="display: inline-block; background: #4f46e5; color: #ffffff; text-decoration: none; font-weight: 700; padding: 12px 20px; border-radius: 12px;">
+          Accept Intro
+        </a>
+        <a href="${safeDeclineUrl}" style="display: inline-block; background: #111827; color: #ffffff; text-decoration: none; font-weight: 700; padding: 12px 20px; border-radius: 12px;">
+          Decline
+        </a>
+      </div>
+      <p style="margin: 0 0 8px; color: #374151; font-size: 14px;">
+        You can also review pending requests anytime in your Provix dashboard.
+      </p>
+      <p style="margin: 0;">
+        <a href="${safeDashboardUrl}" style="color: #4338ca; text-decoration: none; font-weight: 600;">Open Intro Requests</a>
+      </p>
+    </div>
+  `.trim();
+}
+
+export async function sendCandidateIntroRequestEmail(
+  introRequest: IntroRequestEmailRecord & { response_token?: string | null },
+  candidateEmail: string,
+  dataClient: SupabaseClient
+): Promise<void> {
+  try {
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) {
+      console.warn(
+        "Candidate intro request email: RESEND_API_KEY is not set; skipping email."
+      );
+      return;
+    }
+
+    const trimmedCandidateEmail = candidateEmail.trim();
+    if (!trimmedCandidateEmail) {
+      console.warn(
+        "Candidate intro request email: candidate email unavailable; skipping email."
+      );
+      return;
+    }
+
+    const responseToken = introRequest.response_token?.trim();
+    if (!responseToken) {
+      console.warn(
+        "Candidate intro request email: response token missing; skipping email."
+      );
+      return;
+    }
+
+    const candidateContact = await fetchCandidateContactDetails(
+      dataClient,
+      introRequest
+    );
+    const appBaseUrl = getPublicProfileBaseUrl();
+    const acceptUrl = `${appBaseUrl}/api/intros/${introRequest.id}/respond?action=accept&token=${encodeURIComponent(responseToken)}`;
+    const declineUrl = `${appBaseUrl}/api/intros/${introRequest.id}/respond?action=decline&token=${encodeURIComponent(responseToken)}`;
+    const dashboardUrl = `${appBaseUrl}/dashboard?tab=intro_requests`;
+
+    const resend = new Resend(resendApiKey);
+    const { error: emailError } = await resend.emails.send({
+      from: "Provix <notifications@getprovix.com>",
+      to: trimmedCandidateEmail,
+      subject: `Intro request from ${introRequest.company_name?.trim() || "a verified employer"}`,
+      html: buildCandidateIntroRequestEmailHtml({
+        candidateName: candidateContact.fullName,
+        companyName: introRequest.company_name?.trim() || "Verified employer",
+        companyEmail: resolveEmployerEmail(introRequest),
+        targetRole: resolveRoleTitle(introRequest),
+        compensationRange: resolveCompensationBand(introRequest),
+        acceptUrl,
+        declineUrl,
+        dashboardUrl,
+      }),
+    });
+
+    if (emailError) {
+      console.warn("Candidate intro request email warning:", emailError);
+    }
+  } catch (error) {
+    console.warn("Candidate intro request email warning:", error);
+  }
+}
+
 export function buildIntroEmailHtml(input: {
   candidateName: string;
   companyName: string;
@@ -209,7 +360,7 @@ export async function sendIntroEmail(
       return;
     }
 
-    const workEmail = introRequest.work_email?.trim();
+    const workEmail = resolveEmployerEmail(introRequest);
     if (!workEmail) {
       console.warn("Intro email: intro request has no work email; skipping intro email.");
       return;
@@ -221,9 +372,8 @@ export async function sendIntroEmail(
     );
     const candidateName = candidateContact.fullName;
     const companyName = introRequest.company_name?.trim() || "your company";
-    const roleTitle = introRequest.role_title?.trim() || "Open role";
-    const compensationBand =
-      introRequest.compensation_band?.trim() || "Not specified";
+    const roleTitle = resolveRoleTitle(introRequest);
+    const compensationBand = resolveCompensationBand(introRequest);
     const candidateEmail = candidateContact.email;
 
     const resend = new Resend(resendApiKey);

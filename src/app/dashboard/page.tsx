@@ -75,6 +75,17 @@ import {
   getFitVerdictBadgeClass,
   type OpportunityMatchResult,
 } from "@/lib/opportunity-match";
+import {
+  CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS,
+  getCandidateIntroStatusBadgeClass,
+  getCandidateIntroStatusLabel,
+  normalizeCandidateIntroStatus,
+  resolveIntroCompanyEmail,
+  resolveIntroCompensationRange,
+  resolveIntroTargetRole,
+  type CandidateIntroRequestRow,
+} from "@/lib/candidate-intro-requests";
+import { formatRelativeTime } from "@/lib/format-relative-time";
 import { createEmployerNotification } from "@/lib/employer-notifications";
 import {
   fetchTalentMatchInsight,
@@ -867,6 +878,13 @@ export default function DashboardPage() {
   const [matchInsights, setMatchInsights] = useState<Record<string, MatchInsight>>({});
   const [matchLoadingIds, setMatchLoadingIds] = useState<Record<string, boolean>>({});
   const matchFetchedRef = useRef<Set<string>>(new Set());
+  const [candidateIntroRequests, setCandidateIntroRequests] = useState<
+    CandidateIntroRequestRow[]
+  >([]);
+  const [candidateIntroLoading, setCandidateIntroLoading] = useState(false);
+  const [introRespondLoadingId, setIntroRespondLoadingId] = useState<
+    string | null
+  >(null);
   const [talentMatchScores, setTalentMatchScores] = useState<
     Record<string, MatchResult>
   >({});
@@ -1286,6 +1304,28 @@ export default function DashboardPage() {
     setUnlockedCandidateIds(unlocked);
   }, []);
 
+  const fetchCandidateIntroRequests = useCallback(async (userId: string) => {
+    const supabase = createClient();
+    setCandidateIntroLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("intro_requests")
+        .select(CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS)
+        .eq("candidate_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Candidate intro request fetch error:", error);
+        return;
+      }
+
+      setCandidateIntroRequests((data ?? []) as CandidateIntroRequestRow[]);
+    } finally {
+      setCandidateIntroLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!user?.id || !showTalentPoolNav) {
       return;
@@ -1293,6 +1333,26 @@ export default function DashboardPage() {
 
     void fetchIntroUnlocks(user.id);
   }, [user?.id, showTalentPoolNav, fetchIntroUnlocks]);
+
+  useEffect(() => {
+    if (!user?.id || isBusinessAccount || isEmployeeAccount) {
+      return;
+    }
+
+    void fetchCandidateIntroRequests(user.id);
+  }, [user?.id, isBusinessAccount, isEmployeeAccount, fetchCandidateIntroRequests]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab === "intro_requests" && !isBusinessAccount && !isEmployeeAccount) {
+      setActiveTab("intro_requests");
+    }
+  }, [isBusinessAccount, isEmployeeAccount, setActiveTab]);
 
   useEffect(() => {
     if (!showTalentPoolNav && activeTab === "talent") {
@@ -1311,6 +1371,12 @@ export default function DashboardPage() {
       setActiveTab("my_profile");
     }
     if (isBusinessAccount && activeTab === "opportunities") {
+      setActiveTab("my_profile");
+    }
+    if (
+      (isBusinessAccount || isEmployeeAccount) &&
+      activeTab === "intro_requests"
+    ) {
       setActiveTab("my_profile");
     }
   }, [showTalentPoolNav, isEmployeeAccount, isBusinessAccount, activeTab]);
@@ -2506,9 +2572,53 @@ const showToast = (msg: string) => {
     }
 
     showToast(
-      "Intro request submitted. Our team will review it under Provix placement terms."
+      "Intro request submitted. The candidate will be notified to accept or decline."
     );
   };
+
+  const handleCandidateIntroResponse = async (
+    introId: string,
+    action: "accept" | "decline"
+  ) => {
+    setIntroRespondLoadingId(introId);
+
+    try {
+      const response = await fetch(`/api/intros/${introId}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const payload = (await response.json()) as {
+        message?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        showToast(payload.error ?? "Could not update intro request.");
+        return;
+      }
+
+      if (user?.id) {
+        void fetchCandidateIntroRequests(user.id);
+      }
+
+      showToast(
+        payload.message ??
+          (action === "accept"
+            ? "Intro accepted. Check your inbox for the mutual introduction email."
+            : "Intro request declined.")
+      );
+    } catch (error) {
+      console.error("Candidate intro response failed:", error);
+      showToast("Could not update intro request.");
+    } finally {
+      setIntroRespondLoadingId(null);
+    }
+  };
+
+  const pendingCandidateIntroCount = candidateIntroRequests.filter(
+    (request) => normalizeCandidateIntroStatus(request.status) === "pending"
+  ).length;
 
   const getCandidatePublicName = (candidate: TalentPoolCandidate) =>
     getPublicCandidateDisplayName({
@@ -4010,6 +4120,170 @@ const showToast = (msg: string) => {
                             )}
                           </button>
                         </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isBusinessAccount && !isEmployeeAccount && activeTab === "intro_requests" && (
+            <div>
+              <div className="mb-8">
+                <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+                  Warm Intros
+                </p>
+                <h1 className="text-3xl font-extrabold tracking-tight text-white">
+                  Intro Requests
+                </h1>
+                <p className="text-slate-400 text-sm mt-2">
+                  Review employer introduction requests and approve the ones you want to pursue.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                    Pending Review
+                  </span>
+                  <span className="text-3xl font-extrabold text-amber-400">
+                    {candidateIntroLoading ? "—" : pendingCandidateIntroCount}
+                  </span>
+                </div>
+                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                    Accepted
+                  </span>
+                  <span className="text-3xl font-extrabold text-emerald-400">
+                    {candidateIntroLoading
+                      ? "—"
+                      : candidateIntroRequests.filter(
+                          (request) =>
+                            normalizeCandidateIntroStatus(request.status) ===
+                            "accepted"
+                        ).length}
+                  </span>
+                </div>
+                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                    Total Requests
+                  </span>
+                  <span className="text-3xl font-extrabold text-white">
+                    {candidateIntroLoading ? "—" : candidateIntroRequests.length}
+                  </span>
+                </div>
+              </div>
+
+              {candidateIntroLoading ? (
+                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-slate-400">
+                    Loading intro requests...
+                  </p>
+                </div>
+              ) : candidateIntroRequests.length === 0 ? (
+                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-slate-300">
+                    No intro requests yet
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    When employers request a warm introduction, they will appear here for your review.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {candidateIntroRequests.map((request) => {
+                    const status = normalizeCandidateIntroStatus(request.status);
+                    const isPending = status === "pending";
+                    const isResponding = introRespondLoadingId === request.id;
+                    const companyName =
+                      request.company_name?.trim() || "Verified employer";
+                    const companyEmail = resolveIntroCompanyEmail(request);
+                    const targetRole = resolveIntroTargetRole(request);
+                    const compensationRange =
+                      resolveIntroCompensationRange(request);
+
+                    return (
+                      <div
+                        key={request.id}
+                        className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                          <div className="min-w-0">
+                            <h3 className="font-bold text-white text-base truncate">
+                              {companyName}
+                            </h3>
+                            <p className="text-sm text-indigo-400 font-medium mt-0.5 truncate">
+                              {targetRole}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-2">
+                              {formatRelativeTime(request.created_at)}
+                            </p>
+                          </div>
+                          <span
+                            className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${getCandidateIntroStatusBadgeClass(request.status)}`}
+                          >
+                            {getCandidateIntroStatusLabel(request.status)}
+                          </span>
+                        </div>
+
+                        <div className="rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-3 mb-4 space-y-2">
+                          <div className="flex items-start justify-between gap-3 text-xs">
+                            <span className="text-slate-500 uppercase tracking-widest font-bold">
+                              Contact
+                            </span>
+                            <span className="text-slate-300 text-right break-all">
+                              {companyEmail || "Not provided"}
+                            </span>
+                          </div>
+                          <div className="flex items-start justify-between gap-3 text-xs">
+                            <span className="text-slate-500 uppercase tracking-widest font-bold">
+                              Compensation
+                            </span>
+                            <span className="text-emerald-400 font-semibold text-right">
+                              {compensationRange}
+                            </span>
+                          </div>
+                        </div>
+
+                        {isPending ? (
+                          <div className="mt-auto flex items-center justify-end gap-2 pt-4 border-t border-slate-800/60">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleCandidateIntroResponse(
+                                  request.id,
+                                  "decline"
+                                )
+                              }
+                              disabled={isResponding}
+                              className="text-[11px] font-bold px-4 py-2 rounded-lg border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
+                            >
+                              Decline
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleCandidateIntroResponse(
+                                  request.id,
+                                  "accept"
+                                )
+                              }
+                              disabled={isResponding}
+                              className="text-[11px] font-bold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 transition-all cursor-pointer disabled:opacity-60"
+                            >
+                              {isResponding ? "Saving..." : "Accept Intro"}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-auto pt-4 border-t border-slate-800/60">
+                            <p className="text-xs text-slate-500">
+                              {status === "accepted"
+                                ? "You accepted this intro. Check your inbox for the mutual introduction email."
+                                : "You declined this introduction request."}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

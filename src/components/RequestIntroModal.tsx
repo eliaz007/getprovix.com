@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
-import { createClient } from "@/utils/supabase/client";
 
 export const COMP_BAND_OPTIONS = [
   "$60k–$80k",
@@ -94,36 +93,21 @@ export default function RequestIntroModal({
     setSubmitting(true);
 
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const response = await fetch("/api/intros/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId: candidate.profileId ?? candidate.id,
+          candidateName: candidate.name || "Candidate",
+          companyName: trimmedCompanyName,
+          companyEmail: trimmedWorkEmail,
+          targetRole: trimmedRoleTitle,
+          compensationRange: compBand,
+          termsAccepted: true,
+        }),
+      });
 
-      if (!user) {
-        setError("You must be logged in to request an introduction.");
-        return;
-      }
-
-      const agreedAt = new Date().toISOString();
-
-      const payload = {
-        user_id: user.id,
-        candidate_name: candidate.name || "Candidate",
-        candidate_id: candidate.profileId ?? candidate.id,
-        company_name: trimmedCompanyName,
-        work_email: trimmedWorkEmail,
-        role_title: trimmedRoleTitle,
-        compensation_band: compBand,
-        terms_accepted: true,
-        terms_agreed_at: agreedAt,
-        status: "pending_admin_approval" as const,
-      };
-
-      const { error: insertError } = await supabase
-        .from("intro_requests")
-        .insert(payload);
-
-      if (insertError) {
+      if (!response.ok) {
         setError("Could not submit your request. Please try again.");
         return;
       }

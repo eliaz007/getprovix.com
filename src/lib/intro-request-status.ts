@@ -25,6 +25,7 @@ export type IntroPipelineStatus =
   (typeof INTRO_PIPELINE_STATUSES)[number]["value"];
 
 export const INTRO_UNLOCK_STATUSES = new Set<IntroPipelineStatus | string>([
+  "accepted",
   "approved_intro_sent",
   "interviewing",
   "hired",
@@ -34,6 +35,7 @@ export const INTRO_UNLOCK_STATUSES = new Set<IntroPipelineStatus | string>([
 
 const LEGACY_STATUS_MAP: Record<string, IntroPipelineStatus> = {
   pending: "pending_admin_approval",
+  accepted: "approved_intro_sent",
   approved: "approved_intro_sent",
   approved_intro_sent: "approved_intro_sent",
   interviewing: "interviewing",
