@@ -191,30 +191,3 @@ export function resolveCodenameAlias(profile: {
 
   return generateCodenameAlias(buildCodenameAliasInputFromProfile(profile));
 }
-
-export function resolveCodenameAlias(
-  storedAlias: string | null | undefined,
-  input: CodenameAliasInput
-): string {
-  const trimmed = storedAlias?.trim();
-  if (trimmed) {
-    return trimmed;
-  }
-
-  return generateCodenameAlias(input);
-}
-
-export function resolveCodenameAliasForProfile(input: {
-  id: string;
-  codename_alias?: string | null;
-  job_title?: string | null;
-  headline?: string | null;
-  major?: string | null;
-  role?: string | null;
-  skills?: string[] | null;
-}): string {
-  return resolveCodenameAlias(
-    input.codename_alias,
-    buildCodenameAliasInputFromProfile(input)
-  );
-}
