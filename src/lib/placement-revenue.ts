@@ -1,8 +1,8 @@
 export const FLAT_FEE_THRESHOLD = 25_000;
 export const FLAT_FEE_AMOUNT = 2_500;
 export const CONTINGENCY_RATE = 0.1;
-export const DEFAULT_CANDIDATE_BONUS = 375;
-export const CANDIDATE_BONUS_RANGE_LABEL = "$250–$500";
+export const DEFAULT_CANDIDATE_BONUS = 750;
+export const CANDIDATE_BONUS_RANGE_LABEL = "$750";
 
 export type PlacementRevenueInput = {
   agreed_first_year_compensation?: number | null;

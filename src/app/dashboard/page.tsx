@@ -114,6 +114,7 @@ import {
   type WorkPreference,
 } from "@/lib/work-preference";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
+import { CANDIDATE_BONUS_RANGE_LABEL } from "@/lib/placement-revenue";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
@@ -5836,7 +5837,7 @@ const showToast = (msg: string) => {
                     Request intros for free. You only pay Provix after a successful hire is confirmed.
                   </p>
                   <p>
-                    Candidate bonuses of $350 may be allocated on sub-$25k placements to support verified talent.
+                    Candidate bonuses of {CANDIDATE_BONUS_RANGE_LABEL} may be allocated on sub-$25k placements to support verified talent.
                   </p>
                 </div>
               </div>
