@@ -333,6 +333,8 @@ type ProfileRecord = {
   work_preference?: string | null;
   role_type?: string | null;
   integrity_score?: number | null;
+  daily_scans?: number | null;
+  last_scan_date?: string | null;
 };
 
 type InterviewCheatSheetQuestion = {
@@ -3104,11 +3106,12 @@ const showToast = (msg: string) => {
         }),
       });
 
+      const data = (await response.json()) as AuditResult & { error?: string };
+
       if (!response.ok) {
-        throw new Error(`Audit failed (${response.status})`);
+        throw new Error(data.error ?? `Audit failed (${response.status})`);
       }
 
-      const data = (await response.json()) as AuditResult;
       setEmployerAuditResult(data);
     } catch (error) {
       console.error("Employer audit failed:", error);

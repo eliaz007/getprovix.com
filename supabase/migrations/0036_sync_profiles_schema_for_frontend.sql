@@ -249,5 +249,24 @@ comment on column public.profiles.audit_data is
 comment on column public.profiles.is_featured is
   'When true, profile may appear on the landing page Featured Builders showcase.';
 
+-- ---------------------------------------------------------------------------
+-- 14. Daily AI auditor scan tracking (0040)
+-- ---------------------------------------------------------------------------
+alter table public.profiles
+  add column if not exists daily_scans integer,
+  add column if not exists last_scan_date date;
+
+update public.profiles
+set daily_scans = 0
+where daily_scans is null;
+
+alter table public.profiles
+  alter column daily_scans set default 0;
+
+comment on column public.profiles.daily_scans is
+  'Number of AI auditor scans consumed on last_scan_date (resets when the UTC date changes).';
+comment on column public.profiles.last_scan_date is
+  'UTC calendar date of the most recent successful AI auditor scan.';
+
 comment on table public.profiles is
   'Public profile row for each auth user. Schema synced by migration 0036 for frontend selects.';

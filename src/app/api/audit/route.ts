@@ -1,5 +1,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import {
+  DAILY_LIMIT_API_MESSAGE,
+  incrementDailyScanUsage,
+  loadDailyScanUsage,
+  type DailyScanUsage,
+} from "@/lib/daily-scan-limit";
+import { createClient } from "@/utils/supabase/server";
 
 export type AuditRequestBody = {
   targetRole?: string;
@@ -231,7 +238,68 @@ async function generateGeminiAudit(body: AuditRequestBody): Promise<AuditResult>
     : new Error("All Gemini models failed.");
 }
 
+async function requireAuthenticatedUsage(): Promise<
+  | { ok: false; response: NextResponse }
+  | {
+      ok: true;
+      supabase: Awaited<ReturnType<typeof createClient>>;
+      user: { id: string };
+      usage: DailyScanUsage;
+    }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+
+  const { usage, error } = await loadDailyScanUsage(supabase, user.id);
+
+  if (error) {
+    console.error("[audit] failed to load daily scan usage:", error);
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Could not verify daily scan limit." },
+        { status: 500 }
+      ),
+    };
+  }
+
+  return { ok: true, supabase, user, usage };
+}
+
+export async function GET() {
+  const auth = await requireAuthenticatedUsage();
+
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  return NextResponse.json(auth.usage);
+}
+
 export async function POST(request: Request) {
+  const auth = await requireAuthenticatedUsage();
+
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  if (auth.usage.limit_reached) {
+    return NextResponse.json(
+      { error: DAILY_LIMIT_API_MESSAGE, ...auth.usage },
+      { status: 429 }
+    );
+  }
+
   let body: unknown;
 
   try {
@@ -252,11 +320,20 @@ export async function POST(request: Request) {
 
   const payload = body as AuditRequestBody;
 
+  let result: AuditResult;
+
   try {
-    const result = await generateGeminiAudit(payload);
-    return NextResponse.json(result);
+    result = await generateGeminiAudit(payload);
   } catch (error) {
     console.error("Gemini audit API failed, using fallback:", error);
-    return NextResponse.json(buildFallbackAudit(payload));
+    result = buildFallbackAudit(payload);
   }
+
+  const usage = await incrementDailyScanUsage(
+    auth.supabase,
+    auth.user.id,
+    auth.usage
+  );
+
+  return NextResponse.json({ ...result, ...usage });
 }

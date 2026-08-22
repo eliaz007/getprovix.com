@@ -10,6 +10,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
+import {
+  DAILY_LIMIT_UI_MESSAGE,
+  type DailyScanUsage,
+} from "@/lib/daily-scan-limit";
 
 const COMPENSATION_LEVELS = ["Junior", "Mid", "Senior"] as const;
 
@@ -39,10 +43,32 @@ export default function AuditorPage() {
   const [stageIndex, setStageIndex] = useState(0);
   const [result, setResult] = useState<AuditResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [limitReached, setLimitReached] = useState(false);
   const stageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadUsage = async () => {
+      try {
+        const response = await fetch("/api/audit");
+        if (!response.ok) {
+          return;
+        }
+
+        const data = (await response.json()) as DailyScanUsage;
+        if (!cancelled) {
+          setLimitReached(Boolean(data.limit_reached));
+        }
+      } catch (err) {
+        console.error("Could not load auditor scan usage:", err);
+      }
+    };
+
+    void loadUsage();
+
     return () => {
+      cancelled = true;
       if (stageIntervalRef.current) {
         clearInterval(stageIntervalRef.current);
       }
@@ -72,7 +98,7 @@ export default function AuditorPage() {
   };
 
   const runAudit = async () => {
-    if (!canSubmit || loading) {
+    if (!canSubmit || loading || limitReached) {
       return;
     }
 
@@ -93,12 +119,17 @@ export default function AuditorPage() {
         }),
       });
 
-      const data = (await response.json()) as AuditResult & { error?: string };
+      const data = (await response.json()) as AuditResult &
+        DailyScanUsage & { error?: string };
 
       if (!response.ok) {
+        if (response.status === 429 || data.limit_reached) {
+          setLimitReached(true);
+        }
         throw new Error(data.error ?? "Audit request failed.");
       }
 
+      setLimitReached(Boolean(data.limit_reached));
       setResult(data);
     } catch (err) {
       const message =
@@ -188,10 +219,19 @@ export default function AuditorPage() {
               </select>
             </div>
 
+            {limitReached && (
+              <div
+                role="status"
+                className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+              >
+                {DAILY_LIMIT_UI_MESSAGE}
+              </div>
+            )}
+
             <button
               type="button"
               onClick={() => void runAudit()}
-              disabled={loading || !canSubmit}
+              disabled={loading || !canSubmit || limitReached}
               className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2"
             >
               {loading ? (
