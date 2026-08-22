@@ -97,10 +97,11 @@ import {
   fetchEmployerTalentPoolProfiles,
   type TalentPoolProfileRow,
 } from "@/lib/talent-pool-profiles";
+import { fetchDashboardJobs, type JobRow } from "@/lib/jobs";
 import {
   countActiveOpenings,
   countJobsMatchingCandidateSkills,
-  isActiveJob,
+  getActiveJobs,
   isVisibleToEmployers,
 } from "@/lib/opportunities-metrics";
 import { isPublishedVerifiedCandidateProfile } from "@/lib/published-candidate-profile";
@@ -876,7 +877,7 @@ export default function DashboardPage() {
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
-  const [jobs, setJobs] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<JobRow[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [appliedJobIds, setAppliedJobIds] = useState<string[]>([]);
   const [jobInterestCounts, setJobInterestCounts] = useState<
@@ -1143,14 +1144,14 @@ export default function DashboardPage() {
 
     const loadJobs = async () => {
       try {
-        const { data, error } = await supabase.from("jobs").select("*");
+        const { data, error } = await fetchDashboardJobs(supabase);
 
         if (error) {
-          throw error;
+          throw new Error(error.message);
         }
 
         if (!isMounted) return;
-        setJobs(data ?? []);
+        setJobs(data);
       } catch (err) {
         console.error("Failed to fetch jobs:", err);
         if (isMounted) setJobs([]);
@@ -2093,8 +2094,6 @@ const showToast = (msg: string) => {
   const getMatchBadgeClass = (insight: MatchInsight) =>
     getFitVerdictBadgeClass(insight.fit_verdict);
 
-  const isJobVisibleInFeed = isActiveJob;
-
   const candidateSkillsForMatching = useMemo(() => {
     if (Array.isArray(dbProfile?.skills) && dbProfile.skills.length > 0) {
       return dbProfile.skills;
@@ -2105,6 +2104,8 @@ const showToast = (msg: string) => {
       .map((skill) => skill.trim())
       .filter(Boolean);
   }, [dbProfile?.skills, skills]);
+
+  const activeJobs = useMemo(() => getActiveJobs(jobs), [jobs]);
 
   const activeOpeningsCount = useMemo(
     () => countActiveOpenings(jobs),
@@ -2120,11 +2121,7 @@ const showToast = (msg: string) => {
     isVisibleToEmployers(dbProfile?.is_visible_in_pool) &&
     isValidGitHubUrl(portfolioUrl);
 
-  const filteredJobFeed = jobs.filter((job) => {
-    if (!isJobVisibleInFeed(job)) {
-      return false;
-    }
-
+  const filteredJobFeed = activeJobs.filter((job) => {
     const query = opportunitiesSearch.trim().toLowerCase();
     const tags = Array.isArray(job.tags) ? job.tags : [];
     const matchesSearch =
@@ -2139,11 +2136,7 @@ const showToast = (msg: string) => {
     return matchesSearch && matchesRemote;
   });
 
-  const filteredRadarJobFeed = jobs.filter((job) => {
-    if (!isJobVisibleInFeed(job)) {
-      return false;
-    }
-
+  const filteredRadarJobFeed = activeJobs.filter((job) => {
     const query = radarSearch.trim().toLowerCase();
     const tags = Array.isArray(job.tags) ? job.tags : [];
     const matchesSearch =
@@ -2170,7 +2163,7 @@ const showToast = (msg: string) => {
   const isMatchEvaluating = Object.values(matchLoadingIds).some(Boolean);
 
   useEffect(() => {
-    if (jobsLoading || jobs.length === 0 || isBusinessAccount) {
+    if (jobsLoading || activeJobs.length === 0 || isBusinessAccount) {
       return;
     }
 
@@ -2195,9 +2188,7 @@ const showToast = (msg: string) => {
         "",
     };
 
-    const pendingJobs = jobs.filter(
-      (job) => isJobVisibleInFeed(job) && !matchInsights[job.id]
-    );
+    const pendingJobs = activeJobs.filter((job) => !matchInsights[job.id]);
 
     if (pendingJobs.length === 0) {
       return;
@@ -2263,7 +2254,7 @@ const showToast = (msg: string) => {
   }, [
     activeTab,
     isBusinessAccount,
-    jobs,
+    activeJobs,
     jobsLoading,
     title,
     bio,
@@ -4075,6 +4066,15 @@ const showToast = (msg: string) => {
                     Loading opportunities...
                   </p>
                 </div>
+              ) : activeJobs.length === 0 ? (
+                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-slate-300">
+                    No active openings right now
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Check back soon — new roles are posted as employers join Provix.
+                  </p>
+                </div>
               ) : filteredJobFeed.length === 0 ? (
                 <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
@@ -5233,7 +5233,7 @@ const showToast = (msg: string) => {
                     {jobsLoading ? "—" : filteredRadarJobFeed.length}
                   </span>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    of {jobsLoading ? "—" : jobs.length} total
+                    of {jobsLoading ? "—" : activeOpeningsCount} active
                   </p>
                 </div>
                 <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
@@ -5297,6 +5297,15 @@ const showToast = (msg: string) => {
                 <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-400">
                     Loading opportunities...
+                  </p>
+                </div>
+              ) : activeJobs.length === 0 ? (
+                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-slate-300">
+                    No active openings right now
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Check back soon — new roles are posted as employers join Provix.
                   </p>
                 </div>
               ) : filteredRadarJobFeed.length === 0 ? (
