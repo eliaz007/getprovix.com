@@ -248,7 +248,7 @@ export default function OnboardingPage() {
                 id="companyName"
                 type="text"
                 name="companyName"
-                placeholder="Acme Talent Partners"
+                placeholder="Your company name"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 className={inputClass}

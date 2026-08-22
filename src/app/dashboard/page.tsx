@@ -6811,7 +6811,7 @@ const showToast = (msg: string) => {
                     type="text"
                     value={betaCompanyName}
                     onChange={(e) => setBetaCompanyName(e.target.value)}
-                    placeholder="Acme Talent Partners"
+                    placeholder="Your company name"
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
                   />
                 </div>
