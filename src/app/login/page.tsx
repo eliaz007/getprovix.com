@@ -12,6 +12,11 @@ import {
   signupMetadataForKind,
   syncEmployerProfileAfterSignup,
 } from "@/lib/account-role";
+import {
+  buildPasswordResetRedirectUrl,
+  getStandardEmailValidationMessage,
+  normalizeEmail,
+} from "@/lib/validate-email";
 import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
@@ -41,6 +46,8 @@ export default function LoginPage() {
   const [mode, setMode] = useState<AuthMode>("sign-in");
   const [signUpType, setSignUpType] = useState<SignUpType>("candidate");
   const [email, setEmail] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetEmailError, setResetEmailError] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [firstName, setFirstName] = useState("");
@@ -79,6 +86,18 @@ export default function LoginPage() {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authError = params.get("error")?.trim();
+
+    if (!authError) {
+      return;
+    }
+
+    setError(authError);
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode);
     setSignUpType("candidate");
@@ -91,11 +110,25 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setMessage(null);
+    setResetEmailError(null);
+
+    const trimmedEmail = normalizeEmail(resetEmail);
+    setResetEmail(trimmedEmail);
+
+    const validationMessage = getStandardEmailValidationMessage(trimmedEmail);
+    if (validationMessage) {
+      setResetEmailError(validationMessage);
+      return;
+    }
+
     setLoading(true);
 
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/update-password`,
-    });
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      trimmedEmail,
+      {
+        redirectTo: buildPasswordResetRedirectUrl(window.location.origin),
+      }
+    );
 
     setLoading(false);
 
@@ -274,21 +307,37 @@ export default function LoginPage() {
           )}
 
           {showResetPassword ? (
-            <form className="flex flex-col gap-4" onSubmit={handleResetPasswordSubmit}>
+            <form
+              className="flex flex-col gap-4"
+              onSubmit={handleResetPasswordSubmit}
+              noValidate
+            >
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="resetEmail" className="text-sm font-medium text-zinc-300">
                   Email
                 </label>
                 <input
                   id="resetEmail"
-                  type="email"
+                  type="text"
+                  inputMode="email"
+                  autoComplete="email"
                   name="resetEmail"
                   placeholder="name@example.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                  value={resetEmail}
+                  onChange={(e) => {
+                    setResetEmail(e.target.value);
+                    if (resetEmailError) {
+                      setResetEmailError(null);
+                    }
+                  }}
+                  aria-invalid={Boolean(resetEmailError)}
+                  className={`bg-zinc-950 border rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${
+                    resetEmailError ? "border-red-500/50" : "border-zinc-800"
+                  }`}
                 />
+                {resetEmailError && (
+                  <p className="text-sm text-red-400">{resetEmailError}</p>
+                )}
               </div>
 
               <button
@@ -303,6 +352,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => {
                   setShowResetPassword(false);
+                  setResetEmailError(null);
                   setError(null);
                   setMessage(null);
                 }}
@@ -400,6 +450,8 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => {
+                    setResetEmail(normalizeEmail(email));
+                    setResetEmailError(null);
                     setShowResetPassword(true);
                     setError(null);
                     setMessage(null);

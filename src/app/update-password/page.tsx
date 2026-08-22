@@ -21,6 +21,20 @@ export default function UpdatePasswordPage() {
     let active = true;
 
     const ensureRecoverySession = async () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const code = searchParams.get("code");
+
+      if (code) {
+        const callbackUrl = new URL("/auth/callback", window.location.origin);
+        callbackUrl.searchParams.set("code", code);
+        callbackUrl.searchParams.set(
+          "next",
+          searchParams.get("next") ?? "/update-password"
+        );
+        window.location.replace(callbackUrl.toString());
+        return;
+      }
+
       const hash = window.location.hash.startsWith("#")
         ? window.location.hash.slice(1)
         : window.location.hash;
@@ -42,9 +56,25 @@ export default function UpdatePasswordPage() {
         window.history.replaceState({}, "", window.location.pathname);
       }
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const waitForSession = async (attempts = 4) => {
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+
+          if (session) {
+            return session;
+          }
+
+          if (attempt < attempts - 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, 250));
+          }
+        }
+
+        return null;
+      };
+
+      const session = await waitForSession();
 
       if (!active) {
         return;
@@ -52,12 +82,6 @@ export default function UpdatePasswordPage() {
 
       setHasSession(Boolean(session));
       setCheckingSession(false);
-
-      if (!session) {
-        setError(
-          "Your reset link is invalid or has expired. Request a new password reset from the sign-in page."
-        );
-      }
     };
 
     void ensureRecoverySession();
@@ -84,7 +108,7 @@ export default function UpdatePasswordPage() {
 
     if (!hasSession) {
       setError(
-        "Your reset link is invalid or has expired. Request a new password reset from the sign-in page."
+        "No active password reset session. Request a new reset link from the sign-in page."
       );
       return;
     }

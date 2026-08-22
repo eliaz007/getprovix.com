@@ -39,12 +39,16 @@ export async function GET(request: NextRequest) {
     }
   );
 
+  let authErrorMessage: string | null = null;
+
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
       return response;
     }
+
+    authErrorMessage = error.message;
   }
 
   if (tokenHash && type) {
@@ -56,7 +60,14 @@ export async function GET(request: NextRequest) {
     if (!error) {
       return response;
     }
+
+    authErrorMessage = error.message;
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
+  const loginUrl = new URL("/login", origin);
+  loginUrl.searchParams.set(
+    "error",
+    authErrorMessage ?? "Authentication callback failed."
+  );
+  return NextResponse.redirect(loginUrl.toString());
 }
