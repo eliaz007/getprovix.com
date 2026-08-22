@@ -12,7 +12,7 @@ import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
-import { resolveCandidateScore } from "@/data/vetted-candidates";
+import { resolveCandidateScore } from "@/lib/candidate-score";
 import { getPublicProfileBySlug } from "@/lib/public-profile";
 import { buildPublicProfileUrl } from "@/lib/profile-url";
 import type { Metadata } from "next";
@@ -139,7 +139,7 @@ export default async function PublicCandidateProfilePage({
                       {profile.availabilityStatus}
                     </span>
                   )}
-                  {profile.hasProofOfWork && (
+                  {profile.hasProofOfWork && proofScore != null && (
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 font-bold text-emerald-300">
                       <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
                       Integrity · {proofScore}/100

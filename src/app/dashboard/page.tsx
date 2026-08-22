@@ -17,6 +17,7 @@ import {
   Target,
 } from "lucide-react";
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
+import type { AuditResult } from "@/app/api/audit/route";
 import RequestIntroModal from "@/components/RequestIntroModal";
 import JobApplicantsDrawer, {
   type JobApplicantView,
@@ -113,11 +114,15 @@ import {
   type CandidateTimezone,
   type WorkPreference,
 } from "@/lib/work-preference";
-import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
 import { CANDIDATE_BONUS_RANGE_LABEL } from "@/lib/placement-revenue";
+import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
+import {
+  hydrateEmployerProfileFromRow,
+  persistEmployerProfile,
+  type EmployerProfileFormData,
+} from "@/lib/persist-employer-profile";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
-const BUSINESS_PROFILE_STORAGE_KEY = "vanguardx_business_profile_data";
 const BETA_UNLOCK_STORAGE_KEY = "beta_unlocked_session";
 const BETA_LEAD_STORAGE_KEY = "beta_unlocked_lead";
 const AUDIT_STORAGE_PREFIX = "vanguardx_audit_";
@@ -134,26 +139,26 @@ const COLLEGE_FIT_STAGES = [
   "Building tailored strategy breakdown...",
 ] as const;
 
-const DEFAULT_PROFILE_DATA = {
-  name: "Alex Morgan",
-  role: "Full-Stack Developer",
-  bio: "Passionate about building fast Next.js apps and workflow automations.",
-  school: "Stanford University",
-  degree: "B.S. Computer Science",
-  gpa: "3.9",
-  gradYear: "2026",
-  github: "github.com/alexm",
+const EMPTY_PROFILE_DATA = {
+  name: "",
+  role: "",
+  bio: "",
+  school: "",
+  degree: "",
+  gpa: "",
+  gradYear: "",
+  github: "",
   demoVideo: "",
-  projects: "1. Built a Next.js SaaS app with 500 users.\n2. Scaled a local agency's leads by 300% using automations."
+  projects: "",
 };
 
-const DEFAULT_BUSINESS_PROFILE_DATA = {
-  businessName: "Acme Talent Partners",
-  industry: "Software Engineering & Tech",
-  companyBio: "We build fast, reliable software for high-growth startups — and we hire on proof, not polish.",
-  workEmail: "hiring@acmetalent.com",
-  phone: "+1 (555) 019-2231",
-  billingPlan: "Free Plan"
+const EMPTY_BUSINESS_PROFILE_DATA: EmployerProfileFormData = {
+  businessName: "",
+  industry: "",
+  companyBio: "",
+  workEmail: "",
+  phone: "",
+  billingPlan: "Free Plan",
 };
 
 // --- Comprehensive Minimalist UI Icons ---
@@ -308,6 +313,7 @@ type ProfileRecord = {
   availability_status?: string | null;
   is_visible_in_pool?: boolean | null;
   company_name?: string | null;
+  industry?: string | null;
   tier?: string | null;
   is_pro?: boolean | null;
   phone?: string | null;
@@ -988,7 +994,7 @@ export default function DashboardPage() {
           loadedVisibleInPool && isValidGitHubUrl(loadedPortfolioUrl)
         );
 
-        const loadedName = displayName || DEFAULT_PROFILE_DATA.name;
+        const loadedName = displayName || "";
         const loadedTitle = profileWithRole?.job_title ?? "";
         const loadedBio = profileWithRole?.bio ?? "";
         const loadedSchool =
@@ -1033,15 +1039,16 @@ export default function DashboardPage() {
         setCandidateTimezone(loadedCandidateTimezone);
 
         const hydratedProfile = {
-          ...DEFAULT_PROFILE_DATA,
           name: loadedName,
           role: loadedTitle,
           bio: loadedBio,
           school: loadedSchool,
           degree: loadedDegree,
-          github: loadedPortfolioUrl,
+          gpa: "",
           gradYear: loadedGradYear,
+          github: loadedPortfolioUrl,
           demoVideo: loadedYoutubeUrl,
+          projects: "",
         };
         setProfileData(hydratedProfile);
         setSavedProfileData(hydratedProfile);
@@ -1064,16 +1071,12 @@ export default function DashboardPage() {
           projects: hydratedProfile.projects,
         });
 
-        if (profileWithRole?.company_name) {
-          setBusinessProfileData((prev) => ({
-            ...prev,
-            businessName: profileWithRole.company_name as string,
-          }));
-          setSavedBusinessProfileData((prev) => ({
-            ...prev,
-            businessName: profileWithRole.company_name as string,
-          }));
-        }
+        const hydratedBusiness = hydrateEmployerProfileFromRow(
+          profileWithRole,
+          sessionUser.email
+        );
+        setBusinessProfileData(hydratedBusiness);
+        setSavedBusinessProfileData(hydratedBusiness);
 
         if (canAccessTalentPool(resolvedRole)) {
           setProfileSubMenu("companyInfo");
@@ -1227,7 +1230,6 @@ export default function DashboardPage() {
         .map((job) => ({
           id: job.id,
           title: job.title ?? "Untitled Role",
-          department: "General",
           applicants: jobInterestCounts[job.id] ?? 0,
           status: job.status === "paused" ? "Paused" : "Active",
         }))
@@ -1458,13 +1460,13 @@ const showToast = (msg: string) => {
   } | null>(null);
 
   // --- USER PROFILE DATA STATE (name + legacy portfolio fields) ---
-  const [profileData, setProfileData] = useState(DEFAULT_PROFILE_DATA);
-  const [savedProfileData, setSavedProfileData] = useState(DEFAULT_PROFILE_DATA);
+  const [profileData, setProfileData] = useState(EMPTY_PROFILE_DATA);
+  const [savedProfileData, setSavedProfileData] = useState(EMPTY_PROFILE_DATA);
 
   // Mirrors profileData/savedProfileData above, but for business accounts —
   // business name, industry, work email, and phone instead of dev credentials.
-  const [businessProfileData, setBusinessProfileData] = useState(DEFAULT_BUSINESS_PROFILE_DATA);
-  const [savedBusinessProfileData, setSavedBusinessProfileData] = useState(DEFAULT_BUSINESS_PROFILE_DATA);
+  const [businessProfileData, setBusinessProfileData] = useState(EMPTY_BUSINESS_PROFILE_DATA);
+  const [savedBusinessProfileData, setSavedBusinessProfileData] = useState(EMPTY_BUSINESS_PROFILE_DATA);
   const employerCompanyNameForMatching =
     dbProfile?.company_name ||
     businessProfileData?.businessName ||
@@ -1592,20 +1594,6 @@ const showToast = (msg: string) => {
     });
   };
 
-  // Hydrate business profile data from LocalStorage once the component mounts on the client.
-  useEffect(() => {
-    try {
-      const storedBusiness = window.localStorage.getItem(BUSINESS_PROFILE_STORAGE_KEY);
-      if (storedBusiness) {
-        const parsedBusiness = { ...DEFAULT_BUSINESS_PROFILE_DATA, ...JSON.parse(storedBusiness) };
-        setBusinessProfileData(parsedBusiness);
-        setSavedBusinessProfileData(parsedBusiness);
-      }
-    } catch {
-      // Ignore corrupted or inaccessible storage (e.g. private browsing)
-    }
-  }, []);
-
   const handleSaveProfile = async () => {
     if (isSaving || !hasUnsavedChanges) return;
     if (!isBusinessAccount && !isDemoVideoValid) return;
@@ -1617,16 +1605,61 @@ const showToast = (msg: string) => {
     }
 
     if (isBusinessAccount) {
-      try {
-        window.localStorage.setItem(
-          BUSINESS_PROFILE_STORAGE_KEY,
-          JSON.stringify(businessProfileData)
-        );
-      } catch {
-        // Storage unavailable — the in-memory state still reflects the change
+      const profileId = dbProfile?.id ?? user?.id;
+      if (!profileId) {
+        showToast("You must be logged in to save your profile.");
+        return;
       }
-      setSavedBusinessProfileData(businessProfileData);
-      showToast("Profile changes saved successfully!");
+
+      setIsSaving(true);
+
+      try {
+        const supabase = createClient();
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError || !session?.user?.id) {
+          showToast("You must be logged in to save your profile.");
+          return;
+        }
+
+        const { error } = await persistEmployerProfile(
+          supabase,
+          session.user.id,
+          {
+            businessName: businessProfileData.businessName,
+            industry: businessProfileData.industry,
+            companyBio: businessProfileData.companyBio,
+            workEmail: businessProfileData.workEmail,
+            phone: businessProfileData.phone,
+          }
+        );
+
+        if (error) {
+          console.error("Employer profile update failed:", error);
+          showToast("Could not save company profile. Please try again.");
+          return;
+        }
+
+        setDbProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                company_name: businessProfileData.businessName.trim() || null,
+                industry: businessProfileData.industry.trim() || null,
+                bio: businessProfileData.companyBio.trim() || null,
+                contact_email: businessProfileData.workEmail.trim() || null,
+                phone: businessProfileData.phone.trim() || null,
+              }
+            : prev
+        );
+        setSavedBusinessProfileData(businessProfileData);
+        showToast("Profile changes saved successfully!");
+      } finally {
+        setIsSaving(false);
+      }
       return;
     }
 
@@ -1782,7 +1815,6 @@ const showToast = (msg: string) => {
     Array<{
       id: string;
       title: string;
-      department: string;
       applicants: number;
       status: string;
     }>
@@ -1903,7 +1935,11 @@ const showToast = (msg: string) => {
   const [evalMajor, setEvalMajor] = useState("");
   const [evalAccomplishments, setEvalAccomplishments] = useState("");
   const [evaluatingPoW, setEvaluatingPoW] = useState(false);
-  const [powResult, setPowResult] = useState(false);
+  const [employerAuditResult, setEmployerAuditResult] =
+    useState<AuditResult | null>(null);
+  const [employerAuditError, setEmployerAuditError] = useState<string | null>(
+    null
+  );
 
   const [appliedJobs, setAppliedJobs] = useState<
     Array<{
@@ -3057,9 +3093,42 @@ const showToast = (msg: string) => {
     }));
   };
 
-  const evaluateCandidate = () => {
+  const evaluateCandidate = async () => {
+    if (!evalAccomplishments.trim()) {
+      return;
+    }
+
     setEvaluatingPoW(true);
-    setTimeout(() => { setPowResult(true); setEvaluatingPoW(false); }, 1500);
+    setEmployerAuditError(null);
+    setEmployerAuditResult(null);
+
+    try {
+      const response = await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetRole: evalRole.trim() || undefined,
+          resumeSummary: evalAccomplishments.trim(),
+          compensationLevel: evalMajor.trim() || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Audit failed (${response.status})`);
+      }
+
+      const data = (await response.json()) as AuditResult;
+      setEmployerAuditResult(data);
+    } catch (error) {
+      console.error("Employer audit failed:", error);
+      setEmployerAuditError(
+        error instanceof Error
+          ? error.message
+          : "Could not run candidate audit. Please try again."
+      );
+    } finally {
+      setEvaluatingPoW(false);
+    }
   };
 
   // --- DERIVED VALUES FOR THE SHAREABLE PUBLIC PROFILE MODAL ---
@@ -5785,19 +5854,66 @@ const showToast = (msg: string) => {
                 </div>
 
                 <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-slate-800/60 p-6 min-h-[360px]">
-                  {powResult ? (
+                  {employerAuditError ? (
+                    <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
+                      {employerAuditError}
+                    </div>
+                  ) : employerAuditResult ? (
                     <div className="space-y-4">
                       <div className="flex justify-between items-center pb-4 border-b border-slate-800">
-                        <div className="text-2xl font-extrabold text-white">Hire Recommended</div>
-                        <div className="text-xl font-mono text-emerald-400 font-bold">92%</div>
+                        <div className="text-2xl font-extrabold text-white">
+                          Audit Score
+                        </div>
+                        <div
+                          className={`text-xl font-mono font-bold px-3 py-1 rounded-lg border ${getIntegrityScoreClass(employerAuditResult.score)}`}
+                        >
+                          {employerAuditResult.score}/100
+                        </div>
                       </div>
-                      <div className="text-sm text-slate-300 leading-relaxed">
-                        <span className="font-bold text-white block mb-1">Analysis:</span>
-                        This candidate balances structured education ({evalMajor || "Self-Taught"}) with strong real-world execution. The projects pasted show a high bias for action and ability to learn on the fly. Ideal fit for a {evalRole || "technical"} role.
-                      </div>
+
+                      {employerAuditResult.strengths.length > 0 && (
+                        <div>
+                          <span className="font-bold text-white block mb-2 text-sm">
+                            Strengths
+                          </span>
+                          <ul className="space-y-1.5 text-sm text-slate-300 leading-relaxed">
+                            {employerAuditResult.strengths.map((item) => (
+                              <li key={item}>• {item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {employerAuditResult.redFlags.length > 0 && (
+                        <div>
+                          <span className="font-bold text-white block mb-2 text-sm">
+                            Red Flags
+                          </span>
+                          <ul className="space-y-1.5 text-sm text-amber-200/90 leading-relaxed">
+                            {employerAuditResult.redFlags.map((item) => (
+                              <li key={item}>• {item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {employerAuditResult.recommendations.length > 0 && (
+                        <div>
+                          <span className="font-bold text-white block mb-2 text-sm">
+                            Recommendations
+                          </span>
+                          <ul className="space-y-1.5 text-sm text-slate-400 leading-relaxed">
+                            {employerAuditResult.recommendations.map((item) => (
+                              <li key={item}>• {item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   ) : (
-                    <div className="text-slate-500 text-center mt-28 text-sm">Awaiting candidate data...</div>
+                    <div className="text-slate-500 text-center mt-28 text-sm">
+                      Awaiting candidate data...
+                    </div>
                   )}
                 </div>
               </div>
