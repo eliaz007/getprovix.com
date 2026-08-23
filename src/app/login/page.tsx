@@ -5,6 +5,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { getPostLoginPath } from "@/lib/admin-access";
 import {
@@ -241,6 +242,35 @@ export default function LoginPage() {
               : "Create an account to get started"}
           </p>
 
+          {error && (
+            <div className="mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-2.5">
+              {error}
+            </div>
+          )}
+          {message && (
+            <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm rounded-lg px-4 py-2.5">
+              {message}
+            </div>
+          )}
+
+          {!showResetPassword && (
+            <>
+              <GoogleSignInButton
+                onError={(message) => {
+                  setMessage(null);
+                  setError(message || null);
+                }}
+              />
+              <div className="my-6 flex items-center gap-3">
+                <div className="h-px flex-1 bg-zinc-800" />
+                <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  or
+                </span>
+                <div className="h-px flex-1 bg-zinc-800" />
+              </div>
+            </>
+          )}
+
           {!showResetPassword && (
           <div className="grid grid-cols-2 gap-1 bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-6">
             <button
@@ -292,17 +322,6 @@ export default function LoginPage() {
               >
                 Business Sign Up
               </button>
-            </div>
-          )}
-
-          {error && (
-            <div className="mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-lg px-4 py-2.5">
-              {error}
-            </div>
-          )}
-          {message && (
-            <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm rounded-lg px-4 py-2.5">
-              {message}
             </div>
           )}
 

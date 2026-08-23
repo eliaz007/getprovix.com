@@ -18,8 +18,10 @@ export function isAdminUser(user: User | null | undefined): boolean {
   );
 }
 
-export function getPostLoginPath(user: User | null | undefined): "/" | "/admin" {
-  return isAdminUser(user) ? "/admin" : "/";
+export function getPostLoginPath(
+  user: User | null | undefined
+): "/dashboard" | "/admin" {
+  return isAdminUser(user) ? "/admin" : "/dashboard";
 }
 
 export function createServiceRoleClient() {

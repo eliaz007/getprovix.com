@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { Code2, ChevronDown, Shield, Zap } from "lucide-react";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import FeaturedShowcase from "@/components/FeaturedShowcase";
 import { createClient } from "@/utils/supabase/client";
@@ -65,6 +66,7 @@ export default function Home() {
   const [featuredLoading, setFeaturedLoading] = useState(true);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
   const [passwordUpdated, setPasswordUpdated] = useState(false);
+  const [googleAuthError, setGoogleAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -188,28 +190,51 @@ export default function Home() {
             interview cheat sheets to find developers who actually build.
           </p>
 
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="mt-10 flex flex-col items-center justify-center gap-4">
             {checkingSession ? (
               <>
-                <div className="h-[52px] w-full sm:w-40 rounded-lg bg-zinc-800 animate-pulse" aria-hidden />
-                <div className="h-[52px] w-full sm:w-32 rounded-lg bg-zinc-900 border border-zinc-800 animate-pulse" aria-hidden />
+                <div className="h-[52px] w-full sm:w-64 rounded-lg bg-zinc-800 animate-pulse" aria-hidden />
+                <div className="flex w-full sm:w-auto flex-col sm:flex-row items-center justify-center gap-4">
+                  <div className="h-[52px] w-full sm:w-40 rounded-lg bg-zinc-800 animate-pulse" aria-hidden />
+                  <div className="h-[52px] w-full sm:w-32 rounded-lg bg-zinc-900 border border-zinc-800 animate-pulse" aria-hidden />
+                </div>
               </>
             ) : (
               <>
-                <Link
-                  href={talentEntryHref}
-                  className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20"
-                >
-                  {isLoggedIn ? "Open Dashboard" : "Get Started"}
-                </Link>
                 {!isLoggedIn && (
-                  <Link
-                    href="/login"
-                    className="w-full sm:w-auto bg-transparent hover:bg-white/5 border border-zinc-700 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all"
-                  >
-                    Sign In
-                  </Link>
+                  <div className="w-full sm:w-auto flex flex-col items-center gap-3">
+                    <GoogleSignInButton
+                      className="inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-lg bg-white px-8 py-3.5 text-sm font-semibold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                      onError={(message) => setGoogleAuthError(message || null)}
+                    />
+                    {googleAuthError && (
+                      <p className="text-sm text-red-400">{googleAuthError}</p>
+                    )}
+                    <div className="flex w-full items-center gap-3">
+                      <div className="h-px flex-1 bg-zinc-800" />
+                      <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                        or
+                      </span>
+                      <div className="h-px flex-1 bg-zinc-800" />
+                    </div>
+                  </div>
                 )}
+                <div className="flex w-full sm:w-auto flex-col sm:flex-row items-center justify-center gap-4">
+                  <Link
+                    href={talentEntryHref}
+                    className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20"
+                  >
+                    {isLoggedIn ? "Open Dashboard" : "Get Started"}
+                  </Link>
+                  {!isLoggedIn && (
+                    <Link
+                      href="/login"
+                      className="w-full sm:w-auto bg-transparent hover:bg-white/5 border border-zinc-700 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all"
+                    >
+                      Sign In
+                    </Link>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -324,19 +349,32 @@ export default function Home() {
               scores — free to explore, pay only when you hire or unlock contact
               details.
             </p>
-            <div className="mt-8 flex items-center justify-center">
+            <div className="mt-8 flex flex-col items-center justify-center gap-4">
               {checkingSession ? (
                 <div
                   className="h-[52px] w-full sm:w-52 rounded-lg bg-zinc-800 animate-pulse"
                   aria-hidden
                 />
               ) : (
-                <Link
-                  href="/talent"
-                  className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20"
-                >
-                  Browse Vetted Talent
-                </Link>
+                <>
+                  {!isLoggedIn && (
+                    <div className="flex flex-col items-center gap-3 w-full sm:w-auto">
+                      <GoogleSignInButton
+                        className="inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-lg bg-white px-8 py-3.5 text-sm font-semibold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                        onError={(message) => setGoogleAuthError(message || null)}
+                      />
+                      {googleAuthError && (
+                        <p className="text-sm text-red-400">{googleAuthError}</p>
+                      )}
+                    </div>
+                  )}
+                  <Link
+                    href="/talent"
+                    className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-8 py-3.5 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20"
+                  >
+                    Browse Vetted Talent
+                  </Link>
+                </>
               )}
             </div>
           </div>
