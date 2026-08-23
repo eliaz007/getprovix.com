@@ -116,33 +116,12 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
       {/* --- TOP NAVIGATION --- */}
       <header className="border-b border-zinc-800/80 sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-6">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
           <Link href="/" className="hover:opacity-90 transition-opacity shrink-0">
             <ProvixLogo />
           </Link>
 
-          <nav className="hidden md:flex items-center gap-8">
-            <Link
-              href="#featured-builders"
-              className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-            >
-              Featured Builders
-            </Link>
-            <Link
-              href="/dashboard"
-              className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-            >
-              Talent Pool
-            </Link>
-            <Link
-              href="#proof-engine"
-              className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-            >
-              Proof Engine
-            </Link>
-          </nav>
-
-          <div className="flex items-center gap-3 sm:gap-4 ml-auto">
+          <div className="flex items-center gap-3 sm:gap-4">
             {checkingSession ? (
               <div className="h-9 w-28 rounded-lg bg-zinc-800 animate-pulse" aria-hidden />
             ) : (
