@@ -5,7 +5,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
-import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { OAuthSignInButtons } from "@/components/OAuthSignInButtons";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { getPostLoginPath } from "@/lib/admin-access";
 import {
@@ -255,7 +255,7 @@ export default function LoginPage() {
 
           {!showResetPassword && (
             <>
-              <GoogleSignInButton
+              <OAuthSignInButtons
                 onError={(message) => {
                   setMessage(null);
                   setError(message || null);

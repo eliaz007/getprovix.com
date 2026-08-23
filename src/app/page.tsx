@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { Code2, ChevronDown, Shield, Zap } from "lucide-react";
-import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { OAuthSignInButtons } from "@/components/OAuthSignInButtons";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import FeaturedShowcase from "@/components/FeaturedShowcase";
 import { createClient } from "@/utils/supabase/client";
@@ -203,8 +203,9 @@ export default function Home() {
               <>
                 {!isLoggedIn && (
                   <div className="w-full sm:w-auto flex flex-col items-center gap-3">
-                    <GoogleSignInButton
-                      className="inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-lg bg-white px-8 py-3.5 text-sm font-semibold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                    <OAuthSignInButtons
+                      layout="responsive"
+                      size="hero"
                       onError={(message) => setGoogleAuthError(message || null)}
                     />
                     {googleAuthError && (
@@ -359,8 +360,9 @@ export default function Home() {
                 <>
                   {!isLoggedIn && (
                     <div className="flex flex-col items-center gap-3 w-full sm:w-auto">
-                      <GoogleSignInButton
-                        className="inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-lg bg-white px-8 py-3.5 text-sm font-semibold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                      <OAuthSignInButtons
+                        layout="responsive"
+                        size="hero"
                         onError={(message) => setGoogleAuthError(message || null)}
                       />
                       {googleAuthError && (
