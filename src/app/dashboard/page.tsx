@@ -7165,7 +7165,7 @@ const showToast = (msg: string) => {
               id="guest-auth-title"
               className="text-lg font-extrabold text-white pr-8"
             >
-              Sign in to continue
+              Sign in or create an account to access
             </h2>
             <p className="text-sm text-slate-400 mt-2 leading-relaxed">
               Sign in with GitHub to access this feature.
