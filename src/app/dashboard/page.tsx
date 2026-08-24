@@ -24,6 +24,7 @@ import JobApplicantsDrawer, {
 } from "@/components/JobApplicantsDrawer";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import { GitHubSignInButton } from "@/components/GitHubSignInButton";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
@@ -7168,10 +7169,16 @@ const showToast = (msg: string) => {
               Sign in or create an account to access
             </h2>
             <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-              Sign in with GitHub to access this feature.
+              Sign in or create an account to access this feature, apply to
+              roles, and run AI audits.
             </p>
-            <div className="mt-6">
+            <div className="mt-6 flex w-full flex-col gap-3">
               <GitHubSignInButton
+                onError={(message) =>
+                  setAuthModalError(message || null)
+                }
+              />
+              <GoogleSignInButton
                 onError={(message) =>
                   setAuthModalError(message || null)
                 }
@@ -7186,7 +7193,7 @@ const showToast = (msg: string) => {
                 href="/login"
                 className="text-indigo-400 hover:text-indigo-300 font-semibold"
               >
-                Go to login
+                Sign in / Sign up
               </Link>
             </p>
           </div>
