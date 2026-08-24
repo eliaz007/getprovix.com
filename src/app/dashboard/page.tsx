@@ -23,6 +23,7 @@ import JobApplicantsDrawer, {
   type JobApplicantView,
 } from "@/components/JobApplicantsDrawer";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
+import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
@@ -825,13 +826,21 @@ function displayNameFromSources(
 
 export default function DashboardPage() {
   const router = useRouter();
-  const {
-    activeTab,
-    setActiveTab,
-    setMobileNavOpen,
-    setAccountRole: setNavAccountRole,
-    setOnOpenJobApplicants,
-  } = useDashboardNav();
+  let dashboardNav: ReturnType<typeof useDashboardNav> | null = null;
+  try {
+    dashboardNav = useDashboardNav();
+  } catch {
+    dashboardNav = null;
+  }
+
+  const [fallbackActiveTab, setFallbackActiveTab] =
+    useState<DashboardTab>("opportunities");
+  const activeTab = dashboardNav?.activeTab ?? fallbackActiveTab;
+  const setActiveTab = dashboardNav?.setActiveTab ?? setFallbackActiveTab;
+  const setMobileNavOpen = dashboardNav?.setMobileNavOpen ?? (() => {});
+  const setNavAccountRole = dashboardNav?.setAccountRole ?? (() => {});
+  const setOnOpenJobApplicants =
+    dashboardNav?.setOnOpenJobApplicants ?? (() => {});
 
   const [showPublicProfile, setShowPublicProfile] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -875,6 +884,13 @@ export default function DashboardPage() {
 
   // Profile data — client auth gate; middleware refreshes SSR cookies.
   const [user, setUser] = useState<User | null>(null);
+  const requireAuth = useCallback(() => {
+    if (user?.id) {
+      return true;
+    }
+    router.push("/login");
+    return false;
+  }, [router, user?.id]);
   const [dbProfile, setDbProfile] = useState<ProfileRecord | null>(null);
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -934,7 +950,11 @@ export default function DashboardPage() {
 
         if (!isMounted) return;
 
-        if (userError) {
+        if (
+          userError &&
+          userError.name !== "AuthSessionMissingError" &&
+          !/session missing/i.test(userError.message)
+        ) {
           console.error("Dashboard session check failed:", userError.message, {
             code: userError.code,
           });
@@ -945,7 +965,6 @@ export default function DashboardPage() {
         if (!sessionUser) {
           setAuthChecked(true);
           setLoadingProfile(false);
-          router.replace("/login");
           return;
         }
 
@@ -1139,6 +1158,12 @@ export default function DashboardPage() {
       isMounted = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    if (authChecked && !user) {
+      setActiveTab("opportunities");
+    }
+  }, [authChecked, user, setActiveTab]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -2165,7 +2190,7 @@ const showToast = (msg: string) => {
   const isMatchEvaluating = Object.values(matchLoadingIds).some(Boolean);
 
   useEffect(() => {
-    if (jobsLoading || activeJobs.length === 0 || isBusinessAccount) {
+    if (jobsLoading || activeJobs.length === 0 || isBusinessAccount || !user?.id) {
       return;
     }
 
@@ -2271,6 +2296,7 @@ const showToast = (msg: string) => {
     profileData.role,
     profileData.bio,
     profileData.degree,
+    user?.id,
   ]);
 
   useEffect(() => {
@@ -2406,8 +2432,7 @@ const showToast = (msg: string) => {
   ]);
 
   const handleExpressInterestToJob = async (job: (typeof jobs)[number]) => {
-    if (!user?.id) {
-      showToast("You must be logged in to express interest.");
+    if (!requireAuth() || !user?.id) {
       return;
     }
 
@@ -2503,6 +2528,9 @@ const showToast = (msg: string) => {
   };
 
   const openIntroModal = (candidate: TalentPoolCandidate) => {
+    if (!requireAuth()) {
+      return;
+    }
     setIntroDefaultRoleTitle("");
     setIntroModalCandidate(candidate);
   };
@@ -2809,6 +2837,10 @@ const showToast = (msg: string) => {
   };
 
   const runDeepScreening = async () => {
+    if (!requireAuth()) {
+      return;
+    }
+
     if (!selectedCandidate) {
       return;
     }
@@ -2907,6 +2939,10 @@ const showToast = (msg: string) => {
 
   // Simulators
   const runEssayAudit = async () => {
+    if (!requireAuth()) {
+      return;
+    }
+
     if (!essayPrompt.trim() || !essayText.trim()) {
       showToast("Add a college prompt and essay draft before analyzing.");
       return;
@@ -2954,6 +2990,10 @@ const showToast = (msg: string) => {
   };
 
   const generateCollegeFitReport = async () => {
+    if (!requireAuth()) {
+      return;
+    }
+
     if (!fitGpa.trim() || !fitMajor.trim()) {
       showToast("Enter your GPA and intended major to generate a fit report.");
       return;
@@ -3015,6 +3055,10 @@ const showToast = (msg: string) => {
   };
 
   const generateAidAppeal = async () => {
+    if (!requireAuth()) {
+      return;
+    }
+
     if (!collegeName.trim() || !appealReason.trim() || !contextDetails.trim()) {
       showToast("Add college name, appeal reason, and detailed notes.");
       return;
@@ -3087,6 +3131,10 @@ const showToast = (msg: string) => {
   };
 
   const evaluateCandidate = async () => {
+    if (!requireAuth()) {
+      return;
+    }
+
     if (!evalAccomplishments.trim()) {
       return;
     }
@@ -3246,11 +3294,7 @@ const showToast = (msg: string) => {
     return <div className="min-h-screen bg-[#0A0A0A]" aria-busy="true" />;
   }
 
-  if (!user) {
-    return null;
-  }
-
-  if (loadingProfile) {
+  if (user && loadingProfile) {
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
         <p className="text-sm text-slate-500">Loading...</p>
@@ -3291,6 +3335,26 @@ const showToast = (msg: string) => {
 
   return (
     <>
+      {!user && (
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-4 px-4 sm:px-6 py-3 bg-[#111111] border-b border-slate-800/60">
+          <Link href="/" className="hover:opacity-90 transition-opacity">
+            <ProvixLogo />
+          </Link>
+          <Link
+            href="/login"
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all"
+          >
+            Sign In
+          </Link>
+        </header>
+      )}
+      <div
+        className={
+          dashboardNav
+            ? undefined
+            : "min-h-screen bg-[#0A0A0A] text-slate-200 p-4 sm:p-6 md:p-12"
+        }
+      >
       {isEmployeeAccount && activeTab === "opportunity_radar" && (
         <div className="sticky top-0 z-20 -mt-4 mb-2 flex justify-center pointer-events-none">
           <div
@@ -6858,6 +6922,7 @@ const showToast = (msg: string) => {
           </div>
         )}
 
+      </div>
     </>
   );
 }
