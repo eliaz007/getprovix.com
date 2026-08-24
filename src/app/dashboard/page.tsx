@@ -23,6 +23,7 @@ import JobApplicantsDrawer, {
   type JobApplicantView,
 } from "@/components/JobApplicantsDrawer";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
+import { GitHubSignInButton } from "@/components/GitHubSignInButton";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
@@ -884,13 +885,17 @@ export default function DashboardPage() {
 
   // Profile data — client auth gate; middleware refreshes SSR cookies.
   const [user, setUser] = useState<User | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalError, setAuthModalError] = useState<string | null>(null);
+  const [guestMobileNavOpen, setGuestMobileNavOpen] = useState(false);
   const requireAuth = useCallback(() => {
     if (user?.id) {
       return true;
     }
-    router.push("/login");
+    setAuthModalError(null);
+    setAuthModalOpen(true);
     return false;
-  }, [router, user?.id]);
+  }, [user?.id]);
   const [dbProfile, setDbProfile] = useState<ProfileRecord | null>(null);
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -1166,6 +1171,13 @@ export default function DashboardPage() {
   }, [authChecked, user, setActiveTab]);
 
   useEffect(() => {
+    if (user?.id) {
+      setAuthModalOpen(false);
+      setGuestMobileNavOpen(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
     const supabase = createClient();
     let isMounted = true;
 
@@ -1381,11 +1393,20 @@ export default function DashboardPage() {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
     if (tab === "intro_requests" && !isBusinessAccount && !isEmployeeAccount) {
+      if (!user) {
+        setAuthModalOpen(true);
+        setActiveTab("opportunities");
+        return;
+      }
       setActiveTab("intro_requests");
     }
-  }, [isBusinessAccount, isEmployeeAccount, setActiveTab]);
+  }, [isBusinessAccount, isEmployeeAccount, setActiveTab, user]);
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
+
     if (!showTalentPoolNav && activeTab === "talent") {
       setActiveTab(isEmployeeAccount ? "opportunities" : "my_profile");
     }
@@ -1410,7 +1431,7 @@ export default function DashboardPage() {
     ) {
       setActiveTab("my_profile");
     }
-  }, [showTalentPoolNav, isEmployeeAccount, isBusinessAccount, activeTab]);
+  }, [showTalentPoolNav, isEmployeeAccount, isBusinessAccount, activeTab, user]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -1988,6 +2009,10 @@ const showToast = (msg: string) => {
   const [savedOpportunityIds, setSavedOpportunityIds] = useState<string[]>([]);
   const [opportunitiesSearch, setOpportunitiesSearch] = useState("");
   const [opportunitiesRemoteOnly, setOpportunitiesRemoteOnly] = useState(false);
+  const [selectedOpportunityTag, setSelectedOpportunityTag] = useState<
+    string | null
+  >(null);
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [talentSearch, setTalentSearch] = useState("");
   const [experienceFilter, setExperienceFilter] = useState("all");
   const [roleTypeFilter, setRoleTypeFilter] = useState("all");
@@ -2107,6 +2132,10 @@ const showToast = (msg: string) => {
   const profileViewsCount = 28;
 
   const handleSaveOpportunity = (opportunityId: string, title: string) => {
+    if (!requireAuth()) {
+      return;
+    }
+
     setSavedOpportunityIds((prev) => {
       const isSaved = prev.includes(opportunityId);
       if (isSaved) {
@@ -2159,9 +2188,17 @@ const showToast = (msg: string) => {
     const matchesRemote =
       !opportunitiesRemoteOnly ||
       (job.location ?? "").toLowerCase().includes("remote");
+    const matchesTag =
+      !selectedOpportunityTag || tags.includes(selectedOpportunityTag);
 
-    return matchesSearch && matchesRemote;
+    return matchesSearch && matchesRemote && matchesTag;
   });
+
+  const opportunityTagOptions = Array.from(
+    new Set(
+      activeJobs.flatMap((job) => (Array.isArray(job.tags) ? job.tags : []))
+    )
+  ).filter((tag) => tag.trim().length > 0);
 
   const filteredRadarJobFeed = activeJobs.filter((job) => {
     const query = radarSearch.trim().toLowerCase();
@@ -3333,26 +3370,140 @@ const showToast = (msg: string) => {
     </div>
   );
 
+  const handleGuestNavClick = (item: "opportunities" | "gated") => {
+    setGuestMobileNavOpen(false);
+    if (item === "opportunities") {
+      setActiveTab("opportunities");
+      return;
+    }
+    requireAuth();
+  };
+
+  const guestNavClass = (active: boolean) =>
+    `w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] cursor-pointer ${
+      active
+        ? "bg-slate-800/60 text-white font-bold"
+        : "text-slate-500 hover:bg-slate-800/30 hover:text-slate-300"
+    }`;
+
+  const renderGuestNav = () => (
+    <div className="space-y-8">
+      <div>
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
+          Candidate Dashboard
+        </span>
+        <nav className="space-y-1">
+          <button
+            type="button"
+            onClick={() => handleGuestNavClick("opportunities")}
+            className={guestNavClass(activeTab === "opportunities")}
+          >
+            <Icons.Compass />
+            Opportunities
+          </button>
+          <button
+            type="button"
+            onClick={() => handleGuestNavClick("gated")}
+            className={guestNavClass(false)}
+          >
+            <Icons.User />
+            Profile Studio
+          </button>
+          <button
+            type="button"
+            onClick={() => handleGuestNavClick("gated")}
+            className={guestNavClass(false)}
+          >
+            <Icons.Mail />
+            Intro Requests
+          </button>
+        </nav>
+      </div>
+      <div>
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
+          Career Accelerator
+        </span>
+        <nav className="space-y-1">
+          <button
+            type="button"
+            onClick={() => handleGuestNavClick("gated")}
+            className={guestNavClass(false)}
+          >
+            <FileText className="w-4 h-4" aria-hidden="true" />
+            Pitch Studio
+          </button>
+          <button
+            type="button"
+            onClick={() => handleGuestNavClick("gated")}
+            className={guestNavClass(false)}
+          >
+            <ShieldCheck className="w-4 h-4" aria-hidden="true" />
+            Audits
+          </button>
+          <button
+            type="button"
+            onClick={() => handleGuestNavClick("gated")}
+            className={guestNavClass(false)}
+          >
+            <Target className="w-4 h-4" aria-hidden="true" />
+            Simulator
+          </button>
+        </nav>
+      </div>
+    </div>
+  );
+
   return (
     <>
       {!user && (
         <header className="sticky top-0 z-30 flex items-center justify-between gap-4 px-4 sm:px-6 py-3 bg-[#111111] border-b border-slate-800/60">
-          <Link href="/" className="hover:opacity-90 transition-opacity">
-            <ProvixLogo />
-          </Link>
-          <Link
-            href="/login"
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all"
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              className="md:hidden p-2 rounded-lg text-slate-300 hover:bg-slate-800/60 cursor-pointer"
+              aria-label="Open navigation menu"
+              onClick={() => setGuestMobileNavOpen(true)}
+            >
+              <Icons.Menu />
+            </button>
+            <Link href="/" className="hover:opacity-90 transition-opacity">
+              <ProvixLogo />
+            </Link>
+          </div>
+          <button
+            type="button"
+            onClick={() => requireAuth()}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer"
           >
             Sign In
-          </Link>
+          </button>
         </header>
+      )}
+      {!user && guestMobileNavOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close navigation menu"
+            onClick={() => setGuestMobileNavOpen(false)}
+            className="fixed inset-0 bg-black/60 z-40 md:hidden cursor-pointer"
+          />
+          <aside className="fixed inset-y-0 left-0 w-[280px] max-w-[85vw] bg-[#111111] border-r border-slate-800/60 z-50 p-6 overflow-y-auto md:hidden">
+            {renderGuestNav()}
+          </aside>
+        </>
+      )}
+      {!user && (
+        <aside className="hidden md:flex flex-col w-[280px] bg-[#111111] border-r border-slate-800/60 fixed left-0 top-[57px] bottom-0 z-20 p-6 overflow-y-auto">
+          {renderGuestNav()}
+        </aside>
       )}
       <div
         className={
           dashboardNav
             ? undefined
-            : "min-h-screen bg-[#0A0A0A] text-slate-200 p-4 sm:p-6 md:p-12"
+            : `min-h-screen bg-[#0A0A0A] text-slate-200 p-4 sm:p-6 md:p-12 ${
+                !user ? "md:pl-[304px]" : ""
+              }`
         }
       >
       {isEmployeeAccount && activeTab === "opportunity_radar" && (
@@ -4125,6 +4276,31 @@ const showToast = (msg: string) => {
                     Remote Only
                   </button>
                 </div>
+                {opportunityTagOptions.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {opportunityTagOptions.map((tag) => {
+                      const isSelected = selectedOpportunityTag === tag;
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() =>
+                            setSelectedOpportunityTag((prev) =>
+                              prev === tag ? null : tag
+                            )
+                          }
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-indigo-600 border-indigo-500 text-white"
+                              : "bg-[#0A0A0A] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                          }`}
+                        >
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {jobsLoading ? (
@@ -4160,6 +4336,8 @@ const showToast = (msg: string) => {
                     const isMatching = matchLoadingIds[job.id];
                     const matchScore = insight?.match_score ?? 0;
                     const formattedSalary = formatSalaryRange(job.salary_range);
+                    const isExpanded = expandedJobId === job.id;
+                    const jobDescription = (job.description ?? "").trim();
 
                     return (
                       <div
@@ -4175,6 +4353,7 @@ const showToast = (msg: string) => {
                               {job.company}
                             </p>
                           </div>
+                          {user ? (
                           <div className="flex flex-col items-end gap-1.5 shrink-0">
                             <span
                               className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
@@ -4197,6 +4376,7 @@ const showToast = (msg: string) => {
                               </span>
                             ) : null}
                           </div>
+                          ) : null}
                         </div>
 
                         {formattedSalary ? (
@@ -4208,16 +4388,51 @@ const showToast = (msg: string) => {
 
                         <div className="flex flex-wrap gap-1.5 mb-4">
                           {tags.map((tag: string) => (
-                            <span
+                            <button
                               key={tag}
-                              className="px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                              type="button"
+                              onClick={() =>
+                                setSelectedOpportunityTag((prev) =>
+                                  prev === tag ? null : tag
+                                )
+                              }
+                              className={`px-2 py-1 rounded-md text-[10px] font-bold border cursor-pointer ${
+                                selectedOpportunityTag === tag
+                                  ? "bg-indigo-600 text-white border-indigo-500"
+                                  : "bg-indigo-500/10 text-indigo-300 border-indigo-500/20 hover:border-indigo-400/40"
+                              }`}
                             >
                               {tag}
-                            </span>
+                            </button>
                           ))}
                         </div>
 
-                        {(isMatching || insight) && (
+                        {jobDescription ? (
+                          <div className="mb-4">
+                            <p
+                              className={`text-xs text-slate-400 leading-relaxed whitespace-pre-wrap ${
+                                isExpanded ? "" : "line-clamp-3"
+                              }`}
+                            >
+                              {jobDescription}
+                            </p>
+                            {jobDescription.length > 160 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedJobId((prev) =>
+                                    prev === job.id ? null : job.id
+                                  )
+                                }
+                                className="mt-2 text-[11px] font-bold text-indigo-400 hover:text-indigo-300 cursor-pointer"
+                              >
+                                {isExpanded ? "Show less" : "Read full opening"}
+                              </button>
+                            )}
+                          </div>
+                        ) : null}
+
+                        {user && (isMatching || insight) && (
                           <div className="mb-4 rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-3">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                               AI Match Analysis
@@ -6923,6 +7138,60 @@ const showToast = (msg: string) => {
         )}
 
       </div>
+
+      {authModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close sign in dialog"
+            className="absolute inset-0 bg-black/70 cursor-pointer"
+            onClick={() => setAuthModalOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="guest-auth-title"
+            className="relative w-full max-w-md bg-[#111111] border border-slate-800 rounded-2xl p-6 shadow-2xl"
+          >
+            <button
+              type="button"
+              onClick={() => setAuthModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white cursor-pointer"
+              aria-label="Close"
+            >
+              <Icons.XMark />
+            </button>
+            <h2
+              id="guest-auth-title"
+              className="text-lg font-extrabold text-white pr-8"
+            >
+              Sign in to continue
+            </h2>
+            <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+              Sign in with GitHub to access this feature.
+            </p>
+            <div className="mt-6">
+              <GitHubSignInButton
+                onError={(message) =>
+                  setAuthModalError(message || null)
+                }
+              />
+            </div>
+            {authModalError ? (
+              <p className="text-xs text-red-400 mt-3">{authModalError}</p>
+            ) : null}
+            <p className="text-[11px] text-slate-500 mt-4 text-center">
+              Prefer email?{" "}
+              <Link
+                href="/login"
+                className="text-indigo-400 hover:text-indigo-300 font-semibold"
+              >
+                Go to login
+              </Link>
+            </p>
+          </div>
+        </div>
+      )}
     </>
   );
 }
