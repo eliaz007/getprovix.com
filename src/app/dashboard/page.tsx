@@ -3433,14 +3433,14 @@ const showToast = (msg: string) => {
             <FileText className="w-4 h-4" aria-hidden="true" />
             Pitch Studio
           </button>
-          <button
-            type="button"
-            onClick={() => handleGuestNavClick("gated")}
+          <Link
+            href="/audits"
+            onClick={() => setGuestMobileNavOpen(false)}
             className={guestNavClass(false)}
           >
             <ShieldCheck className="w-4 h-4" aria-hidden="true" />
             Audits
-          </button>
+          </Link>
           <button
             type="button"
             onClick={() => handleGuestNavClick("gated")}
@@ -7170,7 +7170,7 @@ const showToast = (msg: string) => {
             </h2>
             <p className="text-sm text-slate-400 mt-2 leading-relaxed">
               Sign in or create an account to access this feature, apply to
-              roles, and run AI audits.
+              roles, and use career accelerator tools.
             </p>
             <div className="mt-6 flex w-full flex-col gap-3">
               <GitHubSignInButton

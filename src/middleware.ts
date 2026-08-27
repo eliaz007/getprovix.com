@@ -12,8 +12,12 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization)
      * - favicon.ico
-     * - /api (API routes)
+     * - /api (API routes, including public /api/audit)
      * - common static image extensions
+     *
+     * Public page: /audits
+     * Protected: /dashboard, /opportunities, /pitch-studio, /simulator,
+     * /profile-studio, /intro-requests, /employer
      */
     "/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],

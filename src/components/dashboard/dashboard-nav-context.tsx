@@ -14,6 +14,7 @@ import type { User } from "@supabase/supabase-js";
 import { resolveAccountRole } from "@/lib/account-role";
 import {
   canAccessTalentPool,
+  isDashboardAuditorPath,
   isEmployeeRole,
   isEmployerRole,
   type DashboardTab,
@@ -78,7 +79,9 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
         if (!user) {
           setUserId(null);
           setAccountRole(null);
-          router.replace("/login");
+          if (!isDashboardAuditorPath(pathname)) {
+            router.replace("/login");
+          }
           return;
         }
 
@@ -107,7 +110,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [pathname, router]);
 
   const isBusinessAccount = isEmployerRole(accountRole);
   const isEmployeeAccount = isEmployeeRole(accountRole);

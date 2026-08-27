@@ -4,6 +4,7 @@ import {
   DAILY_LIMIT_API_MESSAGE,
   incrementDailyScanUsage,
   loadDailyScanUsage,
+  resolveDailyScanUsage,
   type DailyScanUsage,
 } from "@/lib/daily-scan-limit";
 import { createClient } from "@/utils/supabase/server";
@@ -238,25 +239,26 @@ async function generateGeminiAudit(body: AuditRequestBody): Promise<AuditResult>
     : new Error("All Gemini models failed.");
 }
 
-async function requireAuthenticatedUsage(): Promise<
+async function resolveAuditAccess(): Promise<
   | { ok: false; response: NextResponse }
   | {
       ok: true;
       supabase: Awaited<ReturnType<typeof createClient>>;
-      user: { id: string };
+      user: { id: string } | null;
       usage: DailyScanUsage;
     }
 > {
   const supabase = await createClient();
   const {
     data: { user },
-    error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user) {
+  if (!user) {
     return {
-      ok: false,
-      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      ok: true,
+      supabase,
+      user: null,
+      usage: resolveDailyScanUsage(0, null),
     };
   }
 
@@ -277,25 +279,25 @@ async function requireAuthenticatedUsage(): Promise<
 }
 
 export async function GET() {
-  const auth = await requireAuthenticatedUsage();
+  const access = await resolveAuditAccess();
 
-  if (!auth.ok) {
-    return auth.response;
+  if (!access.ok) {
+    return access.response;
   }
 
-  return NextResponse.json(auth.usage);
+  return NextResponse.json(access.usage);
 }
 
 export async function POST(request: Request) {
-  const auth = await requireAuthenticatedUsage();
+  const access = await resolveAuditAccess();
 
-  if (!auth.ok) {
-    return auth.response;
+  if (!access.ok) {
+    return access.response;
   }
 
-  if (auth.usage.limit_reached) {
+  if (access.user && access.usage.limit_reached) {
     return NextResponse.json(
-      { error: DAILY_LIMIT_API_MESSAGE, ...auth.usage },
+      { error: DAILY_LIMIT_API_MESSAGE, ...access.usage },
       { status: 429 }
     );
   }
@@ -329,11 +331,13 @@ export async function POST(request: Request) {
     result = buildFallbackAudit(payload);
   }
 
-  const usage = await incrementDailyScanUsage(
-    auth.supabase,
-    auth.user.id,
-    auth.usage
-  );
+  const usage = access.user
+    ? await incrementDailyScanUsage(
+        access.supabase,
+        access.user.id,
+        access.usage
+      )
+    : access.usage;
 
   return NextResponse.json({ ...result, ...usage });
 }

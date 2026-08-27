@@ -1,5 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  isDashboardAuditorPath,
+  isProtectedAppPath,
+  isPublicAuditorPath,
+} from "@/lib/dashboard-account";
 
 const cookieOptions = {
   path: "/",
@@ -88,8 +93,6 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isDashboard =
-    pathname === "/dashboard" || pathname.startsWith("/dashboard/");
   const isLogin =
     pathname === "/login" || pathname.startsWith("/login/");
   const isHome = pathname === "/";
@@ -98,6 +101,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/update-password/");
   const isEmployer =
     pathname === "/employer" || pathname.startsWith("/employer/");
+  const isPublicAuditor = isPublicAuditorPath(pathname);
+  const isProtectedRoute = isProtectedAppPath(pathname);
 
   // Unauthenticated users must be allowed to stay on /login (no redirect).
   if (isLogin && !user) {
@@ -108,8 +113,17 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // /audits (and legacy auditor URLs) stay public so guests can run GitHub audits.
+  if (isPublicAuditor) {
+    if (!user && isDashboardAuditorPath(pathname)) {
+      return redirectWithSessionCookies(request, supabaseResponse, "/audits");
+    }
+
+    return supabaseResponse;
+  }
+
   // Protected routes: no session → login (cookies still copied on redirect).
-  if (isDashboard && !user) {
+  if (isProtectedRoute && !user) {
     return redirectWithSessionCookies(request, supabaseResponse, "/login");
   }
 
