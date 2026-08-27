@@ -13,10 +13,35 @@ export type JobRow = {
   description?: string | null;
 };
 
+export async function fetchPublicJobFeed(): Promise<{
+  data: JobRow[];
+  error: { message: string } | null;
+}> {
+  try {
+    const response = await fetch("/api/jobs/feed");
+    if (!response.ok) {
+      return { data: [], error: { message: "Could not load job feed." } };
+    }
+
+    const payload = (await response.json()) as { jobs?: JobRow[] };
+    return { data: payload.jobs ?? [], error: null };
+  } catch {
+    return { data: [], error: { message: "Could not load job feed." } };
+  }
+}
+
 export async function fetchDashboardJobs(supabase: SupabaseClient): Promise<{
   data: JobRow[];
   error: { message: string } | null;
 }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return fetchPublicJobFeed();
+  }
+
   const { data, error } = await supabase
     .from("jobs")
     .select("*")

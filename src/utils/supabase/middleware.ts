@@ -4,6 +4,7 @@ import {
   isDashboardAuditorPath,
   isProtectedAppPath,
   isPublicAuditorPath,
+  isPublicOpportunitiesPath,
 } from "@/lib/dashboard-account";
 
 const cookieOptions = {
@@ -102,6 +103,7 @@ export async function updateSession(request: NextRequest) {
   const isEmployer =
     pathname === "/employer" || pathname.startsWith("/employer/");
   const isPublicAuditor = isPublicAuditorPath(pathname);
+  const isPublicOpportunities = isPublicOpportunitiesPath(pathname);
   const isProtectedRoute = isProtectedAppPath(pathname);
 
   // Unauthenticated users must be allowed to stay on /login (no redirect).
@@ -119,6 +121,11 @@ export async function updateSession(request: NextRequest) {
       return redirectWithSessionCookies(request, supabaseResponse, "/audits");
     }
 
+    return supabaseResponse;
+  }
+
+  // /opportunities stays public so guests can browse the job feed.
+  if (isPublicOpportunities) {
     return supabaseResponse;
   }
 

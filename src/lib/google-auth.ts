@@ -1,4 +1,5 @@
 import { createClient } from "@/utils/supabase/client";
+import { buildOAuthCallbackUrl } from "@/lib/auth-callback-url";
 
 export async function handleGoogleSignIn() {
   const supabase = createClient();
@@ -6,7 +7,7 @@ export async function handleGoogleSignIn() {
   return supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${location.origin}/auth/callback`,
+      redirectTo: buildOAuthCallbackUrl(),
     },
   });
 }

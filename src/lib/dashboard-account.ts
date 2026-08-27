@@ -37,7 +37,6 @@ export function isPitchStudioPath(pathname: string): boolean {
 const PROTECTED_ROUTE_PREFIXES = [
   "/dashboard",
   "/employer",
-  "/opportunities",
   "/pitch-studio",
   "/simulator",
   "/profile-studio",
@@ -64,8 +63,16 @@ export function isAuditorPath(pathname: string): boolean {
   return isPublicAuditorPath(pathname);
 }
 
+export function isOpportunitiesPath(pathname: string): boolean {
+  return pathname === "/opportunities" || pathname.startsWith("/opportunities/");
+}
+
+export function isPublicOpportunitiesPath(pathname: string): boolean {
+  return isOpportunitiesPath(pathname);
+}
+
 export function isProtectedAppPath(pathname: string): boolean {
-  if (isPublicAuditorPath(pathname)) {
+  if (isPublicAuditorPath(pathname) || isPublicOpportunitiesPath(pathname)) {
     return false;
   }
 

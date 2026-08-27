@@ -46,11 +46,11 @@ export default function GuestAuthModal({
           id="guest-auth-title"
           className="text-lg font-extrabold text-white pr-8"
         >
-          Sign in or create an account to access
+          Sign in or create an account
         </h2>
         <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-          Sign in or create an account to access this feature, apply to roles,
-          and use career accelerator tools.
+          You can browse roles freely. Sign in to express interest, apply, and
+          use career accelerator tools.
         </p>
         <div className="mt-6 flex w-full flex-col gap-3">
           <GitHubSignInButton onError={(message) => onError(message || null)} />

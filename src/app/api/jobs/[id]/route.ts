@@ -75,6 +75,7 @@ export async function PATCH(
     }
 
     revalidatePath("/dashboard");
+    revalidatePath("/opportunities");
 
     return NextResponse.json({ job });
   } catch (error) {

@@ -9,6 +9,7 @@ import {
   isAuditorPath,
   isDashboardRootPath,
   isInterviewPrepPath,
+  isOpportunitiesPath,
   isPitchStudioPath,
   type DashboardTab,
 } from "@/lib/dashboard-account";
@@ -45,9 +46,26 @@ function DashboardTabLink({
   const pathname = usePathname();
   const { activeTab, setActiveTab, setMobileNavOpen, isGuest, requireAuth } =
     useDashboardNav();
-  const isActive = isDashboardRootPath(pathname) && activeTab === tab;
+  const isActive =
+    tab === "opportunities"
+      ? isOpportunitiesPath(pathname) ||
+        (isDashboardRootPath(pathname) && activeTab === tab)
+      : isDashboardRootPath(pathname) && activeTab === tab;
 
   if (isGuest) {
+    if (tab === "opportunities") {
+      return (
+        <Link
+          href="/opportunities"
+          onClick={() => setMobileNavOpen(false)}
+          className={navItemClass(isActive, variant)}
+        >
+          {icon}
+          {label}
+        </Link>
+      );
+    }
+
     return (
       <button
         type="button"
