@@ -23,8 +23,7 @@ import JobApplicantsDrawer, {
   type JobApplicantView,
 } from "@/components/JobApplicantsDrawer";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
-import { GitHubSignInButton } from "@/components/GitHubSignInButton";
-import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import GuestAuthModal from "@/components/GuestAuthModal";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
@@ -3371,12 +3370,8 @@ const showToast = (msg: string) => {
     </div>
   );
 
-  const handleGuestNavClick = (item: "opportunities" | "gated") => {
+  const handleGuestNavClick = () => {
     setGuestMobileNavOpen(false);
-    if (item === "opportunities") {
-      setActiveTab("opportunities");
-      return;
-    }
     requireAuth();
   };
 
@@ -3396,15 +3391,15 @@ const showToast = (msg: string) => {
         <nav className="space-y-1">
           <button
             type="button"
-            onClick={() => handleGuestNavClick("opportunities")}
-            className={guestNavClass(activeTab === "opportunities")}
+            onClick={() => handleGuestNavClick()}
+            className={guestNavClass(false)}
           >
             <Icons.Compass />
             Opportunities
           </button>
           <button
             type="button"
-            onClick={() => handleGuestNavClick("gated")}
+            onClick={() => handleGuestNavClick()}
             className={guestNavClass(false)}
           >
             <Icons.User />
@@ -3412,7 +3407,7 @@ const showToast = (msg: string) => {
           </button>
           <button
             type="button"
-            onClick={() => handleGuestNavClick("gated")}
+            onClick={() => handleGuestNavClick()}
             className={guestNavClass(false)}
           >
             <Icons.Mail />
@@ -3427,7 +3422,7 @@ const showToast = (msg: string) => {
         <nav className="space-y-1">
           <button
             type="button"
-            onClick={() => handleGuestNavClick("gated")}
+            onClick={() => handleGuestNavClick()}
             className={guestNavClass(false)}
           >
             <FileText className="w-4 h-4" aria-hidden="true" />
@@ -3443,7 +3438,7 @@ const showToast = (msg: string) => {
           </Link>
           <button
             type="button"
-            onClick={() => handleGuestNavClick("gated")}
+            onClick={() => handleGuestNavClick()}
             className={guestNavClass(false)}
           >
             <Target className="w-4 h-4" aria-hidden="true" />
@@ -3454,59 +3449,93 @@ const showToast = (msg: string) => {
     </div>
   );
 
+  const isStandaloneGuest = Boolean(!user && !dashboardNav);
+
   return (
     <>
-      {!user && (
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-4 px-4 sm:px-6 py-3 bg-[#111111] border-b border-slate-800/60">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              type="button"
-              className="md:hidden p-2 rounded-lg text-slate-300 hover:bg-slate-800/60 cursor-pointer"
-              aria-label="Open navigation menu"
-              onClick={() => setGuestMobileNavOpen(true)}
-            >
-              <Icons.Menu />
-            </button>
-            <Link href="/" className="hover:opacity-90 transition-opacity">
-              <ProvixLogo />
-            </Link>
-          </div>
-          <button
-            type="button"
-            onClick={() => requireAuth()}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer"
-          >
-            Sign In
-          </button>
-        </header>
-      )}
-      {!user && guestMobileNavOpen && (
-        <>
-          <button
-            type="button"
-            aria-label="Close navigation menu"
-            onClick={() => setGuestMobileNavOpen(false)}
-            className="fixed inset-0 bg-black/60 z-40 md:hidden cursor-pointer"
-          />
-          <aside className="fixed inset-y-0 left-0 w-[280px] max-w-[85vw] bg-[#111111] border-r border-slate-800/60 z-50 p-6 overflow-y-auto md:hidden">
-            {renderGuestNav()}
-          </aside>
-        </>
-      )}
-      {!user && (
-        <aside className="hidden md:flex flex-col w-[280px] bg-[#111111] border-r border-slate-800/60 fixed left-0 top-[57px] bottom-0 z-20 p-6 overflow-y-auto">
-          {renderGuestNav()}
-        </aside>
-      )}
       <div
         className={
-          dashboardNav
-            ? undefined
-            : `min-h-screen bg-[#0A0A0A] text-slate-200 p-4 sm:p-6 md:p-12 ${
-                !user ? "md:pl-[304px]" : ""
-              }`
+          isStandaloneGuest
+            ? "flex h-screen overflow-hidden bg-[#0A0A0A] text-slate-200 font-sans antialiased"
+            : undefined
         }
       >
+        {isStandaloneGuest ? (
+          <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-[#111111] border-r border-slate-800/60 z-20 overflow-y-auto">
+            <div className="p-6 flex flex-col min-h-full">
+              <Link
+                href="/"
+                className="block mb-8 hover:opacity-90 transition-opacity"
+              >
+                <ProvixLogo />
+                <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase mt-2 block">
+                  Verified Intelligence
+                </span>
+              </Link>
+              <div className="flex-1">{renderGuestNav()}</div>
+              <button
+                type="button"
+                onClick={() => requireAuth()}
+                className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-all cursor-pointer"
+              >
+                Sign In
+              </button>
+            </div>
+          </aside>
+        ) : null}
+        <div
+          className={
+            isStandaloneGuest
+              ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+              : undefined
+          }
+        >
+          {isStandaloneGuest ? (
+            <header className="flex md:hidden items-center justify-between px-4 py-3 bg-[#111111] border-b border-slate-800/60 shrink-0 z-20">
+              <div className="flex items-center gap-3 min-w-0">
+                <button
+                  type="button"
+                  className="md:hidden p-2 rounded-lg text-slate-300 hover:bg-slate-800/60 cursor-pointer"
+                  aria-label="Open navigation menu"
+                  onClick={() => setGuestMobileNavOpen(true)}
+                >
+                  <Icons.Menu />
+                </button>
+                <Link href="/" className="hover:opacity-90 transition-opacity">
+                  <ProvixLogo />
+                </Link>
+              </div>
+              <button
+                type="button"
+                onClick={() => requireAuth()}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer"
+              >
+                Sign In
+              </button>
+            </header>
+          ) : null}
+          {isStandaloneGuest && guestMobileNavOpen ? (
+            <div className="md:hidden">
+              <button
+                type="button"
+                aria-label="Close navigation menu"
+                onClick={() => setGuestMobileNavOpen(false)}
+                className="fixed inset-0 bg-black/60 z-40 cursor-pointer"
+              />
+              <aside className="fixed inset-y-0 left-0 w-64 max-w-[85vw] bg-[#111111] border-r border-slate-800/60 z-50 p-6 overflow-y-auto">
+                {renderGuestNav()}
+              </aside>
+            </div>
+          ) : null}
+          <div
+            className={
+              dashboardNav
+                ? undefined
+                : isStandaloneGuest
+                  ? "flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 md:p-12"
+                  : "min-h-screen bg-[#0A0A0A] text-slate-200 p-4 sm:p-6 md:p-12"
+            }
+          >
       {isEmployeeAccount && activeTab === "opportunity_radar" && (
         <div className="sticky top-0 z-20 -mt-4 mb-2 flex justify-center pointer-events-none">
           <div
@@ -7139,66 +7168,15 @@ const showToast = (msg: string) => {
         )}
 
       </div>
-
-      {authModalOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <button
-            type="button"
-            aria-label="Close sign in dialog"
-            className="absolute inset-0 bg-black/70 cursor-pointer"
-            onClick={() => setAuthModalOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="guest-auth-title"
-            className="relative w-full max-w-md bg-[#111111] border border-slate-800 rounded-2xl p-6 shadow-2xl"
-          >
-            <button
-              type="button"
-              onClick={() => setAuthModalOpen(false)}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white cursor-pointer"
-              aria-label="Close"
-            >
-              <Icons.XMark />
-            </button>
-            <h2
-              id="guest-auth-title"
-              className="text-lg font-extrabold text-white pr-8"
-            >
-              Sign in or create an account to access
-            </h2>
-            <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-              Sign in or create an account to access this feature, apply to
-              roles, and use career accelerator tools.
-            </p>
-            <div className="mt-6 flex w-full flex-col gap-3">
-              <GitHubSignInButton
-                onError={(message) =>
-                  setAuthModalError(message || null)
-                }
-              />
-              <GoogleSignInButton
-                onError={(message) =>
-                  setAuthModalError(message || null)
-                }
-              />
-            </div>
-            {authModalError ? (
-              <p className="text-xs text-red-400 mt-3">{authModalError}</p>
-            ) : null}
-            <p className="text-[11px] text-slate-500 mt-4 text-center">
-              Prefer email?{" "}
-              <Link
-                href="/login"
-                className="text-indigo-400 hover:text-indigo-300 font-semibold"
-              >
-                Sign in / Sign up
-              </Link>
-            </p>
-          </div>
         </div>
-      )}
+      </div>
+
+      <GuestAuthModal
+        open={authModalOpen}
+        error={authModalError}
+        onClose={() => setAuthModalOpen(false)}
+        onError={setAuthModalError}
+      />
     </>
   );
 }

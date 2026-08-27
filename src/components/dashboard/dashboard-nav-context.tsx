@@ -9,12 +9,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import type { User } from "@supabase/supabase-js";
+import { usePathname } from "next/navigation";
 import { resolveAccountRole } from "@/lib/account-role";
 import {
   canAccessTalentPool,
-  isDashboardAuditorPath,
   isEmployeeRole,
   isEmployerRole,
   type DashboardTab,
@@ -30,9 +28,15 @@ type DashboardNavContextValue = {
   setAccountRole: (role: string | null) => void;
   userId: string | null;
   authLoading: boolean;
+  isGuest: boolean;
   isBusinessAccount: boolean;
   isEmployeeAccount: boolean;
   showTalentPoolNav: boolean;
+  requireAuth: () => boolean;
+  authModalOpen: boolean;
+  authModalError: string | null;
+  setAuthModalOpen: (open: boolean) => void;
+  setAuthModalError: (error: string | null) => void;
   onOpenJobApplicants: ((jobId: string) => void) | null;
   setOnOpenJobApplicants: (handler: ((jobId: string) => void) | null) => void;
 };
@@ -40,13 +44,14 @@ type DashboardNavContextValue = {
 const DashboardNavContext = createContext<DashboardNavContextValue | null>(null);
 
 export function DashboardNavProvider({ children }: { children: ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
   const [activeTab, setActiveTab] = useState<DashboardTab>("my_profile");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalError, setAuthModalError] = useState<string | null>(null);
   const [onOpenJobApplicants, setOnOpenJobApplicantsState] = useState<
     ((jobId: string) => void) | null
   >(null);
@@ -57,6 +62,15 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const requireAuth = useCallback(() => {
+    if (userId) {
+      return true;
+    }
+    setAuthModalError(null);
+    setAuthModalOpen(true);
+    return false;
+  }, [userId]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -79,13 +93,11 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
         if (!user) {
           setUserId(null);
           setAccountRole(null);
-          if (!isDashboardAuditorPath(pathname)) {
-            router.replace("/login");
-          }
           return;
         }
 
         setUserId(user.id);
+        setAuthModalOpen(false);
 
         const { data: profile } = await supabase
           .from("profiles")
@@ -110,8 +122,9 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [pathname, router]);
+  }, [pathname]);
 
+  const isGuest = !userId;
   const isBusinessAccount = isEmployerRole(accountRole);
   const isEmployeeAccount = isEmployeeRole(accountRole);
   const showTalentPoolNav = canAccessTalentPool(accountRole);
@@ -126,9 +139,15 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
       setAccountRole,
       userId,
       authLoading,
+      isGuest,
       isBusinessAccount,
       isEmployeeAccount,
       showTalentPoolNav,
+      requireAuth,
+      authModalOpen,
+      authModalError,
+      setAuthModalOpen,
+      setAuthModalError,
       onOpenJobApplicants,
       setOnOpenJobApplicants,
     }),
@@ -138,9 +157,13 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
       accountRole,
       userId,
       authLoading,
+      isGuest,
       isBusinessAccount,
       isEmployeeAccount,
       showTalentPoolNav,
+      requireAuth,
+      authModalOpen,
+      authModalError,
       onOpenJobApplicants,
       setOnOpenJobApplicants,
     ]

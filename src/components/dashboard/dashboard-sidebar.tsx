@@ -27,6 +27,10 @@ function navButtonClass(isActive: boolean, variant: "default" | "employer" = "de
     : "text-slate-500 hover:bg-slate-800/30";
 }
 
+function navItemClass(isActive: boolean, variant: "default" | "employer" = "default") {
+  return `w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] cursor-pointer ${navButtonClass(isActive, variant)}`;
+}
+
 function DashboardTabLink({
   tab,
   label,
@@ -39,8 +43,25 @@ function DashboardTabLink({
   variant?: "default" | "employer";
 }) {
   const pathname = usePathname();
-  const { activeTab, setActiveTab, setMobileNavOpen } = useDashboardNav();
+  const { activeTab, setActiveTab, setMobileNavOpen, isGuest, requireAuth } =
+    useDashboardNav();
   const isActive = isDashboardRootPath(pathname) && activeTab === tab;
+
+  if (isGuest) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setMobileNavOpen(false);
+          requireAuth();
+        }}
+        className={navItemClass(isActive, variant)}
+      >
+        {icon}
+        {label}
+      </button>
+    );
+  }
 
   return (
     <Link
@@ -49,7 +70,7 @@ function DashboardTabLink({
         setActiveTab(tab);
         setMobileNavOpen(false);
       }}
-      className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${navButtonClass(isActive, variant)}`}
+      className={navItemClass(isActive, variant)}
     >
       {icon}
       {label}
@@ -57,29 +78,44 @@ function DashboardTabLink({
   );
 }
 
-function DashboardSidebarSkeleton() {
+function ProtectedNavLink({
+  href,
+  label,
+  icon,
+  isActive,
+}: {
+  href: string;
+  label: ReactNode;
+  icon: ReactNode;
+  isActive: boolean;
+}) {
+  const { isGuest, requireAuth, setMobileNavOpen } = useDashboardNav();
+
+  if (isGuest) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setMobileNavOpen(false);
+          requireAuth();
+        }}
+        className={navItemClass(isActive)}
+      >
+        {icon}
+        {label}
+      </button>
+    );
+  }
+
   return (
-    <div className="p-6 animate-pulse" aria-hidden="true">
-      <div className="mb-8 space-y-2">
-        <div className="h-7 w-28 rounded-lg bg-slate-800/80" />
-        <div className="h-3 w-36 rounded bg-slate-800/50" />
-      </div>
-
-      <div className="space-y-8">
-        <div className="space-y-3">
-          <div className="h-3 w-24 rounded bg-slate-800/60" />
-          <div className="h-9 rounded-lg bg-slate-800/50" />
-          <div className="h-9 rounded-lg bg-slate-800/40" />
-        </div>
-
-        <div className="space-y-3">
-          <div className="h-3 w-28 rounded bg-slate-800/60" />
-          <div className="h-9 rounded-lg bg-slate-800/50" />
-          <div className="h-9 rounded-lg bg-slate-800/40" />
-          <div className="h-9 rounded-lg bg-slate-800/40" />
-        </div>
-      </div>
-    </div>
+    <Link
+      href={href}
+      onClick={() => setMobileNavOpen(false)}
+      className={navItemClass(isActive)}
+    >
+      {icon}
+      {label}
+    </Link>
   );
 }
 
@@ -87,18 +123,19 @@ export default function DashboardSidebar() {
   const pathname = usePathname();
   const {
     authLoading,
+    isGuest,
     isBusinessAccount,
     isEmployeeAccount,
     showTalentPoolNav,
+    requireAuth,
     setMobileNavOpen,
   } = useDashboardNav();
 
-  if (authLoading) {
-    return <DashboardSidebarSkeleton />;
-  }
+  const showCandidateAccelerator =
+    isGuest || (!isBusinessAccount && !isEmployeeAccount);
 
   return (
-    <div className="p-6">
+    <div className="p-6 flex flex-col min-h-full">
       <Link href="/" className="block mb-8 hover:opacity-90 transition-opacity">
         <ProvixLogo />
         <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase mt-2 block">
@@ -106,7 +143,7 @@ export default function DashboardSidebar() {
         </span>
       </Link>
 
-      <div className="space-y-8">
+      <div className="space-y-8 flex-1">
         <div>
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
             {isBusinessAccount
@@ -138,34 +175,32 @@ export default function DashboardSidebar() {
           </nav>
         </div>
 
-        {!isBusinessAccount && !isEmployeeAccount && (
+        {showCandidateAccelerator && (
           <div>
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
               Career Accelerator
             </span>
             <nav className="space-y-1">
-              <Link
+              <ProtectedNavLink
                 href="/dashboard/pitch-studio"
-                onClick={() => setMobileNavOpen(false)}
-                className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${navButtonClass(isPitchStudioPath(pathname))}`}
-              >
-                <PenTool className="w-4 h-4" aria-hidden="true" /> Pitch Studio
-              </Link>
+                isActive={isPitchStudioPath(pathname)}
+                icon={<PenTool className="w-4 h-4" aria-hidden="true" />}
+                label="Pitch Studio"
+              />
               <Link
-                href="/dashboard/auditor"
+                href="/audits"
                 onClick={() => setMobileNavOpen(false)}
-                className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${navButtonClass(isAuditorPath(pathname))}`}
+                className={navItemClass(isAuditorPath(pathname))}
               >
-                <ShieldCheck className="w-4 h-4" aria-hidden="true" /> GitHub &amp;
-                Resume Auditor
+                <ShieldCheck className="w-4 h-4" aria-hidden="true" />
+                GitHub &amp; Resume Auditor
               </Link>
-              <Link
+              <ProtectedNavLink
                 href="/dashboard/interview-prep"
-                onClick={() => setMobileNavOpen(false)}
-                className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] ${navButtonClass(isInterviewPrepPath(pathname))}`}
-              >
-                <Terminal className="w-4 h-4" aria-hidden="true" /> Interview Simulator
-              </Link>
+                isActive={isInterviewPrepPath(pathname)}
+                icon={<Terminal className="w-4 h-4" aria-hidden="true" />}
+                label="Interview Simulator"
+              />
             </nav>
           </div>
         )}
@@ -220,6 +255,19 @@ export default function DashboardSidebar() {
           </div>
         )}
       </div>
+
+      {isGuest && !authLoading && (
+        <button
+          type="button"
+          onClick={() => {
+            setMobileNavOpen(false);
+            requireAuth();
+          }}
+          className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-all cursor-pointer"
+        >
+          Sign In
+        </button>
+      )}
     </div>
   );
 }
