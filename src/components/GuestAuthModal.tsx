@@ -32,7 +32,7 @@ export default function GuestAuthModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="guest-auth-title"
-        className="relative w-full max-w-md bg-[#111111] border border-slate-800 rounded-2xl p-6 shadow-2xl"
+        className="relative w-full max-w-md bg-[#111111] border border-zinc-800 rounded-2xl p-6 shadow-2xl"
       >
         <button
           type="button"

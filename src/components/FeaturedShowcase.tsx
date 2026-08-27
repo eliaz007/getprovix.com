@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, ShieldCheck } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import type { FeaturedBuilder } from "@/lib/featured-builders";
 import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
@@ -16,13 +16,13 @@ function BuilderAvatar({ builder }: { builder: FeaturedBuilder }) {
       <img
         src={builder.avatarUrl}
         alt=""
-        className="h-14 w-14 rounded-2xl border border-indigo-500/30 object-cover shadow-lg shadow-indigo-500/10"
+        className="h-14 w-14 rounded-lg border border-zinc-800 object-cover"
       />
     );
   }
 
   return (
-    <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/20 to-cyan-500/10 text-base font-bold text-indigo-300 shadow-lg shadow-indigo-500/10">
+    <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-base font-mono font-bold text-zinc-300">
       {builder.initials}
     </div>
   );
@@ -30,10 +30,8 @@ function BuilderAvatar({ builder }: { builder: FeaturedBuilder }) {
 
 function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
   return (
-    <article className="group relative flex h-full flex-col rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.25)] transition-all duration-300 hover:-translate-y-1 hover:border-indigo-500/40 hover:shadow-[0_24px_70px_rgba(99,102,241,0.12)]">
-      <div className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.12),_transparent_55%)]" />
-
-      <div className="relative flex items-start gap-4">
+    <article className="flex h-full flex-col rounded-lg border border-zinc-800 bg-[#111111] p-6">
+      <div className="flex items-start gap-4">
         <BuilderAvatar builder={builder} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -42,7 +40,7 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
             </h3>
             <VerifiedOnProvixPill className="shrink-0" />
           </div>
-          <p className="mt-1 truncate text-sm font-medium text-indigo-400">
+          <p className="mt-1 truncate text-sm font-medium text-zinc-400">
             {builder.roleTitle}
           </p>
           <WorkPreferenceTimezoneBadge
@@ -53,16 +51,16 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
         </div>
       </div>
 
-      <p className="relative mt-4 line-clamp-3 text-sm leading-relaxed text-zinc-400">
+      <p className="mt-4 line-clamp-3 text-sm leading-relaxed text-zinc-400">
         {builder.bioSnippet}
       </p>
 
       {builder.skills.length > 0 && (
-        <div className="relative mt-4 flex flex-wrap gap-1.5">
+        <div className="mt-4 flex flex-wrap gap-1.5">
           {builder.skills.map((skill) => (
             <span
               key={skill}
-              className="rounded-md border border-indigo-500/20 bg-indigo-500/10 px-2.5 py-1 text-[10px] font-bold text-indigo-300"
+              className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1 text-[10px] font-medium text-zinc-400"
             >
               {skill}
             </span>
@@ -71,26 +69,25 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
       )}
 
       {builder.hasGitHubRepos && (
-        <LockedGitHubReposBadge className="relative mt-4" />
+        <LockedGitHubReposBadge className="mt-4" />
       )}
 
       <div
-        className={`relative mt-5 flex items-center gap-3 ${
+        className={`mt-5 flex items-center gap-3 ${
           builder.proofScore !== null ? "justify-between" : "justify-end"
         }`}
       >
         {builder.proofScore !== null && (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-300">
-            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-            Proof Score · {builder.proofScore}/100
+          <span className="font-mono text-sm tabular-nums text-zinc-300">
+            {builder.proofScore}/100
           </span>
         )}
 
         <Link
           href={`/p/${builder.profileSlug}`}
-          className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-400 transition-colors hover:text-indigo-300"
+          className="inline-flex items-center gap-1 font-mono text-xs text-zinc-400 transition-colors hover:text-white"
         >
-          View Profile
+          /p/{builder.profileSlug}
           <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
       </div>
@@ -128,9 +125,9 @@ export default function FeaturedShowcase({
       }
     >
       <div className="mb-10 text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-1.5 text-xs font-mono font-semibold text-indigo-400">
+        <p className="text-[11px] font-medium uppercase tracking-widest text-zinc-500">
           Featured Builders
-        </span>
+        </p>
         <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
           Builders with verified proof-of-work
         </h2>

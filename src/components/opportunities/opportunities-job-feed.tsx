@@ -103,7 +103,7 @@ export default function OpportunitiesJobFeed({
           isGuest ? "sm:grid-cols-2" : "sm:grid-cols-3"
         }`}
       >
-        <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+        <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
             Active Openings
           </span>
@@ -112,7 +112,7 @@ export default function OpportunitiesJobFeed({
           </span>
         </div>
         {isGuest ? (
-          <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+          <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
               Apply
             </span>
@@ -122,7 +122,7 @@ export default function OpportunitiesJobFeed({
           </div>
         ) : (
           <>
-            <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+            <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                 Matching Your Skills
               </span>
@@ -130,7 +130,7 @@ export default function OpportunitiesJobFeed({
                 {jobsLoading ? "—" : skillMatchingJobsCount}
               </span>
             </div>
-            <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+            <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                 Profile Visibility
               </span>
@@ -152,7 +152,7 @@ export default function OpportunitiesJobFeed({
         )}
       </div>
 
-      <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-4 mb-6 shadow-lg">
+      <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-4 mb-6 shadow-lg">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="relative flex-1">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
@@ -163,7 +163,7 @@ export default function OpportunitiesJobFeed({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search roles, companies, or skills..."
-              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
             />
           </div>
           <button
@@ -171,8 +171,8 @@ export default function OpportunitiesJobFeed({
             onClick={() => setRemoteOnly((prev) => !prev)}
             className={`shrink-0 text-[11px] font-bold px-4 py-2.5 rounded-xl border transition-all cursor-pointer ${
               remoteOnly
-                ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20"
-                : "bg-[#0A0A0A] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                ? "bg-indigo-600 border-indigo-500 text-white"
+                : "bg-[#0A0A0A] border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
             }`}
           >
             Remote Only
@@ -192,7 +192,7 @@ export default function OpportunitiesJobFeed({
                   className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
                     isSelected
                       ? "bg-indigo-600 border-indigo-500 text-white"
-                      : "bg-[#0A0A0A] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                      : "bg-[#0A0A0A] border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
                   }`}
                 >
                   {tag}
@@ -204,13 +204,13 @@ export default function OpportunitiesJobFeed({
       </div>
 
       {jobsLoading ? (
-        <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+        <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
           <p className="text-sm font-medium text-slate-400">
             Loading opportunities...
           </p>
         </div>
       ) : activeJobs.length === 0 ? (
-        <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+        <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
           <p className="text-sm font-medium text-slate-300">
             No active openings right now
           </p>
@@ -219,7 +219,7 @@ export default function OpportunitiesJobFeed({
           </p>
         </div>
       ) : filteredJobFeed.length === 0 ? (
-        <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+        <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
           <p className="text-sm font-medium text-slate-300">
             No jobs match your filters
           </p>
@@ -242,7 +242,7 @@ export default function OpportunitiesJobFeed({
             return (
               <div
                 key={job.id}
-                className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="min-w-0">
@@ -271,7 +271,7 @@ export default function OpportunitiesJobFeed({
                             : "Pending"}
                       </span>
                       {insight && !isMatching ? (
-                        <span className="text-[10px] font-bold text-slate-500">
+                        <span className="text-[10px] font-mono font-bold tabular-nums text-zinc-400">
                           {matchScore}% match
                         </span>
                       ) : null}
@@ -331,7 +331,7 @@ export default function OpportunitiesJobFeed({
                 ) : null}
 
                 {!isGuest && (isMatching || insight) && (
-                  <div className="mb-4 rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-3">
+                  <div className="mb-4 rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                       AI Match Analysis
                     </span>
@@ -361,7 +361,7 @@ export default function OpportunitiesJobFeed({
                   </div>
                 )}
 
-                <div className="mt-auto flex items-center justify-end pt-4 border-t border-slate-800/60">
+                <div className="mt-auto flex items-center justify-end pt-4 border-t border-zinc-800">
                   <button
                     type="button"
                     onClick={() => onExpressInterest(job)}
@@ -369,7 +369,7 @@ export default function OpportunitiesJobFeed({
                     className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
                       alreadyApplied
                         ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-not-allowed"
-                        : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 cursor-pointer"
+                        : "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
                     }`}
                   >
                     {alreadyApplied ? (

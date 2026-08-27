@@ -6,7 +6,6 @@ import {
   MapPin,
   PlayCircle,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
@@ -79,7 +78,7 @@ export default async function PublicCandidateProfilePage({
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-slate-200">
-      <header className="border-b border-slate-800/80 bg-[#0A0A0A]/90 backdrop-blur-md">
+      <header className="border-b border-zinc-800 bg-[#0A0A0A]/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-4xl items-center justify-between gap-4 px-6">
           <Link href="/" className="hover:opacity-90 transition-opacity">
             <ProvixLogo />
@@ -94,10 +93,10 @@ export default async function PublicCandidateProfilePage({
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-10">
-        <div className="overflow-hidden rounded-3xl border border-slate-800/80 bg-[#111111] shadow-2xl">
-          <div className="border-b border-slate-800/80 bg-gradient-to-r from-indigo-500/10 via-transparent to-emerald-500/5 px-8 py-8">
+        <div className="overflow-hidden rounded-lg border border-zinc-800 bg-[#111111]">
+          <div className="border-b border-zinc-800 px-8 py-8">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-indigo-500/30 bg-indigo-600/20 text-2xl font-bold text-indigo-300">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 font-mono text-2xl font-bold text-zinc-300">
                 {profile.initials}
               </div>
 
@@ -108,6 +107,9 @@ export default async function PublicCandidateProfilePage({
                   </h1>
                   {profile.hasProofOfWork && <VerifiedOnProvixPill />}
                 </div>
+                <p className="font-mono text-xs text-zinc-500">
+                  /p/{profile.profileSlug}
+                </p>
 
                 {profile.jobTitle && (
                   <p className="text-sm font-semibold text-indigo-300">
@@ -128,21 +130,20 @@ export default async function PublicCandidateProfilePage({
                     </span>
                   )}
                   {profile.experienceLevel && (
-                    <span className="rounded-full border border-slate-700 bg-slate-900/80 px-2.5 py-1 font-bold uppercase tracking-wide">
+                    <span className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide text-zinc-400">
                       {profile.experienceLevel}
                     </span>
                   )}
                   {profile.availabilityStatus && (
                     <span
-                      className={`rounded-full border px-2.5 py-1 font-bold uppercase tracking-wide ${getAvailabilityClass(profile.availabilityStatus)}`}
+                      className={`rounded-md border px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide ${getAvailabilityClass(profile.availabilityStatus)}`}
                     >
                       {profile.availabilityStatus}
                     </span>
                   )}
                   {profile.hasProofOfWork && proofScore != null && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 font-bold text-emerald-300">
-                      <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-                      Integrity · {proofScore}/100
+                    <span className="font-mono text-sm tabular-nums text-zinc-300">
+                      {proofScore}/100
                     </span>
                   )}
                 </div>
@@ -171,7 +172,7 @@ export default async function PublicCandidateProfilePage({
                   {profile.skills.map((skill) => (
                     <span
                       key={skill}
-                      className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200"
+                      className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs font-medium text-zinc-300"
                     >
                       {skill}
                     </span>
@@ -185,7 +186,7 @@ export default async function PublicCandidateProfilePage({
                 <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">
                   Academics
                 </h2>
-                <div className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-[#0A0A0A] p-4">
+                <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-[#0A0A0A] p-4">
                   <GraduationCap
                     className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400"
                     aria-hidden
@@ -220,7 +221,7 @@ export default async function PublicCandidateProfilePage({
                       href={profile.youtubeUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group flex items-center justify-between rounded-2xl border border-slate-800 bg-[#0A0A0A] px-4 py-4 transition-colors hover:border-indigo-500/40 hover:bg-indigo-500/5"
+                      className="group flex items-center justify-between rounded-2xl border border-zinc-800 bg-[#0A0A0A] px-4 py-4 transition-colors hover:border-indigo-500/40 hover:bg-indigo-500/5"
                     >
                       <span className="flex items-center gap-3">
                         <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900/80 text-slate-300">
@@ -243,17 +244,17 @@ export default async function PublicCandidateProfilePage({
                   )}
                 </div>
               ) : (
-                <div className="rounded-2xl border border-dashed border-slate-800 bg-[#0A0A0A] px-4 py-6 text-sm text-slate-500">
+                <div className="rounded-2xl border border-dashed border-zinc-800 bg-[#0A0A0A] px-4 py-6 text-sm text-slate-500">
                   Proof-of-work links will appear here once the candidate adds
                   portfolio or demo artifacts.
                 </div>
               )}
             </section>
 
-            <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/5 px-5 py-4">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-5 py-4">
               <div className="flex items-start gap-3">
-                <Sparkles
-                  className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400"
+                <ShieldCheck
+                  className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500"
                   aria-hidden
                 />
                 <div>

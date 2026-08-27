@@ -147,7 +147,7 @@ export default function InterviewPrepPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-slate-800/60 p-7 space-y-5 shadow-2xl">
+          <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-7 space-y-5 shadow-2xl">
             <div>
               <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
                 Target Job Title
@@ -157,7 +157,7 @@ export default function InterviewPrepPage() {
                 value={targetJobTitle}
                 onChange={(e) => setTargetJobTitle(e.target.value)}
                 placeholder="Junior Backend Engineer"
-                className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -170,7 +170,7 @@ export default function InterviewPrepPage() {
                 value={coreTechStack}
                 onChange={(e) => setCoreTechStack(e.target.value)}
                 placeholder="Next.js, PostgreSQL, REST APIs"
-                className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -185,7 +185,7 @@ export default function InterviewPrepPage() {
                     e.target.value as (typeof INTERVIEW_ROUNDS)[number]
                   )
                 }
-                className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
               >
                 {INTERVIEW_ROUNDS.map((round) => (
                   <option key={round} value={round}>
@@ -206,7 +206,7 @@ export default function InterviewPrepPage() {
                     e.target.value as (typeof COMPANY_TYPES)[number]
                   )
                 }
-                className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
               >
                 {COMPANY_TYPES.map((type) => (
                   <option key={type} value={type}>
@@ -236,7 +236,7 @@ export default function InterviewPrepPage() {
             </button>
           </div>
 
-          <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-slate-800/60 p-6 min-h-[480px] shadow-2xl">
+          <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[480px] shadow-2xl">
             {loading && (
               <div className="space-y-4 animate-in fade-in duration-300">
                 <div className="text-sm font-bold text-white mb-1">
@@ -259,7 +259,7 @@ export default function InterviewPrepPage() {
                             ? "border-emerald-500/25 bg-emerald-500/5"
                             : isActive
                               ? "border-indigo-500/30 bg-indigo-500/10"
-                              : "border-slate-800 bg-[#0A0A0A]"
+                              : "border-zinc-800 bg-[#0A0A0A]"
                         }`}
                       >
                         <span
@@ -305,7 +305,7 @@ export default function InterviewPrepPage() {
 
             {!loading && result && (
               <div className="space-y-5 animate-in fade-in duration-500">
-                <div className="pb-4 border-b border-slate-800">
+                <div className="pb-4 border-b border-zinc-800">
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
                     Interview Cheat Sheet
                   </div>
@@ -321,7 +321,7 @@ export default function InterviewPrepPage() {
                     return (
                       <div
                         key={`${item.question}-${index}`}
-                        className="rounded-xl border border-slate-800 bg-[#0A0A0A] overflow-hidden"
+                        className="rounded-xl border border-zinc-800 bg-[#0A0A0A] overflow-hidden"
                       >
                         <button
                           type="button"
@@ -344,7 +344,7 @@ export default function InterviewPrepPage() {
                         </button>
 
                         {isExpanded && (
-                          <div className="px-4 pb-4 space-y-3 border-t border-slate-800 pt-3">
+                          <div className="px-4 pb-4 space-y-3 border-t border-zinc-800 pt-3">
                             <div>
                               <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
                                 Ideal Answer Structure

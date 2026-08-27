@@ -123,7 +123,7 @@ export default function RequestIntroModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-[#121212] border border-slate-800 rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
+      <div className="bg-[#121212] border border-zinc-800 rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
         <button
           type="button"
           onClick={onClose}
@@ -154,7 +154,7 @@ export default function RequestIntroModal({
               value={companyName}
               onChange={(event) => setCompanyName(event.target.value)}
               required
-              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
           </div>
 
@@ -167,7 +167,7 @@ export default function RequestIntroModal({
               value={workEmail}
               onChange={(event) => setWorkEmail(event.target.value)}
               required
-              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
           </div>
 
@@ -181,7 +181,7 @@ export default function RequestIntroModal({
               onChange={(event) => setRoleTitle(event.target.value)}
               placeholder="e.g. Full-Stack Engineer"
               required
-              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
           </div>
 
@@ -193,7 +193,7 @@ export default function RequestIntroModal({
               value={compBand}
               onChange={(event) => setCompBand(event.target.value as CompBand)}
               required
-              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
             >
               <option value="" disabled>
                 Select compensation band
@@ -206,7 +206,7 @@ export default function RequestIntroModal({
             </select>
           </div>
 
-          <label className="flex items-start gap-3 rounded-xl border border-slate-800 bg-[#0A0A0A] p-3 cursor-pointer">
+          <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-[#0A0A0A] p-3 cursor-pointer">
             <input
               type="checkbox"
               checked={termsAccepted}

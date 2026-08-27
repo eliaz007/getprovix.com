@@ -13,7 +13,6 @@ import {
   Flame,
   Lock,
   ShieldCheck,
-  Sparkles,
   Target,
 } from "lucide-react";
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
@@ -2555,14 +2554,17 @@ const showToast = (msg: string) => {
     (jobId: string) => {
       const job = jobs.find((entry) => entry.id === jobId);
       const listing = businessListings.find((entry) => entry.id === jobId);
+      const title = job?.title ?? listing?.title ?? "Role";
 
-      router.push("/dashboard");
-      setActiveTab("my_profile");
-      setProfileSubMenu("activeListings");
-      setApplicantsDrawerJob({
-        id: jobId,
-        title: job?.title ?? listing?.title ?? "Role",
-      });
+      window.setTimeout(() => {
+        router.push("/dashboard");
+        setActiveTab("my_profile");
+        setProfileSubMenu("activeListings");
+        setApplicantsDrawerJob({
+          id: jobId,
+          title,
+        });
+      }, 0);
     },
     [jobs, businessListings, router, setActiveTab]
   );
@@ -3307,14 +3309,14 @@ const showToast = (msg: string) => {
   }
 
   const renderProfileFormActions = (options?: { showShareLink?: boolean }) => (
-    <div className="mt-6 pt-6 border-t border-slate-800/60 flex flex-col sm:flex-row gap-3">
+    <div className="mt-6 pt-6 border-t border-zinc-800 flex flex-col sm:flex-row gap-3">
       <button
         type="button"
         onClick={handleSaveProfile}
         disabled={!canSaveProfile}
         className={`w-full sm:flex-1 font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
           canSaveProfile
-            ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-lg shadow-indigo-500/25"
+            ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
             : "bg-slate-800 text-slate-500 cursor-not-allowed"
         }`}
       >
@@ -3351,7 +3353,7 @@ const showToast = (msg: string) => {
 
   const renderGuestNav = () => (
     <div>
-      <div className="mt-8 pt-8 border-t border-slate-800/60">
+      <div className="mt-8 pt-8 border-t border-zinc-800">
         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
           Candidate Dashboard
         </span>
@@ -3382,7 +3384,7 @@ const showToast = (msg: string) => {
           </button>
         </nav>
       </div>
-      <div className="mt-8 pt-8 border-t border-slate-800/60">
+      <div className="mt-8 pt-8 border-t border-zinc-800">
         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
           Career Accelerator
         </span>
@@ -3428,7 +3430,7 @@ const showToast = (msg: string) => {
         }
       >
         {isStandaloneGuest ? (
-          <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-[#111111] border-r border-slate-800/60 z-20 overflow-y-auto">
+          <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-[#111111] border-r border-zinc-800 z-20 overflow-y-auto">
             <div className="p-6 flex flex-col min-h-full">
               <Link
                 href="/"
@@ -3472,7 +3474,7 @@ const showToast = (msg: string) => {
                 onClick={() => setGuestMobileNavOpen(false)}
                 className="fixed inset-0 bg-black/60 z-40 cursor-pointer"
               />
-              <aside className="fixed inset-y-0 left-0 w-64 max-w-[85vw] bg-[#111111] border-r border-slate-800/60 z-50 p-6 overflow-y-auto">
+              <aside className="fixed inset-y-0 left-0 w-64 max-w-[85vw] bg-[#111111] border-r border-zinc-800 z-50 p-6 overflow-y-auto">
                 {renderGuestNav()}
               </aside>
             </div>
@@ -3487,18 +3489,14 @@ const showToast = (msg: string) => {
             }
           >
       {isEmployeeAccount && activeTab === "opportunity_radar" && (
-        <div className="sticky top-0 z-20 -mt-4 mb-2 flex justify-center pointer-events-none">
-          <div
-            className={`inline-flex items-center gap-2 backdrop-blur-md text-xs font-bold px-4 py-2 rounded-full shadow-lg border ${
-              isVisibleInPool
-                ? "bg-[#111111]/95 border-emerald-500/25 text-emerald-400"
-                : "bg-[#111111]/95 border-slate-700 text-slate-400"
-            }`}
-          >
-            {isVisibleInPool
-              ? "🟢 Open to Work (Visible to Employers)"
-              : "🔴 Profile Hidden from Employers"}
-          </div>
+        <div
+          className={`mb-6 inline-flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-md border border-zinc-800 bg-[#111111] ${
+            isVisibleInPool ? "text-zinc-300" : "text-zinc-500"
+          }`}
+        >
+          {isVisibleInPool
+            ? "Open to work — visible to employers"
+            : "Profile hidden from employers"}
         </div>
       )}
       <div className="w-full max-w-5xl mx-auto space-y-10 animate-in fade-in duration-500 transition-all duration-300">
@@ -3523,7 +3521,7 @@ const showToast = (msg: string) => {
               </div>
 
               {/* HORIZONTAL SUB-MENU BAR */}
-              <div className="flex border-b border-slate-800/80 mb-8 space-x-6">
+              <div className="flex border-b border-zinc-800 mb-8 space-x-6">
                 {isBusinessAccount ? (
                   <>
                     <button
@@ -3600,10 +3598,10 @@ const showToast = (msg: string) => {
               </div>
 
               {/* SUB-MENU CONTENT PANELS */}
-              <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-8 shadow-2xl">
+              <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-8 shadow-2xl">
                 {profileSubMenu === "companyInfo" && (
                   <div className="space-y-6 animate-in fade-in">
-                    <div className="flex items-center gap-5 pb-6 border-b border-slate-800">
+                    <div className="flex items-center gap-5 pb-6 border-b border-zinc-800">
                       <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-xl font-bold text-indigo-400">
                         {businessProfileData?.businessName?.charAt(0) || "?"}
                       </div>
@@ -3647,7 +3645,7 @@ const showToast = (msg: string) => {
                               workEmail: e.target.value,
                             })
                           }
-                          className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                       <div>
@@ -3663,7 +3661,7 @@ const showToast = (msg: string) => {
                               phone: e.target.value,
                             })
                           }
-                          className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                     </div>
@@ -3681,7 +3679,7 @@ const showToast = (msg: string) => {
                             industry: e.target.value,
                           })
                         }
-                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
                       />
                     </div>
 
@@ -3698,7 +3696,7 @@ const showToast = (msg: string) => {
                             companyBio: e.target.value,
                           })
                         }
-                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
+                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
                       />
                     </div>
 
@@ -3722,7 +3720,7 @@ const showToast = (msg: string) => {
                     </div>
 
                     {businessListings.length === 0 ? (
-                      <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-6 text-center">
+                      <div className="rounded-xl border border-zinc-800 bg-slate-900/30 p-6 text-center">
                         <p className="text-sm text-slate-400">
                           No active listings yet. Post a job to start receiving
                           candidate interest.
@@ -3732,7 +3730,7 @@ const showToast = (msg: string) => {
                       businessListings.map((listing) => (
                       <div
                         key={listing.id}
-                        className="flex items-center justify-between p-4 bg-slate-900/50 border border-slate-800 rounded-xl"
+                        className="flex items-center justify-between p-4 bg-slate-900/50 border border-zinc-800 rounded-xl"
                       >
                         <div>
                           <span className="font-bold text-sm text-white block">
@@ -3771,7 +3769,7 @@ const showToast = (msg: string) => {
 
                 {profileSubMenu === "overview" && (
                   <div className="space-y-6 animate-in fade-in">
-                    <div className="flex items-center gap-5 pb-6 border-b border-slate-800">
+                    <div className="flex items-center gap-5 pb-6 border-b border-zinc-800">
                       {loadingProfile ? (
                         <>
                           <div className="w-16 h-16 rounded-2xl bg-slate-800 animate-pulse" />
@@ -3818,7 +3816,7 @@ const showToast = (msg: string) => {
                         onChange={(e) =>
                           setExperienceLevel(e.target.value as ExperienceLevel)
                         }
-                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
                       >
                         {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
                           <option key={option} value={option}>
@@ -3836,7 +3834,7 @@ const showToast = (msg: string) => {
                         rows={3}
                         value={bio}
                         onChange={(e) => setBio(e.target.value)}
-                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
+                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
                       />
                     </div>
 
@@ -3849,7 +3847,7 @@ const showToast = (msg: string) => {
                         value={skills}
                         onChange={(e) => setSkills(e.target.value)}
                         placeholder="React, TypeScript, Python..."
-                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
                       />
                       <p className="text-[11px] text-slate-500 mt-2">
                         Comma-separated skills used for job matching.
@@ -3875,7 +3873,7 @@ const showToast = (msg: string) => {
                           type="text"
                           value={school}
                           onChange={(e) => setSchool(e.target.value)}
-                          className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                       <div>
@@ -3889,7 +3887,7 @@ const showToast = (msg: string) => {
                             type="text"
                             value={degree}
                             onChange={(e) => setDegree(e.target.value)}
-                            className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                            className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
                           />
                         )}
                       </div>
@@ -3909,7 +3907,7 @@ const showToast = (msg: string) => {
                               gpa: e.target.value,
                             })
                           }
-                          className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                       <div>
@@ -3928,7 +3926,7 @@ const showToast = (msg: string) => {
                                 gradYear: e.target.value,
                               })
                             }
-                            className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                            className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
                           />
                         )}
                       </div>
@@ -3960,7 +3958,7 @@ const showToast = (msg: string) => {
                           className={`w-full bg-[#0A0A0A] border rounded-xl p-3 text-sm text-white font-mono focus:outline-none ${
                             githubValidationMessage
                               ? "border-rose-500/70 focus:border-rose-500"
-                              : "border-slate-800 focus:border-indigo-500"
+                              : "border-zinc-800 focus:border-indigo-500"
                           }`}
                         />
                         {githubValidationMessage && (
@@ -3990,7 +3988,7 @@ const showToast = (msg: string) => {
                               className={`w-full bg-[#0A0A0A] border rounded-xl p-3 text-sm text-white font-mono focus:outline-none ${
                                 demoVideoValidationMessage
                                   ? "border-rose-500/70 focus:border-rose-500"
-                                  : "border-slate-800 focus:border-indigo-500"
+                                  : "border-zinc-800 focus:border-indigo-500"
                               }`}
                             />
                             {demoVideoValidationMessage && (
@@ -4016,7 +4014,7 @@ const showToast = (msg: string) => {
                             projects: e.target.value,
                           })
                         }
-                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
+                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
                       />
                     </div>
 
@@ -4035,7 +4033,7 @@ const showToast = (msg: string) => {
                     {!isBusinessAccount && (
                     <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
+                      <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
                         <div>
                           <span className="font-bold text-xs text-white block">
                             Work Preference
@@ -4050,7 +4048,7 @@ const showToast = (msg: string) => {
                           onChange={(e) =>
                             setWorkPreference(e.target.value as WorkPreference)
                           }
-                          className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
                         >
                           {WORK_PREFERENCE_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -4060,7 +4058,7 @@ const showToast = (msg: string) => {
                         </select>
                       </div>
 
-                      <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
+                      <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
                         <div>
                           <span className="font-bold text-xs text-white block">
                             Timezone
@@ -4076,7 +4074,7 @@ const showToast = (msg: string) => {
                               e.target.value as CandidateTimezone
                             )
                           }
-                          className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
                         >
                           {TIMEZONE_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -4087,7 +4085,7 @@ const showToast = (msg: string) => {
                       </div>
                     </div>
 
-                    <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
+                    <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
                       <div>
                         <span className="font-bold text-xs text-white block">
                           Availability Status
@@ -4104,7 +4102,7 @@ const showToast = (msg: string) => {
                             e.target.value as AvailabilityStatus
                           )
                         }
-                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
                       >
                         {AVAILABILITY_STATUS_OPTIONS.map((option) => (
                           <option key={option} value={option}>
@@ -4114,7 +4112,7 @@ const showToast = (msg: string) => {
                       </select>
                     </div>
 
-                    <div className="flex items-center justify-between gap-4 p-4 bg-slate-900/50 border border-slate-800 rounded-xl">
+                    <div className="flex items-center justify-between gap-4 p-4 bg-slate-900/50 border border-zinc-800 rounded-xl">
                       <div>
                         <span className="font-bold text-xs text-white block">
                           Visible to Employers
@@ -4209,7 +4207,7 @@ const showToast = (msg: string) => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Pending Review
                   </span>
@@ -4217,7 +4215,7 @@ const showToast = (msg: string) => {
                     {candidateIntroLoading ? "—" : pendingCandidateIntroCount}
                   </span>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Accepted
                   </span>
@@ -4231,7 +4229,7 @@ const showToast = (msg: string) => {
                         ).length}
                   </span>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Total Requests
                   </span>
@@ -4242,13 +4240,13 @@ const showToast = (msg: string) => {
               </div>
 
               {candidateIntroLoading ? (
-                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-400">
                     Loading intro requests...
                   </p>
                 </div>
               ) : candidateIntroRequests.length === 0 ? (
-                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
                     No intro requests yet
                   </p>
@@ -4272,7 +4270,7 @@ const showToast = (msg: string) => {
                     return (
                       <div
                         key={request.id}
-                        className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                        className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
                       >
                         <div className="flex items-start justify-between gap-3 mb-4">
                           <div className="min-w-0">
@@ -4293,7 +4291,7 @@ const showToast = (msg: string) => {
                           </span>
                         </div>
 
-                        <div className="rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-3 mb-4 space-y-2">
+                        <div className="rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3 mb-4 space-y-2">
                           <div className="flex items-start justify-between gap-3 text-xs">
                             <span className="text-slate-500 uppercase tracking-widest font-bold">
                               Contact
@@ -4313,7 +4311,7 @@ const showToast = (msg: string) => {
                         </div>
 
                         {isPending ? (
-                          <div className="mt-auto flex items-center justify-end gap-2 pt-4 border-t border-slate-800/60">
+                          <div className="mt-auto flex items-center justify-end gap-2 pt-4 border-t border-zinc-800">
                             <button
                               type="button"
                               onClick={() =>
@@ -4323,7 +4321,7 @@ const showToast = (msg: string) => {
                                 )
                               }
                               disabled={isResponding}
-                              className="text-[11px] font-bold px-4 py-2 rounded-lg border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
+                              className="text-[11px] font-bold px-4 py-2 rounded-lg border border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
                             >
                               Decline
                             </button>
@@ -4336,13 +4334,13 @@ const showToast = (msg: string) => {
                                 )
                               }
                               disabled={isResponding}
-                              className="text-[11px] font-bold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 transition-all cursor-pointer disabled:opacity-60"
+                              className="text-[11px] font-bold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer disabled:opacity-60"
                             >
                               {isResponding ? "Saving..." : "Accept Intro"}
                             </button>
                           </div>
                         ) : (
-                          <div className="mt-auto pt-4 border-t border-slate-800/60">
+                          <div className="mt-auto pt-4 border-t border-zinc-800">
                             <p className="text-xs text-slate-500">
                               {status === "accepted"
                                 ? "You accepted this intro. Check your inbox for the mutual introduction email."
@@ -4375,7 +4373,7 @@ const showToast = (msg: string) => {
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
                 {/* Left: inputs */}
-                <div className="lg:col-span-7 bg-[#111111] rounded-2xl border border-slate-800/60 p-5 sm:p-6 shadow-lg space-y-4">
+                <div className="lg:col-span-7 bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
                   <div>
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                       Target School
@@ -4385,7 +4383,7 @@ const showToast = (msg: string) => {
                       value={essayTargetSchool}
                       onChange={(e) => setEssayTargetSchool(e.target.value)}
                       placeholder="e.g. Stanford University"
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
                     />
                   </div>
 
@@ -4398,7 +4396,7 @@ const showToast = (msg: string) => {
                       value={essayPrompt}
                       onChange={(e) => setEssayPrompt(e.target.value)}
                       placeholder="Paste the essay prompt you're responding to..."
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none transition-all"
                     />
                   </div>
 
@@ -4416,7 +4414,7 @@ const showToast = (msg: string) => {
                       value={essayText}
                       onChange={(e) => setEssayText(e.target.value)}
                       placeholder="Paste your essay draft here..."
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none transition-all"
                     />
                   </div>
 
@@ -4431,7 +4429,7 @@ const showToast = (msg: string) => {
                         ? "bg-indigo-600/80 text-white cursor-wait animate-pulse"
                         : !essayPrompt.trim() || !essayText.trim()
                           ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                          : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 cursor-pointer"
+                          : "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
                     }`}
                   >
                     {evaluatingEssay ? (
@@ -4449,7 +4447,7 @@ const showToast = (msg: string) => {
                 </div>
 
                 {/* Right: results */}
-                <div className="lg:col-span-5 bg-[#111111] rounded-2xl border border-slate-800/60 p-5 sm:p-6 shadow-lg">
+                <div className="lg:col-span-5 bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                   {evaluatingEssay ? (
                     <div className="flex flex-col items-center justify-center min-h-[320px] text-center">
                       <div className="relative mb-4">
@@ -4480,7 +4478,7 @@ const showToast = (msg: string) => {
                           </p>
                         </div>
                         <div
-                          className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-extrabold border ${
+                          className={`shrink-0 w-14 h-14 rounded-lg flex items-center justify-center text-xl font-mono font-extrabold tabular-nums border ${
                             essayReview.overallScore >= 8
                               ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
                               : essayReview.overallScore >= 6
@@ -4542,7 +4540,7 @@ const showToast = (msg: string) => {
                             {essayReview.lineFeedback.map((item, index) => (
                               <div
                                 key={`${item.originalText}-${index}`}
-                                className="rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-3"
+                                className="rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3"
                               >
                                 {item.originalText && (
                                   <p className="text-[11px] text-slate-500 italic mb-2 border-l-2 border-slate-700 pl-2">
@@ -4596,7 +4594,7 @@ const showToast = (msg: string) => {
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
                 {/* Left: inputs */}
-                <div className="lg:col-span-5 bg-[#111111] rounded-2xl border border-slate-800/60 p-5 sm:p-6 shadow-lg space-y-4">
+                <div className="lg:col-span-5 bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
                   <div>
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                       College Name
@@ -4606,7 +4604,7 @@ const showToast = (msg: string) => {
                       value={collegeName}
                       onChange={(e) => setCollegeName(e.target.value)}
                       placeholder="e.g. NYU, Stanford University"
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
                     />
                   </div>
 
@@ -4619,7 +4617,7 @@ const showToast = (msg: string) => {
                       value={currentOffer}
                       onChange={(e) => setCurrentOffer(e.target.value)}
                       placeholder="e.g. $12,000 grant + $5,500 loans"
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
                     />
                   </div>
 
@@ -4630,7 +4628,7 @@ const showToast = (msg: string) => {
                     <select
                       value={appealReason}
                       onChange={(e) => setAppealReason(e.target.value)}
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
                     >
                       <option value="Competing Offer">Competing Offer</option>
                       <option value="Financial Hardship">Financial Hardship</option>
@@ -4647,7 +4645,7 @@ const showToast = (msg: string) => {
                       value={contextDetails}
                       onChange={(e) => setContextDetails(e.target.value)}
                       placeholder="Describe changed circumstances, competing offers, family income updates, or merit achievements..."
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none transition-all"
                     />
                   </div>
 
@@ -4664,7 +4662,7 @@ const showToast = (msg: string) => {
                         ? "bg-indigo-600/80 text-white cursor-wait animate-pulse"
                         : !collegeName.trim() || !contextDetails.trim()
                           ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                          : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 cursor-pointer"
+                          : "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
                     }`}
                   >
                     {generatingAid ? (
@@ -4684,7 +4682,7 @@ const showToast = (msg: string) => {
                 {/* Right: results */}
                 <div className="lg:col-span-7 space-y-4">
                   {generatingAid ? (
-                    <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-10 shadow-lg flex flex-col items-center justify-center min-h-[420px] text-center">
+                    <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[420px] text-center">
                       <div className="relative mb-4">
                         <div className="w-16 h-16 rounded-full border-2 border-indigo-500/30 flex items-center justify-center animate-pulse">
                           <FileText className="w-7 h-7 text-indigo-400" aria-hidden="true" />
@@ -4709,7 +4707,7 @@ const showToast = (msg: string) => {
                         </p>
                       </div>
 
-                      <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-5 sm:p-6 shadow-lg">
+                      <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                         <div className="flex items-center justify-between gap-3 mb-4">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                             Strategy & Case Strength
@@ -4724,7 +4722,7 @@ const showToast = (msg: string) => {
                           {aidAppealResult.strategyAnalysis}
                         </p>
                         {aidAppealResult.negotiationDosAndDonts.length > 0 && (
-                          <div className="mt-5 pt-5 border-t border-slate-800/60">
+                          <div className="mt-5 pt-5 border-t border-zinc-800">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">
                               Negotiation Do&apos;s & Don&apos;ts
                             </span>
@@ -4743,7 +4741,7 @@ const showToast = (msg: string) => {
                         )}
                       </div>
 
-                      <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-5 sm:p-6 shadow-lg">
+                      <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">
                           Required Documents & Evidence Checklist
                         </span>
@@ -4772,7 +4770,7 @@ const showToast = (msg: string) => {
                         </ul>
                       </div>
 
-                      <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-5 sm:p-6 shadow-lg">
+                      <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                         <div className="flex items-center justify-between gap-3 mb-4">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                             Formal Letter Drafter
@@ -4783,7 +4781,7 @@ const showToast = (msg: string) => {
                             className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
                               letterCopied
                                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                : "bg-[#0A0A0A] text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700"
+                                : "bg-[#0A0A0A] text-slate-400 border-zinc-800 hover:text-slate-200 hover:border-slate-700"
                             }`}
                           >
                             {letterCopied ? (
@@ -4803,13 +4801,13 @@ const showToast = (msg: string) => {
                         <p className="text-xs font-semibold text-indigo-400 mb-3">
                           Subject: {aidAppealResult.letterSubject}
                         </p>
-                        <div className="rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-4 text-[13px] text-slate-300 leading-relaxed whitespace-pre-wrap">
+                        <div className="rounded-xl bg-[#0A0A0A] border border-zinc-800 p-4 text-[13px] text-slate-300 leading-relaxed whitespace-pre-wrap">
                           {aidAppealResult.letterBody}
                         </div>
                       </div>
                     </>
                   ) : (
-                    <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-10 shadow-lg flex flex-col items-center justify-center min-h-[420px] text-center">
+                    <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[420px] text-center">
                       <div className="w-12 h-12 rounded-xl bg-slate-800/60 flex items-center justify-center text-slate-500 mb-4">
                         <FileText className="w-6 h-6" aria-hidden="true" />
                       </div>
@@ -4842,7 +4840,7 @@ const showToast = (msg: string) => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-                <div className="lg:col-span-4 bg-[#111111] rounded-2xl border border-slate-800/60 p-5 sm:p-6 shadow-lg space-y-4">
+                <div className="lg:col-span-4 bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
                   <div>
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                       GPA
@@ -4852,7 +4850,7 @@ const showToast = (msg: string) => {
                       value={fitGpa}
                       onChange={(e) => setFitGpa(e.target.value)}
                       placeholder="e.g. 3.8"
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
                     />
                   </div>
 
@@ -4865,7 +4863,7 @@ const showToast = (msg: string) => {
                       value={fitMajor}
                       onChange={(e) => setFitMajor(e.target.value)}
                       placeholder="e.g. Computer Science"
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
                     />
                   </div>
 
@@ -4878,7 +4876,7 @@ const showToast = (msg: string) => {
                       value={fitTestScores}
                       onChange={(e) => setFitTestScores(e.target.value)}
                       placeholder="e.g. SAT 1450 / ACT 32"
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
                     />
                   </div>
 
@@ -4891,7 +4889,7 @@ const showToast = (msg: string) => {
                       value={fitLocationPreference}
                       onChange={(e) => setFitLocationPreference(e.target.value)}
                       placeholder="e.g. West Coast, Northeast"
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
                     />
                   </div>
 
@@ -4904,7 +4902,7 @@ const showToast = (msg: string) => {
                       value={fitBudgetPreference}
                       onChange={(e) => setFitBudgetPreference(e.target.value)}
                       placeholder="e.g. Under $30k net cost"
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
                     />
                   </div>
 
@@ -4919,7 +4917,7 @@ const showToast = (msg: string) => {
                         ? "bg-indigo-600/80 text-white cursor-wait animate-pulse"
                         : !fitGpa.trim() || !fitMajor.trim()
                           ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                          : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 cursor-pointer"
+                          : "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
                     }`}
                   >
                     {generatingCollegeFit ? (
@@ -4953,7 +4951,7 @@ const showToast = (msg: string) => {
                   )}
 
                   {generatingCollegeFit ? (
-                    <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-6 sm:p-8 shadow-lg space-y-5 min-h-[320px]">
+                    <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-6 sm:p-8 shadow-lg space-y-5 min-h-[320px]">
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <div className="w-12 h-12 rounded-full border-2 border-indigo-500/30 flex items-center justify-center animate-pulse">
@@ -4987,7 +4985,7 @@ const showToast = (msg: string) => {
                                   ? "border-emerald-500/25 bg-emerald-500/5"
                                   : isActive
                                     ? "border-indigo-500/30 bg-indigo-500/10"
-                                    : "border-slate-800 bg-[#0A0A0A]"
+                                    : "border-zinc-800 bg-[#0A0A0A]"
                               }`}
                             >
                               <span
@@ -5025,7 +5023,7 @@ const showToast = (msg: string) => {
                     </div>
                   ) : collegeFitReport ? (
                     <>
-                      <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-5 sm:p-6 shadow-lg">
+                      <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                           Fit Summary
                         </span>
@@ -5080,7 +5078,7 @@ const showToast = (msg: string) => {
                               {section.schools.map((school) => (
                                 <div
                                   key={`${section.title}-${school.name}`}
-                                  className="rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-4 sm:p-5"
+                                  className="rounded-xl bg-[#0A0A0A] border border-zinc-800 p-4 sm:p-5"
                                 >
                                   <div className="flex items-start justify-between gap-3 mb-3">
                                     <div className="min-w-0">
@@ -5102,8 +5100,8 @@ const showToast = (msg: string) => {
                                     {school.matchReason}
                                   </p>
 
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-slate-800/80">
-                                    <div className="rounded-lg border border-slate-800/60 bg-[#111111] p-3">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-zinc-800">
+                                    <div className="rounded-lg border border-zinc-800 bg-[#111111] p-3">
                                       <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
                                         Acceptance Odds
                                       </span>
@@ -5111,7 +5109,7 @@ const showToast = (msg: string) => {
                                         {school.acceptanceOdds}
                                       </p>
                                     </div>
-                                    <div className="rounded-lg border border-slate-800/60 bg-[#111111] p-3">
+                                    <div className="rounded-lg border border-zinc-800 bg-[#111111] p-3">
                                       <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
                                         Financial Profile
                                       </span>
@@ -5119,7 +5117,7 @@ const showToast = (msg: string) => {
                                         {school.financialProfile}
                                       </p>
                                     </div>
-                                    <div className="md:col-span-2 rounded-lg border border-slate-800/60 bg-[#111111] p-3">
+                                    <div className="md:col-span-2 rounded-lg border border-zinc-800 bg-[#111111] p-3">
                                       <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
                                         Departmental Strengths
                                       </span>
@@ -5135,12 +5133,11 @@ const showToast = (msg: string) => {
                                         {school.essayAngles.map((angle) => (
                                           <li
                                             key={`${school.name}-${angle}`}
-                                            className="text-xs text-indigo-100/90 leading-relaxed flex items-start gap-2"
+                                            className="text-xs text-zinc-300 leading-relaxed flex items-start gap-2"
                                           >
-                                            <Sparkles
-                                              className="w-3 h-3 mt-0.5 shrink-0 text-indigo-400"
-                                              aria-hidden
-                                            />
+                                            <span className="mt-0.5 shrink-0 font-mono text-zinc-500">
+                                              –
+                                            </span>
                                             <span>{angle}</span>
                                           </li>
                                         ))}
@@ -5176,7 +5173,7 @@ const showToast = (msg: string) => {
                       ))}
                     </>
                   ) : (
-                    <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-10 shadow-lg flex flex-col items-center justify-center min-h-[320px] text-center">
+                    <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[320px] text-center">
                       <div className="w-12 h-12 rounded-xl bg-slate-800/60 flex items-center justify-center text-slate-500 mb-4">
                         <Icons.GraduationCap />
                       </div>
@@ -5209,7 +5206,7 @@ const showToast = (msg: string) => {
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Active Roles
                   </span>
@@ -5220,7 +5217,7 @@ const showToast = (msg: string) => {
                     of {jobsLoading ? "—" : activeOpeningsCount} active
                   </p>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Direct Matches
                   </span>
@@ -5229,7 +5226,7 @@ const showToast = (msg: string) => {
                   </span>
                   <p className="text-[11px] text-slate-500 mt-1">90%+ fit score</p>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg col-span-2 lg:col-span-1">
+                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg col-span-2 lg:col-span-1">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Profile Views
                   </span>
@@ -5240,7 +5237,7 @@ const showToast = (msg: string) => {
                 </div>
               </div>
 
-              <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-4 mb-6 shadow-lg">
+              <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-4 mb-6 shadow-lg">
                 <div className="flex flex-col lg:flex-row lg:items-center gap-3">
                   <div className="relative flex-1">
                     <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
@@ -5251,7 +5248,7 @@ const showToast = (msg: string) => {
                       value={radarSearch}
                       onChange={(e) => setRadarSearch(e.target.value)}
                       placeholder="Search by role title..."
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
                     />
                   </div>
                   <button
@@ -5259,8 +5256,8 @@ const showToast = (msg: string) => {
                     onClick={() => setRemoteOnly((prev) => !prev)}
                     className={`shrink-0 text-[11px] font-bold px-4 py-2.5 rounded-xl border transition-all cursor-pointer ${
                       remoteOnly
-                        ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20"
-                        : "bg-[#0A0A0A] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                        ? "bg-indigo-600 border-indigo-500 text-white"
+                        : "bg-[#0A0A0A] border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
                     }`}
                   >
                     Remote Only
@@ -5268,7 +5265,7 @@ const showToast = (msg: string) => {
                   <select
                     value={radarExperienceFilter}
                     onChange={(e) => setRadarExperienceFilter(e.target.value)}
-                    className="shrink-0 bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                    className="shrink-0 bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
                   >
                     <option value="all">All Experience Levels</option>
                     <option value="Entry-Level">Entry-Level</option>
@@ -5278,13 +5275,13 @@ const showToast = (msg: string) => {
               </div>
 
               {jobsLoading ? (
-                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-400">
                     Loading opportunities...
                   </p>
                 </div>
               ) : activeJobs.length === 0 ? (
-                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
                     No active openings right now
                   </p>
@@ -5293,7 +5290,7 @@ const showToast = (msg: string) => {
                   </p>
                 </div>
               ) : filteredRadarJobFeed.length === 0 ? (
-                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
                     No opportunities match your filters
                   </p>
@@ -5321,11 +5318,11 @@ const showToast = (msg: string) => {
                     return (
                       <div
                         key={job.id}
-                        className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                        className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
                       >
                         <div className="flex items-start justify-between gap-3 mb-4">
                           <div className="flex items-start gap-3 min-w-0">
-                            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20 flex items-center justify-center shrink-0">
+                            <div className="w-11 h-11 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0">
                               <span className="text-xs font-extrabold text-indigo-300">
                                 {companyInitials}
                               </span>
@@ -5361,7 +5358,7 @@ const showToast = (msg: string) => {
                                   : "Pending"}
                             </span>
                             {insight && !isMatching ? (
-                              <span className="text-[10px] font-bold text-slate-500">
+                              <span className="text-[10px] font-mono font-bold tabular-nums text-zinc-400">
                                 {matchScore}% match
                               </span>
                             ) : null}
@@ -5387,7 +5384,7 @@ const showToast = (msg: string) => {
                         </div>
 
                         {(isMatching || insight) && (
-                          <div className="mb-5 rounded-xl bg-[#0A0A0A] border border-slate-800/60 p-3">
+                          <div className="mb-5 rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                               AI Match Analysis
                             </span>
@@ -5417,7 +5414,7 @@ const showToast = (msg: string) => {
                           </div>
                         )}
 
-                        <div className="mt-auto flex items-center justify-between gap-3 pt-4 border-t border-slate-800/60">
+                        <div className="mt-auto flex items-center justify-between gap-3 pt-4 border-t border-zinc-800">
                           <button
                             type="button"
                             onClick={() =>
@@ -5426,7 +5423,7 @@ const showToast = (msg: string) => {
                             className={`text-[11px] font-bold px-3 py-2 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
                               isSaved
                                 ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-400"
-                                : "bg-[#0A0A0A] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                                : "bg-[#0A0A0A] border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
                             }`}
                           >
                             <Icons.Bookmark />
@@ -5439,7 +5436,7 @@ const showToast = (msg: string) => {
                             className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                               alreadyInterested
                                 ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-not-allowed"
-                                : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20"
+                                : "bg-indigo-600 hover:bg-indigo-500 text-white"
                             }`}
                           >
                             {alreadyInterested ? (
@@ -5476,7 +5473,7 @@ const showToast = (msg: string) => {
               </div>
 
               {appliedJobs.length === 0 ? (
-                <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
                     No applications yet
                   </p>
@@ -5496,7 +5493,7 @@ const showToast = (msg: string) => {
                   {appliedJobs.map((application) => (
                     <div
                       key={application.jobId}
-                      className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                      className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row md:items-center md:justify-between gap-4"
                     >
                       <div>
                         <h3 className="font-bold text-white text-base">
@@ -5554,7 +5551,7 @@ const showToast = (msg: string) => {
                   <button
                     type="button"
                     onClick={openPostJobModal}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-500/20 transition-all cursor-pointer shrink-0"
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer shrink-0"
                   >
                     + Post New Job
                   </button>
@@ -5563,37 +5560,35 @@ const showToast = (msg: string) => {
 
               {/* METRICS ROW */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Total Candidates
                   </span>
-                  <span className="text-3xl font-extrabold text-white">
+                  <span className="text-3xl font-mono font-extrabold tabular-nums text-white">
                     {candidates.length}
                   </span>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg">
+                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Saved Profiles
                   </span>
-                  <span className="text-3xl font-extrabold text-white">
+                  <span className="text-3xl font-mono font-extrabold tabular-nums text-white">
                     {savedProfilesCount}
                   </span>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl -mr-8 -mt-8" />
+                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     New Matches
                   </span>
-                  <span className="text-3xl font-extrabold text-indigo-400">
+                  <span className="text-3xl font-mono font-extrabold tabular-nums text-indigo-400">
                     {newMatchesCount}
                   </span>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-slate-800/60 shadow-lg relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -mr-8 -mt-8" />
+                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Active Roles
                   </span>
-                  <span className="text-3xl font-extrabold text-emerald-400">
+                  <span className="text-3xl font-mono font-extrabold tabular-nums text-emerald-400">
                     {activeRolesCount}
                   </span>
                 </div>
@@ -5601,7 +5596,7 @@ const showToast = (msg: string) => {
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* FILTER SIDEBAR */}
-                <aside className="lg:col-span-3 bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-2xl space-y-5">
+                <aside className="lg:col-span-3 bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-5">
                   <div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">
                       Filters
@@ -5618,7 +5613,7 @@ const showToast = (msg: string) => {
                     <select
                       value={experienceFilter}
                       onChange={(e) => setExperienceFilter(e.target.value)}
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
                     >
                       <option value="all">All Levels</option>
                       {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
@@ -5636,7 +5631,7 @@ const showToast = (msg: string) => {
                     <select
                       value={roleTypeFilter}
                       onChange={(e) => setRoleTypeFilter(e.target.value)}
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
                     >
                       <option value="all">All Roles</option>
                       <option value="Engineering">Engineering</option>
@@ -5653,7 +5648,7 @@ const showToast = (msg: string) => {
                     <select
                       value={availabilityFilter}
                       onChange={(e) => setAvailabilityFilter(e.target.value)}
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
                     >
                       <option value="all">Any Status</option>
                       <option value="Available Now">Available Now</option>
@@ -5687,7 +5682,7 @@ const showToast = (msg: string) => {
                       value={talentSearch}
                       onChange={(e) => setTalentSearch(e.target.value)}
                       placeholder="Search by role or tech stack (e.g. Next.js, Python)..."
-                      className="w-full bg-[#111111] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-[#111111] border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
                     />
                   </div>
 
@@ -5696,7 +5691,7 @@ const showToast = (msg: string) => {
                       {Array.from({ length: 3 }).map((_, index) => (
                         <div
                           key={index}
-                          className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 animate-pulse min-h-[260px]"
+                          className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 animate-pulse min-h-[260px]"
                           aria-hidden="true"
                         >
                           <div className="flex items-start justify-between gap-2 mb-4">
@@ -5720,7 +5715,7 @@ const showToast = (msg: string) => {
                       ))}
                     </div>
                   ) : filteredCandidates.length === 0 ? (
-                    <div className="bg-[#111111] border border-slate-800/60 rounded-2xl p-10 text-center">
+                    <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                       <p className="text-sm font-medium text-slate-300">
                         No published candidates match your filters
                       </p>
@@ -5738,7 +5733,7 @@ const showToast = (msg: string) => {
                         return (
                           <div
                             key={col.profileId}
-                            className="bg-[#111111] border border-slate-800/60 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col justify-between h-full min-h-[260px] min-w-0 overflow-hidden"
+                            className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col justify-between h-full min-h-[260px] min-w-0 overflow-hidden"
                           >
                             <div className="flex items-start justify-between gap-2 mb-4">
                               <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-indigo-400 shrink-0">
@@ -5752,7 +5747,7 @@ const showToast = (msg: string) => {
                                 >
                                   {col.availability}
                                 </span>
-                                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                                <span className="font-mono text-[10px] font-semibold tabular-nums text-zinc-400">
                                   {getTalentMatchLabel(col)}
                                 </span>
                               </div>
@@ -5836,24 +5831,24 @@ const showToast = (msg: string) => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-slate-800/60 p-7 space-y-5">
-                  <input type="text" placeholder="Candidate Target Role" value={evalRole} onChange={(e) => setEvalRole(e.target.value)} className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
-                  <input type="text" placeholder="Education / Major (Optional)" value={evalMajor} onChange={(e) => setEvalMajor(e.target.value)} className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
-                  <textarea rows={5} placeholder="Paste Proof of Work or Resume details here..." value={evalAccomplishments} onChange={(e) => setEvalAccomplishments(e.target.value)} className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white resize-none focus:outline-none focus:border-indigo-500" />
+                <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-7 space-y-5">
+                  <input type="text" placeholder="Candidate Target Role" value={evalRole} onChange={(e) => setEvalRole(e.target.value)} className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                  <input type="text" placeholder="Education / Major (Optional)" value={evalMajor} onChange={(e) => setEvalMajor(e.target.value)} className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
+                  <textarea rows={5} placeholder="Paste Proof of Work or Resume details here..." value={evalAccomplishments} onChange={(e) => setEvalAccomplishments(e.target.value)} className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white resize-none focus:outline-none focus:border-indigo-500" />
                   
                   <button onClick={evaluateCandidate} disabled={evaluatingPoW || !evalAccomplishments} className="w-full bg-white hover:bg-slate-200 text-black font-bold py-3.5 rounded-xl text-xs transition-all">
                     {evaluatingPoW ? "Processing..." : "Generate Candidate Brief"}
                   </button>
                 </div>
 
-                <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-slate-800/60 p-6 min-h-[360px]">
+                <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[360px]">
                   {employerAuditError ? (
                     <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
                       {employerAuditError}
                     </div>
                   ) : employerAuditResult ? (
                     <div className="space-y-4">
-                      <div className="flex justify-between items-center pb-4 border-b border-slate-800">
+                      <div className="flex justify-between items-center pb-4 border-b border-zinc-800">
                         <div className="text-2xl font-extrabold text-white">
                           Audit Score
                         </div>
@@ -5923,23 +5918,22 @@ const showToast = (msg: string) => {
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-                <div className="bg-[#111111] p-6 rounded-2xl border border-slate-800/60 shadow-lg">
+                <div className="bg-[#111111] p-6 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Above $25k Roles</span>
-                  <span className="text-3xl font-extrabold text-white">10%</span>
+                  <span className="text-3xl font-mono font-extrabold tabular-nums text-white">10%</span>
                   <p className="text-xs text-slate-400 mt-2">
                     of first-year salary upon hire
                   </p>
                 </div>
-                <div className="bg-[#111111] p-6 rounded-2xl border border-slate-800/60 shadow-lg relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl -mr-10 -mt-10" />
+                <div className="bg-[#111111] p-6 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Under $25k Roles</span>
-                  <span className="text-3xl font-extrabold text-emerald-400">$2,500</span>
+                  <span className="text-3xl font-mono font-extrabold tabular-nums text-emerald-400">$2,500</span>
                   <p className="text-xs text-slate-400 mt-2">
                     flat placement fee upon hire
                   </p>
                 </div>
               </div>
-              <div className="bg-[#111111] border border-slate-800/60 rounded-2xl shadow-2xl p-6">
+              <div className="bg-[#111111] border border-zinc-800 rounded-2xl shadow-2xl p-6">
                 <h3 className="text-sm font-bold text-white mb-4">How billing works</h3>
                 <div className="space-y-3 text-sm text-slate-300 leading-relaxed">
                   <p>
@@ -5964,7 +5958,7 @@ const showToast = (msg: string) => {
             }`}
           />
           <div
-            className={`absolute top-0 right-0 h-full w-full max-w-md bg-[#121212] border-l border-slate-800 shadow-2xl overflow-y-auto transition-transform duration-300 ease-out ${
+            className={`absolute top-0 right-0 h-full w-full max-w-md bg-[#121212] border-l border-zinc-800 shadow-2xl overflow-y-auto transition-transform duration-300 ease-out ${
               isDrawerOpen ? "translate-x-0" : "translate-x-full"
             }`}
           >
@@ -5987,7 +5981,7 @@ const showToast = (msg: string) => {
                   return (
                     <>
                 {/* Header — full dossier revealed after approved intro */}
-                <div className="flex items-start justify-between pb-5 border-b border-slate-800">
+                <div className="flex items-start justify-between pb-5 border-b border-zinc-800">
                   <div className="flex items-center gap-3">
                     <div className="relative w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 flex items-center justify-center font-bold text-sm shrink-0">
                       {displayInitials}
@@ -6020,7 +6014,7 @@ const showToast = (msg: string) => {
                       <button
                         type="button"
                         onClick={() => openIntroModal(selectedCandidate)}
-                        className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer shadow-lg shadow-indigo-500/20"
+                        className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer"
                       >
                         Request Introduction
                       </button>
@@ -6028,14 +6022,14 @@ const showToast = (msg: string) => {
                   </div>
                   <button
                     onClick={() => setSelectedCandidate(null)}
-                    className="text-slate-400 hover:text-white bg-slate-900 w-7 h-7 rounded-lg border border-slate-800 flex items-center justify-center transition-all cursor-pointer shrink-0"
+                    className="text-slate-400 hover:text-white bg-slate-900 w-7 h-7 rounded-lg border border-zinc-800 flex items-center justify-center transition-all cursor-pointer shrink-0"
                   >
                     <Icons.XMark />
                   </button>
                 </div>
 
                 {/* Status + Rating */}
-                <div className="flex items-center justify-between text-xs bg-slate-900/60 px-3.5 py-2.5 rounded-xl border border-slate-800">
+                <div className="flex items-center justify-between text-xs bg-slate-900/60 px-3.5 py-2.5 rounded-xl border border-zinc-800">
                   <span
                     className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getAvailabilityBadgeClass(
                       selectedCandidate.availability
@@ -6058,7 +6052,7 @@ const showToast = (msg: string) => {
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
                     Education & Credentials
                   </div>
-                  <div className="bg-[#0A0A0A] border border-slate-800/80 rounded-xl p-3.5 text-xs text-slate-200">
+                  <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-xs text-slate-200">
                     {selectedCandidate.major}
                   </div>
                 </div>
@@ -6090,22 +6084,22 @@ const showToast = (msg: string) => {
                       {contactEmail && (
                         <a
                           href={`mailto:${contactEmail}`}
-                          className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-indigo-500/40 transition-all"
+                          className="w-full flex items-center justify-between bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-indigo-500/40 transition-all"
                         >
                           <span className="text-indigo-300 font-medium">Email</span>
-                          <span className="text-slate-300 break-all text-right ml-3">
+                          <span className="text-slate-300 break-all text-right ml-3 font-mono">
                             {contactEmail}
                           </span>
                         </a>
                       )}
                       {contactPhone && (
-                        <div className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs">
+                        <div className="w-full flex items-center justify-between bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs">
                           <span className="text-indigo-300 font-medium">Phone</span>
-                          <span className="text-slate-300">{contactPhone}</span>
+                          <span className="text-slate-300 font-mono">{contactPhone}</span>
                         </div>
                       )}
                       {projectLinks.length === 0 ? (
-                        <p className="text-xs text-slate-500 italic bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5">
+                        <p className="text-xs text-slate-500 italic bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3.5 py-2.5">
                           No public project links provided.
                         </p>
                       ) : (
@@ -6115,7 +6109,7 @@ const showToast = (msg: string) => {
                             href={link.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="w-full flex items-center justify-between bg-[#0A0A0A] border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-indigo-500/40 transition-all"
+                            className="w-full flex items-center justify-between bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-indigo-500/40 transition-all"
                           >
                             <span className="text-indigo-300 font-medium">
                               {link.label}
@@ -6131,7 +6125,7 @@ const showToast = (msg: string) => {
                 </div>
 
                 {/* AI Deep Screening */}
-                <div className="bg-[#0A0A0A] border border-slate-800/80 rounded-xl p-4 space-y-4">
+                <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-4 space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
@@ -6186,7 +6180,7 @@ const showToast = (msg: string) => {
                                 ? "border-emerald-500/25 bg-emerald-500/5"
                                 : isActive
                                   ? "border-indigo-500/30 bg-indigo-500/10"
-                                  : "border-slate-800 bg-[#0A0A0A]"
+                                  : "border-zinc-800 bg-[#0A0A0A]"
                             }`}
                           >
                             <span
@@ -6249,14 +6243,14 @@ const showToast = (msg: string) => {
                         <div className="text-[10px] uppercase font-bold tracking-widest mb-1">
                           Integrity Score
                         </div>
-                        <div className="text-4xl font-extrabold">
+                        <div className="text-4xl font-mono font-extrabold tabular-nums">
                           {deepScreeningResult.integrity_score}
                           <span className="text-lg font-semibold opacity-70">
                             /100
                           </span>
                         </div>
                         {deepScreeningResult.github_audit && (
-                          <p className="text-[11px] mt-2 opacity-80">
+                          <p className="text-[11px] mt-2 opacity-80 font-mono">
                             Live audit: {deepScreeningResult.github_audit.owner}/
                             {deepScreeningResult.github_audit.repo}
                             {deepScreeningResult.github_audit.language
@@ -6304,7 +6298,7 @@ const showToast = (msg: string) => {
                             (item, index) => (
                               <div
                                 key={`interview-question-${index}`}
-                                className="bg-[#0A0A0A] border border-slate-800 rounded-xl p-3.5 space-y-2.5"
+                                className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 space-y-2.5"
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <span className="inline-flex px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 shrink-0">
@@ -6324,7 +6318,7 @@ const showToast = (msg: string) => {
                                 <p className="text-xs text-white font-medium leading-relaxed">
                                   {item.question}
                                 </p>
-                                <div className="pt-2 border-t border-slate-800/80">
+                                <div className="pt-2 border-t border-zinc-800">
                                   <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
                                     What to listen for
                                   </p>
@@ -6379,7 +6373,7 @@ const showToast = (msg: string) => {
                     {selectedCandidate.projects.map((project, pIdx) => (
                       <li
                         key={pIdx}
-                        className="text-xs text-slate-300 leading-relaxed bg-[#0A0A0A] border border-slate-800/80 rounded-xl p-3.5"
+                        className="text-xs text-slate-300 leading-relaxed bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5"
                       >
                         {project}
                       </li>
@@ -6405,9 +6399,9 @@ const showToast = (msg: string) => {
         {/* PUBLIC PROFILE MODAL */}
         {showPublicProfile && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-[#121212] border border-slate-800 rounded-2xl max-w-xl w-full p-6 relative shadow-2xl overflow-hidden">
+            <div className="bg-[#121212] border border-zinc-800 rounded-2xl max-w-xl w-full p-6 relative shadow-2xl overflow-hidden">
               {/* Header / Title */}
-              <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-800">
+              <div className="flex items-center justify-between pb-4 mb-4 border-b border-zinc-800">
                 <div>
                   <h3 className="text-lg font-bold text-white">
                     {isBusinessAccount ? "Your Shareable Company Card" : "Your Shareable Profile Card"}
@@ -6421,7 +6415,7 @@ const showToast = (msg: string) => {
 
                 <button
                   onClick={() => setShowPublicProfile(false)}
-                  className="text-slate-400 hover:text-white bg-slate-900 w-7 h-7 rounded-lg border border-slate-800 flex items-center justify-center transition-all cursor-pointer"
+                  className="text-slate-400 hover:text-white bg-slate-900 w-7 h-7 rounded-lg border border-zinc-800 flex items-center justify-center transition-all cursor-pointer"
                 >
                   <Icons.XMark />
                 </button>
@@ -6429,7 +6423,7 @@ const showToast = (msg: string) => {
 
               {/* Profile Card Preview */}
               {isBusinessAccount ? (
-                <div className="bg-[#0A0A0A] border border-slate-800/80 rounded-xl p-5 mb-5 space-y-4">
+                <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-5 mb-5 space-y-4">
                   {/* Business Identity */}
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold text-lg">
@@ -6449,7 +6443,7 @@ const showToast = (msg: string) => {
                   </p>
 
                   {/* Active Roles */}
-                  <div className="flex items-center justify-between text-xs bg-slate-900/80 px-3 py-2 rounded-lg border border-slate-800">
+                  <div className="flex items-center justify-between text-xs bg-slate-900/80 px-3 py-2 rounded-lg border border-zinc-800">
                     <span className="text-slate-300">Active Roles</span>
                     <span className="text-emerald-400 font-mono font-bold">{activeRolesCount}</span>
                   </div>
@@ -6465,7 +6459,7 @@ const showToast = (msg: string) => {
                   </div>
                 </div>
               ) : (
-                <div className="bg-[#0A0A0A] border border-slate-800/80 rounded-xl p-5 mb-5 space-y-4">
+                <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-5 mb-5 space-y-4">
                   {/* User Bio */}
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold text-lg">
@@ -6485,7 +6479,7 @@ const showToast = (msg: string) => {
                   </p>
 
                   {/* Status */}
-                  <div className="flex items-center justify-between text-xs bg-slate-900/80 px-3 py-2 rounded-lg border border-slate-800">
+                  <div className="flex items-center justify-between text-xs bg-slate-900/80 px-3 py-2 rounded-lg border border-zinc-800">
                     <span className="text-slate-300">
                       Availability:{" "}
                       <strong
@@ -6530,7 +6524,7 @@ const showToast = (msg: string) => {
                     type="text"
                     readOnly
                     value={isBusinessAccount ? publicBusinessProfileUrl : publicProfileUrl}
-                    className="flex-1 bg-[#0A0A0A] border border-slate-800 text-slate-300 text-xs px-3 py-2.5 rounded-xl font-mono focus:outline-none"
+                    className="flex-1 bg-[#0A0A0A] border border-zinc-800 text-slate-300 text-xs px-3 py-2.5 rounded-xl font-mono focus:outline-none"
                   />
                   <button
                     onClick={() => {
@@ -6566,7 +6560,7 @@ const showToast = (msg: string) => {
         {/* POST NEW JOB MODAL (Employer) */}
         {postJobModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#111111] border border-slate-800 rounded-2xl p-8 max-w-lg w-full relative shadow-2xl">
+            <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-8 max-w-lg w-full relative shadow-2xl">
               <button
                 type="button"
                 onClick={() => {
@@ -6598,7 +6592,7 @@ const showToast = (msg: string) => {
                     onChange={(e) => setNewJobTitle(e.target.value)}
                     placeholder="Senior Frontend Engineer"
                     required
-                    className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
@@ -6611,7 +6605,7 @@ const showToast = (msg: string) => {
                     value={newJobCompany}
                     onChange={(e) => setNewJobCompany(e.target.value)}
                     placeholder="Your company"
-                    className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
@@ -6625,7 +6619,7 @@ const showToast = (msg: string) => {
                       value={newJobLocation}
                       onChange={(e) => setNewJobLocation(e.target.value)}
                       placeholder="Remote · US"
-                      className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                   <div>
@@ -6641,7 +6635,7 @@ const showToast = (msg: string) => {
                         value={newJobSalaryRange}
                         onChange={(e) => setNewJobSalaryRange(e.target.value)}
                         placeholder="80,000 - 100,000 / yr"
-                        className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl py-3 pr-3 pl-7 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl py-3 pr-3 pl-7 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                       />
                     </div>
                     <p className="text-[11px] text-slate-500 mt-2">
@@ -6659,7 +6653,7 @@ const showToast = (msg: string) => {
                     value={newJobTags}
                     onChange={(e) => setNewJobTags(e.target.value)}
                     placeholder="React, TypeScript, Next.js"
-                    className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                   />
                   <p className="text-[11px] text-slate-500 mt-2">
                     Comma-separated skills shown on the job card.
@@ -6681,7 +6675,7 @@ const showToast = (msg: string) => {
                   <button
                     type="submit"
                     disabled={isCreatingJob}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-xs transition-all shadow-lg shadow-indigo-500/20 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {isCreatingJob ? "Posting..." : "Post Job"}
                   </button>
@@ -6731,8 +6725,8 @@ const showToast = (msg: string) => {
                 <Icons.XMark />
               </button>
 
-              <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mb-4">
-                <Sparkles className="w-5 h-5" aria-hidden />
+              <div className="w-12 h-12 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center mb-4">
+                <ShieldCheck className="w-5 h-5" aria-hidden />
               </div>
 
               <h3 className="text-xl font-bold text-white leading-tight">
@@ -6745,7 +6739,7 @@ const showToast = (msg: string) => {
 
               <div className="mt-6 space-y-3">
                 <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 flex gap-3">
-                  <Sparkles className="w-4 h-4 shrink-0 text-indigo-400 mt-0.5" aria-hidden />
+                  <ShieldCheck className="w-4 h-4 shrink-0 text-zinc-500 mt-0.5" aria-hidden />
                   <div>
                     <p className="text-xs font-bold text-white">
                       Contingency Placement Model
@@ -6829,7 +6823,7 @@ const showToast = (msg: string) => {
                 type="button"
                 onClick={handleUnlockBetaAccess}
                 disabled={betaAccessSubmitting}
-                className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20 cursor-pointer"
+                className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-all cursor-pointer"
               >
                 {betaAccessSubmitting
                   ? "Unlocking..."

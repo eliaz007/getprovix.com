@@ -23,7 +23,7 @@ export default function MobileAppHeader({
   trailing?: ReactNode;
 }) {
   return (
-    <header className="flex md:hidden items-center justify-between gap-3 px-4 py-3 bg-[#111111] border-b border-slate-800/60 shrink-0 z-20">
+    <header className="flex md:hidden items-center justify-between gap-3 px-4 py-3 bg-[#111111] border-b border-zinc-800 shrink-0 z-20">
       <div className="flex items-center gap-2 min-w-0">
         <button
           type="button"

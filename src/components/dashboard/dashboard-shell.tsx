@@ -28,7 +28,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#0A0A0A] text-slate-200 font-sans antialiased selection:bg-indigo-500/30">
-      <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-[#111111] border-r border-slate-800/60 z-20 overflow-y-auto">
+      <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-[#111111] border-r border-zinc-800 z-20 overflow-y-auto">
         <DashboardSidebar />
       </aside>
 
@@ -58,8 +58,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
               onClick={() => setMobileNavOpen(false)}
               className="fixed inset-0 bg-black/60 z-40 cursor-pointer"
             />
-            <aside className="fixed inset-y-0 left-0 w-64 max-w-[85vw] bg-[#111111] border-r border-slate-800/60 flex flex-col z-50 shadow-2xl overflow-y-auto">
-              <div className="flex items-center justify-end p-3 border-b border-slate-800/60 shrink-0">
+            <aside className="fixed inset-y-0 left-0 w-64 max-w-[85vw] bg-[#111111] border-r border-zinc-800 flex flex-col z-50 shadow-2xl overflow-y-auto">
+              <div className="flex items-center justify-end p-3 border-b border-zinc-800 shrink-0">
                 <button
                   type="button"
                   onClick={() => setMobileNavOpen(false)}
@@ -74,9 +74,9 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        <main className="relative min-h-0 w-full flex-1 flex flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1a1a1a] via-[#0A0A0A] to-[#0A0A0A]">
+        <main className="relative min-h-0 w-full flex-1 flex flex-col overflow-hidden bg-[#0A0A0A]">
           {!isGuest && isBusinessAccount && (
-            <div className="hidden md:flex shrink-0 items-center justify-end px-6 md:px-12 py-3 border-b border-slate-800/60 bg-[#111111]/95">
+            <div className="hidden md:flex shrink-0 items-center justify-end px-6 md:px-12 py-3 border-b border-zinc-800 bg-[#111111]/95">
               <EmployerNotificationBell
                 userId={userId}
                 onOpenJobApplicants={(jobId) => onOpenJobApplicants?.(jobId)}

@@ -299,8 +299,8 @@ export default function JobApplicantsDrawer({
         onClick={onClose}
       />
 
-      <aside className="relative h-full w-full max-w-lg bg-[#111111] border-l border-slate-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-800 px-6 py-5">
+      <aside className="relative h-full w-full max-w-lg bg-[#111111] border-l border-zinc-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+        <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-6 py-5">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-400">
               Interested Candidates
@@ -332,7 +332,7 @@ export default function JobApplicantsDrawer({
               {error}
             </div>
           ) : applicants.length === 0 ? (
-            <div className="rounded-xl border border-slate-800 bg-[#0A0A0A] px-4 py-10 text-center">
+            <div className="rounded-xl border border-zinc-800 bg-[#0A0A0A] px-4 py-10 text-center">
               <p className="text-sm text-slate-400">
                 No candidates have expressed interest in this role yet.
               </p>
@@ -341,7 +341,7 @@ export default function JobApplicantsDrawer({
             applicants.map((applicant) => (
               <div
                 key={applicant.applicationId}
-                className="rounded-2xl border border-slate-800 bg-[#0A0A0A] p-5 space-y-4"
+                className="rounded-2xl border border-zinc-800 bg-[#0A0A0A] p-5 space-y-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0">
@@ -371,7 +371,7 @@ export default function JobApplicantsDrawer({
                       </div>
                     </div>
                   </div>
-                  <span className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <span className="shrink-0 font-mono text-[11px] font-bold tabular-nums text-zinc-300">
                     {applicant.aiScoreLabel}
                   </span>
                 </div>

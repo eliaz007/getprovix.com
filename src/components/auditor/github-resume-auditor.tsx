@@ -37,6 +37,7 @@ export default function GitHubResumeAuditor() {
   const [targetRole, setTargetRole] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
   const [resumeSummary, setResumeSummary] = useState("");
+  const [resumeOpen, setResumeOpen] = useState(false);
   const [compensationLevel, setCompensationLevel] =
     useState<(typeof COMPENSATION_LEVELS)[number]>("Mid");
   const [loading, setLoading] = useState(false);
@@ -75,8 +76,9 @@ export default function GitHubResumeAuditor() {
     };
   }, []);
 
-  const canSubmit =
-    targetRole.trim() || githubUrl.trim() || resumeSummary.trim();
+  const canSubmit = Boolean(
+    targetRole.trim() || githubUrl.trim() || resumeSummary.trim()
+  );
 
   const startStageProgress = () => {
     setStageIndex(0);
@@ -158,7 +160,7 @@ export default function GitHubResumeAuditor() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-slate-800/60 p-7 space-y-5 shadow-2xl">
+        <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-7 space-y-5 shadow-2xl">
           <div>
             <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
               Target Role / Tech Stack
@@ -168,7 +170,7 @@ export default function GitHubResumeAuditor() {
               value={targetRole}
               onChange={(e) => setTargetRole(e.target.value)}
               placeholder="Full-Stack Next.js Developer"
-              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
           </div>
 
@@ -181,20 +183,7 @@ export default function GitHubResumeAuditor() {
               value={githubUrl}
               onChange={(e) => setGithubUrl(e.target.value)}
               placeholder="https://github.com/your-handle or repo URL"
-              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
-              Paste Resume / Experience Summary
-            </label>
-            <textarea
-              rows={6}
-              value={resumeSummary}
-              onChange={(e) => setResumeSummary(e.target.value)}
-              placeholder="Summarize roles, shipped projects, metrics, and stack evidence..."
-              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500 leading-relaxed"
+              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
           </div>
 
@@ -209,7 +198,7 @@ export default function GitHubResumeAuditor() {
                   e.target.value as (typeof COMPENSATION_LEVELS)[number]
                 )
               }
-              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
             >
               {COMPENSATION_LEVELS.map((level) => (
                 <option key={level} value={level}>
@@ -217,6 +206,27 @@ export default function GitHubResumeAuditor() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="border-t border-zinc-800 pt-1">
+            <button
+              type="button"
+              onClick={() => setResumeOpen((open) => !open)}
+              aria-expanded={resumeOpen}
+              className="w-full text-left text-[13px] text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer py-2"
+            >
+              {resumeOpen ? "–" : "+"} Add resume for claim cross-verification
+              <span className="text-zinc-600"> (Optional)</span>
+            </button>
+            {resumeOpen && (
+              <textarea
+                rows={5}
+                value={resumeSummary}
+                onChange={(e) => setResumeSummary(e.target.value)}
+                placeholder="Paste resume bullets or an experience summary for claim cross-verification..."
+                className="mt-1 w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500 leading-relaxed"
+              />
+            )}
           </div>
 
           {limitReached && (
@@ -248,7 +258,7 @@ export default function GitHubResumeAuditor() {
           </button>
         </div>
 
-        <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-slate-800/60 p-6 min-h-[480px] shadow-2xl">
+        <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[480px] shadow-2xl">
           {loading && (
             <div className="space-y-4 animate-in fade-in duration-300">
               <div className="text-sm font-bold text-white mb-1">
@@ -271,7 +281,7 @@ export default function GitHubResumeAuditor() {
                           ? "border-emerald-500/25 bg-emerald-500/5"
                           : isActive
                             ? "border-indigo-500/30 bg-indigo-500/10"
-                            : "border-slate-800 bg-[#0A0A0A]"
+                            : "border-zinc-800 bg-[#0A0A0A]"
                       }`}
                     >
                       <span
@@ -317,7 +327,7 @@ export default function GitHubResumeAuditor() {
 
           {!loading && result && (
             <div className="space-y-6 animate-in fade-in duration-500">
-              <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
                     Overall Readiness Score
@@ -327,7 +337,7 @@ export default function GitHubResumeAuditor() {
                   </div>
                 </div>
                 <div
-                  className={`px-3 py-1.5 rounded-full border text-xl font-mono font-bold ${getScoreBadgeClass(result.score)}`}
+                  className={`px-3 py-1.5 rounded-md border text-xl font-mono font-bold tabular-nums ${getScoreBadgeClass(result.score)}`}
                 >
                   {result.score}/100
                 </div>

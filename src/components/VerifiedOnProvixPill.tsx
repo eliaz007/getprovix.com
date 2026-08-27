@@ -9,7 +9,7 @@ export default function VerifiedOnProvixPill({
 }: VerifiedOnProvixPillProps) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-300 ${className}`}
+      className={`inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-zinc-400 ${className}`}
     >
       <ShieldCheck className="h-3 w-3" aria-hidden />
       Verified on Provix

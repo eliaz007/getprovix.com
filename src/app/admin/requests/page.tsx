@@ -553,7 +553,7 @@ export default function AdminIntroRequestsPage() {
   if (authState === "unauthorized") {
     return (
       <div className="min-h-screen bg-[#0A0A0A] text-slate-200 flex items-center justify-center p-6">
-        <div className="max-w-md w-full rounded-2xl border border-slate-800 bg-[#111111] p-8 text-center shadow-2xl">
+        <div className="max-w-md w-full rounded-2xl border border-zinc-800 bg-[#111111] p-8 text-center shadow-2xl">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-300">
             <Shield className="h-5 w-5" aria-hidden />
           </div>
@@ -577,7 +577,7 @@ export default function AdminIntroRequestsPage() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-slate-200">
-      <header className="border-b border-slate-800/80 bg-[#0A0A0A]/90 backdrop-blur-md sticky top-0 z-40">
+      <header className="border-b border-zinc-800 bg-[#0A0A0A]/90 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
           <Link href="/" className="hover:opacity-90 transition-opacity shrink-0">
             <ProvixLogo />
@@ -613,7 +613,7 @@ export default function AdminIntroRequestsPage() {
 
         {pipelineTab === "intros" && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="rounded-2xl border border-slate-800/60 bg-[#111111] p-5 shadow-lg">
+            <div className="rounded-2xl border border-zinc-800 bg-[#111111] p-5 shadow-lg">
               <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500 block mb-2">
                 Platform Revenue
               </span>
@@ -625,7 +625,7 @@ export default function AdminIntroRequestsPage() {
                 {formatCurrency(FLAT_FEE_AMOUNT)} flat fees below
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-800/60 bg-[#111111] p-5 shadow-lg">
+            <div className="rounded-2xl border border-zinc-800 bg-[#111111] p-5 shadow-lg">
               <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500 block mb-2">
                 Candidate Bonuses Allocated
               </span>
@@ -636,7 +636,7 @@ export default function AdminIntroRequestsPage() {
                 {CANDIDATE_BONUS_RANGE_LABEL} per sub-$25k placement
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-800/60 bg-[#111111] p-5 shadow-lg">
+            <div className="rounded-2xl border border-zinc-800 bg-[#111111] p-5 shadow-lg">
               <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500 block mb-2">
                 Confirmed Hires
               </span>
@@ -670,7 +670,7 @@ export default function AdminIntroRequestsPage() {
           })}
         </div>
 
-        <div className="bg-[#111111] rounded-2xl border border-slate-800/60 p-5 shadow-2xl space-y-4">
+        <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-5 shadow-2xl space-y-4">
           <div className="relative">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"
@@ -685,7 +685,7 @@ export default function AdminIntroRequestsPage() {
                   ? "Search candidate, company, or email..."
                   : "Search job title or company..."
               }
-              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
           </div>
 
@@ -730,7 +730,7 @@ export default function AdminIntroRequestsPage() {
           </div>
         )}
 
-        <div className="bg-[#111111] rounded-2xl border border-slate-800/60 shadow-2xl overflow-hidden">
+        <div className="bg-[#111111] rounded-2xl border border-zinc-800 shadow-2xl overflow-hidden">
           {pipelineTab === "job_interest" ? (
             jobInterestLoading ? (
               <div className="flex items-center justify-center gap-3 py-20 text-sm text-slate-400">
@@ -769,7 +769,7 @@ export default function AdminIntroRequestsPage() {
                         {row.applicants.map((applicant) => (
                           <div
                             key={applicant.id}
-                            className="rounded-xl border border-slate-800 bg-[#0A0A0A] p-4"
+                            className="rounded-xl border border-zinc-800 bg-[#0A0A0A] p-4"
                           >
                             <div className="font-medium text-white">
                               {applicant.candidate_dossier?.full_name ||
@@ -832,7 +832,7 @@ export default function AdminIntroRequestsPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="bg-[#0A0A0A] border-b border-slate-800">
+                <thead className="bg-[#0A0A0A] border-b border-zinc-800">
                   <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500">
                     <th className="px-5 py-4 font-bold">Candidate & Role</th>
                     <th className="px-5 py-4 font-bold">Company</th>
@@ -886,7 +886,7 @@ export default function AdminIntroRequestsPage() {
                             </div>
                           )}
                           {request.candidate_dossier && (
-                            <div className="mt-3 rounded-xl border border-slate-800 bg-[#0A0A0A] p-3 space-y-1.5 text-[11px] text-slate-300">
+                            <div className="mt-3 rounded-xl border border-zinc-800 bg-[#0A0A0A] p-3 space-y-1.5 text-[11px] text-slate-300">
                               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                                 Candidate dossier
                               </p>
@@ -986,7 +986,7 @@ export default function AdminIntroRequestsPage() {
                                 )
                               }
                               disabled={isUpdating}
-                              className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                             >
                               {INTRO_PIPELINE_STATUSES.map((status) => (
                                 <option key={status.value} value={status.value}>
@@ -1013,7 +1013,7 @@ export default function AdminIntroRequestsPage() {
                                   }
                                   placeholder="e.g. 85000"
                                   disabled={isUpdating}
-                                  className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                                  className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                                 />
                               </div>
                             )}

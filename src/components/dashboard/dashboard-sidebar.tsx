@@ -32,7 +32,7 @@ function navItemClass(isActive: boolean, variant: "default" | "employer" = "defa
   return `w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] cursor-pointer ${navButtonClass(isActive, variant)}`;
 }
 
-const secondaryNavSectionClass = "mt-8 pt-8 border-t border-slate-800/60";
+const secondaryNavSectionClass = "mt-8 pt-8 border-t border-zinc-800";
 
 function DashboardTabLink({
   tab,
@@ -219,7 +219,7 @@ export default function DashboardSidebar() {
                 className={navItemClass(isAuditorPath(pathname))}
               >
                 <ShieldCheck className="w-4 h-4" aria-hidden="true" />
-                GitHub &amp; Resume Auditor
+                GitHub Auditor
               </Link>
               <ProtectedNavLink
                 href="/dashboard/interview-prep"

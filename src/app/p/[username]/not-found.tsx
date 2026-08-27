@@ -4,7 +4,7 @@ import { ProvixLogo } from "@/components/ProvixLogo";
 export default function PublicProfileNotFound() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-slate-200">
-      <header className="border-b border-slate-800/80">
+      <header className="border-b border-zinc-800">
         <div className="mx-auto flex h-16 max-w-4xl items-center px-6">
           <Link href="/" className="hover:opacity-90 transition-opacity">
             <ProvixLogo />

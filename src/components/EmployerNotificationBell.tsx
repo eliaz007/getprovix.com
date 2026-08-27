@@ -116,8 +116,8 @@ export default function EmployerNotificationBell({
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[min(100vw-2rem,22rem)] rounded-2xl border border-slate-800 bg-[#111111] shadow-2xl overflow-hidden z-50">
-          <div className="px-4 py-3 border-b border-slate-800">
+        <div className="absolute right-0 mt-2 w-[min(100vw-2rem,22rem)] rounded-2xl border border-zinc-800 bg-[#111111] shadow-2xl overflow-hidden z-50">
+          <div className="px-4 py-3 border-b border-zinc-800">
             <p className="text-sm font-bold text-white">Notifications</p>
             <p className="text-[11px] text-slate-500 mt-0.5">
               Candidate interest on your job listings

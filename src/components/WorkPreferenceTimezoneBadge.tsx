@@ -15,7 +15,7 @@ export default function WorkPreferenceTimezoneBadge({
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border border-slate-700/80 bg-slate-900/70 px-2.5 py-1 text-[11px] font-medium text-slate-300 ${className}`}
+      className={`inline-flex items-center rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1 font-mono text-[11px] text-zinc-400 ${className}`}
     >
       {label}
     </span>

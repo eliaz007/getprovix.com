@@ -147,7 +147,7 @@ export default function PitchStudioPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-slate-800/60 p-7 space-y-5 shadow-2xl">
+          <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-7 space-y-5 shadow-2xl">
             <div>
               <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
                 Target Company / Startup Name
@@ -157,7 +157,7 @@ export default function PitchStudioPage() {
                 value={targetCompany}
                 onChange={(e) => setTargetCompany(e.target.value)}
                 placeholder="Acme AI"
-                className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -170,7 +170,7 @@ export default function PitchStudioPage() {
                 value={targetContactRole}
                 onChange={(e) => setTargetContactRole(e.target.value)}
                 placeholder="Founder / Head of Engineering"
-                className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -183,7 +183,7 @@ export default function PitchStudioPage() {
                 value={roleApplyingFor}
                 onChange={(e) => setRoleApplyingFor(e.target.value)}
                 placeholder="Full-Stack Engineer"
-                className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -196,7 +196,7 @@ export default function PitchStudioPage() {
                 value={coreValueProp}
                 onChange={(e) => setCoreValueProp(e.target.value)}
                 placeholder="Built a Next.js SaaS with 500 users, cut onboarding time 40%, and shipped auth + billing in 3 weeks..."
-                className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500 leading-relaxed"
+                className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500 leading-relaxed"
               />
             </div>
 
@@ -209,7 +209,7 @@ export default function PitchStudioPage() {
                 onChange={(e) =>
                   setTone(e.target.value as (typeof TONE_OPTIONS)[number])
                 }
-                className="w-full bg-[#0A0A0A] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
               >
                 {TONE_OPTIONS.map((option) => (
                   <option key={option} value={option}>
@@ -239,7 +239,7 @@ export default function PitchStudioPage() {
             </button>
           </div>
 
-          <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-slate-800/60 p-6 min-h-[480px] shadow-2xl">
+          <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[480px] shadow-2xl">
             {loading && (
               <div className="space-y-4 animate-in fade-in duration-300">
                 <div className="text-sm font-bold text-white mb-1">
@@ -262,7 +262,7 @@ export default function PitchStudioPage() {
                             ? "border-emerald-500/25 bg-emerald-500/5"
                             : isActive
                               ? "border-indigo-500/30 bg-indigo-500/10"
-                              : "border-slate-800 bg-[#0A0A0A]"
+                              : "border-zinc-800 bg-[#0A0A0A]"
                         }`}
                       >
                         <span
@@ -308,7 +308,7 @@ export default function PitchStudioPage() {
 
             {!loading && result && (
               <div className="space-y-5 animate-in fade-in duration-500">
-                <div className="pb-4 border-b border-slate-800">
+                <div className="pb-4 border-b border-zinc-800">
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
                     Generated Templates
                   </div>
@@ -320,7 +320,7 @@ export default function PitchStudioPage() {
                 {result.pitches.map((pitch, index) => (
                   <div
                     key={`${pitch.title}-${index}`}
-                    className="rounded-xl border border-slate-800 bg-[#0A0A0A] p-4 space-y-3"
+                    className="rounded-xl border border-zinc-800 bg-[#0A0A0A] p-4 space-y-3"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -355,7 +355,7 @@ export default function PitchStudioPage() {
                     </p>
 
                     {pitch.copyTip && (
-                      <p className="text-xs text-slate-500 border-t border-slate-800 pt-3">
+                      <p className="text-xs text-slate-500 border-t border-zinc-800 pt-3">
                         <span className="font-bold text-slate-400">Tip: </span>
                         {pitch.copyTip}
                       </p>

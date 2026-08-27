@@ -138,10 +138,9 @@ export default function PricingPage() {
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center py-16 px-4">
       <div className="w-full max-w-5xl mx-auto space-y-16">
         <section className="text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-indigo-300 mb-6">
-            <Sparkles className="w-3.5 h-3.5" aria-hidden />
+          <p className="text-[11px] font-medium uppercase tracking-widest text-zinc-500 mb-6">
             Performance-Based Hiring
-          </div>
+          </p>
 
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">
             Hire Vetted Talent with Zero Upfront Cost
@@ -234,7 +233,7 @@ export default function PricingPage() {
             type="button"
             onClick={handleUnlockBetaAccess}
             disabled={submitting}
-            className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-all shadow-lg shadow-indigo-500/20 cursor-pointer"
+            className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-all cursor-pointer"
           >
             {submitting ? "Unlocking..." : "Unlock Early Beta Access"}
           </button>
