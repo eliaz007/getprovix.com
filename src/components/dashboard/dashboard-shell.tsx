@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import type { ReactNode } from "react";
 import EmployerNotificationBell from "@/components/EmployerNotificationBell";
 import GuestAuthModal from "@/components/GuestAuthModal";
-import { ProvixLogo } from "@/components/ProvixLogo";
 import DashboardSidebar from "@/components/dashboard/dashboard-sidebar";
+import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 
@@ -17,6 +16,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     mobileNavOpen,
     setMobileNavOpen,
     userId,
+    userAvatarUrl,
+    userInitials,
     onOpenJobApplicants,
     requireAuth,
     authModalOpen,
@@ -32,36 +33,22 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex md:hidden items-center justify-between px-4 py-3 bg-[#111111] border-b border-slate-800/60 shrink-0 z-20">
-          <Link href="/" className="flex items-center gap-3 min-w-0 hover:opacity-90 transition-opacity">
-            <ProvixLogo />
-          </Link>
-          <div className="flex items-center gap-1">
-            {isGuest && !authLoading && (
-              <button
-                type="button"
-                onClick={() => requireAuth()}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded-lg transition-all cursor-pointer"
-              >
-                Sign In
-              </button>
-            )}
-            {!isGuest && isBusinessAccount && (
+        <MobileAppHeader
+          onOpenMenu={() => setMobileNavOpen(true)}
+          onSignIn={() => requireAuth()}
+          isGuest={isGuest}
+          authLoading={authLoading}
+          avatarUrl={userAvatarUrl}
+          initials={userInitials}
+          trailing={
+            !isGuest && isBusinessAccount ? (
               <EmployerNotificationBell
                 userId={userId}
                 onOpenJobApplicants={(jobId) => onOpenJobApplicants?.(jobId)}
               />
-            )}
-            <button
-              type="button"
-              onClick={() => setMobileNavOpen(true)}
-              aria-label="Open navigation menu"
-              className="md:hidden p-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors cursor-pointer"
-            >
-              <DashboardIcons.Menu />
-            </button>
-          </div>
-        </header>
+            ) : null
+          }
+        />
 
         {mobileNavOpen && (
           <div className="md:hidden">

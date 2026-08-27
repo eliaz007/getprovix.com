@@ -24,6 +24,7 @@ import JobApplicantsDrawer, {
 } from "@/components/JobApplicantsDrawer";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import GuestAuthModal from "@/components/GuestAuthModal";
+import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
@@ -3491,28 +3492,11 @@ const showToast = (msg: string) => {
           }
         >
           {isStandaloneGuest ? (
-            <header className="flex md:hidden items-center justify-between px-4 py-3 bg-[#111111] border-b border-slate-800/60 shrink-0 z-20">
-              <div className="flex items-center gap-3 min-w-0">
-                <button
-                  type="button"
-                  className="md:hidden p-2 rounded-lg text-slate-300 hover:bg-slate-800/60 cursor-pointer"
-                  aria-label="Open navigation menu"
-                  onClick={() => setGuestMobileNavOpen(true)}
-                >
-                  <Icons.Menu />
-                </button>
-                <Link href="/" className="hover:opacity-90 transition-opacity">
-                  <ProvixLogo />
-                </Link>
-              </div>
-              <button
-                type="button"
-                onClick={() => requireAuth()}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all cursor-pointer"
-              >
-                Sign In
-              </button>
-            </header>
+            <MobileAppHeader
+              onOpenMenu={() => setGuestMobileNavOpen(true)}
+              onSignIn={() => requireAuth()}
+              isGuest
+            />
           ) : null}
           {isStandaloneGuest && guestMobileNavOpen ? (
             <div className="md:hidden">

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
 import { resolveAccountRole } from "@/lib/account-role";
 import {
   canAccessTalentPool,
@@ -27,6 +28,8 @@ type DashboardNavContextValue = {
   accountRole: string | null;
   setAccountRole: (role: string | null) => void;
   userId: string | null;
+  userAvatarUrl: string | null;
+  userInitials: string;
   authLoading: boolean;
   isGuest: boolean;
   isBusinessAccount: boolean;
@@ -43,12 +46,40 @@ type DashboardNavContextValue = {
 
 const DashboardNavContext = createContext<DashboardNavContextValue | null>(null);
 
+function getUserHeaderIdentity(user: User): {
+  avatarUrl: string | null;
+  initials: string;
+} {
+  const meta = user.user_metadata ?? {};
+  const avatarUrl =
+    (typeof meta.avatar_url === "string" && meta.avatar_url.trim()) ||
+    (typeof meta.picture === "string" && meta.picture.trim()) ||
+    null;
+  const name =
+    (typeof meta.full_name === "string" && meta.full_name.trim()) ||
+    (typeof meta.name === "string" && meta.name.trim()) ||
+    user.email?.trim() ||
+    "";
+  const initials =
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "U";
+
+  return { avatarUrl, initials };
+}
+
 export function DashboardNavProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [activeTab, setActiveTab] = useState<DashboardTab>("my_profile");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
+  const [userInitials, setUserInitials] = useState("U");
   const [authLoading, setAuthLoading] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalError, setAuthModalError] = useState<string | null>(null);
@@ -92,11 +123,16 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
 
         if (!user) {
           setUserId(null);
+          setUserAvatarUrl(null);
+          setUserInitials("U");
           setAccountRole(null);
           return;
         }
 
+        const identity = getUserHeaderIdentity(user);
         setUserId(user.id);
+        setUserAvatarUrl(identity.avatarUrl);
+        setUserInitials(identity.initials);
         setAuthModalOpen(false);
 
         const { data: profile } = await supabase
@@ -138,6 +174,8 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
       accountRole,
       setAccountRole,
       userId,
+      userAvatarUrl,
+      userInitials,
       authLoading,
       isGuest,
       isBusinessAccount,
@@ -156,6 +194,8 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
       mobileNavOpen,
       accountRole,
       userId,
+      userAvatarUrl,
+      userInitials,
       authLoading,
       isGuest,
       isBusinessAccount,
