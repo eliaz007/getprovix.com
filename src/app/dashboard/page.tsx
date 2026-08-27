@@ -28,6 +28,7 @@ import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
+import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
 import { resolveCodenameAlias } from "@/lib/alias-generator";
 import {
   normalizeAccountKind,
@@ -845,6 +846,7 @@ export default function DashboardPage() {
 
   const [showPublicProfile, setShowPublicProfile] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
 
   const [proUpgradeModalOpen, setProUpgradeModalOpen] = useState(false);
   const [betaCompanyName, setBetaCompanyName] = useState("");
@@ -1017,6 +1019,7 @@ export default function DashboardPage() {
         const loadedVisibleInPool = isVisibleToEmployers(
           profileWithRole?.is_visible_in_pool
         );
+        const loadedPortfolioUrl = profileWithRole?.portfolio_url ?? "";
         setIsVisibleInPool(
           loadedVisibleInPool && isValidGitHubUrl(loadedPortfolioUrl)
         );
@@ -1036,7 +1039,6 @@ export default function DashboardPage() {
         const loadedSkills = Array.isArray(profileWithRole?.skills)
           ? profileWithRole.skills.join(", ")
           : "";
-        const loadedPortfolioUrl = profileWithRole?.portfolio_url ?? "";
         const loadedYoutubeUrl = profileWithRole?.youtube_url ?? "";
         const loadedExperienceLevel =
           profileWithRole?.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL;
@@ -1460,8 +1462,9 @@ export default function DashboardPage() {
     void signOutAndClearSession();
   };
 
-const showToast = (msg: string) => {
+const showToast = (msg: string, variant?: ToastVariant) => {
   setToastMessage(msg);
+  setToastVariant(variant ?? inferToastVariant(msg));
   setTimeout(() => setToastMessage(null), 3000);
 };
 
@@ -3598,7 +3601,7 @@ const showToast = (msg: string) => {
               </div>
 
               {/* SUB-MENU CONTENT PANELS */}
-              <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-8 shadow-2xl">
+              <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-8 shadow-2xl">
                 {profileSubMenu === "companyInfo" && (
                   <div className="space-y-6 animate-in fade-in">
                     <div className="flex items-center gap-5 pb-6 border-b border-zinc-800">
@@ -4207,7 +4210,7 @@ const showToast = (msg: string) => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Pending Review
                   </span>
@@ -4215,7 +4218,7 @@ const showToast = (msg: string) => {
                     {candidateIntroLoading ? "—" : pendingCandidateIntroCount}
                   </span>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Accepted
                   </span>
@@ -4229,7 +4232,7 @@ const showToast = (msg: string) => {
                         ).length}
                   </span>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Total Requests
                   </span>
@@ -4240,13 +4243,13 @@ const showToast = (msg: string) => {
               </div>
 
               {candidateIntroLoading ? (
-                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-400">
                     Loading intro requests...
                   </p>
                 </div>
               ) : candidateIntroRequests.length === 0 ? (
-                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
                     No intro requests yet
                   </p>
@@ -4270,7 +4273,7 @@ const showToast = (msg: string) => {
                     return (
                       <div
                         key={request.id}
-                        className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                        className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
                       >
                         <div className="flex items-start justify-between gap-3 mb-4">
                           <div className="min-w-0">
@@ -4373,7 +4376,7 @@ const showToast = (msg: string) => {
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
                 {/* Left: inputs */}
-                <div className="lg:col-span-7 bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
+                <div className="lg:col-span-7 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
                   <div>
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                       Target School
@@ -4447,7 +4450,7 @@ const showToast = (msg: string) => {
                 </div>
 
                 {/* Right: results */}
-                <div className="lg:col-span-5 bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
+                <div className="lg:col-span-5 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                   {evaluatingEssay ? (
                     <div className="flex flex-col items-center justify-center min-h-[320px] text-center">
                       <div className="relative mb-4">
@@ -4594,7 +4597,7 @@ const showToast = (msg: string) => {
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
                 {/* Left: inputs */}
-                <div className="lg:col-span-5 bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
+                <div className="lg:col-span-5 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
                   <div>
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                       College Name
@@ -4682,7 +4685,7 @@ const showToast = (msg: string) => {
                 {/* Right: results */}
                 <div className="lg:col-span-7 space-y-4">
                   {generatingAid ? (
-                    <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[420px] text-center">
+                    <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[420px] text-center">
                       <div className="relative mb-4">
                         <div className="w-16 h-16 rounded-full border-2 border-indigo-500/30 flex items-center justify-center animate-pulse">
                           <FileText className="w-7 h-7 text-indigo-400" aria-hidden="true" />
@@ -4707,7 +4710,7 @@ const showToast = (msg: string) => {
                         </p>
                       </div>
 
-                      <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
+                      <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                         <div className="flex items-center justify-between gap-3 mb-4">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                             Strategy & Case Strength
@@ -4741,7 +4744,7 @@ const showToast = (msg: string) => {
                         )}
                       </div>
 
-                      <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
+                      <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">
                           Required Documents & Evidence Checklist
                         </span>
@@ -4770,7 +4773,7 @@ const showToast = (msg: string) => {
                         </ul>
                       </div>
 
-                      <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
+                      <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                         <div className="flex items-center justify-between gap-3 mb-4">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                             Formal Letter Drafter
@@ -4807,7 +4810,7 @@ const showToast = (msg: string) => {
                       </div>
                     </>
                   ) : (
-                    <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[420px] text-center">
+                    <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[420px] text-center">
                       <div className="w-12 h-12 rounded-xl bg-slate-800/60 flex items-center justify-center text-slate-500 mb-4">
                         <FileText className="w-6 h-6" aria-hidden="true" />
                       </div>
@@ -4840,7 +4843,7 @@ const showToast = (msg: string) => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-                <div className="lg:col-span-4 bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
+                <div className="lg:col-span-4 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
                   <div>
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                       GPA
@@ -4951,7 +4954,7 @@ const showToast = (msg: string) => {
                   )}
 
                   {generatingCollegeFit ? (
-                    <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-6 sm:p-8 shadow-lg space-y-5 min-h-[320px]">
+                    <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-6 sm:p-8 shadow-lg space-y-5 min-h-[320px]">
                       <div className="flex items-center gap-3">
                         <div className="relative">
                           <div className="w-12 h-12 rounded-full border-2 border-indigo-500/30 flex items-center justify-center animate-pulse">
@@ -5023,7 +5026,7 @@ const showToast = (msg: string) => {
                     </div>
                   ) : collegeFitReport ? (
                     <>
-                      <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
+                      <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
                           Fit Summary
                         </span>
@@ -5060,7 +5063,7 @@ const showToast = (msg: string) => {
                       ].map((section) => (
                         <div
                           key={section.title}
-                          className={`bg-[#111111] rounded-2xl border ${section.accent} p-5 sm:p-6 shadow-lg`}
+                          className={`card-edge bg-[#111111] rounded-2xl border ${section.accent} p-5 sm:p-6 shadow-lg`}
                         >
                           <h3 className="text-sm font-extrabold text-white mb-4 flex items-center gap-2">
                             <section.Icon
@@ -5173,7 +5176,7 @@ const showToast = (msg: string) => {
                       ))}
                     </>
                   ) : (
-                    <div className="bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[320px] text-center">
+                    <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[320px] text-center">
                       <div className="w-12 h-12 rounded-xl bg-slate-800/60 flex items-center justify-center text-slate-500 mb-4">
                         <Icons.GraduationCap />
                       </div>
@@ -5206,7 +5209,7 @@ const showToast = (msg: string) => {
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Active Roles
                   </span>
@@ -5217,7 +5220,7 @@ const showToast = (msg: string) => {
                     of {jobsLoading ? "—" : activeOpeningsCount} active
                   </p>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Direct Matches
                   </span>
@@ -5226,7 +5229,7 @@ const showToast = (msg: string) => {
                   </span>
                   <p className="text-[11px] text-slate-500 mt-1">90%+ fit score</p>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg col-span-2 lg:col-span-1">
+                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg col-span-2 lg:col-span-1">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Profile Views
                   </span>
@@ -5237,7 +5240,7 @@ const showToast = (msg: string) => {
                 </div>
               </div>
 
-              <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-4 mb-6 shadow-lg">
+              <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-4 mb-6 shadow-lg">
                 <div className="flex flex-col lg:flex-row lg:items-center gap-3">
                   <div className="relative flex-1">
                     <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
@@ -5275,13 +5278,13 @@ const showToast = (msg: string) => {
               </div>
 
               {jobsLoading ? (
-                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-400">
                     Loading opportunities...
                   </p>
                 </div>
               ) : activeJobs.length === 0 ? (
-                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
                     No active openings right now
                   </p>
@@ -5290,7 +5293,7 @@ const showToast = (msg: string) => {
                   </p>
                 </div>
               ) : filteredRadarJobFeed.length === 0 ? (
-                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
                     No opportunities match your filters
                   </p>
@@ -5318,7 +5321,7 @@ const showToast = (msg: string) => {
                     return (
                       <div
                         key={job.id}
-                        className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                        className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
                       >
                         <div className="flex items-start justify-between gap-3 mb-4">
                           <div className="flex items-start gap-3 min-w-0">
@@ -5473,7 +5476,7 @@ const showToast = (msg: string) => {
               </div>
 
               {appliedJobs.length === 0 ? (
-                <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
                     No applications yet
                   </p>
@@ -5493,7 +5496,7 @@ const showToast = (msg: string) => {
                   {appliedJobs.map((application) => (
                     <div
                       key={application.jobId}
-                      className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                      className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row md:items-center md:justify-between gap-4"
                     >
                       <div>
                         <h3 className="font-bold text-white text-base">
@@ -5560,7 +5563,7 @@ const showToast = (msg: string) => {
 
               {/* METRICS ROW */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Total Candidates
                   </span>
@@ -5568,7 +5571,7 @@ const showToast = (msg: string) => {
                     {candidates.length}
                   </span>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Saved Profiles
                   </span>
@@ -5576,7 +5579,7 @@ const showToast = (msg: string) => {
                     {savedProfilesCount}
                   </span>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     New Matches
                   </span>
@@ -5584,7 +5587,7 @@ const showToast = (msg: string) => {
                     {newMatchesCount}
                   </span>
                 </div>
-                <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                     Active Roles
                   </span>
@@ -5596,7 +5599,7 @@ const showToast = (msg: string) => {
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* FILTER SIDEBAR */}
-                <aside className="lg:col-span-3 bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-5">
+                <aside className="lg:col-span-3 card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-5">
                   <div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">
                       Filters
@@ -5691,7 +5694,7 @@ const showToast = (msg: string) => {
                       {Array.from({ length: 3 }).map((_, index) => (
                         <div
                           key={index}
-                          className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 animate-pulse min-h-[260px]"
+                          className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 animate-pulse min-h-[260px]"
                           aria-hidden="true"
                         >
                           <div className="flex items-start justify-between gap-2 mb-4">
@@ -5715,7 +5718,7 @@ const showToast = (msg: string) => {
                       ))}
                     </div>
                   ) : filteredCandidates.length === 0 ? (
-                    <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+                    <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                       <p className="text-sm font-medium text-slate-300">
                         No published candidates match your filters
                       </p>
@@ -5733,7 +5736,7 @@ const showToast = (msg: string) => {
                         return (
                           <div
                             key={col.profileId}
-                            className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col justify-between h-full min-h-[260px] min-w-0 overflow-hidden"
+                            className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col justify-between h-full min-h-[260px] min-w-0 overflow-hidden"
                           >
                             <div className="flex items-start justify-between gap-2 mb-4">
                               <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-indigo-400 shrink-0">
@@ -5831,7 +5834,7 @@ const showToast = (msg: string) => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-7 space-y-5">
+                <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-7 space-y-5">
                   <input type="text" placeholder="Candidate Target Role" value={evalRole} onChange={(e) => setEvalRole(e.target.value)} className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
                   <input type="text" placeholder="Education / Major (Optional)" value={evalMajor} onChange={(e) => setEvalMajor(e.target.value)} className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
                   <textarea rows={5} placeholder="Paste Proof of Work or Resume details here..." value={evalAccomplishments} onChange={(e) => setEvalAccomplishments(e.target.value)} className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white resize-none focus:outline-none focus:border-indigo-500" />
@@ -5841,7 +5844,7 @@ const showToast = (msg: string) => {
                   </button>
                 </div>
 
-                <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[360px]">
+                <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[360px]">
                   {employerAuditError ? (
                     <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
                       {employerAuditError}
@@ -5918,14 +5921,14 @@ const showToast = (msg: string) => {
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-                <div className="bg-[#111111] p-6 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-6 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Above $25k Roles</span>
                   <span className="text-3xl font-mono font-extrabold tabular-nums text-white">10%</span>
                   <p className="text-xs text-slate-400 mt-2">
                     of first-year salary upon hire
                   </p>
                 </div>
-                <div className="bg-[#111111] p-6 rounded-2xl border border-zinc-800 shadow-lg">
+                <div className="card-edge bg-[#111111] p-6 rounded-2xl border border-zinc-800 shadow-lg">
                   <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Under $25k Roles</span>
                   <span className="text-3xl font-mono font-extrabold tabular-nums text-emerald-400">$2,500</span>
                   <p className="text-xs text-slate-400 mt-2">
@@ -5933,7 +5936,7 @@ const showToast = (msg: string) => {
                   </p>
                 </div>
               </div>
-              <div className="bg-[#111111] border border-zinc-800 rounded-2xl shadow-2xl p-6">
+              <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl shadow-2xl p-6">
                 <h3 className="text-sm font-bold text-white mb-4">How billing works</h3>
                 <div className="space-y-3 text-sm text-slate-300 leading-relaxed">
                   <p>
@@ -6548,19 +6551,12 @@ const showToast = (msg: string) => {
           </div>
         )}
 
-        {toastMessage && (
-          <div className="fixed bottom-6 right-6 z-50 bg-[#18181b] border border-slate-700 text-slate-100 text-xs font-medium px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3">
-            <span className="w-5 h-5 rounded-full bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
-              <Icons.Check />
-            </span>
-            <span>{toastMessage}</span>
-          </div>
-        )}
+        <Toast message={toastMessage} variant={toastVariant} />
 
         {/* POST NEW JOB MODAL (Employer) */}
         {postJobModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-8 max-w-lg w-full relative shadow-2xl">
+            <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-8 max-w-lg w-full relative shadow-2xl">
               <button
                 type="button"
                 onClick={() => {

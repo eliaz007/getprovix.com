@@ -1,17 +1,52 @@
 "use client";
 
-import React from "react";
+import { Check, X } from "lucide-react";
 
-interface ToastProps {
-  message: string | null;
+export type ToastVariant = "success" | "error";
+
+const ERROR_TOAST_PATTERN =
+  /required|could not|couldn'?t|failed|must be|try again|invalid|denied|unable|missing/i;
+
+export function inferToastVariant(message: string): ToastVariant {
+  return ERROR_TOAST_PATTERN.test(message) ? "error" : "success";
 }
 
-export default function Toast({ message }: ToastProps) {
+type ToastProps = {
+  message: string | null;
+  variant?: ToastVariant;
+  className?: string;
+};
+
+export default function Toast({
+  message,
+  variant,
+  className = "bottom-6 right-6",
+}: ToastProps) {
   if (!message) return null;
 
+  const resolvedVariant = variant ?? inferToastVariant(message);
+  const isError = resolvedVariant === "error";
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 bg-[#18181b] border border-slate-700 text-slate-100 text-xs font-medium px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 transition-all animate-in fade-in slide-in-from-bottom-3">
-      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+    <div
+      className={`fixed z-50 bg-[#18181b] text-slate-100 text-xs font-medium px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 transition-all animate-in fade-in slide-in-from-bottom-3 border ${
+        isError ? "border-red-500/40" : "border-zinc-800"
+      } ${className}`}
+      role={isError ? "alert" : "status"}
+    >
+      <span
+        className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+          isError
+            ? "bg-red-500/15 text-red-400"
+            : "bg-emerald-500/15 text-emerald-400"
+        }`}
+      >
+        {isError ? (
+          <X className="w-3 h-3" strokeWidth={2.5} aria-hidden />
+        ) : (
+          <Check className="w-3 h-3" strokeWidth={2.5} aria-hidden />
+        )}
+      </span>
       <span>{message}</span>
     </div>
   );

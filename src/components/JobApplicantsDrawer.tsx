@@ -341,7 +341,7 @@ export default function JobApplicantsDrawer({
             applicants.map((applicant) => (
               <div
                 key={applicant.applicationId}
-                className="rounded-2xl border border-zinc-800 bg-[#0A0A0A] p-5 space-y-4"
+                className="card-edge rounded-2xl border border-zinc-800 bg-[#0A0A0A] p-5 space-y-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0">

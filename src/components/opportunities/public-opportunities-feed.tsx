@@ -6,6 +6,7 @@ import OpportunitiesJobFeed from "@/components/opportunities/opportunities-job-f
 import { createEmployerNotification } from "@/lib/employer-notifications";
 import { fetchPublicJobFeed, type JobRow } from "@/lib/jobs";
 import { createClient } from "@/utils/supabase/client";
+import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
 
 export default function PublicOpportunitiesFeed() {
   const { requireAuth, userId, authLoading } = useDashboardNav();
@@ -13,9 +14,11 @@ export default function PublicOpportunitiesFeed() {
   const [jobsLoading, setJobsLoading] = useState(true);
   const [appliedJobIds, setAppliedJobIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
 
-  const showToast = useCallback((message: string) => {
+  const showToast = useCallback((message: string, variant?: ToastVariant) => {
     setToastMessage(message);
+    setToastVariant(variant ?? inferToastVariant(message));
     window.setTimeout(() => setToastMessage(null), 3200);
   }, []);
 
@@ -130,11 +133,11 @@ export default function PublicOpportunitiesFeed() {
         appliedJobIds={appliedJobIds}
         onExpressInterest={handleExpressInterest}
       />
-      {toastMessage ? (
-        <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-xl border border-slate-700 bg-[#111111] px-4 py-2.5 text-xs font-semibold text-white shadow-xl">
-          {toastMessage}
-        </div>
-      ) : null}
+      <Toast
+        message={toastMessage}
+        variant={toastVariant}
+        className="bottom-6 left-1/2 -translate-x-1/2 z-[80]"
+      />
     </div>
   );
 }

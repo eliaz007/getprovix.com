@@ -103,7 +103,7 @@ export default function OpportunitiesJobFeed({
           isGuest ? "sm:grid-cols-2" : "sm:grid-cols-3"
         }`}
       >
-        <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+        <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
             Active Openings
           </span>
@@ -112,7 +112,7 @@ export default function OpportunitiesJobFeed({
           </span>
         </div>
         {isGuest ? (
-          <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+          <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
               Apply
             </span>
@@ -122,7 +122,7 @@ export default function OpportunitiesJobFeed({
           </div>
         ) : (
           <>
-            <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+            <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                 Matching Your Skills
               </span>
@@ -130,7 +130,7 @@ export default function OpportunitiesJobFeed({
                 {jobsLoading ? "—" : skillMatchingJobsCount}
               </span>
             </div>
-            <div className="bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+            <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
                 Profile Visibility
               </span>
@@ -152,7 +152,7 @@ export default function OpportunitiesJobFeed({
         )}
       </div>
 
-      <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-4 mb-6 shadow-lg">
+      <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-4 mb-6 shadow-lg">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="relative flex-1">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
@@ -204,13 +204,13 @@ export default function OpportunitiesJobFeed({
       </div>
 
       {jobsLoading ? (
-        <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
           <p className="text-sm font-medium text-slate-400">
             Loading opportunities...
           </p>
         </div>
       ) : activeJobs.length === 0 ? (
-        <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
           <p className="text-sm font-medium text-slate-300">
             No active openings right now
           </p>
@@ -219,7 +219,7 @@ export default function OpportunitiesJobFeed({
           </p>
         </div>
       ) : filteredJobFeed.length === 0 ? (
-        <div className="bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
           <p className="text-sm font-medium text-slate-300">
             No jobs match your filters
           </p>
@@ -242,7 +242,7 @@ export default function OpportunitiesJobFeed({
             return (
               <div
                 key={job.id}
-                className="bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="min-w-0">

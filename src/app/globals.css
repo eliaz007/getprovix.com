@@ -17,3 +17,41 @@ body {
   color: #f1f5f9;
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
+
+/* Faint top-edge highlight on dashboard cards */
+.card-edge {
+  position: relative;
+}
+
+.card-edge::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 1;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgb(255 255 255 / 0.22),
+    transparent
+  );
+  pointer-events: none;
+}
+
+.card-edge::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 3.5rem;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  background: linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 0.15),
+    rgb(255 255 255 / 0.05),
+    transparent
+  );
+  pointer-events: none;
+}

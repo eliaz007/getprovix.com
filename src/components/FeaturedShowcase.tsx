@@ -30,7 +30,7 @@ function BuilderAvatar({ builder }: { builder: FeaturedBuilder }) {
 
 function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
   return (
-    <article className="flex h-full flex-col rounded-lg border border-zinc-800 bg-[#111111] p-6">
+    <article className="card-edge flex h-full flex-col rounded-lg border border-zinc-800 bg-[#111111] p-6">
       <div className="flex items-start gap-4">
         <BuilderAvatar builder={builder} />
         <div className="min-w-0 flex-1">

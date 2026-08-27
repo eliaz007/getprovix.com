@@ -160,7 +160,7 @@ export default function GitHubResumeAuditor() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-7 space-y-5 shadow-2xl">
+        <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-7 space-y-5 shadow-2xl">
           <div>
             <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
               Target Role / Tech Stack
@@ -258,7 +258,7 @@ export default function GitHubResumeAuditor() {
           </button>
         </div>
 
-        <div className="lg:col-span-6 bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[480px] shadow-2xl">
+        <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[480px] shadow-2xl">
           {loading && (
             <div className="space-y-4 animate-in fade-in duration-300">
               <div className="text-sm font-bold text-white mb-1">
