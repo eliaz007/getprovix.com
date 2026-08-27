@@ -3351,7 +3351,7 @@ const showToast = (msg: string) => {
 
   const renderGuestNav = () => (
     <div>
-      <div>
+      <div className="mt-8 pt-8 border-t border-slate-800/60">
         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
           Candidate Dashboard
         </span>

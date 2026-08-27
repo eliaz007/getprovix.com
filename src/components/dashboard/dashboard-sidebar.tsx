@@ -164,7 +164,13 @@ export default function DashboardSidebar() {
       </Link>
 
       <div className="flex-1">
-        <div>
+        <div
+          className={
+            !isBusinessAccount && !isEmployeeAccount
+              ? secondaryNavSectionClass
+              : undefined
+          }
+        >
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
             {isBusinessAccount
               ? "Company Hub"
