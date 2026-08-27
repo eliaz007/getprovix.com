@@ -3482,8 +3482,8 @@ const showToast = (msg: string) => {
               dashboardNav
                 ? undefined
                 : isStandaloneGuest
-                  ? "flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 md:p-12"
-                  : "min-h-screen bg-[#0A0A0A] text-slate-200 p-4 sm:p-6 md:p-12"
+                  ? "flex-1 overflow-x-hidden overflow-y-auto p-4 pt-8 sm:p-6 sm:pt-10 md:p-12"
+                  : "min-h-screen bg-[#0A0A0A] text-slate-200 p-4 pt-8 sm:p-6 sm:pt-10 md:p-12"
             }
           >
       {isEmployeeAccount && activeTab === "opportunity_radar" && (

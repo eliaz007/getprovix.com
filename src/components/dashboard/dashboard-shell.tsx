@@ -84,7 +84,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             </div>
           )}
 
-          <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6 md:p-12 animate-in fade-in duration-300">
+          <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 pt-8 sm:p-6 sm:pt-10 md:p-12 animate-in fade-in duration-300">
             {children}
           </div>
         </main>
