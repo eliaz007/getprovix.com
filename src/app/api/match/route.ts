@@ -11,21 +11,23 @@ import {
 
 export type { MatchResult };
 
-const SYSTEM_PROMPT = `Score candidate vs job fit. Return JSON only:
-{"score":50-99,"breakdown":"one short sentence in second person (You/Your)"}
-Keep breakdown under 20 words. No markdown.`;
+const SYSTEM_PROMPT = `Score how well this candidate fits the employer's job and search query.
+Use skills, tech stack, bio, job title, job description, tags, and searchQuery.
+Return JSON only:
+{"score":0-99,"breakdown":"one short sentence about the candidate's fit"}
+Keep breakdown under 20 words. No markdown. Do not default to 50.`;
 
 const MATCH_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     score: {
       type: Type.INTEGER,
-      description: "Integer fit score between 50 and 99.",
+      description: "Integer fit score between 0 and 99. Do not default to 50.",
     },
     breakdown: {
       type: Type.STRING,
       description:
-        "One concise sentence in second person (You/Your) explaining the match to the candidate.",
+        "One concise sentence explaining why this candidate fits or misses the role.",
     },
   },
   required: ["score", "breakdown"],
@@ -69,13 +71,15 @@ async function generateGeminiMatch(
       title: candidate.title ?? "",
       skills: normalizeStringArray(candidate.skills),
       degree: candidate.degree ?? "",
-      bio: (candidate.bio ?? "").slice(0, 120),
+      bio: (candidate.bio ?? "").slice(0, 400),
     },
     job: {
       title: job.title ?? "",
       company: job.company ?? "",
       tags: normalizeStringArray(job.tags),
       location: job.location ?? "",
+      description: (job.description ?? "").slice(0, 600),
+      searchQuery: job.searchQuery ?? "",
     },
   });
 

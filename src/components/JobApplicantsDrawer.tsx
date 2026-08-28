@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { generateMaskedAliasFromUuid, getCodenameInitials } from "@/lib/alias-generator";
 import { getPublicCandidateLocation } from "@/lib/candidate-anonymization";
+import { scoreTalentMatch } from "@/lib/match-heuristic";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { createClient } from "@/utils/supabase/client";
 
@@ -64,12 +65,32 @@ type JobApplicantsDrawerProps = {
 };
 
 function formatAiScoreLabel(
-  matchPercentage: number | null | undefined
+  matchPercentage: number | null | undefined,
+  candidate: { skills: string[]; headline: string; bio?: string | null },
+  jobTitle: string
 ): string {
-  if (typeof matchPercentage === "number" && Number.isFinite(matchPercentage)) {
+  const isCanned =
+    matchPercentage === 50 ||
+    matchPercentage === 65 ||
+    matchPercentage === 94;
+
+  if (
+    typeof matchPercentage === "number" &&
+    Number.isFinite(matchPercentage) &&
+    !isCanned
+  ) {
     return `${Math.round(matchPercentage)}% Match`;
   }
-  return "94% Match";
+
+  const scored = scoreTalentMatch(
+    {
+      title: candidate.headline,
+      skills: candidate.skills,
+      bio: candidate.bio ?? "",
+    },
+    { title: jobTitle }
+  );
+  return `${scored.match_percentage}% Match`;
 }
 
 function formatAppliedAt(value: string): string {
@@ -105,7 +126,8 @@ function resolveContactEmail(profile: ApplicantProfileRow | null): string | null
 
 function mapApplicationToApplicant(
   row: JobApplicationRow,
-  matchByCandidateId: Map<string, number>
+  matchByCandidateId: Map<string, number>,
+  jobTitle: string
 ): JobApplicantView {
   const profile = resolveProfileRow(row.profiles);
   const profileId = profile?.id ?? row.candidate_id;
@@ -130,7 +152,11 @@ function mapApplicationToApplicant(
     }),
     headline,
     skills,
-    aiScoreLabel: formatAiScoreLabel(matchByCandidateId.get(row.candidate_id)),
+    aiScoreLabel: formatAiScoreLabel(
+      matchByCandidateId.get(row.candidate_id),
+      { skills, headline, bio: profile?.bio },
+      jobTitle
+    ),
     appliedAtLabel: formatAppliedAt(row.created_at),
     unlocked: isUnlocked,
     fullName: null,
@@ -237,7 +263,9 @@ export default function JobApplicantsDrawer({
         }
 
         setApplicants(
-          rows.map((row) => mapApplicationToApplicant(row, matchByCandidateId))
+          rows.map((row) =>
+            mapApplicationToApplicant(row, matchByCandidateId, jobTitle)
+          )
         );
       } catch (loadError) {
         console.error("Failed to load job applicants:", loadError);
@@ -257,7 +285,7 @@ export default function JobApplicantsDrawer({
     return () => {
       active = false;
     };
-  }, [open, jobId, employerId]);
+  }, [open, jobId, employerId, jobTitle]);
 
   useEffect(() => {
     if (!open) {

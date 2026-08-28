@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buildFallbackMatch,
+  isCannedMatchScore,
   normalizeMatchResult,
   type MatchCandidatePayload,
   type MatchJobPayload,
@@ -13,25 +14,29 @@ export function resolveMatchInsight(
   candidate: MatchCandidatePayload,
   job: MatchJobPayload
 ): MatchResult {
+  const fallback = buildFallbackMatch(candidate, job);
+
   if (raw && typeof raw === "object" && !("error" in (raw as object))) {
     const normalized = normalizeMatchResult(raw);
-    if (Number.isFinite(normalized.match_percentage)) {
-      const fallbackSkills = buildFallbackMatch(candidate, job);
+    if (
+      Number.isFinite(normalized.match_percentage) &&
+      !isCannedMatchScore(normalized.match_percentage)
+    ) {
       return {
         ...normalized,
         matching_skills:
           normalized.matching_skills.length > 0
             ? normalized.matching_skills
-            : fallbackSkills.matching_skills,
+            : fallback.matching_skills,
         missing_skills:
           normalized.missing_skills.length > 0
             ? normalized.missing_skills
-            : fallbackSkills.missing_skills,
+            : fallback.missing_skills,
       };
     }
   }
 
-  return buildFallbackMatch(candidate, job);
+  return fallback;
 }
 
 export async function loadCachedTalentMatchScores(

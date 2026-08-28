@@ -7,11 +7,9 @@ import type { User } from "@supabase/supabase-js";
 import {
   AlertTriangle,
   Check,
-  CheckCircle2,
   Copy,
   FileText,
   Flame,
-  Lock,
   ShieldCheck,
   Target,
 } from "lucide-react";
@@ -72,7 +70,7 @@ import {
   isValidGitHubUrl,
   normalizeGitHubUrl,
 } from "@/lib/validate-github-url";
-import { buildFallbackMatch, type MatchResult } from "@/lib/match-heuristic";
+import { buildFallbackMatch, isCannedMatchScore, scoreTalentMatch, type MatchResult } from "@/lib/match-heuristic";
 import {
   buildFallbackOpportunityMatch,
   fetchOpportunityMatch,
@@ -127,8 +125,6 @@ import {
 } from "@/lib/persist-employer-profile";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
-const BETA_UNLOCK_STORAGE_KEY = "beta_unlocked_session";
-const BETA_LEAD_STORAGE_KEY = "beta_unlocked_lead";
 const AUDIT_STORAGE_PREFIX = "vanguardx_audit_";
 
 const DEEP_SCREENING_STAGES = [
@@ -421,40 +417,6 @@ function isMissingColumnError(error: { message?: string; code?: string } | null)
   );
 }
 
-function isPaidEmployerPlan(billingPlan: string): boolean {
-  const plan = billingPlan.trim().toLowerCase();
-  if (!plan || plan === "free plan" || plan.includes("free tier")) {
-    return false;
-  }
-
-  return (
-    plan.includes("monthly") ||
-    plan.includes("agency") ||
-    plan.includes("$299") ||
-    plan.includes("$149") ||
-    plan.includes("$15") ||
-    plan.includes("pro") ||
-    plan.includes("paid") ||
-    plan.includes("beta")
-  );
-}
-
-function isProEmployer(
-  profile: ProfileRecord | null,
-  billingPlan: string
-): boolean {
-  if (profile?.is_pro === true) {
-    return true;
-  }
-
-  const tier = profile?.tier?.trim().toLowerCase();
-  if (tier === "pro") {
-    return true;
-  }
-
-  return isPaidEmployerPlan(billingPlan);
-}
-
 function formatExternalUrl(url: string): string {
   const trimmed = url.trim();
   if (!trimmed) {
@@ -500,6 +462,7 @@ type TalentPoolCandidate = {
   github: string;
   demoVideo: string;
   projects: string[];
+  matchScore: number;
 };
 
 function isEmployerRole(role: string | null | undefined): boolean {
@@ -634,6 +597,15 @@ function mapProfileRowToTalentCandidate(
     github: portfolioUrl || "",
     demoVideo: row.youtube_url?.trim() || "",
     projects: [],
+    matchScore: scoreTalentMatch(
+      {
+        title: headline,
+        bio,
+        skills,
+        degree: major,
+      },
+      { title: "", tags: [], description: "", searchQuery: "" }
+    ).match_percentage,
   };
 }
 
@@ -684,30 +656,15 @@ function getCandidateProjectLinks(
   return links;
 }
 
-function formatBaselineMatchLabel(
-  executionScore: number | string | null | undefined,
-  fallbackRating?: string
-): string {
-  if (typeof executionScore === "number" && Number.isFinite(executionScore)) {
-    return `${Math.round(executionScore)}% Match`;
-  }
+function formatTalentMatchLabel(percentage: number): string {
+  return `${clampDisplayedMatch(percentage)}% Match`;
+}
 
-  if (typeof executionScore === "string" && executionScore.trim()) {
-    const trimmed = executionScore.trim();
-    if (trimmed.toLowerCase().includes("match")) {
-      return trimmed;
-    }
-    const numeric = Number.parseInt(trimmed.replace("%", ""), 10);
-    return Number.isFinite(numeric) ? `${numeric}% Match` : trimmed;
+function clampDisplayedMatch(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
   }
-
-  if (fallbackRating?.trim()) {
-    const trimmed = fallbackRating.trim();
-    const numeric = Number.parseInt(trimmed.replace("%", ""), 10);
-    return Number.isFinite(numeric) ? `${numeric}% Match` : trimmed;
-  }
-
-  return "94% Match";
+  return Math.min(99, Math.max(0, Math.round(value)));
 }
 
 type MatchingJob = {
@@ -716,7 +673,34 @@ type MatchingJob = {
   company?: string | null;
   tags?: string[] | null;
   location?: string | null;
+  description?: string | null;
 };
+
+function buildTalentMatchJobPayload(
+  job: MatchingJob | null,
+  searchQuery: string
+): {
+  title: string;
+  company: string;
+  tags: string[];
+  location: string;
+  description: string;
+  searchQuery: string;
+} {
+  const query = searchQuery.trim();
+  return {
+    title: job?.title ?? (query || "Open talent search"),
+    company: job?.company ?? "",
+    tags: Array.isArray(job?.tags) ? job.tags.filter(Boolean) : [],
+    location: job?.location ?? "",
+    description: job?.description ?? "",
+    searchQuery: query,
+  };
+}
+
+function isLegacyCannedMatchScore(score: number): boolean {
+  return isCannedMatchScore(score);
+}
 
 function buildTalentMatchKey(candidateId: string, jobId: string | null) {
   return `${candidateId}:${jobId ?? "default"}`;
@@ -853,12 +837,6 @@ export default function DashboardPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
 
-  const [proUpgradeModalOpen, setProUpgradeModalOpen] = useState(false);
-  const [betaCompanyName, setBetaCompanyName] = useState("");
-  const [betaWorkEmail, setBetaWorkEmail] = useState("");
-  const [betaAccessSubmitting, setBetaAccessSubmitting] = useState(false);
-  const [betaAccessError, setBetaAccessError] = useState<string | null>(null);
-  const [betaAccessUnlocked, setBetaAccessUnlocked] = useState(false);
   const [introModalCandidate, setIntroModalCandidate] =
     useState<TalentPoolCandidate | null>(null);
   const [introDefaultRoleTitle, setIntroDefaultRoleTitle] = useState("");
@@ -1549,59 +1527,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     businessProfileData?.businessName?.trim() ||
     dbProfile?.company_name?.trim() ||
     "your company";
-  const isProEmployerAccount =
-    betaAccessUnlocked ||
-    isProEmployer(dbProfile, businessProfileData.billingPlan);
-  const hasBetaAccess = isProEmployerAccount;
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    if (window.localStorage.getItem(BETA_UNLOCK_STORAGE_KEY) === "true") {
-      setBetaAccessUnlocked(true);
-    }
-
-    try {
-      const storedLead = window.localStorage.getItem(BETA_LEAD_STORAGE_KEY);
-      if (storedLead) {
-        const parsed = JSON.parse(storedLead) as {
-          company_name?: string;
-          work_email?: string;
-        };
-        if (parsed.company_name) {
-          setBetaCompanyName(parsed.company_name);
-        }
-        if (parsed.work_email) {
-          setBetaWorkEmail(parsed.work_email);
-        }
-      }
-    } catch {
-      // Ignore malformed local lead cache.
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!proUpgradeModalOpen) {
-      return;
-    }
-
-    setBetaCompanyName(
-      dbProfile?.company_name?.trim() ||
-        businessProfileData.businessName?.trim() ||
-        ""
-    );
-    setBetaWorkEmail(
-      businessProfileData.workEmail?.trim() || user?.email?.trim() || ""
-    );
-  }, [
-    proUpgradeModalOpen,
-    dbProfile?.company_name,
-    businessProfileData.businessName,
-    businessProfileData.workEmail,
-    user?.email,
-  ]);
 
   const employerActiveJobs = useMemo(
     () => jobs.filter((job) => job.employer_id === user?.id),
@@ -1620,6 +1545,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       company: selectedJob.company ?? employerCompanyNameForMatching,
       tags: Array.isArray(selectedJob.tags) ? selectedJob.tags : [],
       location: selectedJob.location ?? "",
+      description: selectedJob.description ?? "",
     };
   }, [employerActiveJobs, employerCompanyNameForMatching]);
 
@@ -2171,7 +2097,36 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     };
   }, [selectedCandidate?.id]);
 
-  const filteredCandidates = candidates.filter((candidate) => {
+  const scoredCandidates = useMemo(() => {
+    const jobPayload = buildTalentMatchJobPayload(
+      primaryMatchingJob,
+      talentSearch
+    );
+
+    return candidates.map((candidate) => {
+      const heuristic = scoreTalentMatch(
+        {
+          title: candidate.role,
+          bio: candidate.bio,
+          skills: candidate.skills,
+          degree: candidate.major,
+        },
+        jobPayload
+      );
+      const live = talentMatchScores[candidate.id];
+      const liveScore =
+        live && !isCannedMatchScore(live.match_percentage)
+          ? live.match_percentage
+          : null;
+
+      return {
+        ...candidate,
+        matchScore: liveScore ?? heuristic.match_percentage,
+      };
+    });
+  }, [candidates, primaryMatchingJob, talentSearch, talentMatchScores]);
+
+  const filteredCandidates = scoredCandidates.filter((candidate) => {
     const matchesSearch = candidateMatchesTalentSearch(
       candidate,
       talentSearch
@@ -2411,7 +2366,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       }
 
       if (Object.keys(cachedByCandidate).length > 0) {
-        setTalentMatchScores((prev) => ({ ...prev, ...cachedByCandidate }));
+        const trustedCache: Record<string, MatchResult> = {};
+        for (const [candidateId, insight] of Object.entries(cachedByCandidate)) {
+          if (!isLegacyCannedMatchScore(insight.match_percentage)) {
+            trustedCache[candidateId] = insight;
+          } else {
+            talentMatchFetchedRef.current.delete(
+              buildTalentMatchKey(candidateId, jobIdForStorage)
+            );
+          }
+        }
+        if (Object.keys(trustedCache).length > 0) {
+          setTalentMatchScores((prev) => ({ ...prev, ...trustedCache }));
+        }
       }
 
       const pendingCandidates = candidates.filter((candidate) => {
@@ -2445,12 +2412,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             skills: candidate.skills,
             degree: candidate.major,
           };
-          const jobPayload = {
-            title: primaryMatchingJob.title,
-            company: primaryMatchingJob.company ?? "",
-            tags: primaryMatchingJob.tags ?? [],
-            location: primaryMatchingJob.location ?? "",
-          };
+          const jobPayload = buildTalentMatchJobPayload(
+            primaryMatchingJob,
+            talentSearch
+          );
 
           try {
             const data = await fetchTalentMatchInsight(
@@ -2459,10 +2424,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             );
             if (cancelled) return;
 
-            setTalentMatchScores((prev) => ({
-              ...prev,
-              [candidate.id]: data,
-            }));
+            if (isCannedMatchScore(data.match_percentage)) {
+              setTalentMatchScores((prev) => ({
+                ...prev,
+                [candidate.id]: scoreTalentMatch(candidatePayload, jobPayload),
+              }));
+            } else {
+              setTalentMatchScores((prev) => ({
+                ...prev,
+                [candidate.id]: data,
+              }));
+            }
 
             await saveTalentMatchScore(supabase, {
               employerId: user.id,
@@ -2570,34 +2542,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   };
 
   const savedProfilesCount = 8;
-  const scoredTalentMatches = Object.values(talentMatchScores).filter(
-    (score) => score.match_percentage >= 80
+  const scoredTalentMatches = scoredCandidates.filter(
+    (candidate) => candidate.matchScore >= 80
   ).length;
   const newMatchesCount =
     scoredTalentMatches > 0
       ? scoredTalentMatches
-      : candidates.filter(
+      : scoredCandidates.filter(
           (candidate) => candidate.availability === "Available Now"
         ).length;
-
-  const getTalentMatchLabel = (candidate: TalentPoolCandidate) => {
-    const insight = talentMatchScores[candidate.id];
-    if (insight) {
-      return `${insight.match_percentage}% Match`;
-    }
-
-    if (
-      typeof candidate.execution_score === "number" &&
-      candidate.execution_score > 0
-    ) {
-      return formatBaselineMatchLabel(
-        candidate.execution_score,
-        candidate.rating
-      );
-    }
-
-    return "Match pending";
-  };
 
   const openIntroModal = (candidate: TalentPoolCandidate) => {
     if (!requireAuth()) {
@@ -2684,6 +2637,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       skills: applicant.skills,
       rating: applicant.aiScoreLabel,
       execution_score: Number.isFinite(parsedScore) ? parsedScore : 94,
+      matchScore: Number.isFinite(parsedScore) ? parsedScore : scoreTalentMatch(
+        { title: applicant.headline, skills: applicant.skills },
+        { title: roleTitle }
+      ).match_percentage,
       status: "Available Now",
       experienceLevel: DEFAULT_EXPERIENCE_LEVEL,
       roleType: "General",
@@ -2787,110 +2744,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const isCandidateUnlocked = (candidate: TalentPoolCandidate) =>
     isIntroUnlockedForCandidate(candidate, unlockedCandidateIds);
 
-  const handleUnlockBetaAccess = async () => {
-    const companyName = betaCompanyName.trim();
-    const workEmail = betaWorkEmail.trim();
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!companyName || !workEmail) {
-      setBetaAccessError("Company name and work email are required.");
-      return;
-    }
-
-    if (!emailPattern.test(workEmail)) {
-      setBetaAccessError("Enter a valid work email address.");
-      return;
-    }
-
-    setBetaAccessError(null);
-    setBetaAccessSubmitting(true);
-
-    const applyBetaUnlockLocal = () => {
-      setBetaAccessUnlocked(true);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(BETA_UNLOCK_STORAGE_KEY, "true");
-        window.localStorage.setItem(
-          BETA_LEAD_STORAGE_KEY,
-          JSON.stringify({
-            company_name: companyName,
-            work_email: workEmail,
-          })
-        );
-      }
-
-      setDbProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              is_pro: true,
-              tier: "pro",
-              company_name: companyName,
-            }
-          : prev
-      );
-      setBusinessProfileData((prev) => ({
-        ...prev,
-        businessName: companyName,
-        workEmail,
-        billingPlan: "Beta Access",
-      }));
-      setSavedBusinessProfileData((prev) => ({
-        ...prev,
-        businessName: companyName,
-        workEmail,
-        billingPlan: "Beta Access",
-      }));
-      setProUpgradeModalOpen(false);
-      showToast("Beta access active! Deep screening unlocked.");
-    };
-
-    try {
-      const response = await fetch("/api/beta-access", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          company_name: companyName,
-          work_email: workEmail,
-        }),
-      });
-
-      const data = (await response.json()) as {
-        error?: string;
-        success?: boolean;
-        unlocked?: boolean;
-        warnings?: string[];
-      };
-
-      if (response.status === 400) {
-        setBetaAccessError(data.error ?? "Enter a valid work email address.");
-        return;
-      }
-
-      if (response.status === 401) {
-        setBetaAccessError("Sign in again to unlock beta access.");
-        return;
-      }
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error ?? "Could not unlock beta access.");
-      }
-
-      applyBetaUnlockLocal();
-
-      if (data.warnings?.length) {
-        console.warn("[beta-access] unlock warnings:", data.warnings);
-      }
-    } catch (err) {
-      console.error("Beta access unlock failed:", err);
-      applyBetaUnlockLocal();
-      showToast(
-        "Beta access active locally. We could not fully sync with Supabase."
-      );
-    } finally {
-      setBetaAccessSubmitting(false);
-    }
-  };
-
   const handleCopyInterviewQuestion = async (question: string) => {
     try {
       await navigator.clipboard.writeText(question);
@@ -2915,11 +2768,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     }
 
     if (!selectedCandidate) {
-      return;
-    }
-
-    if (!isProEmployerAccount) {
-      setProUpgradeModalOpen(true);
       return;
     }
 
@@ -5849,7 +5697,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   {col.availability}
                                 </span>
                                 <span className="font-mono text-[10px] font-semibold tabular-nums text-zinc-400">
-                                  {getTalentMatchLabel(col)}
+                                  {formatTalentMatchLabel(col.matchScore)}
                                 </span>
                               </div>
                             </div>
@@ -6064,13 +5912,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             {selectedCandidate && (
               <div className="p-6 space-y-6">
                 {(() => {
-                  const introUnlocked = isCandidateUnlocked(selectedCandidate);
-                  const publicName = getCandidatePublicName(selectedCandidate);
+                  const liveCandidate =
+                    scoredCandidates.find(
+                      (candidate) =>
+                        candidate.profileId === selectedCandidate.profileId
+                    ) ?? selectedCandidate;
+                  const introUnlocked = isCandidateUnlocked(liveCandidate);
+                  const publicName = getCandidatePublicName(liveCandidate);
                   const displayName = publicName;
                   const displayInitials =
-                    getCandidatePublicInitials(selectedCandidate);
+                    getCandidatePublicInitials(liveCandidate);
                   const projectLinks =
-                    getCandidateProjectLinks(selectedCandidate);
+                    getCandidateProjectLinks(liveCandidate);
                   const contactEmail = selectedCandidate.email?.trim() || null;
                   const contactPhone = selectedCandidate.phone?.trim() || null;
 
@@ -6134,7 +5987,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     {selectedCandidate.availability}
                   </span>
                   <span className="font-mono font-bold text-emerald-400">
-                    {getTalentMatchLabel(selectedCandidate)} AI Match Score
+                    {formatTalentMatchLabel(liveCandidate.matchScore)} AI Match Score
                   </span>
                 </div>
 
@@ -6236,7 +6089,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <button
                     type="button"
                     onClick={runDeepScreening}
-                    disabled={hasBetaAccess && deepScreeningLoading}
+                    disabled={deepScreeningLoading}
                     className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {deepScreeningLoading ? (
@@ -6244,25 +6097,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         Running live audit…
                       </>
-                    ) : isProEmployerAccount ? (
-                      deepScreeningShowResults
-                        ? "Re-run Live Audit"
-                        : "Generate AI Deep Screening"
+                    ) : deepScreeningShowResults ? (
+                      "Re-run Live Audit"
                     ) : (
-                      <>
-                        <Lock className="w-3.5 h-3.5" aria-hidden />
-                        Unlock AI Deep Screening
-                      </>
+                      "Generate AI Deep Screening"
                     )}
                   </button>
 
-                  {!hasBetaAccess && (
-                    <p className="text-[11px] text-slate-400">
-                      Unlock beta access to enable deep screening.
-                    </p>
-                  )}
-
-                  {hasBetaAccess && deepScreeningLoading && (
+                  {deepScreeningLoading && (
                     <div className="space-y-2.5 pt-1">
                       {DEEP_SCREENING_STAGES.map((stageLabel, index) => {
                         const isComplete = index < deepScreeningStage;
@@ -6313,7 +6155,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </div>
                   )}
 
-                  {hasBetaAccess && deepScreeningError && !deepScreeningLoading && (
+                  {deepScreeningError && !deepScreeningLoading && (
                     <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 space-y-3">
                       <p className="text-xs text-red-200 leading-relaxed">
                         {deepScreeningError}
@@ -6328,8 +6170,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </div>
                   )}
 
-                  {hasBetaAccess &&
-                    deepScreeningShowResults &&
+                  {deepScreeningShowResults &&
                     deepScreeningResult &&
                     !deepScreeningLoading && (
                     <div className="space-y-4 pt-1 animate-in fade-in duration-500">
@@ -6805,126 +6646,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           }}
           onSuccess={handleIntroRequestSuccess}
         />
-
-        {/* UPGRADE / BETA ACCESS MODAL (employer unlock) */}
-        {proUpgradeModalOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-md w-full relative">
-              <button
-                type="button"
-                onClick={() => setProUpgradeModalOpen(false)}
-                className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors cursor-pointer"
-              >
-                <Icons.XMark />
-              </button>
-
-              <div className="w-12 h-12 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center mb-4">
-                <ShieldCheck className="w-5 h-5" aria-hidden />
-              </div>
-
-              <h3 className="text-xl font-bold text-white leading-tight">
-                Hire Vetted Talent with Zero Upfront Cost
-              </h3>
-              <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                Browse profiles, view proof-of-work, and generate Gemini Deep
-                Screenings for free during our beta.
-              </p>
-
-              <div className="mt-6 space-y-3">
-                <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 flex gap-3">
-                  <ShieldCheck className="w-4 h-4 shrink-0 text-zinc-500 mt-0.5" aria-hidden />
-                  <div>
-                    <p className="text-xs font-bold text-white">
-                      Contingency Placement Model
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                      No upfront fees. Pay 10% on hire above $25k or a $2,500
-                      flat fee below that threshold.
-                    </p>
-                  </div>
-                </div>
-                <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 flex gap-3">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-indigo-400 mt-0.5" aria-hidden />
-                  <div>
-                    <p className="text-xs font-bold text-white">
-                      Contract / Hourly Hires
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                      Transparent, low-margin hourly rates with built-in
-                      contractor management.
-                    </p>
-                  </div>
-                </div>
-                <div className="bg-zinc-950/80 border border-zinc-800 rounded-xl p-3.5 flex gap-3">
-                  <ShieldCheck className="w-4 h-4 shrink-0 text-indigo-400 mt-0.5" aria-hidden />
-                  <div>
-                    <p className="text-xs font-bold text-white">
-                      Full-Time Placements
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                      12% success fee only when you officially hire, backed by a
-                      60-day replacement guarantee.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 space-y-3">
-                <div>
-                  <label
-                    htmlFor="beta-company-name"
-                    className="block text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5"
-                  >
-                    Company Name
-                  </label>
-                  <input
-                    id="beta-company-name"
-                    type="text"
-                    value={betaCompanyName}
-                    onChange={(e) => setBetaCompanyName(e.target.value)}
-                    placeholder="Your company name"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
-                  />
-                </div>
-                <div>
-                  <label
-                    htmlFor="beta-work-email"
-                    className="block text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5"
-                  >
-                    Work Email
-                  </label>
-                  <input
-                    id="beta-work-email"
-                    type="email"
-                    value={betaWorkEmail}
-                    onChange={(e) => {
-                      setBetaWorkEmail(e.target.value);
-                      if (betaAccessError) {
-                        setBetaAccessError(null);
-                      }
-                    }}
-                    placeholder="hiring@company.com"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
-                  />
-                  {betaAccessError && (
-                    <p className="text-[11px] text-red-400 mt-1.5">{betaAccessError}</p>
-                  )}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleUnlockBetaAccess}
-                disabled={betaAccessSubmitting}
-                className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-all cursor-pointer"
-              >
-                {betaAccessSubmitting
-                  ? "Unlocking..."
-                  : "Unlock Early Beta Access"}
-              </button>
-            </div>
-          </div>
-        )}
 
       </div>
         </div>
