@@ -105,7 +105,7 @@ export default async function PublicCandidateProfilePage({
                   <h1 className="text-3xl font-extrabold tracking-tight text-white">
                     {profile.displayName}
                   </h1>
-                  {profile.hasProofOfWork && <VerifiedOnProvixPill />}
+                  {profile.isVerifiedOnProvix && <VerifiedOnProvixPill />}
                 </div>
                 <p className="font-mono text-xs text-zinc-500">
                   /p/{profile.profileSlug}

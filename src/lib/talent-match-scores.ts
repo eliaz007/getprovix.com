@@ -88,6 +88,7 @@ export async function fetchTalentMatchInsight(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ candidate, job }),
+      signal: AbortSignal.timeout(20_000),
     });
 
     if (!response.ok) {

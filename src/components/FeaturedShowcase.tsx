@@ -38,7 +38,9 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
             <h3 className="truncate text-lg font-bold text-white">
               {builder.fullName}
             </h3>
-            <VerifiedOnProvixPill className="shrink-0" />
+            {builder.verifiedOnProvix ? (
+              <VerifiedOnProvixPill className="shrink-0" />
+            ) : null}
           </div>
           <p className="mt-1 truncate text-sm font-medium text-zinc-400">
             {builder.roleTitle}

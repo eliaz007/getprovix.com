@@ -70,7 +70,7 @@ export function profileDefaultsForAccountRole(
     return { role: "employer", is_visible_in_pool: false };
   }
 
-  return { role: "candidate", is_visible_in_pool: true };
+  return { role: "candidate", is_visible_in_pool: false };
 }
 
 export function signupMetadataForKind(

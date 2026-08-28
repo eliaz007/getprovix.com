@@ -117,6 +117,7 @@ import {
   type WorkPreference,
 } from "@/lib/work-preference";
 import { CANDIDATE_BONUS_RANGE_LABEL } from "@/lib/placement-revenue";
+import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
 import {
   hydrateEmployerProfileFromRow,
@@ -463,6 +464,8 @@ type TalentPoolCandidate = {
   demoVideo: string;
   projects: string[];
   matchScore: number;
+  matchPending?: boolean;
+  verifiedOnProvix?: boolean;
 };
 
 function isEmployerRole(role: string | null | undefined): boolean {
@@ -597,6 +600,7 @@ function mapProfileRowToTalentCandidate(
     github: portfolioUrl || "",
     demoVideo: row.youtube_url?.trim() || "",
     projects: [],
+    verifiedOnProvix: isVerifiedOnProvix(row),
     matchScore: scoreTalentMatch(
       {
         title: headline,
@@ -656,7 +660,10 @@ function getCandidateProjectLinks(
   return links;
 }
 
-function formatTalentMatchLabel(percentage: number): string {
+function formatTalentMatchLabel(percentage: number, isPending = false): string {
+  if (isPending) {
+    return "Match Pending";
+  }
   return `${clampDisplayedMatch(percentage)}% Match`;
 }
 
@@ -704,6 +711,29 @@ function isLegacyCannedMatchScore(score: number): boolean {
 
 function buildTalentMatchKey(candidateId: string, jobId: string | null) {
   return `${candidateId}:${jobId ?? "default"}`;
+}
+
+function getTalentMatchId(
+  candidate: Pick<TalentPoolCandidate, "id" | "profileId">
+): string {
+  const profileId = candidate.profileId?.trim();
+  return profileId || candidate.id;
+}
+
+function talentPoolFingerprint(candidates: TalentPoolCandidate[]): string {
+  return candidates
+    .map((candidate) =>
+      [
+        getTalentMatchId(candidate),
+        candidate.role,
+        candidate.headline,
+        candidate.bio,
+        candidate.availability,
+        candidate.skills.join(","),
+      ].join(":")
+    )
+    .sort()
+    .join("|");
 }
 
 async function fetchProfileRow(
@@ -908,6 +938,10 @@ export default function DashboardPage() {
     Record<string, boolean>
   >({});
   const talentMatchFetchedRef = useRef<Set<string>>(new Set());
+  const talentMatchInFlightRef = useRef<Set<string>>(new Set());
+  const candidatesRef = useRef<TalentPoolCandidate[]>([]);
+  const primaryMatchingJobRef = useRef<MatchingJob | null>(null);
+  const talentSearchRef = useRef("");
   // Talent pool visibility — synced from profiles.is_visible_in_pool (visible to employers).
   const [isVisibleInPool, setIsVisibleInPool] = useState(false);
   const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
@@ -1295,7 +1329,11 @@ export default function DashboardPage() {
           .filter(isProfileEligibleForTalentPool)
           .map(mapProfileRowToTalentCandidate);
 
-        setCandidates(mapped);
+        setCandidates((prev) =>
+          talentPoolFingerprint(prev) === talentPoolFingerprint(mapped)
+            ? prev
+            : mapped
+        );
       } catch (err) {
         console.error("Talent pool fetch threw:", err);
         if (isMounted) {
@@ -2097,6 +2135,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     };
   }, [selectedCandidate?.id]);
 
+  candidatesRef.current = candidates;
+  primaryMatchingJobRef.current = primaryMatchingJob;
+  talentSearchRef.current = talentSearch;
+
+  const talentCandidateIdsKey = useMemo(
+    () =>
+      candidates
+        .map((candidate) => getTalentMatchId(candidate))
+        .sort()
+        .join("|"),
+    [candidates]
+  );
+
   const scoredCandidates = useMemo(() => {
     const jobPayload = buildTalentMatchJobPayload(
       primaryMatchingJob,
@@ -2113,18 +2164,32 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         },
         jobPayload
       );
-      const live = talentMatchScores[candidate.id];
+      const matchId = getTalentMatchId(candidate);
+      const live =
+        talentMatchScores[matchId] ?? talentMatchScores[candidate.id];
+      const isLoading = Boolean(
+        talentMatchLoadingIds[matchId] ?? talentMatchLoadingIds[candidate.id]
+      );
       const liveScore =
         live && !isCannedMatchScore(live.match_percentage)
           ? live.match_percentage
           : null;
+      const matchPending = Boolean(user?.id) && (isLoading || live == null);
 
       return {
         ...candidate,
         matchScore: liveScore ?? heuristic.match_percentage,
+        matchPending,
       };
     });
-  }, [candidates, primaryMatchingJob, talentSearch, talentMatchScores]);
+  }, [
+    candidates,
+    primaryMatchingJob,
+    talentSearch,
+    talentMatchScores,
+    talentMatchLoadingIds,
+    user?.id,
+  ]);
 
   const filteredCandidates = scoredCandidates.filter((candidate) => {
     const matchesSearch = candidateMatchesTalentSearch(
@@ -2328,84 +2393,99 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
   useEffect(() => {
     talentMatchFetchedRef.current.clear();
+    talentMatchInFlightRef.current.clear();
     setTalentMatchScores({});
     setTalentMatchLoadingIds({});
-  }, [primaryMatchingJob?.id, employerActiveJobs.length]);
+  }, [primaryMatchingJob?.id]);
 
   useEffect(() => {
-    if (
-      activeTab !== "talent" ||
-      !showTalentPoolNav ||
-      !user?.id ||
-      employerActiveJobs.length === 0 ||
-      !primaryMatchingJob
-    ) {
+    if (activeTab !== "talent" || !showTalentPoolNav || !user?.id) {
       return;
     }
 
-    const jobIdForStorage = isUuid(primaryMatchingJob.id)
-      ? primaryMatchingJob.id
-      : null;
+    const currentCandidates = candidatesRef.current;
+    if (currentCandidates.length === 0) {
+      return;
+    }
+
+    const requestJobId = primaryMatchingJob?.id ?? null;
+    const jobIdForStorage =
+      requestJobId && isUuid(requestJobId) ? requestJobId : null;
+    const userId = user.id;
     let cancelled = false;
+
+    const isCurrentJob = () =>
+      (primaryMatchingJobRef.current?.id ?? null) === requestJobId;
 
     void (async () => {
       const supabase = createClient();
 
       const cachedByCandidate = await loadCachedTalentMatchScores(
         supabase,
-        user.id,
+        userId,
         jobIdForStorage
       );
 
-      if (cancelled) return;
+      if (cancelled || !isCurrentJob()) {
+        return;
+      }
 
-      for (const candidateId of Object.keys(cachedByCandidate)) {
+      const trustedCache: Record<string, MatchResult> = {};
+      for (const candidate of currentCandidates) {
+        const matchId = getTalentMatchId(candidate);
+        const insight =
+          cachedByCandidate[matchId] ?? cachedByCandidate[candidate.id];
+        if (!insight || isLegacyCannedMatchScore(insight.match_percentage)) {
+          continue;
+        }
+        trustedCache[matchId] = insight;
         talentMatchFetchedRef.current.add(
-          buildTalentMatchKey(candidateId, jobIdForStorage)
+          buildTalentMatchKey(matchId, jobIdForStorage)
         );
       }
 
-      if (Object.keys(cachedByCandidate).length > 0) {
-        const trustedCache: Record<string, MatchResult> = {};
-        for (const [candidateId, insight] of Object.entries(cachedByCandidate)) {
-          if (!isLegacyCannedMatchScore(insight.match_percentage)) {
-            trustedCache[candidateId] = insight;
-          } else {
-            talentMatchFetchedRef.current.delete(
-              buildTalentMatchKey(candidateId, jobIdForStorage)
-            );
+      if (Object.keys(trustedCache).length > 0) {
+        setTalentMatchScores((prev) => ({ ...prev, ...trustedCache }));
+        setTalentMatchLoadingIds((prev) => {
+          const next = { ...prev };
+          for (const candidateId of Object.keys(trustedCache)) {
+            next[candidateId] = false;
           }
-        }
-        if (Object.keys(trustedCache).length > 0) {
-          setTalentMatchScores((prev) => ({ ...prev, ...trustedCache }));
-        }
+          return next;
+        });
       }
 
-      const pendingCandidates = candidates.filter((candidate) => {
-        const key = buildTalentMatchKey(candidate.id, jobIdForStorage);
-        return !talentMatchFetchedRef.current.has(key);
+      const pendingCandidates = currentCandidates.filter((candidate) => {
+        const matchId = getTalentMatchId(candidate);
+        const key = buildTalentMatchKey(matchId, jobIdForStorage);
+        return (
+          !talentMatchFetchedRef.current.has(key) &&
+          !talentMatchInFlightRef.current.has(key)
+        );
       });
 
       if (pendingCandidates.length === 0) {
         return;
       }
 
-      pendingCandidates.forEach((candidate) => {
-        talentMatchFetchedRef.current.add(
-          buildTalentMatchKey(candidate.id, jobIdForStorage)
+      for (const candidate of pendingCandidates) {
+        talentMatchInFlightRef.current.add(
+          buildTalentMatchKey(getTalentMatchId(candidate), jobIdForStorage)
         );
-      });
+      }
 
       setTalentMatchLoadingIds((prev) => {
         const next = { ...prev };
         for (const candidate of pendingCandidates) {
-          next[candidate.id] = true;
+          next[getTalentMatchId(candidate)] = true;
         }
         return next;
       });
 
-      void Promise.all(
+      await Promise.all(
         pendingCandidates.map(async (candidate) => {
+          const matchId = getTalentMatchId(candidate);
+          const key = buildTalentMatchKey(matchId, jobIdForStorage);
           const candidatePayload = {
             title: candidate.role,
             bio: candidate.bio ?? "",
@@ -2413,8 +2493,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             degree: candidate.major,
           };
           const jobPayload = buildTalentMatchJobPayload(
-            primaryMatchingJob,
-            talentSearch
+            primaryMatchingJobRef.current,
+            talentSearchRef.current
           );
 
           try {
@@ -2422,42 +2502,49 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               candidatePayload,
               jobPayload
             );
-            if (cancelled) return;
+            const insight = isCannedMatchScore(data.match_percentage)
+              ? scoreTalentMatch(candidatePayload, jobPayload)
+              : data;
 
-            if (isCannedMatchScore(data.match_percentage)) {
+            if (isCurrentJob()) {
+              talentMatchFetchedRef.current.add(key);
               setTalentMatchScores((prev) => ({
                 ...prev,
-                [candidate.id]: scoreTalentMatch(candidatePayload, jobPayload),
-              }));
-            } else {
-              setTalentMatchScores((prev) => ({
-                ...prev,
-                [candidate.id]: data,
+                [matchId]: insight,
               }));
             }
 
             await saveTalentMatchScore(supabase, {
-              employerId: user.id,
-              candidateId: candidate.id,
+              employerId: userId,
+              candidateId: matchId,
               jobId: jobIdForStorage,
-              insight: data,
+              insight,
             });
           } catch (err) {
             console.warn(
-              `Failed to fetch talent match for ${candidate.id}:`,
+              `Failed to fetch talent match for ${matchId}:`,
               err
             );
-            if (cancelled) return;
 
-            setTalentMatchScores((prev) => ({
-              ...prev,
-              [candidate.id]: buildFallbackMatch(candidatePayload, jobPayload),
-            }));
+            if (isCurrentJob()) {
+              const fallback = buildFallbackMatch(
+                candidatePayload,
+                jobPayload
+              );
+              talentMatchFetchedRef.current.add(key);
+              setTalentMatchScores((prev) => ({
+                ...prev,
+                [matchId]: fallback,
+              }));
+            }
           } finally {
-            setTalentMatchLoadingIds((prev) => ({
-              ...prev,
-              [candidate.id]: false,
-            }));
+            talentMatchInFlightRef.current.delete(key);
+            if (isCurrentJob()) {
+              setTalentMatchLoadingIds((prev) => ({
+                ...prev,
+                [matchId]: false,
+              }));
+            }
           }
         })
       );
@@ -2470,9 +2557,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     activeTab,
     showTalentPoolNav,
     user?.id,
-    primaryMatchingJob,
-    employerActiveJobs.length,
-    candidates,
+    primaryMatchingJob?.id,
+    talentCandidateIdsKey,
   ]);
 
   const handleExpressInterestToJob = async (job: (typeof jobs)[number]) => {
@@ -2649,6 +2735,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       github: "",
       demoVideo: "",
       projects: [],
+      verifiedOnProvix: applicant.verifiedOnProvix,
     };
 
     setApplicantsDrawerJob(null);
@@ -4058,7 +4145,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           Visible to Employers
                         </span>
                         <span className="text-[11px] text-slate-500">
-                          Turn this on to join the talent pool. Requires a valid GitHub profile URL.
+                          Off by default. Turn this on to opt in to the talent
+                          pool. Requires a valid GitHub profile URL.
                         </span>
                       </div>
                       <button
@@ -5696,8 +5784,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 >
                                   {col.availability}
                                 </span>
-                                <span className="font-mono text-[10px] font-semibold tabular-nums text-zinc-400">
-                                  {formatTalentMatchLabel(col.matchScore)}
+                                <span
+                                  className={`font-mono text-[10px] font-semibold tabular-nums ${
+                                    col.matchPending
+                                      ? "text-indigo-300 animate-pulse"
+                                      : "text-zinc-400"
+                                  }`}
+                                >
+                                  {formatTalentMatchLabel(
+                                    col.matchScore,
+                                    col.matchPending
+                                  )}
                                 </span>
                               </div>
                             </div>
@@ -5714,7 +5811,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 timezone={col.timezone}
                                 className="mt-2"
                               />
-                              {!introUnlocked && (
+                              {!introUnlocked && col.verifiedOnProvix && (
                                 <div className="mt-2">
                                   <VerifiedOnProvixPill />
                                 </div>
@@ -5947,7 +6044,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         timezone={selectedCandidate.timezone}
                         className="mt-2"
                       />
-                      {!introUnlocked && (
+                      {!introUnlocked && liveCandidate.verifiedOnProvix && (
                         <div className="mt-2">
                           <VerifiedOnProvixPill />
                         </div>
@@ -5986,8 +6083,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   >
                     {selectedCandidate.availability}
                   </span>
-                  <span className="font-mono font-bold text-emerald-400">
-                    {formatTalentMatchLabel(liveCandidate.matchScore)} AI Match Score
+                  <span
+                    className={`font-mono font-bold ${
+                      liveCandidate.matchPending
+                        ? "text-indigo-300 animate-pulse"
+                        : "text-emerald-400"
+                    }`}
+                  >
+                    {formatTalentMatchLabel(
+                      liveCandidate.matchScore,
+                      liveCandidate.matchPending
+                    )}{" "}
+                    AI Match Score
                   </span>
                 </div>
 

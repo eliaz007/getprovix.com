@@ -5,6 +5,7 @@ import { Loader2, X } from "lucide-react";
 import { generateMaskedAliasFromUuid, getCodenameInitials } from "@/lib/alias-generator";
 import { getPublicCandidateLocation } from "@/lib/candidate-anonymization";
 import { scoreTalentMatch } from "@/lib/match-heuristic";
+import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { createClient } from "@/utils/supabase/client";
 
@@ -12,6 +13,9 @@ type ApplicantProfileRow = {
   id: string;
   codename_alias?: string | null;
   full_name?: string | null;
+  name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   contact_email?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -24,8 +28,14 @@ type ApplicantProfileRow = {
   bio?: string | null;
   experience_level?: string | null;
   major?: string | null;
+  degree?: string | null;
   school?: string | null;
+  university?: string | null;
   portfolio_url?: string | null;
+  youtube_url?: string | null;
+  availability_status?: string | null;
+  availability?: string | null;
+  work_preference?: string | null;
   role?: string | null;
 };
 
@@ -49,6 +59,7 @@ export type JobApplicantView = {
   aiScoreLabel: string;
   appliedAtLabel: string;
   unlocked: boolean;
+  verifiedOnProvix: boolean;
   fullName?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -159,6 +170,7 @@ function mapApplicationToApplicant(
     ),
     appliedAtLabel: formatAppliedAt(row.created_at),
     unlocked: isUnlocked,
+    verifiedOnProvix: isVerifiedOnProvix(profile),
     fullName: null,
     email: isUnlocked ? resolveContactEmail(profile) : null,
     phone: isUnlocked ? profile?.phone?.trim() || null : null,
@@ -204,6 +216,9 @@ export default function JobApplicantsDrawer({
                 id,
                 codename_alias,
                 full_name,
+                name,
+                first_name,
+                last_name,
                 contact_email,
                 email,
                 phone,
@@ -216,8 +231,14 @@ export default function JobApplicantsDrawer({
                 bio,
                 experience_level,
                 major,
+                degree,
                 school,
+                university,
                 portfolio_url,
+                youtube_url,
+                availability_status,
+                availability,
+                work_preference,
                 role
               )
             `
@@ -367,15 +388,17 @@ export default function JobApplicantsDrawer({
                       <p className="text-[11px] text-slate-500 mt-1">
                         {applicant.location}
                       </p>
-                      <div className="mt-2">
-                        {applicant.unlocked ? (
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                            Contact unlocked
-                          </span>
-                        ) : (
-                          <VerifiedOnProvixPill />
-                        )}
-                      </div>
+                      {(applicant.unlocked || applicant.verifiedOnProvix) && (
+                        <div className="mt-2">
+                          {applicant.unlocked ? (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                              Contact unlocked
+                            </span>
+                          ) : (
+                            <VerifiedOnProvixPill />
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <span className="shrink-0 font-mono text-[11px] font-bold tabular-nums text-zinc-300">

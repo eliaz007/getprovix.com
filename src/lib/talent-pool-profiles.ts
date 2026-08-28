@@ -73,17 +73,32 @@ export async function fetchEmployerTalentPoolProfiles(
   supabase: SupabaseClient
 ): Promise<{ data: TalentPoolProfileRow[]; error: null } | { data: []; error: unknown }> {
   let columns = [...CORE_SELECT_COLUMNS, ...OPTIONAL_SELECT_COLUMNS];
-  let visibilityColumn: "is_visible_in_pool" | "visible_to_employers" | null =
+  let visibilityColumn: "is_visible_in_pool" | "visible_to_employers" =
     "is_visible_in_pool";
   let excludeEmployerRoles = true;
   const maxAttempts = OPTIONAL_SELECT_COLUMNS.length + 6;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    let query = supabase.from("profiles").select(columns.join(", "));
+    if (!columns.includes(visibilityColumn)) {
+      if (
+        visibilityColumn === "is_visible_in_pool" &&
+        !columns.includes("visible_to_employers")
+      ) {
+        columns = [...columns, "visible_to_employers"];
+        visibilityColumn = "visible_to_employers";
+        continue;
+      }
 
-    if (visibilityColumn && columns.includes(visibilityColumn)) {
-      query = query.eq(visibilityColumn, true);
+      console.warn(
+        "Talent pool fetch skipped: no opt-in visibility column available."
+      );
+      return { data: [], error: null };
     }
+
+    let query = supabase
+      .from("profiles")
+      .select(columns.join(", "))
+      .eq(visibilityColumn, true);
 
     if (excludeEmployerRoles && columns.includes("role")) {
       query = query.not("role", "in", "(employer,business)");
@@ -120,9 +135,10 @@ export async function fetchEmployerTalentPoolProfiles(
       visibilityColumn === "visible_to_employers" &&
       mentionsColumn(error, "visible_to_employers")
     ) {
-      columns = columns.filter((column) => column !== "visible_to_employers");
-      visibilityColumn = null;
-      continue;
+      console.warn(
+        "Talent pool fetch skipped: visibility columns are unavailable."
+      );
+      return { data: [], error: null };
     }
 
     if (excludeEmployerRoles && mentionsColumn(error, "role")) {

@@ -25,13 +25,18 @@ export type FeaturedBuilder = {
   hasGitHubRepos: boolean;
   workPreference: string;
   timezone: string;
+  verifiedOnProvix: boolean;
 };
 
 type FeaturedBuilderRow = {
   id?: string | null;
   profile_slug?: string | null;
   full_name?: string | null;
+  name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   job_title?: string | null;
+  headline?: string | null;
   bio?: string | null;
   skills?: string[] | null;
   avatar_url?: string | null;
@@ -40,8 +45,17 @@ type FeaturedBuilderRow = {
   has_github_repos?: boolean | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
+  experience_level?: string | null;
+  availability_status?: string | null;
+  availability?: string | null;
+  university?: string | null;
+  school?: string | null;
+  major?: string | null;
+  degree?: string | null;
   work_preference?: string | null;
   timezone?: string | null;
+  role?: string | null;
+  is_visible_in_pool?: boolean | string | number | null;
   updated_at?: string | null;
 };
 
@@ -82,7 +96,7 @@ export function mapFeaturedBuilderRow(
   };
 
   const fullName = getPublicCandidateDisplayName(identity);
-  const roleTitle = row.job_title!.trim();
+  const roleTitle = (row.job_title?.trim() || row.headline?.trim() || "");
   const bio = row.bio!.trim();
   const skills = Array.isArray(row.skills)
     ? row.skills.filter((skill) => skill.trim()).slice(0, 4)
@@ -107,6 +121,7 @@ export function mapFeaturedBuilderRow(
       row.has_github_repos === true || Boolean(row.portfolio_url?.trim()),
     workPreference: normalizeWorkPreference(row.work_preference),
     timezone: normalizeCandidateTimezone(row.timezone),
+    verifiedOnProvix: isPublishedVerifiedCandidateProfile(row),
   };
 }
 
@@ -147,7 +162,7 @@ export async function fetchFeaturedBuilders(
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, profile_slug, full_name, job_title, bio, skills, avatar_url, codename_alias, integrity_score, portfolio_url, youtube_url, work_preference, timezone, updated_at"
+      "id, profile_slug, full_name, name, first_name, last_name, job_title, headline, bio, skills, avatar_url, codename_alias, integrity_score, portfolio_url, youtube_url, experience_level, availability_status, availability, university, school, major, degree, work_preference, timezone, role, is_visible_in_pool, updated_at"
     )
     .eq("is_featured", true)
     .eq("is_visible_in_pool", true)

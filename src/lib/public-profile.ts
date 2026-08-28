@@ -5,6 +5,7 @@ import {
 } from "@/lib/candidate-anonymization";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { createClient } from "@/utils/supabase/server";
+import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import {
   normalizeCandidateTimezone,
   normalizeWorkPreference,
@@ -28,6 +29,7 @@ export type PublicCandidateProfile = {
   workPreference: string;
   timezone: string;
   hasProofOfWork: boolean;
+  isVerifiedOnProvix: boolean;
   hasGitHubRepos: boolean;
   integrityScore: number | null;
 };
@@ -36,16 +38,22 @@ type PublicProfileRow = {
   id: string;
   profile_slug?: string | null;
   full_name?: string | null;
+  name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   job_title?: string | null;
+  headline?: string | null;
   bio?: string | null;
   skills?: string[] | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
   codename_alias?: string | null;
   availability_status?: string | null;
+  availability?: string | null;
   university?: string | null;
   major?: string | null;
   school?: string | null;
+  degree?: string | null;
   experience_level?: string | null;
   country?: string | null;
   timezone?: string | null;
@@ -101,6 +109,7 @@ function mapRowToPublicProfile(row: PublicProfileRow): PublicCandidateProfile {
     workPreference: normalizeWorkPreference(row.work_preference),
     timezone: normalizeCandidateTimezone(row.timezone),
     hasProofOfWork: Boolean(portfolioUrl || youtubeUrl),
+    isVerifiedOnProvix: isVerifiedOnProvix(row),
     hasGitHubRepos:
       row.has_github_repos === true || Boolean(portfolioUrl),
     integrityScore:
@@ -139,7 +148,7 @@ async function fetchViaServiceRole(
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, profile_slug, full_name, job_title, bio, skills, portfolio_url, youtube_url, codename_alias, availability_status, university, major, school, experience_level, country, timezone, work_preference, is_visible_in_pool, integrity_score"
+      "id, profile_slug, full_name, name, first_name, last_name, job_title, headline, bio, skills, portfolio_url, youtube_url, codename_alias, availability_status, availability, university, major, school, degree, experience_level, country, timezone, work_preference, is_visible_in_pool, integrity_score"
     )
     .eq("profile_slug", slug)
     .eq("is_visible_in_pool", true)
