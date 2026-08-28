@@ -13,42 +13,37 @@ export type JobRow = {
   description?: string | null;
 };
 
-export async function fetchPublicJobFeed(): Promise<{
-  data: JobRow[];
-  error: { message: string } | null;
-}> {
-  try {
-    const response = await fetch("/api/jobs/feed");
-    if (!response.ok) {
-      return { data: [], error: { message: "Could not load job feed." } };
-    }
+export const JOB_FEED_COLUMNS =
+  "id, title, company, location, salary_range, tags, employer_id, status, created_at";
 
-    const payload = (await response.json()) as { jobs?: JobRow[] };
-    return { data: payload.jobs ?? [], error: null };
-  } catch {
-    return { data: [], error: { message: "Could not load job feed." } };
+export async function fetchPublicJobFeed(supabase: SupabaseClient): Promise<{
+  data: JobRow[];
+  error: { message: string; details?: string | null; hint?: string | null } | null;
+}> {
+  const { data, error } = await supabase
+    .from("jobs")
+    .select(JOB_FEED_COLUMNS)
+    .eq("status", "active")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    return { data: [], error };
   }
+
+  return { data: (data ?? []) as JobRow[], error: null };
 }
 
 export async function fetchDashboardJobs(supabase: SupabaseClient): Promise<{
   data: JobRow[];
   error: { message: string } | null;
 }> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return fetchPublicJobFeed();
-  }
-
   const { data, error } = await supabase
     .from("jobs")
-    .select("*")
+    .select(JOB_FEED_COLUMNS)
     .order("created_at", { ascending: false });
 
   if (error) {
-    return { data: [], error: { message: error.message } };
+    return { data: [], error };
   }
 
   return { data: (data ?? []) as JobRow[], error: null };

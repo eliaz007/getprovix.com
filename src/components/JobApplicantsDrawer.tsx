@@ -329,7 +329,7 @@ export default function JobApplicantsDrawer({
         onClick={onClose}
       />
 
-      <aside className="relative h-full w-full max-w-lg bg-[#111111] border-l border-zinc-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+      <aside className="relative h-full w-full max-w-lg bg-[#111111] border-l border-zinc-800 shadow-none flex flex-col animate-in slide-in-from-right duration-300">
         <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-6 py-5">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-400">

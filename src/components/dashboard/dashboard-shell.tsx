@@ -58,7 +58,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
               onClick={() => setMobileNavOpen(false)}
               className="fixed inset-0 bg-black/60 z-40 cursor-pointer"
             />
-            <aside className="fixed inset-y-0 left-0 w-64 max-w-[85vw] bg-[#111111] border-r border-zinc-800 flex flex-col z-50 shadow-2xl overflow-y-auto">
+            <aside className="fixed inset-y-0 left-0 w-64 max-w-[85vw] bg-[#111111] border-r border-zinc-800 flex flex-col z-50 shadow-none overflow-y-auto">
               <div className="flex items-center justify-end p-3 border-b border-zinc-800 shrink-0">
                 <button
                   type="button"

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
@@ -154,7 +156,7 @@ export default function UpdatePasswordPage() {
         >
           ← Back to Home
         </Link>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-8">
+        <Card className="p-8">
           <div className="flex justify-center mb-6">
             <Link href="/" className="hover:opacity-90 transition-opacity">
               <ProvixLogo />
@@ -228,13 +230,13 @@ export default function UpdatePasswordPage() {
               />
             </div>
 
-            <button
+            <Button
               type="submit"
               disabled={!hasSession || loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors mt-2 cursor-pointer"
+              className="w-full mt-2"
             >
               {loading ? "Updating..." : "Update Password"}
-            </button>
+            </Button>
           </form>
 
           <p className="mt-6 pt-6 border-t border-zinc-800 text-center text-sm text-zinc-400">
@@ -245,7 +247,7 @@ export default function UpdatePasswordPage() {
               ← Back to Sign In
             </Link>
           </p>
-        </div>
+        </Card>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import type { FeaturedBuilder } from "@/lib/featured-builders";
 import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
+import Card from "@/components/ui/Card";
 
 type FeaturedShowcaseProps = {
   builders: FeaturedBuilder[];
@@ -30,7 +31,7 @@ function BuilderAvatar({ builder }: { builder: FeaturedBuilder }) {
 
 function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
   return (
-    <article className="card-edge flex h-full flex-col rounded-lg border border-zinc-800 bg-[#111111] p-6">
+    <Card as="article" className="flex h-full flex-col p-6">
       <div className="flex items-start gap-4">
         <BuilderAvatar builder={builder} />
         <div className="min-w-0 flex-1">
@@ -93,7 +94,7 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
           <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
       </div>
-    </article>
+    </Card>
   );
 }
 

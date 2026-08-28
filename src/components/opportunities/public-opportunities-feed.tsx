@@ -26,13 +26,19 @@ export default function PublicOpportunitiesFeed() {
     let isMounted = true;
 
     const loadJobs = async () => {
-      const { data, error } = await fetchPublicJobFeed();
+      const { data, error } = await fetchPublicJobFeed(createClient());
+
       if (!isMounted) {
         return;
       }
 
       if (error) {
-        console.error("Failed to fetch public jobs:", error);
+        console.error(
+          "Failed to fetch public jobs:",
+          error.message,
+          error.details,
+          error.hint
+        );
         setJobs([]);
       } else {
         setJobs(data);

@@ -917,6 +917,7 @@ export default function DashboardPage() {
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
+  const [jobsError, setJobsError] = useState<string | null>(null);
   const [appliedJobIds, setAppliedJobIds] = useState<string[]>([]);
   const [jobInterestCounts, setJobInterestCounts] = useState<
     Record<string, number>
@@ -1205,15 +1206,23 @@ export default function DashboardPage() {
       try {
         const { data, error } = await fetchDashboardJobs(supabase);
 
+        if (!isMounted) return;
+
         if (error) {
-          throw new Error(error.message);
+          console.error("Supabase Jobs Error:", error);
+          setJobs([]);
+          setJobsError(error.message || "Could not load job feed.");
+          return;
         }
 
-        if (!isMounted) return;
         setJobs(data);
+        setJobsError(null);
       } catch (err) {
-        console.error("Failed to fetch jobs:", err);
-        if (isMounted) setJobs([]);
+        console.error("Supabase Jobs Error:", err);
+        if (isMounted) {
+          setJobs([]);
+          setJobsError("Could not load job feed.");
+        }
       } finally {
         if (isMounted) setJobsLoading(false);
       }
@@ -4216,6 +4225,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             <OpportunitiesJobFeed
               jobs={jobs}
               jobsLoading={jobsLoading}
+              jobsError={jobsError}
               isGuest={!user}
               appliedJobIds={appliedJobIds}
               onExpressInterest={handleExpressInterestToJob}
@@ -5315,6 +5325,16 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     Loading opportunities...
                   </p>
                 </div>
+              ) : jobsError ? (
+                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-slate-300">
+                    Could not load job feed
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    The opportunities list is unavailable right now. You can
+                    keep using the rest of the dashboard.
+                  </p>
+                </div>
               ) : activeJobs.length === 0 ? (
                 <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                   <p className="text-sm font-medium text-slate-300">
@@ -6002,7 +6022,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             }`}
           />
           <div
-            className={`absolute top-0 right-0 h-full w-full max-w-md bg-[#121212] border-l border-zinc-800 shadow-2xl overflow-y-auto transition-transform duration-300 ease-out ${
+            className={`absolute top-0 right-0 h-full w-full max-w-md bg-[#121212] border-l border-zinc-800 shadow-none overflow-y-auto transition-transform duration-300 ease-out ${
               isDrawerOpen ? "translate-x-0" : "translate-x-full"
             }`}
           >

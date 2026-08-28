@@ -11,6 +11,7 @@ import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
+import Card from "@/components/ui/Card";
 import { resolveCandidateScore } from "@/lib/candidate-score";
 import { getPublicProfileBySlug } from "@/lib/public-profile";
 import { buildPublicProfileUrl } from "@/lib/profile-url";
@@ -93,7 +94,7 @@ export default async function PublicCandidateProfilePage({
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-10">
-        <div className="overflow-hidden rounded-lg border border-zinc-800 bg-[#111111]">
+        <Card className="overflow-hidden">
           <div className="border-b border-zinc-800 px-8 py-8">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
               <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 font-mono text-2xl font-bold text-zinc-300">
@@ -269,7 +270,7 @@ export default async function PublicCandidateProfilePage({
               </div>
             </div>
           </div>
-        </div>
+        </Card>
       </main>
     </div>
   );

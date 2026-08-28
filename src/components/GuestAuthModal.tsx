@@ -4,6 +4,7 @@ import Link from "next/link";
 import { GitHubSignInButton } from "@/components/GitHubSignInButton";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
+import Card from "@/components/ui/Card";
 
 export default function GuestAuthModal({
   open,
@@ -28,11 +29,11 @@ export default function GuestAuthModal({
         className="absolute inset-0 bg-black/70 cursor-pointer"
         onClick={onClose}
       />
-      <div
+      <Card
         role="dialog"
         aria-modal="true"
         aria-labelledby="guest-auth-title"
-        className="relative w-full max-w-md bg-[#111111] border border-zinc-800 rounded-2xl p-6 shadow-2xl"
+        className="relative w-full max-w-md p-6"
       >
         <button
           type="button"
@@ -68,7 +69,7 @@ export default function GuestAuthModal({
             Sign in / Sign up
           </Link>
         </p>
-      </div>
+      </Card>
     </div>
   );
 }

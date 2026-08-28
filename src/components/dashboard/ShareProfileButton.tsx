@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Link2 } from "lucide-react";
+import Button from "@/components/ui/Button";
 import { buildPublicProfileUrl, buildPublicProfileUrlFromOrigin } from "@/lib/profile-url";
 
 type ShareProfileButtonProps = {
@@ -46,14 +47,15 @@ export default function ShareProfileButton({
   };
 
   return (
-    <button
+    <Button
       type="button"
+      variant={copied ? "ghost" : "secondary"}
       onClick={() => void handleShare()}
-      className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold transition-all cursor-pointer shrink-0 ${
+      className={
         copied
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-          : "border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 hover:text-indigo-200"
-      }`}
+          ? "border-emerald-700 bg-emerald-500/10 text-emerald-300 shrink-0"
+          : "shrink-0"
+      }
     >
       {copied ? (
         <>
@@ -66,6 +68,6 @@ export default function ShareProfileButton({
           Share Profile
         </>
       )}
-    </button>
+    </Button>
   );
 }

@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { OAuthSignInButtons } from "@/components/OAuthSignInButtons";
 import { ProvixLogo } from "@/components/ProvixLogo";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 import { getPostLoginPath } from "@/lib/admin-access";
 import {
   isEmployerSignup,
@@ -225,7 +227,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <div className="w-full max-w-md px-6">
         <BackToHomeLink className="mb-4" />
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-8">
+        <Card className="p-8">
           <div className="flex justify-center mb-6">
             <Link href="/" className="hover:opacity-90 transition-opacity">
               <ProvixLogo />
@@ -359,13 +361,9 @@ export default function LoginPage() {
                 )}
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors mt-2 cursor-pointer"
-              >
+              <Button type="submit" disabled={loading} className="w-full mt-2">
                 {loading ? "Sending..." : "Send Reset Link"}
-              </button>
+              </Button>
 
               <button
                 type="button"
@@ -482,11 +480,7 @@ export default function LoginPage() {
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors mt-2 cursor-pointer"
-            >
+            <Button type="submit" disabled={loading} className="w-full mt-2">
               {loading
                 ? "Please wait..."
                 : mode === "sign-in"
@@ -494,7 +488,7 @@ export default function LoginPage() {
                 : signUpType === "business"
                 ? "Create Business Account"
                 : "Create Account"}
-            </button>
+            </Button>
 
             {mode === "sign-up" && (
               <p className="text-xs text-zinc-400 text-center mt-3 leading-relaxed">
@@ -545,7 +539,7 @@ export default function LoginPage() {
             )}
           </p>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

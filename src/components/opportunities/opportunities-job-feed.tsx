@@ -17,6 +17,7 @@ import {
 export type OpportunitiesJobFeedProps = {
   jobs: JobRow[];
   jobsLoading: boolean;
+  jobsError?: string | null;
   isGuest: boolean;
   appliedJobIds: string[];
   onExpressInterest: (job: JobRow) => void;
@@ -30,6 +31,7 @@ export type OpportunitiesJobFeedProps = {
 export default function OpportunitiesJobFeed({
   jobs,
   jobsLoading,
+  jobsError = null,
   isGuest,
   appliedJobIds,
   onExpressInterest,
@@ -207,6 +209,16 @@ export default function OpportunitiesJobFeed({
         <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
           <p className="text-sm font-medium text-slate-400">
             Loading opportunities...
+          </p>
+        </div>
+      ) : jobsError ? (
+        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+          <p className="text-sm font-medium text-slate-300">
+            Could not load job feed
+          </p>
+          <p className="text-xs text-slate-500 mt-1">
+            The opportunities list is unavailable right now. You can keep
+            using the rest of the dashboard.
           </p>
         </div>
       ) : activeJobs.length === 0 ? (

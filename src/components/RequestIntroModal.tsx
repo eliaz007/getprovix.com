@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 
 export const COMP_BAND_OPTIONS = [
   "$60k–$80k",
@@ -123,7 +125,7 @@ export default function RequestIntroModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-[#121212] border border-zinc-800 rounded-2xl max-w-md w-full p-6 relative shadow-2xl">
+      <Card className="max-w-md w-full p-6 relative">
         <button
           type="button"
           onClick={onClose}
@@ -239,24 +241,25 @@ export default function RequestIntroModal({
           )}
 
           <div className="flex gap-3 pt-1">
-            <button
+            <Button
               type="button"
+              variant="ghost"
               onClick={onClose}
               disabled={submitting}
-              className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-60"
+              className="flex-1 text-xs"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={submitting || !termsAccepted}
-              className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              className="flex-1 text-xs"
             >
               {submitting ? "Submitting..." : "Submit Request"}
-            </button>
+            </Button>
           </div>
         </form>
-      </div>
+      </Card>
     </div>
   );
 }

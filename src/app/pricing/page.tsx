@@ -9,6 +9,8 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 
 type FeatureHighlight = {
   title: string;
@@ -155,23 +157,20 @@ export default function PricingPage() {
           {employerHighlights.map((item) => {
             const Icon = item.icon;
             return (
-              <div
-                key={item.title}
-                className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl"
-              >
-                <div className="w-10 h-10 rounded-xl bg-indigo-600/15 border border-indigo-500/25 text-indigo-400 flex items-center justify-center mb-4">
+              <Card key={item.title} className="p-6">
+                <div className="w-10 h-10 rounded-md bg-indigo-600/15 border border-indigo-500/25 text-indigo-400 flex items-center justify-center mb-4">
                   <Icon className="w-5 h-5" aria-hidden />
                 </div>
-                <h2 className="text-base font-bold text-white">{item.title}</h2>
+                <h2 className="text-base text-white">{item.title}</h2>
                 <p className="text-sm text-zinc-400 mt-2 leading-relaxed">
                   {item.description}
                 </p>
-              </div>
+              </Card>
             );
           })}
         </section>
 
-        <section className="bg-zinc-900 border border-indigo-500/30 rounded-2xl p-8 shadow-2xl max-w-xl mx-auto w-full">
+        <Card className="p-8 max-w-xl mx-auto w-full">
           <h2 className="text-xl font-bold text-white text-center">
             Unlock Early Beta Access
           </h2>
@@ -229,15 +228,15 @@ export default function PricingPage() {
             </p>
           )}
 
-          <button
+          <Button
             type="button"
             onClick={handleUnlockBetaAccess}
             disabled={submitting}
-            className="w-full mt-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-all cursor-pointer"
+            className="w-full mt-6"
           >
             {submitting ? "Unlocking..." : "Unlock Early Beta Access"}
-          </button>
-        </section>
+          </Button>
+        </Card>
 
         <div className="flex items-center gap-4">
           <div className="flex-1 border-t border-zinc-800" />
@@ -247,7 +246,7 @@ export default function PricingPage() {
           <div className="flex-1 border-t border-zinc-800" />
         </div>
 
-        <section className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-3xl mx-auto w-full">
+        <Card className="p-8 max-w-3xl mx-auto w-full">
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
               <Users className="w-5 h-5" aria-hidden />
@@ -274,16 +273,17 @@ export default function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
                 onClick={() => router.push("/login")}
-                className="mt-6 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-semibold py-3 px-5 rounded-lg text-sm transition-all cursor-pointer"
+                className="mt-6"
               >
                 Create Candidate Profile
-              </button>
+              </Button>
             </div>
           </div>
-        </section>
+        </Card>
       </div>
     </div>
   );

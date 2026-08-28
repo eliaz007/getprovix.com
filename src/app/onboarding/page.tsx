@@ -31,6 +31,8 @@ import {
   isValidGitHubUrl,
   normalizeGitHubUrl,
 } from "@/lib/validate-github-url";
+import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 
 type AccountRole = "candidate" | "business";
 
@@ -58,7 +60,7 @@ function resolveAccountRole(
 function OnboardingSkeleton() {
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-md w-full">
+      <Card className="p-8 max-w-md w-full">
         <div className="flex flex-col items-center gap-4 mb-8">
           <div className="h-8 w-8 rounded-full border-2 border-zinc-700 border-t-indigo-500 animate-spin" />
           <p className="text-sm text-zinc-500">Loading your onboarding...</p>
@@ -70,7 +72,7 @@ function OnboardingSkeleton() {
           <div className="h-12 rounded-lg bg-zinc-800 animate-pulse" />
           <div className="h-12 rounded-lg bg-zinc-800 animate-pulse" />
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -222,7 +224,7 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-md w-full">
+      <Card className="p-8 max-w-md w-full">
         <h1 className="text-2xl font-semibold text-white tracking-tight text-center">
           {isEmployer ? "Set up your company" : "Complete Your Profile"}
         </h1>
@@ -304,17 +306,17 @@ export default function OnboardingPage() {
               />
             </div>
 
-            <button
+            <Button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
                 handleBusinessSubmit();
               }}
               disabled={saving}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg w-full mt-4 transition-colors cursor-pointer"
+              className="w-full mt-4"
             >
               {saving ? "Saving..." : "Continue to Dashboard"}
-            </button>
+            </Button>
           </div>
         ) : (
           <form className="flex flex-col gap-4" onSubmit={handleCandidateSubmit}>
@@ -461,16 +463,16 @@ export default function OnboardingPage() {
               </p>
             </div>
 
-            <button
+            <Button
               type="submit"
               disabled={saving || !isValidGitHubUrl(githubUrl)}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg w-full mt-4 transition-colors cursor-pointer"
+              className="w-full mt-4"
             >
               {saving ? "Saving..." : "Continue to Dashboard"}
-            </button>
+            </Button>
           </form>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
