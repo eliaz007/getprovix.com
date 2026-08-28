@@ -1520,8 +1520,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const [businessProfileData, setBusinessProfileData] = useState(EMPTY_BUSINESS_PROFILE_DATA);
   const [savedBusinessProfileData, setSavedBusinessProfileData] = useState(EMPTY_BUSINESS_PROFILE_DATA);
   const employerCompanyNameForMatching =
-    dbProfile?.company_name ||
-    businessProfileData?.businessName ||
+    businessProfileData?.businessName?.trim() ||
+    dbProfile?.company_name?.trim() ||
     "your company";
   const isProEmployerAccount =
     betaAccessUnlocked ||
@@ -3214,10 +3214,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       .map((part) => part[0]?.toUpperCase())
       .join("") || "??";
   const activeRolesCount = businessListings.filter((listing) => listing.status === "Active").length;
-  const employerCompanyName =
-    dbProfile?.company_name ||
-    businessProfileData?.businessName ||
-    "your company";
+  const savedCompanyName =
+    businessProfileData?.businessName?.trim() ||
+    dbProfile?.company_name?.trim() ||
+    "";
+  const employerCompanyName = savedCompanyName || "your company";
 
   const resetNewJobForm = () => {
     setNewJobTitle("");
@@ -3606,32 +3607,34 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <div className="space-y-6 animate-in fade-in">
                     <div className="flex items-center gap-5 pb-6 border-b border-zinc-800">
                       <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-xl font-bold text-indigo-400">
-                        {businessProfileData?.businessName?.charAt(0) || "?"}
+                        {businessProfileData?.businessName?.trim()?.charAt(0) || "?"}
                       </div>
-                      <div className="flex-1">
-                        <input
-                          type="text"
-                          value={businessProfileData.businessName}
-                          onChange={(e) =>
-                            setBusinessProfileData({
-                              ...businessProfileData,
-                              businessName: e.target.value,
-                            })
-                          }
-                          className="w-full bg-transparent font-bold text-2xl text-white focus:outline-none border-b border-transparent focus:border-indigo-500 pb-1"
-                        />
-                        <input
-                          type="text"
-                          value={businessProfileData.industry}
-                          onChange={(e) =>
-                            setBusinessProfileData({
-                              ...businessProfileData,
-                              industry: e.target.value,
-                            })
-                          }
-                          className="w-full bg-transparent text-xs text-indigo-400 font-medium focus:outline-none border-b border-transparent focus:border-indigo-500 pb-1 mt-1"
-                        />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-2xl text-white truncate">
+                          {businessProfileData.businessName.trim() || "Company name"}
+                        </p>
+                        <p className="text-xs text-indigo-400 font-medium mt-1 truncate">
+                          {businessProfileData.industry.trim() || "Industry"}
+                        </p>
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                        Company Name
+                      </label>
+                      <input
+                        type="text"
+                        value={businessProfileData.businessName}
+                        onChange={(e) =>
+                          setBusinessProfileData({
+                            ...businessProfileData,
+                            businessName: e.target.value,
+                          })
+                        }
+                        placeholder="Acme Inc."
+                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -5541,7 +5544,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </p>
                   <h1 className="text-3xl font-extrabold tracking-tight text-white">
                     {isBusinessAccount
-                      ? `Welcome, ${employerCompanyName}`
+                      ? savedCompanyName
+                        ? `Welcome, ${savedCompanyName}`
+                        : "Welcome"
                       : "Vetted Talent Pool"}
                   </h1>
                   <p className="text-slate-400 text-sm mt-2">
