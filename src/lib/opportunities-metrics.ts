@@ -53,8 +53,41 @@ export function countJobsMatchingCandidateSkills(
   ).length;
 }
 
+export function coerceVisibilityFlag(value: unknown): boolean {
+  if (value === true || value === 1) {
+    return true;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return (
+      normalized === "true" ||
+      normalized === "t" ||
+      normalized === "1" ||
+      normalized === "yes"
+    );
+  }
+
+  return false;
+}
+
 export function isVisibleToEmployers(
-  visibleToEmployers: boolean | null | undefined
+  visibleToEmployers: unknown
 ): boolean {
-  return visibleToEmployers === true;
+  return coerceVisibilityFlag(visibleToEmployers);
+}
+
+export function profileRowIsPublicToEmployers(row: {
+  is_visible_in_pool?: unknown;
+  visible_to_employers?: unknown;
+}): boolean {
+  if (row.is_visible_in_pool != null) {
+    return coerceVisibilityFlag(row.is_visible_in_pool);
+  }
+
+  if (row.visible_to_employers != null) {
+    return coerceVisibilityFlag(row.visible_to_employers);
+  }
+
+  return false;
 }

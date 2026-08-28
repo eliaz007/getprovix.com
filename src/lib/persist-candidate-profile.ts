@@ -153,6 +153,52 @@ async function runProfileWrite(
     .maybeSingle();
 }
 
+export async function persistCandidatePoolVisibility(
+  supabase: SupabaseClient,
+  userId: string,
+  isVisibleInPool: boolean
+): Promise<{
+  error: { message?: string; code?: string } | null;
+  userMessage: string | null;
+}> {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    return {
+      error: sessionError,
+      userMessage: sessionError.message,
+    };
+  }
+
+  if (!session?.user?.id) {
+    return {
+      error: { message: "No active session. Please sign in again." },
+      userMessage: "You must be logged in to update visibility.",
+    };
+  }
+
+  if (session.user.id !== userId) {
+    return {
+      error: { message: "Session user does not match profile owner." },
+      userMessage: "Could not update visibility for this account.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ is_visible_in_pool: isVisibleInPool })
+    .eq("id", userId);
+
+  if (error) {
+    return { error, userMessage: formatPersistError(error) };
+  }
+
+  return { error: null, userMessage: null };
+}
+
 export async function persistCandidateProfile(
   supabase: SupabaseClient,
   userId: string,

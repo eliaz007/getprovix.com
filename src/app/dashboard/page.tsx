@@ -29,24 +29,24 @@ import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
 import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
-import { resolveCodenameAlias } from "@/lib/alias-generator";
+import { buildAlliterativeAliasIdentity, resolveCodenameAlias } from "@/lib/alias-generator";
 import {
   normalizeAccountKind,
   resolveAccountRole,
   profileDefaultsForAccountRole,
 } from "@/lib/account-role";
 import {
-  getPublicCandidateDisplayName,
   getPublicCandidateInitials,
   getPublicCandidateLocation,
   isIntroUnlockStatus,
   isIntroUnlockedForCandidate,
-  splitFullName,
+  redactPersonalNamesFromText,
 } from "@/lib/candidate-anonymization";
 import { signOutAndClearSession } from "@/lib/sign-out";
 import { buildProfileSlug, buildUniqueProfileSlug } from "@/lib/profile-slug";
 import {
   buildCandidateProfileUpdatePayload,
+  persistCandidatePoolVisibility,
   persistCandidateProfile,
 } from "@/lib/persist-candidate-profile";
 import { createClient } from "@/utils/supabase/client";
@@ -106,8 +106,8 @@ import {
   countActiveOpenings,
   getActiveJobs,
   isVisibleToEmployers,
+  profileRowIsPublicToEmployers,
 } from "@/lib/opportunities-metrics";
-import { isPublishedVerifiedCandidateProfile } from "@/lib/published-candidate-profile";
 import {
   DEFAULT_CANDIDATE_TIMEZONE,
   DEFAULT_WORK_PREFERENCE,
@@ -316,6 +316,7 @@ type ProfileRecord = {
   experience_level?: string | null;
   availability_status?: string | null;
   is_visible_in_pool?: boolean | null;
+  visible_to_employers?: boolean | null;
   company_name?: string | null;
   industry?: string | null;
   tier?: string | null;
@@ -517,7 +518,15 @@ function canAccessTalentPool(role: string | null | undefined): boolean {
 }
 
 function isProfileEligibleForTalentPool(row: ProfileRecord): boolean {
-  return isPublishedVerifiedCandidateProfile(row);
+  if (!row.id?.trim()) {
+    return false;
+  }
+
+  if (isEmployerRole(row.role)) {
+    return false;
+  }
+
+  return profileRowIsPublicToEmployers(row);
 }
 
 function resolveProfileAvailability(
@@ -539,11 +548,7 @@ function candidateMatchesTalentSearch(
 
   const searchableValues = [
     candidate.codenameAlias,
-    candidate.name,
-    candidate.fullName,
-    candidate.profileName,
     candidate.headline,
-    candidate.bio,
     candidate.role,
     getPublicCandidateLocation(candidate),
     ...candidate.skills,
@@ -558,23 +563,24 @@ function mapProfileRowToTalentCandidate(
   row: ProfileRecord & { id: string }
 ): TalentPoolCandidate {
   const skills = Array.isArray(row.skills)
-    ? row.skills.filter((skill) => skill.trim())
+    ? row.skills
+        .map((skill) => skill?.trim() || "")
+        .filter(Boolean)
     : [];
-  const portfolioUrl = row.portfolio_url?.trim() ?? "";
+  const portfolioUrl = row.portfolio_url?.trim() || "";
   const isLinkedIn = portfolioUrl.toLowerCase().includes("linkedin");
-  const shortId = row.id.replace(/-/g, "").slice(0, 3).toUpperCase();
-  const resolvedName =
+  const shortId = (row.id?.replace(/-/g, "") || "").slice(0, 3).toUpperCase();
+  const profileId = row.id || "";
+  const identity = buildAlliterativeAliasIdentity(profileId);
+  const rawFullName =
     row.full_name?.trim() ||
     row.name?.trim() ||
-    row.codename_alias?.trim() ||
-    "Candidate";
-  const profileName = row.name?.trim() || "";
-  const parsedName = splitFullName(resolvedName);
-  const firstName = row.first_name?.trim() || parsedName.firstName;
-  const lastName = row.last_name?.trim() || parsedName.lastName;
-  const headline = row.job_title!.trim();
+    [row.first_name?.trim() || "", row.last_name?.trim() || ""]
+      .filter(Boolean)
+      .join(" ") ||
+    "";
+  const headline = row.job_title?.trim() || "";
   const availability = resolveProfileAvailability(row);
-  const codenameAlias = resolveCodenameAlias(row);
   const integrityScore =
     typeof row.integrity_score === "number" &&
     Number.isFinite(row.integrity_score)
@@ -586,35 +592,45 @@ function mapProfileRowToTalentCandidate(
     row.university?.trim() ||
     row.school?.trim() ||
     "";
+  const bio = redactPersonalNamesFromText(
+    row.bio?.trim() || "",
+    {
+      fullName: rawFullName,
+      name: row.name,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      profileName: row.name,
+    },
+    identity.alias
+  );
 
   return {
     id: `C-${shortId}`,
-    profileId: row.id,
-    name: resolvedName,
-    fullName: resolvedName,
-    profileName,
-    firstName,
-    lastName,
+    profileId,
+    name: identity.alias,
+    fullName: identity.alias,
+    profileName: identity.alias,
+    firstName: identity.firstName,
+    lastName: identity.lastName,
     headline,
-    codenameAlias,
-    country: row.country?.trim() || "United States",
-    timezone: normalizeCandidateTimezone(row.timezone),
-    workPreference: normalizeWorkPreference(row.work_preference),
-    email: resolveProfileContactEmail(row),
-    phone: row.phone?.trim() || null,
-    linkedin_url: row.linkedin_url?.trim() || (isLinkedIn ? portfolioUrl : null),
-    github_url: !isLinkedIn && portfolioUrl ? portfolioUrl : null,
+    codenameAlias: identity.alias,
+    country: row.country?.trim() || "",
+    timezone: normalizeCandidateTimezone(row.timezone) || "",
+    workPreference: normalizeWorkPreference(row.work_preference) || "",
+    email: resolveProfileContactEmail(row) || "",
+    phone: row.phone?.trim() || "",
+    linkedin_url: row.linkedin_url?.trim() || (isLinkedIn ? portfolioUrl : "") || "",
+    github_url: !isLinkedIn && portfolioUrl ? portfolioUrl : "",
     role: headline,
     major,
     skills,
     rating: integrityScore !== null ? `${integrityScore}%` : "",
     execution_score: integrityScore,
-    status: availability,
-    experienceLevel:
-      row.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL,
-    roleType: row.role_type?.trim() || "General",
-    availability,
-    bio: row.bio!.trim(),
+    status: availability || "",
+    experienceLevel: row.experience_level?.trim() || "",
+    roleType: row.role_type?.trim() || "",
+    availability: availability || "",
+    bio,
     github: portfolioUrl || "",
     demoVideo: row.youtube_url?.trim() || "",
     projects: [],
@@ -666,17 +682,6 @@ function getCandidateProjectLinks(
   }
 
   return links;
-}
-
-function getCandidateInitials(name: string): string {
-  return (
-    name
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("") || "??"
-  );
 }
 
 function formatBaselineMatchLabel(
@@ -927,6 +932,7 @@ export default function DashboardPage() {
   const talentMatchFetchedRef = useRef<Set<string>>(new Set());
   // Talent pool visibility — synced from profiles.is_visible_in_pool (visible to employers).
   const [isVisibleInPool, setIsVisibleInPool] = useState(false);
+  const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
 
   // Prefer profiles.role, then auth user_metadata.role.
   const profileRole = accountRole ?? dbProfile?.role;
@@ -1288,9 +1294,11 @@ export default function DashboardPage() {
     const supabase = createClient();
     let isMounted = true;
 
-    setTalentPoolLoading(true);
+    const loadTalentPool = async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) {
+        setTalentPoolLoading(true);
+      }
 
-    (async () => {
       try {
         const { data } = await fetchEmployerTalentPoolProfiles(supabase);
 
@@ -1316,16 +1324,34 @@ export default function DashboardPage() {
           setCandidates([]);
         }
       } finally {
-        if (isMounted) {
+        if (isMounted && !opts?.silent) {
           setTalentPoolLoading(false);
         }
       }
-    })();
+    };
+
+    void loadTalentPool();
+
+    const shouldPoll = activeTab === "talent";
+    const interval = shouldPoll
+      ? window.setInterval(() => {
+          void loadTalentPool({ silent: true });
+        }, 4000)
+      : null;
+
+    const handleWindowFocus = () => {
+      void loadTalentPool({ silent: true });
+    };
+    window.addEventListener("focus", handleWindowFocus);
 
     return () => {
       isMounted = false;
+      if (interval !== null) {
+        window.clearInterval(interval);
+      }
+      window.removeEventListener("focus", handleWindowFocus);
     };
-  }, [showTalentPoolNav]);
+  }, [showTalentPoolNav, activeTab]);
 
   const fetchIntroUnlocks = useCallback(async (userId: string) => {
     const supabase = createClient();
@@ -1632,18 +1658,58 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     (isBusinessAccount || (isDemoVideoValid && isGitHubUrlValid)) &&
     !isSaving;
 
-  const handleVisibilityToggle = () => {
-    setIsVisibleInPool((current) => {
-      if (!current && !isValidGitHubUrl(portfolioUrl)) {
+  const handleVisibilityToggle = async () => {
+    if (isTogglingVisibility) return;
+
+    const nextVisible = !isVisibleInPool;
+    if (nextVisible && !isValidGitHubUrl(portfolioUrl)) {
+      showToast(
+        getGitHubUrlValidationMessage(portfolioUrl) ??
+          "Add a valid GitHub profile URL before joining the talent pool."
+      );
+      return;
+    }
+
+    const profileId = dbProfile?.id ?? user?.id;
+    if (!profileId) {
+      showToast("You must be logged in to update visibility.");
+      return;
+    }
+
+    const previousVisible = isVisibleInPool;
+    setIsVisibleInPool(nextVisible);
+    setIsTogglingVisibility(true);
+
+    try {
+      const supabase = createClient();
+      const { error, userMessage } = await persistCandidatePoolVisibility(
+        supabase,
+        profileId,
+        nextVisible
+      );
+
+      if (error) {
+        setIsVisibleInPool(previousVisible);
         showToast(
-          getGitHubUrlValidationMessage(portfolioUrl) ??
-            "Add a valid GitHub profile URL before joining the talent pool."
+          userMessage ?? "Could not update talent pool visibility. Please try again."
         );
-        return false;
+        return;
       }
 
-      return !current;
-    });
+      setDbProfile((prev) =>
+        prev ? { ...prev, is_visible_in_pool: nextVisible } : prev
+      );
+      setSavedCandidateProfile((prev) =>
+        prev ? { ...prev, visibleInPool: nextVisible } : prev
+      );
+      showToast(
+        nextVisible
+          ? "You are now visible to employers."
+          : "You are hidden from the talent pool."
+      );
+    } finally {
+      setIsTogglingVisibility(false);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -2700,20 +2766,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   ).length;
 
   const getCandidatePublicName = (candidate: TalentPoolCandidate) =>
-    getPublicCandidateDisplayName({
-      codenameAlias: candidate.codenameAlias,
-      firstName: candidate.firstName,
-      lastName: candidate.lastName,
-      fullName: candidate.fullName,
-      candidateId: candidate.profileId ?? candidate.id,
-    });
+    buildAlliterativeAliasIdentity(candidate.profileId?.trim() || "").alias;
+
+  const getCandidateLockedBio = (candidate: TalentPoolCandidate) =>
+    redactPersonalNamesFromText(
+      candidate.bio ?? "",
+      candidate,
+      getCandidatePublicName(candidate)
+    );
 
   const getCandidatePublicInitials = (candidate: TalentPoolCandidate) =>
     getPublicCandidateInitials({
-      codenameAlias: candidate.codenameAlias,
-      firstName: candidate.firstName,
-      lastName: candidate.lastName,
-      fullName: candidate.fullName,
+      codenameAlias: getCandidatePublicName(candidate),
       candidateId: candidate.profileId ?? candidate.id,
     });
 
@@ -2889,9 +2953,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         signal: controller.signal,
         body: JSON.stringify({
           candidate: {
-            name: selectedCandidate.name,
+            name: getCandidatePublicName(selectedCandidate),
             title: selectedCandidate.role,
-            bio: selectedCandidate.bio,
+            bio: getCandidateLockedBio(selectedCandidate),
             skills: selectedCandidate.skills,
             degree: selectedCandidate.major,
             experience: selectedCandidate.experienceLevel,
@@ -3241,21 +3305,43 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       showToast("Job title is required.");
       return;
     }
+    if (!newJobCompany.trim()) {
+      showToast("Company name is required.");
+      return;
+    }
+    if (!newJobLocation.trim()) {
+      showToast("Location is required.");
+      return;
+    }
+    if (!newJobSalaryRange.trim()) {
+      showToast("Salary range is required.");
+      return;
+    }
+    if (!newJobTags.trim()) {
+      showToast("Required skills / tags are required.");
+      return;
+    }
 
-    setIsCreatingJob(true);
-    const supabase = createClient();
     const tagsArray = (newJobTags ?? "")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
 
+    if (tagsArray.length === 0) {
+      showToast("Add at least one skill or tag.");
+      return;
+    }
+
+    setIsCreatingJob(true);
+    const supabase = createClient();
+
     const { data, error } = await supabase
       .from("jobs")
       .insert({
         title: newJobTitle.trim(),
-        company: newJobCompany.trim() || null,
-        location: newJobLocation.trim() || null,
-        salary_range: formatSalaryRange(newJobSalaryRange.trim()) || null,
+        company: newJobCompany.trim(),
+        location: newJobLocation.trim(),
+        salary_range: formatSalaryRange(newJobSalaryRange.trim()),
         tags: tagsArray,
         employer_id: user.id,
       })
@@ -4132,8 +4218,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         role="switch"
                         aria-checked={isVisibleInPool}
                         aria-label="Visible to Employers"
-                        onClick={handleVisibilityToggle}
-                        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors cursor-pointer ${
+                        disabled={isTogglingVisibility}
+                        onClick={() => {
+                          void handleVisibilityToggle();
+                        }}
+                        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                          isTogglingVisibility
+                            ? "opacity-60 cursor-wait"
+                            : "cursor-pointer"
+                        } ${
                           isVisibleInPool ? "bg-emerald-500" : "bg-zinc-700"
                         }`}
                       >
@@ -5763,9 +5856,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                             <div className="mb-1">
                               <h3 className="font-bold text-white text-sm">
-                                {introUnlocked
-                                  ? col.fullName || col.name
-                                  : publicName}
+                                {publicName}
                               </h3>
                               <p className="text-xs text-indigo-400 font-medium mt-0.5">
                                 {col.role}
@@ -5975,12 +6066,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 {(() => {
                   const introUnlocked = isCandidateUnlocked(selectedCandidate);
                   const publicName = getCandidatePublicName(selectedCandidate);
-                  const displayName = introUnlocked
-                    ? selectedCandidate.fullName || selectedCandidate.name
-                    : publicName;
-                  const displayInitials = introUnlocked
-                    ? getCandidateInitials(displayName)
-                    : getCandidatePublicInitials(selectedCandidate);
+                  const displayName = publicName;
+                  const displayInitials =
+                    getCandidatePublicInitials(selectedCandidate);
                   const projectLinks =
                     getCandidateProjectLinks(selectedCandidate);
                   const contactEmail = selectedCandidate.email?.trim() || null;
@@ -6052,7 +6140,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                 {/* Bio */}
                 <p className="text-sm text-slate-300 leading-relaxed">
-                  {selectedCandidate.bio}
+                  {getCandidateLockedBio(selectedCandidate)}
                 </p>
 
                 {/* Credentials */}
@@ -6606,6 +6694,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     value={newJobCompany}
                     onChange={(e) => setNewJobCompany(e.target.value)}
                     placeholder="Your company"
+                    required
                     className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -6620,6 +6709,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={newJobLocation}
                       onChange={(e) => setNewJobLocation(e.target.value)}
                       placeholder="Remote · US"
+                      required
                       className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
@@ -6636,6 +6726,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         value={newJobSalaryRange}
                         onChange={(e) => setNewJobSalaryRange(e.target.value)}
                         placeholder="80,000 - 100,000 / yr"
+                        required
                         className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl py-3 pr-3 pl-7 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                       />
                     </div>
@@ -6654,6 +6745,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     value={newJobTags}
                     onChange={(e) => setNewJobTags(e.target.value)}
                     placeholder="React, TypeScript, Next.js"
+                    required
                     className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                   />
                   <p className="text-[11px] text-slate-500 mt-2">

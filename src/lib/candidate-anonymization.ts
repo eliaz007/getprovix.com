@@ -1,13 +1,15 @@
 import {
   formatPublicLocation,
-  generateCodenameAlias,
+  generateMaskedAliasFromUuid,
   getCodenameInitials,
 } from "@/lib/alias-generator";
 
 export {
   CONTACT_DOSSIER_LOCK_MESSAGE,
+  buildAlliterativeAliasIdentity,
   formatPublicLocation,
   generateCodenameAlias,
+  generateMaskedAliasFromUuid,
   getCodenameInitials,
 } from "@/lib/alias-generator";
 
@@ -42,30 +44,58 @@ export type PublicCandidateIdentity = {
 export function getPublicCandidateDisplayName(
   candidate: PublicCandidateIdentity
 ): string {
-  const alias = candidate.codenameAlias?.trim();
-  if (alias) {
-    return alias;
+  const profileId = candidate.candidateId?.trim() || "";
+  if (profileId && !/^C-/i.test(profileId)) {
+    return generateMaskedAliasFromUuid(profileId);
   }
 
-  return generateCodenameAlias({
-    profileId:
-      candidate.candidateId?.replace(/^C-/i, "") ||
-      candidate.fullName ||
-      "candidate",
-    headline: candidate.fullName,
-  });
+  return generateMaskedAliasFromUuid(profileId || "candidate");
+}
+
+function identityNameTokens(identity: {
+  fullName?: string | null;
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  profileName?: string | null;
+}): string[] {
+  const raw = [
+    identity.fullName,
+    identity.name,
+    identity.profileName,
+    identity.firstName,
+    identity.lastName,
+  ]
+    .flatMap((value) => (value ?? "").trim().split(/\s+/))
+    .map((token) => token.replace(/[^\p{L}\p{N}'-]/gu, ""))
+    .filter((token) => token.length >= 3);
+
+  return [...new Set(raw)].sort((a, b) => b.length - a.length);
+}
+
+export function redactPersonalNamesFromText(
+  text: string,
+  identity: {
+    fullName?: string | null;
+    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    profileName?: string | null;
+  },
+  replacement = "Candidate"
+): string {
+  let result = text;
+  for (const token of identityNameTokens(identity)) {
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    result = result.replace(new RegExp(`\\b${escaped}\\b`, "giu"), replacement);
+  }
+  return result;
 }
 
 export function getPublicCandidateInitials(
   candidate: PublicCandidateIdentity
 ): string {
-  const alias = candidate.codenameAlias?.trim();
-  if (alias) {
-    return getCodenameInitials(alias);
-  }
-
-  const generated = getPublicCandidateDisplayName(candidate);
-  return getCodenameInitials(generated);
+  return getCodenameInitials(getPublicCandidateDisplayName(candidate));
 }
 
 export function getPublicCandidateLocation(

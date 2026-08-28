@@ -14,14 +14,6 @@ export type CodenameAliasInput = {
   skills?: string[] | null;
 };
 
-const DISCIPLINE_PREFIX: Record<CandidateDiscipline, string> = {
-  engineering: "Engineer",
-  design: "Designer",
-  product: "Product Lead",
-  data: "Data Scientist",
-  general: "Specialist",
-};
-
 const ADJECTIVES = [
   "Cobalt",
   "Swift",
@@ -50,6 +42,9 @@ const CODENAMES = [
   "Echo",
   "Drift",
   "Signal",
+  "Lynx",
+  "Ion",
+  "Aether",
 ] as const;
 
 export const DEFAULT_PUBLIC_COUNTRY = "United States";
@@ -109,26 +104,43 @@ export function detectCandidateDiscipline(
   return "general";
 }
 
-export function generateCodenameAlias(input: CodenameAliasInput): string {
-  const profileId = input.profileId.trim();
-  const roleText = [
-    input.headline,
-    input.jobTitle,
-    input.role,
-    input.major,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  const discipline = detectCandidateDiscipline(roleText, input.skills ?? []);
-  const prefix = DISCIPLINE_PREFIX[discipline];
-  const seed = profileId.toLowerCase();
+/** Stable two-word alias from a profile UUID, e.g. "Solar Summit" or "Apex Atlas". */
+export function generateMaskedAliasFromUuid(uuid: string): string {
+  const seed = uuid.trim().toLowerCase() || "candidate";
   const adjective =
     ADJECTIVES[hashStringToIndex(`${seed}:adj`, ADJECTIVES.length)];
-  const codename =
-    CODENAMES[hashStringToIndex(`${seed}:name`, CODENAMES.length)];
+  const letter = adjective.charAt(0).toUpperCase();
+  const matchingNouns = CODENAMES.filter(
+    (noun) => noun.charAt(0).toUpperCase() === letter
+  );
+  const nounPool = matchingNouns.length > 0 ? matchingNouns : CODENAMES;
+  const noun = nounPool[hashStringToIndex(`${seed}:noun`, nounPool.length)];
+  return `${adjective} ${noun}`;
+}
 
-  return `${prefix} ${adjective} ${codename}`;
+export function generateCodenameAlias(input: CodenameAliasInput): string {
+  return generateMaskedAliasFromUuid(input.profileId);
+}
+
+export type AlliterativeAliasIdentity = {
+  alias: string;
+  firstName: string;
+  lastName: string;
+  initials: string;
+};
+
+/** Force any profile id onto a two-word alliterative alias. Ignores DB names. */
+export function buildAlliterativeAliasIdentity(
+  profileId: string
+): AlliterativeAliasIdentity {
+  const alias = generateMaskedAliasFromUuid(profileId);
+  const parts = alias.trim().split(/\s+/).filter(Boolean);
+  return {
+    alias,
+    firstName: parts[0] ?? "Candidate",
+    lastName: parts.slice(1).join(" "),
+    initials: getCodenameInitials(alias),
+  };
 }
 
 export function getCodenameInitials(alias: string): string {
@@ -174,7 +186,7 @@ export function buildCodenameAliasInputFromProfile(input: {
   };
 }
 
-/** Stored alias when present; otherwise a stable in-memory display alias (no DB write). */
+/** Always derive from the profile UUID so stored or real names never leak. */
 export function resolveCodenameAlias(profile: {
   id: string;
   codename_alias?: string | null;
@@ -184,10 +196,5 @@ export function resolveCodenameAlias(profile: {
   role?: string | null;
   skills?: string[] | null;
 }): string {
-  const stored = profile.codename_alias?.trim();
-  if (stored) {
-    return stored;
-  }
-
-  return generateCodenameAlias(buildCodenameAliasInputFromProfile(profile));
+  return generateMaskedAliasFromUuid(profile.id?.trim() || "");
 }

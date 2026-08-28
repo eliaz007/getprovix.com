@@ -2,14 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
-import {
-  generateCodenameAlias,
-  getCodenameInitials,
-} from "@/lib/alias-generator";
-import {
-  getPublicCandidateDisplayName,
-  getPublicCandidateLocation,
-} from "@/lib/candidate-anonymization";
+import { generateMaskedAliasFromUuid, getCodenameInitials } from "@/lib/alias-generator";
+import { getPublicCandidateLocation } from "@/lib/candidate-anonymization";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { createClient } from "@/utils/supabase/client";
 
@@ -116,16 +110,7 @@ function mapApplicationToApplicant(
   const profile = resolveProfileRow(row.profiles);
   const profileId = profile?.id ?? row.candidate_id;
   const isUnlocked = Boolean(row.unlocked);
-  const codenameAlias = profile
-    ? getPublicCandidateDisplayName({
-        codenameAlias: profile.codename_alias,
-        candidateId: profileId,
-        fullName: isUnlocked ? profile.full_name : null,
-      })
-    : generateCodenameAlias({
-        profileId: row.candidate_id,
-        headline: "Open Role Candidate",
-      });
+  const maskedAlias = generateMaskedAliasFromUuid(profileId);
 
   const skills = Array.isArray(profile?.skills) ? profile.skills : [];
   const headline =
@@ -137,12 +122,8 @@ function mapApplicationToApplicant(
     applicationId: row.id,
     profileId,
     candidateId: row.candidate_id,
-    codenameAlias,
-    initials: getCodenameInitials(
-      isUnlocked && profile?.full_name?.trim()
-        ? profile.full_name.trim()
-        : codenameAlias
-    ),
+    codenameAlias: maskedAlias,
+    initials: getCodenameInitials(maskedAlias),
     location: getPublicCandidateLocation({
       country: profile?.country,
       timezone: profile?.timezone,
@@ -152,7 +133,7 @@ function mapApplicationToApplicant(
     aiScoreLabel: formatAiScoreLabel(matchByCandidateId.get(row.candidate_id)),
     appliedAtLabel: formatAppliedAt(row.created_at),
     unlocked: isUnlocked,
-    fullName: isUnlocked ? profile?.full_name?.trim() || null : null,
+    fullName: null,
     email: isUnlocked ? resolveContactEmail(profile) : null,
     phone: isUnlocked ? profile?.phone?.trim() || null : null,
     linkedinUrl: isUnlocked ? profile?.linkedin_url?.trim() || null : null,
@@ -350,9 +331,7 @@ export default function JobApplicantsDrawer({
                     </div>
                     <div className="min-w-0">
                       <h3 className="font-bold text-white text-sm truncate">
-                        {applicant.unlocked && applicant.fullName
-                          ? applicant.fullName
-                          : applicant.codenameAlias}
+                        {applicant.codenameAlias}
                       </h3>
                       <p className="text-xs text-indigo-400 font-medium mt-0.5 truncate">
                         {applicant.headline}
