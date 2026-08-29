@@ -821,6 +821,8 @@ async function ensureUserProfile(
   return (insertResult.data as ProfileRecord | null) ?? null;
 }
 
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000;
+
 function displayNameFromSources(
   profile: ProfileRecord | null,
   user: User | null
@@ -848,17 +850,35 @@ export default function DashboardPage() {
   const [fallbackActiveTab, setFallbackActiveTab] =
     useState<DashboardTab>("opportunities");
   const activeTab = dashboardNav?.activeTab ?? fallbackActiveTab;
-  const setActiveTab = (tab: DashboardTab) => {
-    if (dashboardNav) {
-      dashboardNav.setActiveTab(tab);
-      return;
-    }
-    setFallbackActiveTab(tab);
-  };
-  const setMobileNavOpen = dashboardNav?.setMobileNavOpen ?? (() => {});
-  const setNavAccountRole = dashboardNav?.setAccountRole ?? (() => {});
-  const setOnOpenJobApplicants =
-    dashboardNav?.setOnOpenJobApplicants ?? (() => {});
+  const navSetActiveTab = dashboardNav?.setActiveTab;
+  const navSetMobileNavOpen = dashboardNav?.setMobileNavOpen;
+  const navSetAccountRole = dashboardNav?.setAccountRole;
+  const navSetOnOpenJobApplicants = dashboardNav?.setOnOpenJobApplicants;
+  const navRequireAuth = dashboardNav?.requireAuth;
+  const navSetAuthModalOpen = dashboardNav?.setAuthModalOpen;
+
+  const setActiveTab = useCallback(
+    (tab: DashboardTab) => {
+      if (navSetActiveTab) {
+        navSetActiveTab(tab);
+        return;
+      }
+      setFallbackActiveTab(tab);
+    },
+    [navSetActiveTab]
+  );
+  const setMobileNavOpen = useCallback(
+    (open: boolean) => {
+      navSetMobileNavOpen?.(open);
+    },
+    [navSetMobileNavOpen]
+  );
+  const setNavAccountRole = useCallback(
+    (role: string | null) => {
+      navSetAccountRole?.(role);
+    },
+    [navSetAccountRole]
+  );
 
   const [showPublicProfile, setShowPublicProfile] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -904,13 +924,13 @@ export default function DashboardPage() {
     if (user?.id) {
       return true;
     }
-    if (dashboardNav) {
-      return dashboardNav.requireAuth();
+    if (navRequireAuth) {
+      return navRequireAuth();
     }
     setAuthModalError(null);
     setAuthModalOpen(true);
     return false;
-  }, [dashboardNav, user?.id]);
+  }, [navRequireAuth, user?.id]);
   const [dbProfile, setDbProfile] = useState<ProfileRecord | null>(null);
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -967,6 +987,12 @@ export default function DashboardPage() {
   useEffect(() => {
     const supabase = createClient();
     let isMounted = true;
+    const timeoutId = window.setTimeout(() => {
+      if (isMounted) {
+        setAuthChecked(true);
+        setLoadingProfile(false);
+      }
+    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
 
     (async () => {
       try {
@@ -1179,6 +1205,7 @@ export default function DashboardPage() {
         console.error("Dashboard profile load threw:", message, err);
       } finally {
         if (isMounted) {
+          window.clearTimeout(timeoutId);
           setAuthChecked(true);
           setLoadingProfile(false);
         }
@@ -1187,6 +1214,7 @@ export default function DashboardPage() {
 
     return () => {
       isMounted = false;
+      window.clearTimeout(timeoutId);
     };
   }, [router]);
 
@@ -1476,8 +1504,8 @@ export default function DashboardPage() {
     const tab = params.get("tab");
     if (tab === "intro_requests" && !isBusinessAccount && !isEmployeeAccount) {
       if (!user) {
-        if (dashboardNav) {
-          dashboardNav.setAuthModalOpen(true);
+        if (navSetAuthModalOpen) {
+          navSetAuthModalOpen(true);
         } else {
           setAuthModalOpen(true);
         }
@@ -1486,7 +1514,13 @@ export default function DashboardPage() {
       }
       setActiveTab("intro_requests");
     }
-  }, [dashboardNav, isBusinessAccount, isEmployeeAccount, setActiveTab, user]);
+  }, [
+    navSetAuthModalOpen,
+    isBusinessAccount,
+    isEmployeeAccount,
+    setActiveTab,
+    user,
+  ]);
 
   useEffect(() => {
     if (!user) {
@@ -2738,11 +2772,20 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     },
     [jobs, businessListings, router, setActiveTab]
   );
+  const openApplicantsDrawerForJobRef = useRef(openApplicantsDrawerForJob);
+  openApplicantsDrawerForJobRef.current = openApplicantsDrawerForJob;
 
   useEffect(() => {
-    setOnOpenJobApplicants(openApplicantsDrawerForJob);
-    return () => setOnOpenJobApplicants(null);
-  }, [openApplicantsDrawerForJob, setOnOpenJobApplicants]);
+    if (!navSetOnOpenJobApplicants) {
+      return;
+    }
+
+    const handler = (jobId: string) => {
+      openApplicantsDrawerForJobRef.current(jobId);
+    };
+    navSetOnOpenJobApplicants(handler);
+    return () => navSetOnOpenJobApplicants(null);
+  }, [navSetOnOpenJobApplicants]);
 
   const getCandidateNotificationAlias = useCallback((): string => {
     const skillTags = (skills ?? "")
@@ -3388,18 +3431,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const majorLabel = isHighSchoolStudent
     ? "Intended Major / Academic Interest"
     : "Major / Specialization";
-
-  if (!authChecked) {
-    return <div className="min-h-screen bg-[#0A0A0A]" aria-busy="true" />;
-  }
-
-  if (user && loadingProfile) {
-    return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
-        <p className="text-sm text-slate-500">Loading...</p>
-      </div>
-    );
-  }
 
   const renderProfileFormActions = (options?: { showShareLink?: boolean }) => (
     <div className="mt-6 pt-6 border-t border-zinc-800 flex flex-col sm:flex-row gap-3">

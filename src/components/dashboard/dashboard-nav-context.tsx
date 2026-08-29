@@ -44,6 +44,8 @@ type DashboardNavContextValue = {
   setOnOpenJobApplicants: (handler: ((jobId: string) => void) | null) => void;
 };
 
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000;
+
 const DashboardNavContext = createContext<DashboardNavContextValue | null>(null);
 
 function getUserHeaderIdentity(user: User): {
@@ -89,7 +91,8 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
 
   const setOnOpenJobApplicants = useCallback(
     (handler: ((jobId: string) => void) | null) => {
-      setOnOpenJobApplicantsState(handler);
+      // Wrap so React stores the function instead of treating it as a setState updater.
+      setOnOpenJobApplicantsState(() => handler);
     },
     []
   );
@@ -110,6 +113,11 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     const supabase = createClient();
+    const timeoutId = window.setTimeout(() => {
+      if (active) {
+        setAuthLoading(false);
+      }
+    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
 
     const bootstrapSession = async () => {
       try {
@@ -156,6 +164,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
         }
       } finally {
         if (active) {
+          window.clearTimeout(timeoutId);
           setAuthLoading(false);
         }
       }
@@ -165,6 +174,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
 
     return () => {
       active = false;
+      window.clearTimeout(timeoutId);
     };
   }, [pathname]);
 
