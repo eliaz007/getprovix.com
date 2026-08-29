@@ -89,13 +89,13 @@ export default function OpportunitiesJobFeed({
   return (
     <div>
       <div className="mb-8">
-        <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+        <p className="text-xs font-bold uppercase tracking-widest text-indigo-300 mb-2">
           Job Feed
         </p>
         <h1 className="text-3xl font-extrabold tracking-tight text-white">
           Opportunities
         </h1>
-        <p className="text-slate-400 text-sm mt-2">
+        <p className="text-zinc-300 text-sm mt-2 leading-relaxed">
           {isGuest
             ? "Browse openings, companies, and requirements. Sign in when you are ready to express interest."
             : "Curated openings matched to your profile — express interest in one click."}
@@ -108,7 +108,7 @@ export default function OpportunitiesJobFeed({
         }`}
       >
         <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
             Active Openings
           </span>
           <span className="text-3xl font-extrabold text-white">
@@ -117,7 +117,7 @@ export default function OpportunitiesJobFeed({
         </div>
         {isGuest ? (
           <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
               Apply
             </span>
             <span className="text-sm font-extrabold text-indigo-400">
@@ -127,7 +127,7 @@ export default function OpportunitiesJobFeed({
         ) : (
           <>
             <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                 Matching Your Skills
               </span>
               <span className="text-3xl font-extrabold text-indigo-400">
@@ -135,14 +135,14 @@ export default function OpportunitiesJobFeed({
               </span>
             </div>
             <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                 Profile Visibility
               </span>
               <span
                 className={`text-sm font-extrabold ${
                   profileVisibleToEmployers
                     ? "text-emerald-400"
-                    : "text-slate-400"
+                    : "text-zinc-300"
                 }`}
               >
                 {loadingProfile
@@ -173,10 +173,10 @@ export default function OpportunitiesJobFeed({
           <button
             type="button"
             onClick={() => setRemoteOnly((prev) => !prev)}
-            className={`shrink-0 text-[11px] font-bold px-4 py-2.5 rounded-xl border transition-all cursor-pointer ${
+            className={`shrink-0 text-[11px] font-bold px-4 py-2.5 rounded-xl border transition-colors duration-200 ease-out cursor-pointer ${
               remoteOnly
                 ? "bg-indigo-600 border-indigo-500 text-white"
-                : "bg-[#0A0A0A] border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                : "bg-[#0A0A0A] border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-500"
             }`}
           >
             Remote Only
@@ -193,10 +193,10 @@ export default function OpportunitiesJobFeed({
                   onClick={() =>
                     setSelectedTag((prev) => (prev === tag ? null : tag))
                   }
-                  className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-colors duration-200 ease-out cursor-pointer ${
                     isSelected
                       ? "bg-indigo-600 border-indigo-500 text-white"
-                      : "bg-[#0A0A0A] border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                      : "bg-[#0A0A0A] border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-500"
                   }`}
                 >
                   {tag}
@@ -209,35 +209,35 @@ export default function OpportunitiesJobFeed({
 
       {jobsLoading ? (
         <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-          <p className="text-sm font-medium text-slate-400">
+          <p className="text-sm font-medium text-zinc-300">
             Loading opportunities...
           </p>
         </div>
       ) : jobsError ? (
         <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-          <p className="text-sm font-medium text-slate-300">
+          <p className="text-sm font-medium text-zinc-100">
             Could not load job feed
           </p>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-zinc-400 mt-1">
             The opportunities list is unavailable right now. You can keep
             using the rest of the dashboard.
           </p>
         </div>
       ) : activeJobs.length === 0 ? (
         <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-          <p className="text-sm font-medium text-slate-300">
+          <p className="text-sm font-medium text-zinc-100">
             No active openings right now
           </p>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-zinc-400 mt-1">
             Check back soon — new roles are posted as employers join Provix.
           </p>
         </div>
       ) : filteredJobFeed.length === 0 ? (
         <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-          <p className="text-sm font-medium text-slate-300">
+          <p className="text-sm font-medium text-zinc-100">
             No jobs match your filters
           </p>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-zinc-400 mt-1">
             Try clearing search or disabling Remote Only.
           </p>
         </div>
@@ -256,14 +256,14 @@ export default function OpportunitiesJobFeed({
             return (
               <div
                 key={job.id}
-                className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                className="card-edge card-lift bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col"
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="min-w-0">
                     <h3 className="font-bold text-white text-base truncate">
                       {job.title}
                     </h3>
-                    <p className="text-sm text-indigo-400 font-medium mt-0.5 truncate">
+                    <p className="text-sm text-indigo-300 font-semibold mt-0.5 truncate">
                       {job.company}
                     </p>
                   </div>
@@ -275,7 +275,7 @@ export default function OpportunitiesJobFeed({
                             ? "bg-indigo-500/10 text-indigo-300 border-indigo-500/30 animate-pulse"
                             : insight
                               ? getFitVerdictBadgeClass(insight.fit_verdict)
-                              : "bg-slate-800/80 text-slate-500 border-slate-700/50"
+                              : "bg-zinc-800 text-zinc-300 border-zinc-700"
                         }`}
                       >
                         {isMatching
@@ -301,7 +301,7 @@ export default function OpportunitiesJobFeed({
                     {formattedSalary}
                   </p>
                 ) : null}
-                <p className="text-xs text-slate-500 mb-4">{job.location}</p>
+                <p className="text-xs text-zinc-300 mb-4">{job.location}</p>
 
                 <div className="flex flex-wrap gap-1.5 mb-4">
                   {tags.map((tag) => (
@@ -311,10 +311,10 @@ export default function OpportunitiesJobFeed({
                       onClick={() =>
                         setSelectedTag((prev) => (prev === tag ? null : tag))
                       }
-                      className={`px-2 py-1 rounded-md text-[10px] font-bold border cursor-pointer ${
+                      className={`px-2 py-1 rounded-md text-[10px] font-bold border cursor-pointer transition-colors duration-200 ease-out ${
                         selectedTag === tag
                           ? "bg-indigo-600 text-white border-indigo-500"
-                          : "bg-indigo-500/10 text-indigo-300 border-indigo-500/20 hover:border-indigo-400/40"
+                          : "bg-indigo-500/10 text-indigo-200 border-indigo-500/30 hover:border-indigo-300/60"
                       }`}
                     >
                       {tag}
@@ -325,7 +325,7 @@ export default function OpportunitiesJobFeed({
                 {jobDescription ? (
                   <div className="mb-4">
                     <p
-                      className={`text-xs text-slate-400 leading-relaxed whitespace-pre-wrap ${
+                      className={`text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap ${
                         isExpanded ? "" : "line-clamp-3"
                       }`}
                     >
@@ -339,7 +339,7 @@ export default function OpportunitiesJobFeed({
                             prev === job.id ? null : job.id
                           )
                         }
-                        className="mt-2 text-[11px] font-bold text-indigo-400 hover:text-indigo-300 cursor-pointer"
+                        className="mt-2 text-[11px] font-bold text-indigo-300 hover:text-indigo-200 transition-colors duration-200 ease-out cursor-pointer"
                       >
                         {isExpanded ? "Show less" : "Read full opening"}
                       </button>
@@ -349,25 +349,24 @@ export default function OpportunitiesJobFeed({
 
                 {!isGuest && (isMatching || insight) && (
                   <div className="mb-4 rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       AI Match Analysis
                     </span>
                     {isMatching ? (
                       <div className="flex items-center gap-2">
                         <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-60" />
                           <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
                         </span>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-zinc-400">
                           Evaluating your profile against this role with Gemini…
                         </p>
                       </div>
                     ) : (
-                      <ul className="space-y-1.5 animate-in fade-in duration-300">
+                      <ul className="space-y-1.5">
                         {insight?.match_reasons.map((reason, index) => (
                           <li
                             key={`${job.id}-reason-${index}`}
-                            className="flex items-start gap-2 text-xs text-slate-300 leading-relaxed"
+                            className="flex items-start gap-2 text-xs text-zinc-200 leading-relaxed"
                           >
                             <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-indigo-400" />
                             <span>{reason}</span>
@@ -383,9 +382,9 @@ export default function OpportunitiesJobFeed({
                     type="button"
                     onClick={() => onExpressInterest(job)}
                     disabled={alreadyApplied}
-                    className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
+                    className={`text-[11px] font-bold tracking-tight px-4 py-2 rounded-md transition-colors duration-200 ease-out flex items-center gap-1.5 ${
                       alreadyApplied
-                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-not-allowed"
+                        ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 cursor-not-allowed"
                         : "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
                     }`}
                   >

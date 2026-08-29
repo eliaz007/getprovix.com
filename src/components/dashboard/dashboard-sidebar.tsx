@@ -20,16 +20,16 @@ function navButtonClass(isActive: boolean, variant: "default" | "employer" = "de
   if (variant === "employer") {
     return isActive
       ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold"
-      : "text-slate-500 hover:bg-slate-800/30";
+      : "text-zinc-400 hover:bg-zinc-800/50 hover:text-white";
   }
 
   return isActive
     ? "bg-slate-800/60 text-white font-bold"
-    : "text-slate-500 hover:bg-slate-800/30";
+    : "text-zinc-400 hover:bg-zinc-800/50 hover:text-white";
 }
 
 function navItemClass(isActive: boolean, variant: "default" | "employer" = "default") {
-  return `w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] cursor-pointer ${navButtonClass(isActive, variant)}`;
+  return `w-full text-left px-3 py-2 rounded-lg transition-colors duration-200 ease-out flex items-center gap-3 text-[13px] cursor-pointer ${navButtonClass(isActive, variant)}`;
 }
 
 const secondaryNavSectionClass = "mt-8 pt-8 border-t border-zinc-800";
@@ -158,7 +158,7 @@ export default function DashboardSidebar() {
     <div className="p-6 flex flex-col min-h-full">
       <Link href="/" className="block mb-8 hover:opacity-90 transition-opacity">
         <ProvixLogo />
-        <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase mt-2 block">
+        <span className="text-[10px] text-zinc-400 font-semibold tracking-widest uppercase mt-2 block">
           Verified Intelligence
         </span>
       </Link>
@@ -171,7 +171,7 @@ export default function DashboardSidebar() {
               : undefined
           }
         >
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
             {isBusinessAccount
               ? "Company Hub"
               : isEmployeeAccount
@@ -203,7 +203,7 @@ export default function DashboardSidebar() {
 
         {showCandidateAccelerator && (
           <div className={secondaryNavSectionClass}>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
               Career Accelerator
             </span>
             <nav className="space-y-1">
@@ -233,7 +233,7 @@ export default function DashboardSidebar() {
 
         {isEmployeeAccount && (
           <div className={secondaryNavSectionClass}>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
               Opportunity Hub
             </span>
             <nav className="space-y-1">
@@ -255,7 +255,7 @@ export default function DashboardSidebar() {
 
         {showTalentPoolNav && (
           <div className={secondaryNavSectionClass}>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
               Employer Console (B2B)
             </span>
             <nav className="space-y-1">
@@ -289,7 +289,7 @@ export default function DashboardSidebar() {
             setMobileNavOpen(false);
             requireAuth();
           }}
-          className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-all cursor-pointer"
+          className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
         >
           Sign In
         </button>

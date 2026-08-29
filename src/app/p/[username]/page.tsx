@@ -79,15 +79,15 @@ export default async function PublicCandidateProfilePage({
   });
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-slate-200">
+    <div className="min-h-screen bg-[#0A0A0A] text-zinc-50">
       <header className="border-b border-zinc-800 bg-[#0A0A0A]/90 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-4xl items-center justify-between gap-4 px-6">
-          <Link href="/" className="hover:opacity-90 transition-opacity">
+          <Link href="/" className="hover:opacity-90 transition-opacity duration-200">
             <ProvixLogo />
           </Link>
           <Link
             href="/login"
-            className="text-xs font-semibold text-slate-400 transition-colors hover:text-white"
+            className="text-xs font-semibold tracking-tight text-zinc-300 transition-colors duration-200 ease-out hover:text-white"
           >
             Sign in
           </Link>
@@ -109,7 +109,7 @@ export default async function PublicCandidateProfilePage({
                   </h1>
                   {profile.isVerifiedOnProvix && <VerifiedOnProvixPill />}
                 </div>
-                <p className="font-mono text-xs text-zinc-500">
+                <p className="font-mono text-xs font-medium text-zinc-400">
                   /p/{profile.profileSlug}
                 </p>
 
@@ -124,7 +124,7 @@ export default async function PublicCandidateProfilePage({
                   timezone={profile.timezone}
                 />
 
-                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-300">
                   {profile.location && (
                     <span className="inline-flex items-center gap-1.5">
                       <MapPin className="h-3.5 w-3.5" aria-hidden />
@@ -132,7 +132,7 @@ export default async function PublicCandidateProfilePage({
                     </span>
                   )}
                   {profile.experienceLevel && (
-                    <span className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide text-zinc-400">
+                    <span className="rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1 font-mono text-[11px] uppercase tracking-wide text-zinc-200">
                       {profile.experienceLevel}
                     </span>
                   )}
@@ -159,10 +159,10 @@ export default async function PublicCandidateProfilePage({
           <div className="space-y-8 px-8 py-8">
             {profile.bio && (
               <section>
-                <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-zinc-400">
                   About
                 </h2>
-                <p className="max-w-3xl text-sm leading-relaxed text-slate-300">
+                <p className="max-w-3xl text-sm leading-relaxed text-zinc-200">
                   {profile.bio}
                 </p>
               </section>
@@ -170,14 +170,14 @@ export default async function PublicCandidateProfilePage({
 
             {profile.skills.length > 0 && (
               <section>
-                <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-zinc-400">
                   Skills
                 </h2>
                 <div className="flex flex-wrap gap-2">
                   {profile.skills.map((skill) => (
                     <span
                       key={skill}
-                      className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs font-medium text-zinc-300"
+                      className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs font-semibold text-zinc-100"
                     >
                       {skill}
                     </span>
@@ -188,7 +188,7 @@ export default async function PublicCandidateProfilePage({
 
             {(academicLine || profile.school) && (
               <section>
-                <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-zinc-400">
                   Academics
                 </h2>
                 <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-[#0A0A0A] p-4">
@@ -201,7 +201,7 @@ export default async function PublicCandidateProfilePage({
                       {academicLine || profile.school}
                     </p>
                     {profile.school && academicLine && (
-                      <p className="mt-1 text-xs text-slate-400">
+                      <p className="mt-1 text-xs text-zinc-300">
                         {profile.school}
                       </p>
                     )}
@@ -211,7 +211,7 @@ export default async function PublicCandidateProfilePage({
             )}
 
             <section>
-              <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+              <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-zinc-400">
                 Proof of Work
               </h2>
 
@@ -226,7 +226,7 @@ export default async function PublicCandidateProfilePage({
                       href={profile.youtubeUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="group flex items-center justify-between rounded-2xl border border-zinc-800 bg-[#0A0A0A] px-4 py-4 transition-colors hover:border-indigo-500/40 hover:bg-indigo-500/5"
+                      className="group flex items-center justify-between rounded-2xl border border-zinc-800 bg-[#0A0A0A] px-4 py-4 card-lift hover:border-indigo-400/50 hover:bg-indigo-500/5"
                     >
                       <span className="flex items-center gap-3">
                         <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900/80 text-slate-300">
@@ -236,7 +236,7 @@ export default async function PublicCandidateProfilePage({
                           <span className="block text-sm font-semibold text-white">
                             Demo Video
                           </span>
-                          <span className="block text-xs text-slate-500">
+                          <span className="block text-xs text-zinc-400">
                             Walkthrough or proof clip
                           </span>
                         </span>
@@ -249,7 +249,7 @@ export default async function PublicCandidateProfilePage({
                   )}
                 </div>
               ) : (
-                <div className="rounded-2xl border border-dashed border-zinc-800 bg-[#0A0A0A] px-4 py-6 text-sm text-slate-500">
+                <div className="rounded-2xl border border-dashed border-zinc-700 bg-[#0A0A0A] px-4 py-6 text-sm text-zinc-400">
                   Proof-of-work links will appear here once the candidate adds
                   portfolio or demo artifacts.
                 </div>
@@ -266,7 +266,7 @@ export default async function PublicCandidateProfilePage({
                   <p className="text-sm font-semibold text-white">
                     Verified on Provix
                   </p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                  <p className="mt-1 text-xs leading-relaxed text-zinc-300">
                     Candidates use Provix career tools for free. Employers hire
                     on a contingency placement model — no upfront subscriptions.
                   </p>

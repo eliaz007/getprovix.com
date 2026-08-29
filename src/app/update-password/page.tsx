@@ -152,21 +152,21 @@ export default function UpdatePasswordPage() {
       <div className="w-full max-w-md px-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-white transition-colors mb-4"
+          className="inline-flex items-center gap-1 text-sm text-zinc-300 hover:text-white transition-colors duration-200 ease-out mb-4"
         >
           ← Back to Home
         </Link>
-        <Card className="p-8">
+        <Card interactive={false} className="p-8">
           <div className="flex justify-center mb-6">
             <Link href="/" className="hover:opacity-90 transition-opacity">
               <ProvixLogo />
             </Link>
           </div>
 
-          <h1 className="text-2xl font-semibold text-white tracking-tight text-center">
+          <h1 className="text-2xl font-extrabold text-white tracking-tight text-center">
             Update Password
           </h1>
-          <p className="text-sm text-zinc-400 text-center mb-8">
+          <p className="text-sm text-zinc-300 text-center mb-8">
             Choose a new password for your Provix account.
           </p>
 

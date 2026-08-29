@@ -238,7 +238,7 @@ export default function InterviewPrepPage() {
 
           <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[480px] shadow-2xl">
             {loading && (
-              <div className="space-y-4 animate-in fade-in duration-300">
+              <div className="space-y-4">
                 <div className="text-sm font-bold text-white mb-1">
                   Building your interview cheat sheet
                 </div>
@@ -304,7 +304,7 @@ export default function InterviewPrepPage() {
             )}
 
             {!loading && result && (
-              <div className="space-y-5 animate-in fade-in duration-500">
+              <div className="space-y-5">
                 <div className="pb-4 border-b border-zinc-800">
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
                     Interview Cheat Sheet

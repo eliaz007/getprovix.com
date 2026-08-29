@@ -244,7 +244,7 @@ export default function GitHubResumeAuditor() {
             type="button"
             onClick={() => void runAudit()}
             disabled={loading || !canSubmit || limitReached}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-md text-xs tracking-tight transition-colors duration-200 ease-out flex items-center justify-center gap-2 cursor-pointer"
           >
             {loading ? (
               <>
@@ -262,7 +262,7 @@ export default function GitHubResumeAuditor() {
 
         <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[480px] shadow-2xl">
           {loading && (
-            <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="space-y-4">
               <div className="text-sm font-bold text-white mb-1">
                 Running credibility audit
               </div>
@@ -328,7 +328,7 @@ export default function GitHubResumeAuditor() {
           )}
 
           {!loading && result && (
-            <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">

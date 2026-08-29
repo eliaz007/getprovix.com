@@ -31,7 +31,7 @@ function BackToHomeLink({ className = "" }: { className?: string }) {
   return (
     <Link
       href="/"
-      className={`inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-white transition-colors ${className}`}
+      className={`inline-flex items-center gap-1 text-sm text-zinc-300 hover:text-white transition-colors duration-200 ease-out ${className}`}
     >
       ← Back to Home
     </Link>
@@ -229,7 +229,7 @@ export default function LoginPage() {
   if (checkingSession) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <p className="text-sm text-zinc-500">Loading...</p>
+        <p className="text-sm text-zinc-400">Loading...</p>
       </div>
     );
   }
@@ -238,16 +238,16 @@ export default function LoginPage() {
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
       <div className="w-full max-w-md px-6">
         <BackToHomeLink className="mb-4" />
-        <Card className="p-8">
+        <Card interactive={false} className="p-8">
           <div className="flex justify-center mb-6">
             <Link href="/" className="hover:opacity-90 transition-opacity">
               <ProvixLogo />
             </Link>
           </div>
-          <h1 className="text-2xl font-semibold text-white tracking-tight text-center">
+          <h1 className="text-2xl font-extrabold text-white tracking-tight text-center">
             {showResetPassword ? "Reset Password" : "Welcome to Provix"}
           </h1>
-          <p className="text-sm text-zinc-400 text-center mb-8">
+          <p className="text-sm text-zinc-300 text-center mb-8">
             {showResetPassword
               ? "Enter your email to receive a password reset link"
               : mode === "sign-in"
@@ -276,7 +276,7 @@ export default function LoginPage() {
               />
               <div className="my-6 flex items-center gap-3">
                 <div className="h-px flex-1 bg-zinc-800" />
-                <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
                   or
                 </span>
                 <div className="h-px flex-1 bg-zinc-800" />
@@ -289,10 +289,10 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => switchMode("sign-in")}
-              className={`py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+              className={`py-2 rounded-md text-sm font-semibold tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
                 mode === "sign-in"
                   ? "bg-indigo-600 text-white"
-                  : "text-zinc-400 hover:text-white"
+                  : "text-zinc-300 hover:text-white hover:bg-zinc-900"
               }`}
             >
               Sign In
@@ -300,10 +300,10 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => switchMode("sign-up")}
-              className={`py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+              className={`py-2 rounded-md text-sm font-semibold tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
                 mode === "sign-up"
                   ? "bg-indigo-600 text-white"
-                  : "text-zinc-400 hover:text-white"
+                  : "text-zinc-300 hover:text-white hover:bg-zinc-900"
               }`}
             >
               Sign Up
@@ -316,10 +316,10 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setSignUpType("candidate")}
-                className={`py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                className={`py-1.5 rounded-md text-xs font-semibold tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
                   signUpType === "candidate"
                     ? "bg-zinc-800 text-white"
-                    : "text-zinc-500 hover:text-zinc-300"
+                    : "text-zinc-400 hover:text-white hover:bg-zinc-900"
                 }`}
               >
                 Candidate Sign Up
@@ -327,10 +327,10 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setSignUpType("business")}
-                className={`py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                className={`py-1.5 rounded-md text-xs font-semibold tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
                   signUpType === "business"
                     ? "bg-zinc-800 text-white"
-                    : "text-zinc-500 hover:text-zinc-300"
+                    : "text-zinc-400 hover:text-white hover:bg-zinc-900"
                 }`}
               >
                 Business Sign Up
@@ -345,7 +345,7 @@ export default function LoginPage() {
               noValidate
             >
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="resetEmail" className="text-sm font-medium text-zinc-300">
+                <label htmlFor="resetEmail" className="text-sm font-semibold text-zinc-200">
                   Email
                 </label>
                 <input
@@ -384,7 +384,7 @@ export default function LoginPage() {
                   setError(null);
                   setMessage(null);
                 }}
-                className="text-sm text-indigo-400 hover:text-indigo-300 font-medium transition-colors cursor-pointer text-center"
+                className="text-sm text-indigo-300 hover:text-indigo-200 font-medium transition-colors duration-200 ease-out cursor-pointer text-center"
               >
                 ← Back to Sign In
               </button>
@@ -394,7 +394,7 @@ export default function LoginPage() {
             {mode === "sign-up" && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="firstName" className="text-sm font-medium text-zinc-300">
+                  <label htmlFor="firstName" className="text-sm font-semibold text-zinc-200">
                     First Name
                   </label>
                   <input
@@ -409,7 +409,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="lastName" className="text-sm font-medium text-zinc-300">
+                  <label htmlFor="lastName" className="text-sm font-semibold text-zinc-200">
                     Last Name
                   </label>
                   <input
@@ -427,7 +427,7 @@ export default function LoginPage() {
             )}
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="email" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="email" className="text-sm font-semibold text-zinc-200">
                 {mode === "sign-up" && signUpType === "business" ? "Work Email" : "Email"}
               </label>
               <input
@@ -443,7 +443,7 @@ export default function LoginPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="password" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="password" className="text-sm font-semibold text-zinc-200">
                 Password
               </label>
               <div className="relative">
@@ -461,7 +461,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((current) => !current)}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-zinc-400 hover:text-zinc-100 transition-colors duration-200 ease-out cursor-pointer"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
@@ -484,7 +484,7 @@ export default function LoginPage() {
                     setError(null);
                     setMessage(null);
                   }}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                  className="text-xs font-medium text-zinc-400 hover:text-zinc-100 transition-colors duration-200 ease-out cursor-pointer"
                 >
                   Forgot password?
                 </button>
@@ -502,18 +502,18 @@ export default function LoginPage() {
             </Button>
 
             {mode === "sign-up" && (
-              <p className="text-xs text-zinc-400 text-center mt-3 leading-relaxed">
+              <p className="text-xs text-zinc-300 text-center mt-3 leading-relaxed">
                 By creating an account, you agree to our{" "}
                 <a
                   href="/terms"
-                  className="underline text-zinc-300 hover:text-white"
+                  className="underline text-zinc-100 hover:text-white transition-colors duration-200"
                 >
                   Terms of Service
                 </a>{" "}
                 and{" "}
                 <a
                   href="/privacy"
-                  className="underline text-zinc-300 hover:text-white"
+                  className="underline text-zinc-100 hover:text-white transition-colors duration-200"
                 >
                   Privacy Policy
                 </a>
@@ -524,14 +524,14 @@ export default function LoginPage() {
           )}
 
           {!showResetPassword && (
-          <p className="mt-6 pt-6 border-t border-zinc-800 text-center text-sm text-zinc-400">
+          <p className="mt-6 pt-6 border-t border-zinc-800 text-center text-sm text-zinc-300">
             {mode === "sign-in" ? (
               <>
                 No account?{" "}
                 <button
                   type="button"
                   onClick={() => switchMode("sign-up")}
-                  className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors cursor-pointer"
+                  className="text-indigo-300 hover:text-indigo-200 font-semibold transition-colors duration-200 ease-out cursor-pointer"
                 >
                   Sign up here
                 </button>
@@ -542,7 +542,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => switchMode("sign-in")}
-                  className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors cursor-pointer"
+                  className="text-indigo-300 hover:text-indigo-200 font-semibold transition-colors duration-200 ease-out cursor-pointer"
                 >
                   Sign in here
                 </button>

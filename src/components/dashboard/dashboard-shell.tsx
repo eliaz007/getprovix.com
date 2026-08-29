@@ -27,7 +27,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   } = useDashboardNav();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0A0A0A] text-slate-200 font-sans antialiased selection:bg-indigo-500/30">
+    <div className="flex h-screen overflow-hidden bg-[#0A0A0A] text-zinc-100 font-sans antialiased selection:bg-indigo-500/30">
       <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-[#111111] border-r border-zinc-800 z-20 overflow-y-auto">
         <DashboardSidebar />
       </aside>
@@ -64,7 +64,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
                   type="button"
                   onClick={() => setMobileNavOpen(false)}
                   aria-label="Close menu"
-                  className="p-2 rounded-lg text-slate-400 hover:bg-slate-800/60 hover:text-white transition-colors cursor-pointer"
+                  className="p-2 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors duration-200 ease-out cursor-pointer"
                 >
                   <DashboardIcons.XMark />
                 </button>
@@ -84,7 +84,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             </div>
           )}
 
-          <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 pt-8 sm:p-6 sm:pt-10 md:p-12 animate-in fade-in duration-300">
+          <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 pt-8 sm:p-6 sm:pt-10 md:p-12">
             {children}
           </div>
         </main>

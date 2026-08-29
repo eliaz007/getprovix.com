@@ -129,7 +129,7 @@ export default function RequestIntroModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <Card className="max-w-md w-full p-6 relative">
+      <Card interactive={false} className="max-w-md w-full p-6 relative">
         <button
           type="button"
           onClick={onClose}

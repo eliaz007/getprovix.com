@@ -2,8 +2,9 @@
 @config "../../tailwind.config.ts";
 
 :root {
-  --background: #020617;
+  --background: #0a0a0a;
   --foreground: #f8fafc;
+  --muted: #d4d4d8;
   --shadow-hard: 4px 4px 0 0 #000000;
 }
 
@@ -20,34 +21,96 @@
   --shadow-2xl: 4px 4px 0 0 #000000;
 }
 
-body {
-  background: #0a0a0a;
-  color: #f1f5f9;
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background: #0a0a0a;
+    color: #f8fafc;
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+    line-height: 1.6;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: #ffffff;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+  }
+
+  h1 {
+    font-weight: 800;
+  }
 }
 
-button:not(:disabled):not([role="switch"]):not([aria-label*="Close" i]),
-input[type="submit"]:not(:disabled),
-input[type="button"]:not(:disabled) {
-  transition:
-    transform 100ms ease,
-    box-shadow 100ms ease;
+@layer components {
+  .card-edge {
+    position: relative;
+    border-radius: 0.375rem;
+    border-style: solid;
+    box-shadow: var(--shadow-hard);
+  }
+
+  .card-edge::before,
+  .card-edge::after {
+    content: none;
+  }
+
+  .card-lift {
+    transition: transform 200ms ease-out;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .card-lift:hover {
+      transform: translateY(-2px);
+    }
+  }
+
+  button:not(:disabled):not([role="switch"]),
+  input[type="submit"]:not(:disabled),
+  input[type="button"]:not(:disabled) {
+    transition:
+      background-color 250ms ease-out,
+      border-color 250ms ease-out,
+      color 250ms ease-out,
+      box-shadow 250ms ease-out,
+      opacity 250ms ease-out;
+  }
+
+  @keyframes hero-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .hero-fade-in {
+    animation: hero-fade-in 400ms ease-out both;
+  }
 }
 
-button:not(:disabled):not([role="switch"]):not([aria-label*="Close" i]):active,
-input[type="submit"]:not(:disabled):active,
-input[type="button"]:not(:disabled):active {
-  transform: scale(0.95);
-}
+@media (prefers-reduced-motion: reduce) {
+  .hero-fade-in,
+  .card-lift,
+  button,
+  input[type="submit"],
+  input[type="button"] {
+    animation: none;
+    transition: none;
+  }
 
-.card-edge {
-  position: relative;
-  border-radius: 0.375rem;
-  border-style: solid;
-  box-shadow: var(--shadow-hard);
-}
-
-.card-edge::before,
-.card-edge::after {
-  content: none;
+  .card-lift:hover {
+    transform: none;
+  }
 }

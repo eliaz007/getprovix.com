@@ -4,10 +4,10 @@ import { GitHubSignInButton } from "@/components/GitHubSignInButton";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 const HERO_GOOGLE_CLASSES =
-  "inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-lg bg-white px-8 py-3.5 text-sm font-semibold text-zinc-900 shadow-sm transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+  "inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-md bg-white px-8 py-3.5 text-sm font-semibold tracking-tight text-zinc-950 border border-black shadow-[4px_4px_0px_#000] transition-[background-color] duration-200 ease-out hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 
 const HERO_GITHUB_CLASSES =
-  "inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-lg bg-[#161b22] px-8 py-3.5 text-sm font-semibold text-white border border-zinc-700 shadow-sm transition-colors hover:bg-[#21262d] hover:border-zinc-600 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+  "inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-md bg-[#161b22] px-8 py-3.5 text-sm font-semibold tracking-tight text-white border border-black shadow-[4px_4px_0px_#000] transition-[background-color,border-color] duration-200 ease-out hover:bg-[#21262d] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 
 export function OAuthSignInButtons({
   onError,

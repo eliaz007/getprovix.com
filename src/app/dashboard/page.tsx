@@ -3469,16 +3469,16 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   };
 
   const guestNavClass = (active: boolean) =>
-    `w-full text-left px-3 py-2 rounded-lg transition-all duration-200 flex items-center gap-3 text-[13px] cursor-pointer ${
+    `w-full text-left px-3 py-2 rounded-lg transition-colors duration-200 ease-out flex items-center gap-3 text-[13px] cursor-pointer ${
       active
         ? "bg-slate-800/60 text-white font-bold"
-        : "text-slate-500 hover:bg-slate-800/30 hover:text-slate-300"
+        : "text-zinc-400 hover:bg-zinc-800/50 hover:text-white"
     }`;
 
   const renderGuestNav = () => (
     <div>
       <div className="mt-8 pt-8 border-t border-zinc-800">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
+        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
           Candidate Dashboard
         </span>
         <nav className="space-y-1">
@@ -3509,7 +3509,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         </nav>
       </div>
       <div className="mt-8 pt-8 border-t border-zinc-800">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-2">
+        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
           Career Accelerator
         </span>
         <nav className="space-y-1">
@@ -3569,7 +3569,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               <button
                 type="button"
                 onClick={() => requireAuth()}
-                className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-all cursor-pointer"
+                className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
               >
                 Sign In
               </button>
@@ -3623,7 +3623,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             : "Profile hidden from employers"}
         </div>
       )}
-      <div className="w-full max-w-5xl mx-auto space-y-10 animate-in fade-in duration-500 transition-all duration-300">
+      <div className="w-full max-w-5xl mx-auto space-y-10 hero-fade-in">
 
           {/* MY PROFILE TAB WITH NESTED MENU OPTIONS */}
           {activeTab === "my_profile" && (
@@ -3633,7 +3633,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <h1 className="text-3xl font-extrabold tracking-tight text-white">
                     Profile Studio
                   </h1>
-                  <p className="text-slate-400 text-sm mt-2 max-w-2xl leading-relaxed">
+                  <p className="text-zinc-300 text-sm mt-2 max-w-2xl leading-relaxed">
                     {isBusinessAccount
                       ? "Manage your company profile, hiring requirements, and account settings."
                       : "Manage your credentials, academic status, and proof of work."}
@@ -3724,7 +3724,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               {/* SUB-MENU CONTENT PANELS */}
               <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-8 shadow-2xl">
                 {profileSubMenu === "companyInfo" && (
-                  <div className="space-y-6 animate-in fade-in">
+                  <div className="space-y-6">
                     <div className="flex items-center gap-5 pb-6 border-b border-zinc-800">
                       <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-xl font-bold text-indigo-400">
                         {businessProfileData?.businessName?.trim()?.charAt(0) || "?"}
@@ -3831,7 +3831,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 )}
 
                 {profileSubMenu === "activeListings" && (
-                  <div className="space-y-4 animate-in fade-in">
+                  <div className="space-y-4">
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-bold text-white">
                         Active Job Listings
@@ -3894,7 +3894,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 )}
 
                 {profileSubMenu === "overview" && (
-                  <div className="space-y-6 animate-in fade-in">
+                  <div className="space-y-6">
                     <div className="flex items-center gap-5 pb-6 border-b border-zinc-800">
                       {loadingProfile ? (
                         <>
@@ -3985,7 +3985,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 )}
 
                 {profileSubMenu === "academics" && (
-                  <div className="space-y-6 animate-in fade-in">
+                  <div className="space-y-6">
                     <h3 className="text-sm font-bold text-white mb-2">
                       Education & University Status
                     </h3>
@@ -4063,7 +4063,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 )}
 
                 {profileSubMenu === "portfolio" && (
-                  <div className="space-y-6 animate-in fade-in">
+                  <div className="space-y-6">
                     <h3 className="text-sm font-bold text-white mb-2">
                       Verifiable Projects & Links
                     </h3>
@@ -4149,7 +4149,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 )}
 
                 {profileSubMenu === "settings" && (
-                  <div className="space-y-6 animate-in fade-in">
+                  <div className="space-y-6">
                     <h3 className="text-sm font-bold text-white mb-4">
                       {isBusinessAccount
                         ? "Account Settings"
@@ -4336,14 +4336,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">
                   Intro Requests
                 </h1>
-                <p className="text-slate-400 text-sm mt-2">
+                <p className="text-zinc-300 text-sm mt-2">
                   Review employer introduction requests and approve the ones you want to pursue.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
                 <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                     Pending Review
                   </span>
                   <span className="text-3xl font-extrabold text-amber-400">
@@ -4351,7 +4351,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </span>
                 </div>
                 <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                     Accepted
                   </span>
                   <span className="text-3xl font-extrabold text-emerald-400">
@@ -4365,7 +4365,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </span>
                 </div>
                 <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                     Total Requests
                   </span>
                   <span className="text-3xl font-extrabold text-white">
@@ -4422,7 +4422,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     return (
                       <div
                         key={request.id}
-                        className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                        className="card-edge card-lift bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col"
                       >
                         <div className="flex items-start justify-between gap-3 mb-4">
                           <div className="min-w-0">
@@ -4518,7 +4518,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">
                   Essay Studio
                 </h1>
-                <p className="text-slate-400 text-sm mt-2">
+                <p className="text-zinc-300 text-sm mt-2">
                   AI-driven structural analysis and line-by-line feedback for your Common App essays.
                 </p>
               </div>
@@ -4527,7 +4527,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 {/* Left: inputs */}
                 <div className="lg:col-span-7 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       Target School
                     </label>
                     <input
@@ -4540,7 +4540,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       College Prompt
                     </label>
                     <textarea
@@ -4554,7 +4554,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                      <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">
                         Essay Draft
                       </label>
                       <span className="text-[11px] font-mono text-slate-500">
@@ -4587,7 +4587,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     {evaluatingEssay ? (
                       <>
                         <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-60" />
                           <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
                         </span>
                         Analyzing Essay with AI…
@@ -4607,7 +4606,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           <Icons.Pen />
                         </div>
                         <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
                           <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500" />
                         </span>
                       </div>
@@ -4622,7 +4620,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     <div className="space-y-5">
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                             Overall Score
                           </span>
                           <p className="text-sm text-slate-300 leading-relaxed">
@@ -4685,7 +4683,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                       {essayReview.lineFeedback.length > 0 && (
                         <div>
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3">
                             Actionable Suggestions
                           </span>
                           <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
@@ -4739,7 +4737,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">
                   Appeal Strategist
                 </h1>
-                <p className="text-slate-400 text-sm mt-2">
+                <p className="text-zinc-300 text-sm mt-2">
                   Assess your case strength, build an evidence checklist, and draft a professional aid appeal letter.
                 </p>
               </div>
@@ -4748,7 +4746,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 {/* Left: inputs */}
                 <div className="lg:col-span-5 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       College Name
                     </label>
                     <input
@@ -4761,7 +4759,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       Current Aid Offer (Optional)
                     </label>
                     <input
@@ -4774,7 +4772,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       Appeal Reason
                     </label>
                     <select
@@ -4789,7 +4787,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       Detailed Notes
                     </label>
                     <textarea
@@ -4820,7 +4818,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     {generatingAid ? (
                       <>
                         <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-60" />
                           <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
                         </span>
                         Building appeal strategy & draft…
@@ -4840,7 +4837,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           <FileText className="w-7 h-7 text-indigo-400" aria-hidden="true" />
                         </div>
                         <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-60" />
                           <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500" />
                         </span>
                       </div>
@@ -4861,7 +4857,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                       <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                         <div className="flex items-center justify-between gap-3 mb-4">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
                             Strategy & Case Strength
                           </span>
                           <span
@@ -4875,7 +4871,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         </p>
                         {aidAppealResult.negotiationDosAndDonts.length > 0 && (
                           <div className="mt-5 pt-5 border-t border-zinc-800">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3">
                               Negotiation Do&apos;s & Don&apos;ts
                             </span>
                             <ul className="space-y-2">
@@ -4894,7 +4890,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       </div>
 
                       <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3">
                           Required Documents & Evidence Checklist
                         </span>
                         <ul className="space-y-2">
@@ -4924,7 +4920,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                       <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
                         <div className="flex items-center justify-between gap-3 mb-4">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
                             Formal Letter Drafter
                           </span>
                           <button
@@ -4986,7 +4982,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">
                   College Fit AI
                 </h1>
-                <p className="text-slate-400 text-sm mt-2">
+                <p className="text-zinc-300 text-sm mt-2">
                   Personalized reach, target, and safety school recommendations based on your profile.
                 </p>
               </div>
@@ -4994,7 +4990,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
                 <div className="lg:col-span-4 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       GPA
                     </label>
                     <input
@@ -5007,7 +5003,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       Intended Major
                     </label>
                     <input
@@ -5020,7 +5016,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       Test Scores
                     </label>
                     <input
@@ -5033,7 +5029,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       Location Preference
                     </label>
                     <input
@@ -5046,7 +5042,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       Annual Budget Preference
                     </label>
                     <input
@@ -5075,7 +5071,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     {generatingCollegeFit ? (
                       <>
                         <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-60" />
                           <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
                         </span>
                         Generating Fit Report…
@@ -5110,7 +5105,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             <Icons.GraduationCap />
                           </div>
                           <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
                             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500" />
                           </span>
                         </div>
@@ -5176,7 +5170,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   ) : collegeFitReport ? (
                     <>
                       <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                           Fit Summary
                         </span>
                         <p className="text-sm text-slate-300 leading-relaxed">
@@ -5352,14 +5346,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">
                   Opportunity Radar
                 </h1>
-                <p className="text-slate-400 text-sm mt-2">
+                <p className="text-zinc-300 text-sm mt-2">
                   AI-matched roles from verified employers — tuned to your skills and visibility settings.
                 </p>
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                 <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                     Active Roles
                   </span>
                   <span className="text-3xl font-extrabold text-white">
@@ -5370,7 +5364,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </p>
                 </div>
                 <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                     Direct Matches
                   </span>
                   <span className="text-3xl font-extrabold text-emerald-400">
@@ -5379,7 +5373,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <p className="text-[11px] text-slate-500 mt-1">90%+ fit score</p>
                 </div>
                 <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg col-span-2 lg:col-span-1">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                     Profile Views
                   </span>
                   <span className="text-3xl font-extrabold text-indigo-400">
@@ -5480,7 +5474,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     return (
                       <div
                         key={job.id}
-                        className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col"
+                        className="card-edge card-lift bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col"
                       >
                         <div className="flex items-start justify-between gap-3 mb-4">
                           <div className="flex items-start gap-3 min-w-0">
@@ -5536,7 +5530,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         <p className="text-xs text-slate-500 mb-3">{job.location}</p>
 
                         <div className="mb-5">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                             Tech Stack
                           </span>
                           <div className="flex flex-wrap gap-1.5">
@@ -5553,13 +5547,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                         {(isMatching || insight) && (
                           <div className="mb-5 rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                               AI Match Analysis
                             </span>
                             {isMatching ? (
                               <div className="flex items-center gap-2">
                                 <span className="relative flex h-2 w-2">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-60" />
                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
                                 </span>
                                 <p className="text-xs text-slate-500">
@@ -5567,7 +5560,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 </p>
                               </div>
                             ) : (
-                              <ul className="space-y-1.5 animate-in fade-in duration-300">
+                              <ul className="space-y-1.5">
                                 {insight?.match_reasons.map((reason, index) => (
                                   <li
                                     key={`${job.id}-reason-${index}`}
@@ -5635,7 +5628,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">
                   Applications
                 </h1>
-                <p className="text-slate-400 text-sm mt-2">
+                <p className="text-zinc-300 text-sm mt-2">
                   Track roles you&apos;ve applied to and their current status.
                 </p>
               </div>
@@ -5711,7 +5704,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         : "Welcome"
                       : "Vetted Talent Pool"}
                   </h1>
-                  <p className="text-slate-400 text-sm mt-2">
+                  <p className="text-zinc-300 text-sm mt-2">
                     {isBusinessAccount
                       ? "Your company profile is live. Search anonymized, AI-vetted talent below."
                       : "Hire top young talent based on verifiable projects and education."}
@@ -5731,7 +5724,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               {/* METRICS ROW */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                     Total Candidates
                   </span>
                   <span className="text-3xl font-mono font-extrabold tabular-nums text-white">
@@ -5739,7 +5732,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </span>
                 </div>
                 <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                     Saved Profiles
                   </span>
                   <span className="text-3xl font-mono font-extrabold tabular-nums text-white">
@@ -5747,7 +5740,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </span>
                 </div>
                 <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                     New Matches
                   </span>
                   <span className="text-3xl font-mono font-extrabold tabular-nums text-indigo-400">
@@ -5755,7 +5748,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </span>
                 </div>
                 <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
                     Active Roles
                   </span>
                   <span className="text-3xl font-mono font-extrabold tabular-nums text-emerald-400">
@@ -5768,7 +5761,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 {/* FILTER SIDEBAR */}
                 <aside className="lg:col-span-3 card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-5">
                   <div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3">
                       Filters
                     </span>
                     <p className="text-xs text-slate-500">
@@ -5918,7 +5911,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         return (
                           <div
                             key={col.profileId}
-                            className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg hover:border-slate-700 transition-all flex flex-col justify-between h-full min-h-[260px] min-w-0 overflow-hidden"
+                            className="card-edge card-lift bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col justify-between h-full min-h-[260px] min-w-0 overflow-hidden"
                           >
                             <div className="flex items-start justify-between gap-2 mb-4">
                               <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-indigo-400 shrink-0">
@@ -6025,7 +6018,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             <div>
               <div className="mb-8">
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">Employer AI Screen</h1>
-                <p className="text-slate-400 text-sm mt-2">Paste a candidate's resume or project links to generate a hiring summary.</p>
+                <p className="text-zinc-300 text-sm mt-2">Paste a candidate's resume or project links to generate a hiring summary.</p>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -6115,20 +6108,20 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             <div className="max-w-3xl">
               <div className="mb-8">
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">Placement Economics</h1>
-                <p className="text-slate-400 text-sm mt-2">
+                <p className="text-zinc-300 text-sm mt-2">
                   Provix operates on a pure contingency model — no upfront subscriptions or unlock fees.
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
                 <div className="card-edge bg-[#111111] p-6 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Above $25k Roles</span>
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Above $25k Roles</span>
                   <span className="text-3xl font-mono font-extrabold tabular-nums text-white">10%</span>
                   <p className="text-xs text-slate-400 mt-2">
                     of first-year salary upon hire
                   </p>
                 </div>
                 <div className="card-edge bg-[#111111] p-6 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Under $25k Roles</span>
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Under $25k Roles</span>
                   <span className="text-3xl font-mono font-extrabold tabular-nums text-emerald-400">$2,500</span>
                   <p className="text-xs text-slate-400 mt-2">
                     flat placement fee upon hire
@@ -6268,7 +6261,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                 {/* Credentials */}
                 <div>
-                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
+                  <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
                     Education & Credentials
                   </div>
                   <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-xs text-slate-200">
@@ -6278,7 +6271,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                 {/* Skills */}
                 <div>
-                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
+                  <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
                     Core Skills
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -6295,7 +6288,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                 {/* Contact + Project Links */}
                 <div>
-                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
+                  <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
                     Contact & Proof Links
                   </div>
                   {introUnlocked ? (
@@ -6347,7 +6340,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-4 space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+                      <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">
                         Gemini Deep Screening
                       </div>
                       <p className="text-xs text-slate-400 leading-relaxed">
@@ -6443,7 +6436,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   {deepScreeningShowResults &&
                     deepScreeningResult &&
                     !deepScreeningLoading && (
-                    <div className="space-y-4 pt-1 animate-in fade-in duration-500">
+                    <div className="space-y-4 pt-1">
                       <div
                         className={`rounded-xl border p-4 text-center ${getIntegrityScoreClass(deepScreeningResult.integrity_score)}`}
                       >
@@ -6530,7 +6523,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   {item.question}
                                 </p>
                                 <div className="pt-2 border-t border-zinc-800">
-                                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+                                  <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">
                                     What to listen for
                                   </p>
                                   <p className="text-[11px] text-slate-400 leading-relaxed">
@@ -6577,7 +6570,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   )}
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">
+                  <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
                     Audited Proof-of-Work Breakdown
                   </div>
                   <ul className="space-y-2">
@@ -6661,7 +6654,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                   {/* Industry */}
                   <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+                    <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">
                       Industry
                     </div>
                     <div className="text-xs font-semibold text-slate-200">
@@ -6710,7 +6703,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                   {/* Verified Project */}
                   <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+                    <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">
                       Featured Project
                     </div>
                     <div className="text-xs font-semibold text-slate-200">

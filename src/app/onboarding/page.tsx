@@ -60,10 +60,10 @@ function resolveAccountRole(
 function OnboardingSkeleton() {
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <Card className="p-8 max-w-md w-full">
+      <Card interactive={false} className="p-8 max-w-md w-full">
         <div className="flex flex-col items-center gap-4 mb-8">
           <div className="h-8 w-8 rounded-full border-2 border-zinc-700 border-t-indigo-500 animate-spin" />
-          <p className="text-sm text-zinc-500">Loading your onboarding...</p>
+          <p className="text-sm text-zinc-400">Loading your onboarding...</p>
         </div>
         <div className="space-y-3">
           <div className="h-6 w-48 mx-auto rounded bg-zinc-800 animate-pulse" />
@@ -224,11 +224,11 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <Card className="p-8 max-w-md w-full">
-        <h1 className="text-2xl font-semibold text-white tracking-tight text-center">
+      <Card interactive={false} className="p-8 max-w-md w-full">
+        <h1 className="text-2xl font-extrabold text-white tracking-tight text-center">
           {isEmployer ? "Set up your company" : "Complete Your Profile"}
         </h1>
-        <p className="text-sm text-zinc-400 text-center mb-8">
+        <p className="text-sm text-zinc-300 text-center mb-8">
           {isEmployer
             ? "Tell us about your team so we can match you with vetted talent."
             : "A few quick details before you get to the dashboard."}

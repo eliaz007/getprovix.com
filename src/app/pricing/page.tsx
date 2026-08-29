@@ -137,17 +137,17 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center py-16 px-4">
+    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col items-center py-16 px-4">
       <div className="w-full max-w-5xl mx-auto space-y-16">
-        <section className="text-center">
-          <p className="text-[11px] font-medium uppercase tracking-widest text-zinc-500 mb-6">
+        <section className="text-center hero-fade-in">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 mb-6">
             Performance-Based Hiring
           </p>
 
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">
             Hire Vetted Talent with Zero Upfront Cost
           </h1>
-          <p className="text-zinc-400 text-base sm:text-lg mt-4 max-w-3xl mx-auto leading-relaxed">
+          <p className="text-zinc-300 text-base sm:text-lg mt-4 max-w-3xl mx-auto leading-relaxed">
             Browse profiles, view proof-of-work, and generate Gemini Deep
             Screenings for free during our beta.
           </p>
@@ -157,12 +157,14 @@ export default function PricingPage() {
           {employerHighlights.map((item) => {
             const Icon = item.icon;
             return (
-              <Card key={item.title} className="p-6">
-                <div className="w-10 h-10 rounded-md bg-indigo-600/15 border border-indigo-500/25 text-indigo-400 flex items-center justify-center mb-4">
+              <Card key={item.title} interactive className="p-6">
+                <div className="w-10 h-10 rounded-md bg-indigo-600/15 border border-indigo-500/25 text-indigo-300 flex items-center justify-center mb-4">
                   <Icon className="w-5 h-5" aria-hidden />
                 </div>
-                <h2 className="text-base text-white">{item.title}</h2>
-                <p className="text-sm text-zinc-400 mt-2 leading-relaxed">
+                <h2 className="text-base font-bold tracking-tight text-white">
+                  {item.title}
+                </h2>
+                <p className="text-sm text-zinc-300 mt-2 leading-relaxed">
                   {item.description}
                 </p>
               </Card>
@@ -170,11 +172,11 @@ export default function PricingPage() {
           })}
         </section>
 
-        <Card className="p-8 max-w-xl mx-auto w-full">
-          <h2 className="text-xl font-bold text-white text-center">
+        <Card interactive={false} className="p-8 max-w-xl mx-auto w-full">
+          <h2 className="text-xl font-bold tracking-tight text-white text-center">
             Unlock Early Beta Access
           </h2>
-          <p className="text-sm text-zinc-400 text-center mt-2 leading-relaxed">
+          <p className="text-sm text-zinc-300 text-center mt-2 leading-relaxed">
             Tell us where you hire from and we&apos;ll enable deep screening,
             profile browsing, and candidate contact tools instantly.
           </p>
@@ -183,7 +185,7 @@ export default function PricingPage() {
             <div>
               <label
                 htmlFor="pricing-company-name"
-                className="block text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5"
+                className="block text-[11px] font-bold uppercase tracking-widest text-zinc-400 mb-1.5"
               >
                 Company Name
               </label>
@@ -193,13 +195,13 @@ export default function PricingPage() {
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="Your company name"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-[border-color,box-shadow] duration-150 ease-out"
               />
             </div>
             <div>
               <label
                 htmlFor="pricing-work-email"
-                className="block text-[11px] font-bold uppercase tracking-widest text-zinc-500 mb-1.5"
+                className="block text-[11px] font-bold uppercase tracking-widest text-zinc-400 mb-1.5"
               >
                 Work Email
               </label>
@@ -214,7 +216,7 @@ export default function PricingPage() {
                   }
                 }}
                 placeholder="hiring@company.com"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-all"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-[border-color,box-shadow] duration-150 ease-out"
               />
             </div>
           </div>
@@ -240,22 +242,22 @@ export default function PricingPage() {
 
         <div className="flex items-center gap-4">
           <div className="flex-1 border-t border-zinc-800" />
-          <span className="text-xs text-zinc-500 uppercase tracking-widest font-medium">
+          <span className="text-xs text-zinc-400 uppercase tracking-widest font-semibold">
             For Talent &amp; Students
           </span>
           <div className="flex-1 border-t border-zinc-800" />
         </div>
 
-        <Card className="p-8 max-w-3xl mx-auto w-full">
+        <Card interactive className="p-8 max-w-3xl mx-auto w-full">
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
               <Users className="w-5 h-5" aria-hidden />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-white">
+              <h2 className="text-2xl font-bold tracking-tight text-white">
                 Always Free for Candidates
               </h2>
-              <p className="text-zinc-400 text-sm mt-2 leading-relaxed">
+              <p className="text-zinc-300 text-sm mt-2 leading-relaxed">
                 Build a verified profile, get matched to roles, and showcase
                 proof-of-work at no cost.
               </p>
@@ -263,7 +265,7 @@ export default function PricingPage() {
                 {talentHighlights.map((item) => (
                   <li
                     key={item}
-                    className="flex items-center gap-3 text-sm text-zinc-300"
+                    className="flex items-center gap-3 text-sm text-zinc-200"
                   >
                     <CheckCircle2
                       className="w-4 h-4 shrink-0 text-emerald-400"
