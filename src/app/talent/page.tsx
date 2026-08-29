@@ -10,14 +10,20 @@ export default function TalentDirectoryPage() {
   useEffect(() => {
     const supabase = createClient();
 
-    void supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        router.replace("/dashboard");
-        return;
-      }
+    void supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (data.user) {
+          router.replace("/dashboard");
+          return;
+        }
 
-      router.replace("/login?next=/dashboard");
-    });
+        router.replace("/login?next=/dashboard");
+      })
+      .catch((err) => {
+        console.error("Talent redirect failed:", err);
+        router.replace("/login?next=/dashboard");
+      });
   }, [router]);
 
   return (

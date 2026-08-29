@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { requireAiApiAccess } from "@/lib/api-auth";
 
 export type InterviewSimulatorRequestBody = {
   targetJobTitle?: string;
@@ -373,6 +374,11 @@ async function generateGeminiInterview(
 }
 
 export async function POST(request: Request) {
+  const denied = await requireAiApiAccess();
+  if (denied) {
+    return denied;
+  }
+
   let body: unknown;
 
   try {

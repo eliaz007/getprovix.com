@@ -75,6 +75,12 @@ export default function PublicOpportunitiesFeed() {
           return;
         }
         setAppliedJobIds((data ?? []).map((row) => row.job_id));
+      })
+      .catch((err) => {
+        if (!isMounted) {
+          return;
+        }
+        console.error("Failed to fetch job applications:", err);
       });
 
     return () => {

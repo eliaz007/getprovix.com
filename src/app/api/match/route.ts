@@ -8,6 +8,7 @@ import {
   type MatchJobPayload,
   type MatchResult,
 } from "@/lib/match-heuristic";
+import { requireAiApiAccess } from "@/lib/api-auth";
 
 export type { MatchResult };
 
@@ -130,6 +131,11 @@ async function generateGeminiMatch(
 }
 
 export async function POST(request: Request) {
+  const denied = await requireAiApiAccess();
+  if (denied) {
+    return denied;
+  }
+
   let body: unknown;
 
   try {

@@ -7,6 +7,11 @@ import {
   resolveDailyScanUsage,
   type DailyScanUsage,
 } from "@/lib/daily-scan-limit";
+import {
+  consumeRateLimit,
+  getRequestIp,
+  tooManyRequestsResponse,
+} from "@/lib/ip-rate-limit";
 import { createClient } from "@/utils/supabase/server";
 
 export type AuditRequestBody = {
@@ -293,6 +298,17 @@ export async function POST(request: Request) {
 
   if (!access.ok) {
     return access.response;
+  }
+
+  if (!access.user) {
+    const guestLimit = consumeRateLimit(
+      `audit-guest:${getRequestIp(request)}`,
+      8,
+      60 * 60 * 1000
+    );
+    if (!guestLimit.ok) {
+      return tooManyRequestsResponse(guestLimit.retryAfterSec);
+    }
   }
 
   if (access.user && access.usage.limit_reached) {

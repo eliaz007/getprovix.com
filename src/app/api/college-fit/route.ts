@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { requireAiApiAccess } from "@/lib/api-auth";
 
 type CollegeFitRequestBody = {
   gpa?: string;
@@ -752,6 +753,11 @@ async function generateGeminiCollegeFit(
 }
 
 export async function POST(request: Request) {
+  const denied = await requireAiApiAccess();
+  if (denied) {
+    return denied;
+  }
+
   let body: unknown;
 
   try {

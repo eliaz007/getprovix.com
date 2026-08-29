@@ -33,10 +33,14 @@ export function GitHubSignInButton({
     setLoading(true);
     onError?.("");
 
-    const { error } = await handleGitHubSignIn();
-
-    if (error) {
-      onError?.(error.message);
+    try {
+      const { error } = await handleGitHubSignIn();
+      if (error) {
+        onError?.(error.message);
+      }
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : "GitHub sign-in failed.");
+    } finally {
       setLoading(false);
     }
   };

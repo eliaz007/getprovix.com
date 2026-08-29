@@ -76,9 +76,20 @@ export default function LoginPage() {
       setCheckingSession(false);
     };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      handleSession(session);
-    });
+    supabase.auth
+      .getUser()
+      .then(({ data: { user } }) => {
+        if (hasAuthEmail(user)) {
+          window.location.href = getPostLoginPath(user);
+          return;
+        }
+
+        setCheckingSession(false);
+      })
+      .catch((err) => {
+        console.error("Login session check failed:", err);
+        setCheckingSession(false);
+      });
 
     const {
       data: { subscription },

@@ -47,10 +47,14 @@ export function GoogleSignInButton({
     setLoading(true);
     onError?.("");
 
-    const { error } = await handleGoogleSignIn();
-
-    if (error) {
-      onError?.(error.message);
+    try {
+      const { error } = await handleGoogleSignIn();
+      if (error) {
+        onError?.(error.message);
+      }
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : "Google sign-in failed.");
+    } finally {
       setLoading(false);
     }
   };

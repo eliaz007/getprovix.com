@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { requireAiApiUser } from "@/lib/api-auth";
 import { createClient } from "@/utils/supabase/server";
 
 type CandidatePayload = {
@@ -527,7 +528,8 @@ function isValidRequestBody(
 async function persistScreeningResult(
   candidateKey: string | undefined,
   profileId: string | undefined,
-  result: ScreenResult
+  result: ScreenResult,
+  userId: string
 ): Promise<boolean> {
   if (!candidateKey?.trim()) {
     return false;
@@ -537,13 +539,18 @@ async function persistScreeningResult(
     const supabase = await createClient();
     const key = candidateKey.trim();
     const payload = result as unknown as Record<string, unknown>;
+    const requestedProfileId = profileId?.trim() || null;
+    const ownedProfileId =
+      requestedProfileId && requestedProfileId === userId
+        ? requestedProfileId
+        : null;
 
     const { error: screeningError } = await supabase
       .from("candidate_screenings")
       .upsert(
         {
           candidate_key: key,
-          profile_id: profileId?.trim() || null,
+          profile_id: ownedProfileId,
           integrity_score: result.integrity_score,
           audit_data: payload,
           updated_at: new Date().toISOString(),
@@ -555,14 +562,14 @@ async function persistScreeningResult(
       console.error("[screen] candidate_screenings upsert failed:", screeningError);
     }
 
-    if (profileId?.trim()) {
+    if (ownedProfileId) {
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
           integrity_score: result.integrity_score,
           audit_data: payload,
         })
-        .eq("id", profileId.trim());
+        .eq("id", userId);
 
       if (profileError) {
         console.error("[screen] profiles audit update failed:", profileError);
@@ -652,6 +659,11 @@ async function generateGeminiScreen(
 }
 
 export async function POST(request: Request) {
+  const access = await requireAiApiUser();
+  if (access instanceof NextResponse) {
+    return access;
+  }
+
   let body: unknown;
 
   try {
@@ -695,7 +707,8 @@ export async function POST(request: Request) {
     const persisted = await persistScreeningResult(
       candidate_key,
       profile_id,
-      result
+      result,
+      access.user.id
     );
     return NextResponse.json({ ...result, persisted });
   } catch (error) {
@@ -704,7 +717,8 @@ export async function POST(request: Request) {
     const persisted = await persistScreeningResult(
       candidate_key,
       profile_id,
-      fallback
+      fallback,
+      access.user.id
     );
     return NextResponse.json({ ...fallback, persisted });
   }
