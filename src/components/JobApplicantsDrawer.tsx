@@ -6,6 +6,8 @@ import { generateMaskedAliasFromUuid, getCodenameInitials } from "@/lib/alias-ge
 import { getPublicCandidateLocation } from "@/lib/candidate-anonymization";
 import { scoreTalentMatch } from "@/lib/match-heuristic";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
+import { clampScore0to100 } from "@/lib/score-scale";
+import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { createClient } from "@/utils/supabase/client";
 
@@ -90,7 +92,7 @@ function formatAiScoreLabel(
     Number.isFinite(matchPercentage) &&
     !isCanned
   ) {
-    return `${Math.round(matchPercentage)}% Match`;
+    return `${clampScore0to100(matchPercentage)}% Match`;
   }
 
   const scored = scoreTalentMatch(
@@ -101,7 +103,7 @@ function formatAiScoreLabel(
     },
     { title: jobTitle }
   );
-  return `${scored.match_percentage}% Match`;
+  return `${clampScore0to100(scored.match_percentage)}% Match`;
 }
 
 function formatAppliedAt(value: string): string {
@@ -191,7 +193,13 @@ export default function JobApplicantsDrawer({
   const [applicants, setApplicants] = useState<JobApplicantView[]>([]);
 
   useEffect(() => {
-    if (!open || !jobId || !employerId) {
+    if (!open || !jobId) {
+      return;
+    }
+
+    if (!employerId) {
+      setError("Could not load interested candidates. Please try again.");
+      setLoading(false);
       return;
     }
 
@@ -401,9 +409,17 @@ export default function JobApplicantsDrawer({
                       )}
                     </div>
                   </div>
-                  <span className="shrink-0 font-mono text-[11px] font-bold tabular-nums text-zinc-300">
-                    {applicant.aiScoreLabel}
-                  </span>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <span className="font-mono text-[11px] font-bold tabular-nums text-zinc-300">
+                      {applicant.aiScoreLabel}
+                    </span>
+                    {/^\d+/.test(applicant.aiScoreLabel) ? (
+                      <ScoreMeter
+                        score={Number.parseInt(applicant.aiScoreLabel, 10)}
+                        className="w-16"
+                      />
+                    ) : null}
+                  </div>
                 </div>
 
                 <div>

@@ -10,6 +10,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
+import ScoreMeter from "@/components/ScoreMeter";
+import { clampScore0to100 } from "@/lib/score-scale";
 import {
   DAILY_LIMIT_UI_MESSAGE,
   type DailyScanUsage,
@@ -339,9 +341,10 @@ export default function GitHubResumeAuditor() {
                 <div
                   className={`px-3 py-1.5 rounded-md border text-xl font-mono font-bold tabular-nums ${getScoreBadgeClass(result.score)}`}
                 >
-                  {result.score}/100
+                  {clampScore0to100(result.score)}/100
                 </div>
               </div>
+              <ScoreMeter score={result.score} />
 
               <div>
                 <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-3">

@@ -1,5 +1,6 @@
 import type { GitHubAuditContext } from "@/lib/github-audit";
 import { normalizeStringArray } from "@/lib/match-heuristic";
+import { clampScore0to100 } from "@/lib/score-scale";
 
 export type FitVerdict = "Strong Fit" | "Moderate Fit" | "Growth Fit";
 
@@ -34,18 +35,7 @@ const FIT_VERDICTS: FitVerdict[] = [
 ];
 
 export function clampMatchScore(value: unknown): number {
-  const numeric =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-
-  if (!Number.isFinite(numeric)) {
-    return 55;
-  }
-
-  return Math.min(100, Math.max(0, Math.round(numeric)));
+  return clampScore0to100(value, 0);
 }
 
 export function scoreToFitVerdict(score: number): FitVerdict {
@@ -143,11 +133,11 @@ export function buildFallbackOpportunityMatch(
     )
   );
 
-  let match_score = 40;
+  let match_score = 0;
   const match_reasons: string[] = [];
 
   if (matchingTags.length > 0) {
-    match_score += Math.min(35, matchingTags.length * 12);
+    match_score += Math.min(40, matchingTags.length * 12);
     match_reasons.push(
       `Your ${matchingTags.slice(0, 3).join(", ")} experience overlaps with this role's stack.`
     );
@@ -157,7 +147,7 @@ export function buildFallbackOpportunityMatch(
     const titleLower = job.title.toLowerCase();
     const roleLower = roleType.toLowerCase();
     if (titleLower.includes(roleLower) || roleLower.includes(titleLower)) {
-      match_score += 12;
+      match_score += 20;
       match_reasons.push(
         `Your ${roleType} focus aligns with the ${job.title} track.`
       );
@@ -165,7 +155,7 @@ export function buildFallbackOpportunityMatch(
   }
 
   if (candidate.bio?.trim()) {
-    match_score += 6;
+    match_score += 15;
     match_reasons.push(
       "Your published bio gives employers context on your builder narrative."
     );
@@ -175,12 +165,12 @@ export function buildFallbackOpportunityMatch(
     if (githubAudit.language && matchingTags.some((tag) =>
       tag.toLowerCase().includes(githubAudit.language!.toLowerCase())
     )) {
-      match_score += 10;
+      match_score += 15;
       match_reasons.push(
         `GitHub audit shows active ${githubAudit.language} work in ${githubAudit.owner}/${githubAudit.repo}.`
       );
     } else if (githubAudit.commit_count_sampled >= 3) {
-      match_score += 8;
+      match_score += 10;
       match_reasons.push(
         `Verified GitHub activity in ${githubAudit.owner}/${githubAudit.repo} supports your proof-of-work claims.`
       );

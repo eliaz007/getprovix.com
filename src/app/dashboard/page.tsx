@@ -124,6 +124,9 @@ import {
   persistEmployerProfile,
   type EmployerProfileFormData,
 } from "@/lib/persist-employer-profile";
+import type { DashboardTab } from "@/lib/dashboard-account";
+import { clampScore0to100 } from "@/lib/score-scale";
+import ScoreMeter from "@/components/ScoreMeter";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const AUDIT_STORAGE_PREFIX = "vanguardx_audit_";
@@ -131,7 +134,7 @@ const AUDIT_STORAGE_PREFIX = "vanguardx_audit_";
 const DEEP_SCREENING_STAGES = [
   "Auditing GitHub repositories & branch structure...",
   "Verifying commit chronology & code authenticity...",
-  "Synthesizing 1–100 score & founder interview rubrics...",
+  "Synthesizing 0–100 score & founder interview rubrics...",
 ] as const;
 
 const COLLEGE_FIT_STAGES = [
@@ -283,18 +286,6 @@ const Icons = {
   )
 };
 
-type DashboardTab =
-  | "my_profile"
-  | "opportunities"
-  | "essay-studio"
-  | "aid-appeals"
-  | "college-fit"
-  | "opportunity_radar"
-  | "applications"
-  | "talent"
-  | "evaluator"
-  | "revenue";
-
 type ProfileRecord = {
   id: string | null;
   full_name: string | null;
@@ -377,7 +368,10 @@ function parseStoredScreeningResult(raw: string): DeepScreeningResult | null {
       Array.isArray(parsed.timeline_flags) &&
       typeof parsed.artifact_analysis === "string"
     ) {
-      return parsed;
+      return {
+        ...parsed,
+        integrity_score: clampScore0to100(parsed.integrity_score),
+      };
     }
   } catch {
     // Ignore malformed cache entries.
@@ -550,7 +544,7 @@ function mapProfileRowToTalentCandidate(
   const integrityScore =
     typeof row.integrity_score === "number" &&
     Number.isFinite(row.integrity_score)
-      ? Math.round(row.integrity_score)
+      ? clampScore0to100(row.integrity_score)
       : null;
   const major =
     row.major?.trim() ||
@@ -668,10 +662,7 @@ function formatTalentMatchLabel(percentage: number, isPending = false): string {
 }
 
 function clampDisplayedMatch(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.min(99, Math.max(0, Math.round(value)));
+  return clampScore0to100(value, 0);
 }
 
 type MatchingJob = {
@@ -857,7 +848,13 @@ export default function DashboardPage() {
   const [fallbackActiveTab, setFallbackActiveTab] =
     useState<DashboardTab>("opportunities");
   const activeTab = dashboardNav?.activeTab ?? fallbackActiveTab;
-  const setActiveTab = dashboardNav?.setActiveTab ?? setFallbackActiveTab;
+  const setActiveTab = (tab: DashboardTab) => {
+    if (dashboardNav) {
+      dashboardNav.setActiveTab(tab);
+      return;
+    }
+    setFallbackActiveTab(tab);
+  };
   const setMobileNavOpen = dashboardNav?.setMobileNavOpen ?? (() => {});
   const setNavAccountRole = dashboardNav?.setAccountRole ?? (() => {});
   const setOnOpenJobApplicants =
@@ -907,10 +904,13 @@ export default function DashboardPage() {
     if (user?.id) {
       return true;
     }
+    if (dashboardNav) {
+      return dashboardNav.requireAuth();
+    }
     setAuthModalError(null);
     setAuthModalOpen(true);
     return false;
-  }, [user?.id]);
+  }, [dashboardNav, user?.id]);
   const [dbProfile, setDbProfile] = useState<ProfileRecord | null>(null);
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -929,6 +929,9 @@ export default function DashboardPage() {
     CandidateIntroRequestRow[]
   >([]);
   const [candidateIntroLoading, setCandidateIntroLoading] = useState(false);
+  const [candidateIntroError, setCandidateIntroError] = useState<string | null>(
+    null
+  );
   const [introRespondLoadingId, setIntroRespondLoadingId] = useState<
     string | null
   >(null);
@@ -954,6 +957,8 @@ export default function DashboardPage() {
   const showTalentPoolNav = canAccessTalentPool(profileRole);
   const [candidates, setCandidates] = useState<TalentPoolCandidate[]>([]);
   const [talentPoolLoading, setTalentPoolLoading] = useState(false);
+  const [talentPoolError, setTalentPoolError] = useState<string | null>(null);
+  const [talentPoolRefreshKey, setTalentPoolRefreshKey] = useState(0);
 
   useEffect(() => {
     setNavAccountRole(profileRole ?? null);
@@ -1262,25 +1267,29 @@ export default function DashboardPage() {
     const supabase = createClient();
 
     (async () => {
-      const { data, error } = await supabase
-        .from("job_applications")
-        .select("job_id")
-        .in("job_id", employerJobIds);
+      try {
+        const { data, error } = await supabase
+          .from("job_applications")
+          .select("job_id")
+          .in("job_id", employerJobIds);
 
-      if (!isMounted) {
-        return;
-      }
+        if (!isMounted) {
+          return;
+        }
 
-      if (error) {
-        console.error("Failed to fetch job interest counts:", error);
-        return;
-      }
+        if (error) {
+          console.error("Failed to fetch job interest counts:", error);
+          return;
+        }
 
-      const counts: Record<string, number> = {};
-      for (const row of data ?? []) {
-        counts[row.job_id] = (counts[row.job_id] ?? 0) + 1;
+        const counts: Record<string, number> = {};
+        for (const row of data ?? []) {
+          counts[row.job_id] = (counts[row.job_id] ?? 0) + 1;
+        }
+        setJobInterestCounts(counts);
+      } catch (err) {
+        console.error("Failed to fetch job interest counts:", err);
       }
-      setJobInterestCounts(counts);
     })();
 
     return () => {
@@ -1309,6 +1318,7 @@ export default function DashboardPage() {
     if (!showTalentPoolNav) {
       setCandidates([]);
       setTalentPoolLoading(false);
+      setTalentPoolError(null);
       return;
     }
 
@@ -1321,11 +1331,21 @@ export default function DashboardPage() {
       }
 
       try {
-        const { data } = await fetchEmployerTalentPoolProfiles(supabase);
+        const { data, error } = await fetchEmployerTalentPoolProfiles(supabase);
 
         if (!isMounted) {
           return;
         }
+
+        if (error) {
+          console.error("Talent pool fetch failed:", error);
+          if (!opts?.silent) {
+            setTalentPoolError("Could not load the talent pool. Please try again.");
+          }
+          return;
+        }
+
+        setTalentPoolError(null);
 
         const profileRows = data
           .filter(
@@ -1345,8 +1365,8 @@ export default function DashboardPage() {
         );
       } catch (err) {
         console.error("Talent pool fetch threw:", err);
-        if (isMounted) {
-          setCandidates([]);
+        if (isMounted && !opts?.silent) {
+          setTalentPoolError("Could not load the talent pool. Please try again.");
         }
       } finally {
         if (isMounted && !opts?.silent) {
@@ -1376,33 +1396,38 @@ export default function DashboardPage() {
       }
       window.removeEventListener("focus", handleWindowFocus);
     };
-  }, [showTalentPoolNav, activeTab]);
+  }, [showTalentPoolNav, activeTab, talentPoolRefreshKey]);
 
   const fetchIntroUnlocks = useCallback(async (userId: string) => {
     const supabase = createClient();
-    const { data, error } = await supabase
-      .from("intro_requests")
-      .select("candidate_id, status")
-      .eq("user_id", userId);
+    try {
+      const { data, error } = await supabase
+        .from("intro_requests")
+        .select("candidate_id, status")
+        .eq("user_id", userId);
 
-    if (error) {
-      console.error("Intro unlock fetch error:", error);
-      return;
-    }
-
-    const unlocked = new Set<string>();
-    for (const row of data ?? []) {
-      if (isIntroUnlockStatus(row.status)) {
-        unlocked.add(row.candidate_id.trim().toLowerCase());
+      if (error) {
+        console.error("Intro unlock fetch error:", error);
+        return;
       }
-    }
 
-    setUnlockedCandidateIds(unlocked);
+      const unlocked = new Set<string>();
+      for (const row of data ?? []) {
+        if (isIntroUnlockStatus(row.status)) {
+          unlocked.add(row.candidate_id.trim().toLowerCase());
+        }
+      }
+
+      setUnlockedCandidateIds(unlocked);
+    } catch (err) {
+      console.error("Intro unlock fetch threw:", err);
+    }
   }, []);
 
   const fetchCandidateIntroRequests = useCallback(async (userId: string) => {
     const supabase = createClient();
     setCandidateIntroLoading(true);
+    setCandidateIntroError(null);
 
     try {
       const { data, error } = await supabase
@@ -1413,10 +1438,14 @@ export default function DashboardPage() {
 
       if (error) {
         console.error("Candidate intro request fetch error:", error);
+        setCandidateIntroError("Could not load intro requests. Please try again.");
         return;
       }
 
       setCandidateIntroRequests((data ?? []) as CandidateIntroRequestRow[]);
+    } catch (err) {
+      console.error("Candidate intro request fetch threw:", err);
+      setCandidateIntroError("Could not load intro requests. Please try again.");
     } finally {
       setCandidateIntroLoading(false);
     }
@@ -1447,13 +1476,17 @@ export default function DashboardPage() {
     const tab = params.get("tab");
     if (tab === "intro_requests" && !isBusinessAccount && !isEmployeeAccount) {
       if (!user) {
-        setAuthModalOpen(true);
+        if (dashboardNav) {
+          dashboardNav.setAuthModalOpen(true);
+        } else {
+          setAuthModalOpen(true);
+        }
         setActiveTab("opportunities");
         return;
       }
       setActiveTab("intro_requests");
     }
-  }, [isBusinessAccount, isEmployeeAccount, setActiveTab, user]);
+  }, [dashboardNav, isBusinessAccount, isEmployeeAccount, setActiveTab, user]);
 
   useEffect(() => {
     if (!user) {
@@ -1680,6 +1713,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           ? "You are now visible to employers."
           : "You are hidden from the talent pool."
       );
+    } catch (error) {
+      console.error("Talent pool visibility update failed:", error);
+      setIsVisibleInPool(previousVisible);
+      showToast("Could not update talent pool visibility. Please try again.");
     } finally {
       setIsTogglingVisibility(false);
     }
@@ -1748,6 +1785,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         );
         setSavedBusinessProfileData(businessProfileData);
         showToast("Profile changes saved successfully!");
+      } catch (error) {
+        console.error("Employer profile update failed:", error);
+        showToast("Could not save company profile. Please try again.");
       } finally {
         setIsSaving(false);
       }
@@ -2597,38 +2637,51 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     );
 
     const supabase = createClient();
-    const { error } = await supabase.from("job_applications").insert({
-      job_id: job.id,
-      candidate_id: user.id,
-    });
+    try {
+      const { error } = await supabase.from("job_applications").insert({
+        job_id: job.id,
+        candidate_id: user.id,
+      });
 
-    if (error) {
-      console.error("Failed to submit job interest:", error);
+      if (error) {
+        console.error("Failed to submit job interest:", error);
+        setAppliedJobIds((prev) => prev.filter((id) => id !== job.id));
+        setAppliedJobs((prev) =>
+          prev.filter((application) => application.jobId !== job.id)
+        );
+
+        if (error.code === "23505") {
+          setAppliedJobIds((prev) =>
+            prev.includes(job.id) ? prev : [...prev, job.id]
+          );
+          return;
+        }
+
+        showToast("Could not submit interest. Please try again.");
+        return;
+      }
+
+      const employerId = job.employer_id as string | undefined;
+      if (employerId && employerId !== user.id) {
+        const alias = getCandidateNotificationAlias();
+        const jobTitle = job.title ?? "Open Role";
+        try {
+          await createEmployerNotification(supabase, {
+            userId: employerId,
+            jobId: job.id,
+            message: `${alias} expressed interest in your role: ${jobTitle}`,
+          });
+        } catch (notifyError) {
+          console.warn("Failed to notify employer of interest:", notifyError);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to submit job interest:", err);
       setAppliedJobIds((prev) => prev.filter((id) => id !== job.id));
       setAppliedJobs((prev) =>
         prev.filter((application) => application.jobId !== job.id)
       );
-
-      if (error.code === "23505") {
-        setAppliedJobIds((prev) =>
-          prev.includes(job.id) ? prev : [...prev, job.id]
-        );
-        return;
-      }
-
       showToast("Could not submit interest. Please try again.");
-      return;
-    }
-
-    const employerId = job.employer_id as string | undefined;
-    if (employerId && employerId !== user.id) {
-      const alias = getCandidateNotificationAlias();
-      const jobTitle = job.title ?? "Open Role";
-      await createEmployerNotification(supabase, {
-        userId: employerId,
-        jobId: job.id,
-        message: `${alias} expressed interest in your role: ${jobTitle}`,
-      });
     }
   };
 
@@ -2727,6 +2780,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       codenameAlias: codename,
       country: applicant.location,
       timezone: applicant.location,
+      workPreference: DEFAULT_WORK_PREFERENCE,
       role: applicant.headline,
       major: "Credentials on file",
       skills: applicant.skills,
@@ -3279,34 +3333,39 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     setIsCreatingJob(true);
     const supabase = createClient();
 
-    const { data, error } = await supabase
-      .from("jobs")
-      .insert({
-        title: newJobTitle.trim(),
-        company: newJobCompany.trim(),
-        location: newJobLocation.trim(),
-        salary_range: formatSalaryRange(newJobSalaryRange.trim()),
-        tags: tagsArray,
-        employer_id: user.id,
-      })
-      .select("*")
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from("jobs")
+        .insert({
+          title: newJobTitle.trim(),
+          company: newJobCompany.trim(),
+          location: newJobLocation.trim(),
+          salary_range: formatSalaryRange(newJobSalaryRange.trim()),
+          tags: tagsArray,
+          employer_id: user.id,
+        })
+        .select("*")
+        .single();
 
-    setIsCreatingJob(false);
+      if (error) {
+        console.error("Create job error:", JSON.stringify(error, null, 2));
+        showToast("Could not post job. Please try again.");
+        return;
+      }
 
-    if (error) {
-      console.error("Create job error:", JSON.stringify(error, null, 2));
+      if (data) {
+        setJobs((prev) => [data, ...prev]);
+      }
+
+      setPostJobModalOpen(false);
+      resetNewJobForm();
+      showToast("Job posted successfully!");
+    } catch (err) {
+      console.error("Create job error:", err);
       showToast("Could not post job. Please try again.");
-      return;
+    } finally {
+      setIsCreatingJob(false);
     }
-
-    if (data) {
-      setJobs((prev) => [data, ...prev]);
-    }
-
-    setPostJobModalOpen(false);
-    resetNewJobForm();
-    showToast("Job posted successfully!");
   };
 
   const businessSlug =
@@ -3437,7 +3496,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             className={guestNavClass(false)}
           >
             <ShieldCheck className="w-4 h-4" aria-hidden="true" />
-            Audits
+            GitHub Auditor
           </Link>
           <button
             type="button"
@@ -3445,7 +3504,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             className={guestNavClass(false)}
           >
             <Target className="w-4 h-4" aria-hidden="true" />
-            Simulator
+            Interview Simulator
           </button>
         </nav>
       </div>
@@ -4289,6 +4348,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <p className="text-sm font-medium text-slate-400">
                     Loading intro requests...
                   </p>
+                </div>
+              ) : candidateIntroError ? (
+                <div className="card-edge bg-[#111111] border border-red-500/20 rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-red-200">
+                    {candidateIntroError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (user?.id) {
+                        void fetchCandidateIntroRequests(user.id);
+                      }
+                    }}
+                    className="mt-4 bg-red-500/10 hover:bg-red-500/15 border border-red-500/25 text-red-200 font-semibold py-2 px-4 rounded-lg text-xs transition-all cursor-pointer"
+                  >
+                    Retry
+                  </button>
                 </div>
               ) : candidateIntroRequests.length === 0 ? (
                 <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
@@ -5413,9 +5489,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   : "Pending"}
                             </span>
                             {insight && !isMatching ? (
-                              <span className="text-[10px] font-mono font-bold tabular-nums text-zinc-400">
-                                {matchScore}% match
-                              </span>
+                              <>
+                                <span className="text-[10px] font-mono font-bold tabular-nums text-zinc-400">
+                                  {clampScore0to100(matchScore)}% match
+                                </span>
+                                <ScoreMeter
+                                  score={matchScore}
+                                  className="w-16"
+                                />
+                              </>
                             ) : null}
                           </div>
                         </div>
@@ -5771,6 +5853,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         </div>
                       ))}
                     </div>
+                  ) : talentPoolError ? (
+                    <div className="card-edge bg-[#111111] border border-red-500/20 rounded-2xl p-10 text-center">
+                      <p className="text-sm font-medium text-red-200">
+                        {talentPoolError}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTalentPoolRefreshKey((current) => current + 1)
+                        }
+                        className="mt-4 bg-red-500/10 hover:bg-red-500/15 border border-red-500/25 text-red-200 font-semibold py-2 px-4 rounded-lg text-xs transition-all cursor-pointer"
+                      >
+                        Retry
+                      </button>
+                    </div>
                   ) : filteredCandidates.length === 0 ? (
                     <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
                       <p className="text-sm font-medium text-slate-300">
@@ -5816,6 +5913,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                     col.matchPending
                                   )}
                                 </span>
+                                {!col.matchPending ? (
+                                  <ScoreMeter
+                                    score={col.matchScore}
+                                    className="w-16"
+                                  />
+                                ) : null}
                               </div>
                             </div>
 
@@ -5919,9 +6022,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         <div
                           className={`text-xl font-mono font-bold px-3 py-1 rounded-lg border ${getIntegrityScoreClass(employerAuditResult.score)}`}
                         >
-                          {employerAuditResult.score}/100
+                          {clampScore0to100(employerAuditResult.score)}/100
                         </div>
                       </div>
+                      <ScoreMeter
+                        score={employerAuditResult.score}
+                        className="mt-3"
+                      />
 
                       {employerAuditResult.strengths.length > 0 && (
                         <div>
@@ -6095,27 +6202,32 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 </div>
 
                 {/* Status + Rating */}
-                <div className="flex items-center justify-between text-xs bg-slate-900/60 px-3.5 py-2.5 rounded-xl border border-zinc-800">
-                  <span
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getAvailabilityBadgeClass(
-                      selectedCandidate.availability
-                    )}`}
-                  >
-                    {selectedCandidate.availability}
-                  </span>
-                  <span
-                    className={`font-mono font-bold ${
-                      liveCandidate.matchPending
-                        ? "text-indigo-300 animate-pulse"
-                        : "text-emerald-400"
-                    }`}
-                  >
-                    {formatTalentMatchLabel(
-                      liveCandidate.matchScore,
-                      liveCandidate.matchPending
-                    )}{" "}
-                    AI Match Score
-                  </span>
+                <div className="space-y-2 bg-slate-900/60 px-3.5 py-2.5 rounded-xl border border-zinc-800">
+                  <div className="flex items-center justify-between text-xs">
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getAvailabilityBadgeClass(
+                        selectedCandidate.availability
+                      )}`}
+                    >
+                      {selectedCandidate.availability}
+                    </span>
+                    <span
+                      className={`font-mono font-bold ${
+                        liveCandidate.matchPending
+                          ? "text-indigo-300 animate-pulse"
+                          : "text-emerald-400"
+                      }`}
+                    >
+                      {formatTalentMatchLabel(
+                        liveCandidate.matchScore,
+                        liveCandidate.matchPending
+                      )}{" "}
+                      AI Match Score
+                    </span>
+                  </div>
+                  {!liveCandidate.matchPending ? (
+                    <ScoreMeter score={liveCandidate.matchScore} />
+                  ) : null}
                 </div>
 
                 {/* Bio */}
@@ -6308,11 +6420,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           Integrity Score
                         </div>
                         <div className="text-4xl font-mono font-extrabold tabular-nums">
-                          {deepScreeningResult.integrity_score}
+                          {clampScore0to100(deepScreeningResult.integrity_score)}
                           <span className="text-lg font-semibold opacity-70">
                             /100
                           </span>
                         </div>
+                        <ScoreMeter
+                          score={deepScreeningResult.integrity_score}
+                          className="mt-3 mx-auto max-w-[160px]"
+                        />
                         {deepScreeningResult.github_audit && (
                           <p className="text-[11px] mt-2 opacity-80 font-mono">
                             Live audit: {deepScreeningResult.github_audit.owner}/
@@ -6778,12 +6894,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         </div>
       </div>
 
-      <GuestAuthModal
-        open={authModalOpen}
-        error={authModalError}
-        onClose={() => setAuthModalOpen(false)}
-        onError={setAuthModalError}
-      />
+      {!dashboardNav ? (
+        <GuestAuthModal
+          open={authModalOpen}
+          error={authModalError}
+          onClose={() => setAuthModalOpen(false)}
+          onError={setAuthModalError}
+        />
+      ) : null}
     </>
   );
 }

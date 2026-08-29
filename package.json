@@ -2,6 +2,7 @@
   "name": "first-ai-app",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "cross-env NODE_TLS_REJECT_UNAUTHORIZED=0 next dev || set NODE_TLS_REJECT_UNAUTHORIZED=0 && next dev",
     "build": "next build",

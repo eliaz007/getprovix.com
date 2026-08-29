@@ -146,6 +146,14 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
         }
 
         setAccountRole(resolveAccountRole(profile?.role, user));
+      } catch (error) {
+        console.error("Dashboard nav session bootstrap failed:", error);
+        if (active) {
+          setUserId(null);
+          setUserAvatarUrl(null);
+          setUserInitials("U");
+          setAccountRole(null);
+        }
       } finally {
         if (active) {
           setAuthLoading(false);

@@ -5,6 +5,7 @@ import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
 import Card from "@/components/ui/Card";
+import ScoreMeter from "@/components/ScoreMeter";
 
 type FeaturedShowcaseProps = {
   builders: FeaturedBuilder[];
@@ -81,9 +82,12 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
         }`}
       >
         {builder.proofScore !== null && (
-          <span className="font-mono text-sm tabular-nums text-zinc-300">
-            {builder.proofScore}/100
-          </span>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="font-mono text-sm tabular-nums text-zinc-300">
+              {builder.proofScore}/100
+            </span>
+            <ScoreMeter score={builder.proofScore} className="w-20" />
+          </div>
         )}
 
         <Link

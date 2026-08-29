@@ -13,6 +13,8 @@ import {
   getFitVerdictBadgeClass,
   type OpportunityMatchResult,
 } from "@/lib/opportunity-match";
+import { clampScore0to100 } from "@/lib/score-scale";
+import ScoreMeter from "@/components/ScoreMeter";
 
 export type OpportunitiesJobFeedProps = {
   jobs: JobRow[];
@@ -283,9 +285,12 @@ export default function OpportunitiesJobFeed({
                             : "Pending"}
                       </span>
                       {insight && !isMatching ? (
-                        <span className="text-[10px] font-mono font-bold tabular-nums text-zinc-400">
-                          {matchScore}% match
-                        </span>
+                        <>
+                          <span className="text-[10px] font-mono font-bold tabular-nums text-zinc-400">
+                            {clampScore0to100(matchScore)}% match
+                          </span>
+                          <ScoreMeter score={matchScore} className="w-16" />
+                        </>
                       ) : null}
                     </div>
                   ) : null}

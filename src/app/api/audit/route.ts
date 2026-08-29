@@ -12,6 +12,7 @@ import {
   getRequestIp,
   tooManyRequestsResponse,
 } from "@/lib/ip-rate-limit";
+import { clampScore0to100 } from "@/lib/score-scale";
 import { createClient } from "@/utils/supabase/server";
 
 export type AuditRequestBody = {
@@ -34,14 +35,14 @@ Evaluate whether a candidate's stated role, GitHub presence, and resume/experien
 
 Return strict JSON only:
 {
-  "score": number (integer 1-100, hiring readiness),
+  "score": number (integer 0-100, hiring readiness),
   "strengths": ["verified strength with evidence", "..."],
   "redFlags": ["missing proof or credibility gap", "..."],
   "recommendations": ["specific actionable fix", "...", "..."]
 }
 
 Rules:
-- score: 1-100 integer reflecting overall hiring readiness for the target role and level.
+- score: 0-100 integer reflecting overall hiring readiness for the target role and level. 0 is the absolute minimum, 100 is the maximum.
 - strengths: 3-5 bullets citing concrete signals from GitHub URL and/or resume text when provided.
 - redFlags: 2-5 bullets flagging gaps, vague claims, missing artifacts, or timeline inconsistencies.
 - recommendations: exactly 3 specific, actionable steps to stand out to founders (not generic advice).
@@ -53,7 +54,7 @@ const AUDIT_RESPONSE_SCHEMA = {
   properties: {
     score: {
       type: Type.INTEGER,
-      description: "Overall hiring readiness score from 1 to 100.",
+      description: "Overall hiring readiness score from 0 to 100.",
     },
     strengths: {
       type: Type.ARRAY,
@@ -79,18 +80,7 @@ const MODEL_CANDIDATES = [
 ] as const;
 
 function clampScore(value: unknown): number {
-  const numeric =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-
-  if (!Number.isFinite(numeric)) {
-    return 72;
-  }
-
-  return Math.min(100, Math.max(1, Math.round(numeric)));
+  return clampScore0to100(value, 0);
 }
 
 function normalizeStringArray(value: unknown, maxItems = 6): string[] {
@@ -147,13 +137,13 @@ function buildFallbackAudit(body: AuditRequestBody): AuditResult {
   const role = body.targetRole?.trim() || "your target role";
   const level = body.compensationLevel?.trim() || "Mid";
 
-  let score = 58;
+  let score = 0;
   const strengths: string[] = [];
   const redFlags: string[] = [];
   const recommendations: string[] = [];
 
   if (hasResume) {
-    score += 12;
+    score += 35;
     strengths.push(
       "Resume summary provides material to evaluate claimed experience and scope."
     );
@@ -162,7 +152,7 @@ function buildFallbackAudit(body: AuditRequestBody): AuditResult {
   }
 
   if (hasGithub) {
-    score += 15;
+    score += 40;
     strengths.push(
       `GitHub URL supplied — reviewers can trace repository activity for ${role}.`
     );
@@ -173,7 +163,7 @@ function buildFallbackAudit(body: AuditRequestBody): AuditResult {
   }
 
   if (body.targetRole?.trim()) {
-    score += 5;
+    score += 15;
     strengths.push(`Target role "${role}" gives reviewers a clear evaluation lens.`);
   }
 

@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { requireAiApiUser } from "@/lib/api-auth";
+import { clampScore0to100 } from "@/lib/score-scale";
 import { createClient } from "@/utils/supabase/server";
 
 type CandidatePayload = {
@@ -72,7 +73,7 @@ Perform Check 1 (GitHub artifact audit) and Check 3 (chronological timeline conf
 
 Return strict JSON only in this exact structure:
 {
-  "integrity_score": number (integer 1-100),
+  "integrity_score": number (integer 0-100),
   "timeline_flags": ["flag1", "flag2"],
   "artifact_analysis": "Concise paragraph on repository/proof-of-work authenticity.",
   "technical_depth_summary": "Concise paragraph on demonstrated technical depth vs role requirements.",
@@ -90,7 +91,7 @@ Also generate an Employer Interview Cheat Sheet:
 - Each question must include a category badge label and a concise what_to_listen_for tip for hiring managers.
 
 Rules:
-- integrity_score: 1-100 integer; lower when red flags dominate, higher when claims align with artifacts.
+- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with artifacts.
 - timeline_flags: array of specific red-flag strings; empty array if none.
 - artifact_analysis and technical_depth_summary: single concise sentences or short paragraphs, no markdown.
 - interview_questions: exactly 3 objects; categories should vary (e.g., Architecture / Process, Metric Verification, Technical Depth).
@@ -101,7 +102,7 @@ const SCREEN_RESPONSE_SCHEMA = {
   properties: {
     integrity_score: {
       type: Type.INTEGER,
-      description: "Integrity score from 1 to 100.",
+      description: "Integrity score from 0 to 100.",
     },
     timeline_flags: {
       type: Type.ARRAY,
@@ -163,18 +164,7 @@ function normalizeStringArray(value: unknown, maxItems: number): string[] {
 }
 
 function clampIntegrityScore(value: unknown): number {
-  const numeric =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-
-  if (!Number.isFinite(numeric)) {
-    return 65;
-  }
-
-  return Math.min(100, Math.max(1, Math.round(numeric)));
+  return clampScore0to100(value, 0);
 }
 
 function normalizeInterviewQuestions(value: unknown): InterviewQuestion[] {
@@ -459,9 +449,11 @@ function buildFallbackScreen(
   );
 
   const timeline_flags: string[] = [];
-  let integrity_score = 62 + overlap.length * 4;
+  let integrity_score = overlap.length * 12;
 
   if (githubAudit) {
+    integrity_score += Math.min(25, githubAudit.commit_count_sampled * 5);
+
     if (githubAudit.commit_count_sampled <= 1) {
       timeline_flags.push(
         "Repository shows minimal commit history relative to claimed project ownership."
@@ -469,7 +461,9 @@ function buildFallbackScreen(
       integrity_score -= 15;
     }
 
-    if (!githubAudit.readme_excerpt) {
+    if (githubAudit.readme_excerpt) {
+      integrity_score += 15;
+    } else {
       timeline_flags.push(
         "No README found — limited evidence of documented architecture or setup."
       );
@@ -483,7 +477,6 @@ function buildFallbackScreen(
     timeline_flags.push(
       "No auditable GitHub repository URL was provided for live artifact verification."
     );
-    integrity_score -= 10;
   }
 
   const roleLabel = job.title ?? "this role";

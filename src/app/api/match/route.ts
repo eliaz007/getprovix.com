@@ -15,15 +15,15 @@ export type { MatchResult };
 const SYSTEM_PROMPT = `Score how well this candidate fits the employer's job and search query.
 Use skills, tech stack, bio, job title, job description, tags, and searchQuery.
 Return JSON only:
-{"score":0-99,"breakdown":"one short sentence about the candidate's fit"}
-Keep breakdown under 20 words. No markdown. Do not default to 50.`;
+{"score":0-100,"breakdown":"one short sentence about the candidate's fit"}
+Keep breakdown under 20 words. No markdown. Do not default to a mid-range score.`;
 
 const MATCH_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     score: {
       type: Type.INTEGER,
-      description: "Integer fit score between 0 and 99. Do not default to 50.",
+      description: "Integer fit score between 0 and 100. Do not default to a mid-range score.",
     },
     breakdown: {
       type: Type.STRING,

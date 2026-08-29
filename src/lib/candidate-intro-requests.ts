@@ -27,21 +27,24 @@ export const CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS =
 export const INTRO_REQUEST_LEGACY_SELECT_COLUMNS =
   "id, candidate_id, candidate_name, company_name, work_email, role_title, compensation_band, status, terms_agreed_at, created_at";
 
-export function resolveIntroCompanyEmail(
-  row: Pick<CandidateIntroRequestRow, "company_email" | "work_email">
-): string {
+export function resolveIntroCompanyEmail(row: {
+  company_email?: string | null;
+  work_email?: string | null;
+}): string {
   return row.company_email?.trim() || row.work_email?.trim() || "";
 }
 
-export function resolveIntroTargetRole(
-  row: Pick<CandidateIntroRequestRow, "target_role" | "role_title">
-): string {
+export function resolveIntroTargetRole(row: {
+  target_role?: string | null;
+  role_title?: string | null;
+}): string {
   return row.target_role?.trim() || row.role_title?.trim() || "Open role";
 }
 
-export function resolveIntroCompensationRange(
-  row: Pick<CandidateIntroRequestRow, "compensation_range" | "compensation_band">
-): string {
+export function resolveIntroCompensationRange(row: {
+  compensation_range?: string | null;
+  compensation_band?: string | null;
+}): string {
   return (
     row.compensation_range?.trim() ||
     row.compensation_band?.trim() ||

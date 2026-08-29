@@ -26,24 +26,34 @@ export default function PublicOpportunitiesFeed() {
     let isMounted = true;
 
     const loadJobs = async () => {
-      const { data, error } = await fetchPublicJobFeed(createClient());
+      try {
+        const { data, error } = await fetchPublicJobFeed(createClient());
 
-      if (!isMounted) {
-        return;
-      }
+        if (!isMounted) {
+          return;
+        }
 
-      if (error) {
-        console.error(
-          "Failed to fetch public jobs:",
-          error.message,
-          error.details,
-          error.hint
-        );
-        setJobs([]);
-      } else {
-        setJobs(data);
+        if (error) {
+          console.error(
+            "Failed to fetch public jobs:",
+            error.message,
+            error.details,
+            error.hint
+          );
+          setJobs([]);
+        } else {
+          setJobs(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch public jobs:", err);
+        if (isMounted) {
+          setJobs([]);
+        }
+      } finally {
+        if (isMounted) {
+          setJobsLoading(false);
+        }
       }
-      setJobsLoading(false);
     };
 
     void loadJobs();
@@ -62,11 +72,13 @@ export default function PublicOpportunitiesFeed() {
     let isMounted = true;
     const supabase = createClient();
 
-    void supabase
-      .from("job_applications")
-      .select("job_id")
-      .eq("candidate_id", userId)
-      .then(({ data, error }) => {
+    const loadApplications = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("job_applications")
+          .select("job_id")
+          .eq("candidate_id", userId);
+
         if (!isMounted) {
           return;
         }
@@ -75,13 +87,15 @@ export default function PublicOpportunitiesFeed() {
           return;
         }
         setAppliedJobIds((data ?? []).map((row) => row.job_id));
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!isMounted) {
           return;
         }
         console.error("Failed to fetch job applications:", err);
-      });
+      }
+    };
+
+    void loadApplications();
 
     return () => {
       isMounted = false;
@@ -106,33 +120,43 @@ export default function PublicOpportunitiesFeed() {
       "Interest submitted. The team will review your proof-of-work dossier."
     );
 
-    const supabase = createClient();
-    const { error } = await supabase.from("job_applications").insert({
-      job_id: job.id,
-      candidate_id: userId,
-    });
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("job_applications").insert({
+        job_id: job.id,
+        candidate_id: userId,
+      });
 
-    if (error) {
-      console.error("Failed to submit job interest:", error);
-      setAppliedJobIds((prev) => prev.filter((id) => id !== job.id));
+      if (error) {
+        console.error("Failed to submit job interest:", error);
+        setAppliedJobIds((prev) => prev.filter((id) => id !== job.id));
 
-      if (error.code === "23505") {
-        setAppliedJobIds((prev) =>
-          prev.includes(job.id) ? prev : [...prev, job.id]
-        );
+        if (error.code === "23505") {
+          setAppliedJobIds((prev) =>
+            prev.includes(job.id) ? prev : [...prev, job.id]
+          );
+          return;
+        }
+
+        showToast("Could not submit interest. Please try again.");
         return;
       }
 
+      if (job.employer_id && job.employer_id !== userId) {
+        try {
+          await createEmployerNotification(supabase, {
+            userId: job.employer_id,
+            jobId: job.id,
+            message: `A candidate expressed interest in your role: ${job.title ?? "Open Role"}`,
+          });
+        } catch (notifyError) {
+          console.warn("Failed to notify employer of interest:", notifyError);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to submit job interest:", err);
+      setAppliedJobIds((prev) => prev.filter((id) => id !== job.id));
       showToast("Could not submit interest. Please try again.");
-      return;
-    }
-
-    if (job.employer_id && job.employer_id !== userId) {
-      await createEmployerNotification(supabase, {
-        userId: job.employer_id,
-        jobId: job.id,
-        message: `A candidate expressed interest in your role: ${job.title ?? "Open Role"}`,
-      });
     }
   };
 

@@ -109,8 +109,12 @@ export default function RequestIntroModal({
         }),
       });
 
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+
       if (!response.ok) {
-        setError("Could not submit your request. Please try again.");
+        setError(payload?.error ?? "Could not submit your request. Please try again.");
         return;
       }
 

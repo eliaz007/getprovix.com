@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buildFallbackMatch,
+  clampMatchPercentage,
   isCannedMatchScore,
   normalizeMatchResult,
   type MatchCandidatePayload,
@@ -69,7 +70,7 @@ export async function loadCachedTalentMatchScores(
     }
 
     cachedByCandidate[row.candidate_id] = {
-      match_percentage: row.match_percentage,
+      match_percentage: clampMatchPercentage(row.match_percentage),
       reasoning: row.reasoning ?? "",
       matching_skills: row.matching_skills ?? [],
       missing_skills: row.missing_skills ?? [],
@@ -117,7 +118,7 @@ export async function saveTalentMatchScore(
       employer_id: input.employerId,
       candidate_id: input.candidateId,
       job_id: input.jobId,
-      match_percentage: input.insight.match_percentage,
+      match_percentage: clampMatchPercentage(input.insight.match_percentage),
       reasoning: input.insight.reasoning,
       matching_skills: input.insight.matching_skills,
       missing_skills: input.insight.missing_skills,

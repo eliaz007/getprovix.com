@@ -12,6 +12,7 @@ import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
 import Card from "@/components/ui/Card";
+import ScoreMeter from "@/components/ScoreMeter";
 import { resolveCandidateScore } from "@/lib/candidate-score";
 import { getPublicProfileBySlug } from "@/lib/public-profile";
 import { buildPublicProfileUrl } from "@/lib/profile-url";
@@ -143,9 +144,12 @@ export default async function PublicCandidateProfilePage({
                     </span>
                   )}
                   {profile.hasProofOfWork && proofScore != null && (
-                    <span className="font-mono text-sm tabular-nums text-zinc-300">
-                      {proofScore}/100
-                    </span>
+                    <div className="flex min-w-[4.5rem] flex-col gap-1.5">
+                      <span className="font-mono text-sm tabular-nums text-zinc-300">
+                        {proofScore}/100
+                      </span>
+                      <ScoreMeter score={proofScore} />
+                    </div>
                   )}
                 </div>
               </div>

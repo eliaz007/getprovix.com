@@ -6,6 +6,7 @@ import {
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { createClient } from "@/utils/supabase/server";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
+import { clampScore0to100 } from "@/lib/score-scale";
 import {
   normalizeCandidateTimezone,
   normalizeWorkPreference,
@@ -113,7 +114,9 @@ function mapRowToPublicProfile(row: PublicProfileRow): PublicCandidateProfile {
     hasGitHubRepos:
       row.has_github_repos === true || Boolean(portfolioUrl),
     integrityScore:
-      typeof row.integrity_score === "number" ? row.integrity_score : null,
+      typeof row.integrity_score === "number"
+        ? clampScore0to100(row.integrity_score)
+        : null,
   };
 }
 

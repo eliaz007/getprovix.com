@@ -40,7 +40,7 @@ export async function fetchCandidateIntroRequestById(
       .maybeSingle();
 
     if (!error && data) {
-      return data as CandidateIntroRequestRow;
+      return data as unknown as CandidateIntroRequestRow;
     }
 
     if (error && !isSupabaseSchemaError(error)) {
@@ -60,7 +60,7 @@ export async function fetchCandidateIntroRequestById(
     const { data, error } = await query.maybeSingle();
 
     if (!error && data) {
-      return data as CandidateIntroRequestRow;
+      return data as unknown as CandidateIntroRequestRow;
     }
 
     if (error && !isSupabaseSchemaError(error)) {
@@ -89,7 +89,7 @@ export async function updateCandidateIntroRequestStatus(
 
       if (!error && data) {
         return {
-          row: data as CandidateIntroRequestRow,
+          row: data as unknown as CandidateIntroRequestRow,
           status: toCandidateIntroStatus(storedStatus),
         };
       }

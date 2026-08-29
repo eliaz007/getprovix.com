@@ -39,20 +39,20 @@ export function hydrateEmployerProfileFromRow(
     phone?: string | null;
     is_pro?: boolean | null;
     tier?: string | null;
-  },
+  } | null,
   fallbackEmail?: string | null
 ): EmployerProfileFormData {
   return {
-    businessName: profile.company_name?.trim() ?? "",
-    industry: profile.industry?.trim() ?? "",
-    companyBio: profile.bio?.trim() ?? "",
+    businessName: profile?.company_name?.trim() ?? "",
+    industry: profile?.industry?.trim() ?? "",
+    companyBio: profile?.bio?.trim() ?? "",
     workEmail:
-      profile.contact_email?.trim() ??
-      profile.email?.trim() ??
+      profile?.contact_email?.trim() ??
+      profile?.email?.trim() ??
       fallbackEmail?.trim() ??
       "",
-    phone: profile.phone?.trim() ?? "",
-    billingPlan: resolveEmployerBillingPlan(profile),
+    phone: profile?.phone?.trim() ?? "",
+    billingPlan: resolveEmployerBillingPlan(profile ?? {}),
   };
 }
 

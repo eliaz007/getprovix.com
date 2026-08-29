@@ -14,7 +14,7 @@ export type IntroRequestEmailRecord = {
   company_name: string | null;
   work_email?: string | null;
   company_email?: string | null;
-  role_title?: string;
+  role_title?: string | null;
   target_role?: string | null;
   compensation_band?: string | null;
   compensation_range?: string | null;

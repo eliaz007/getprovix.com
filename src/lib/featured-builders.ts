@@ -11,6 +11,7 @@ import {
   normalizeCandidateTimezone,
   normalizeWorkPreference,
 } from "@/lib/work-preference";
+import { clampScore0to100 } from "@/lib/score-scale";
 
 export type FeaturedBuilder = {
   id: string;
@@ -104,7 +105,7 @@ export function mapFeaturedBuilderRow(
   const proofScore =
     typeof row.integrity_score === "number" &&
     Number.isFinite(row.integrity_score)
-      ? Math.round(row.integrity_score)
+      ? clampScore0to100(row.integrity_score)
       : null;
 
   return {

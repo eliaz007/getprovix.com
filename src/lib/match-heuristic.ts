@@ -1,3 +1,5 @@
+import { clampScore0to100 } from "@/lib/score-scale";
+
 export type MatchCandidatePayload = {
   title?: string;
   bio?: string;
@@ -68,18 +70,7 @@ const TECH_ALIASES: Record<string, string[]> = {
 };
 
 export function clampMatchPercentage(value: unknown): number {
-  const numeric =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-
-  if (!Number.isFinite(numeric)) {
-    return 0;
-  }
-
-  return Math.min(99, Math.max(0, Math.round(numeric)));
+  return clampScore0to100(value, 0);
 }
 
 export function isCannedMatchScore(score: number): boolean {
@@ -191,7 +182,7 @@ function findMatchingSkills(
 
 /**
  * Lightweight talent-pool scorer: candidate skills/bio/title vs job description,
- * tags, and the employer's live search query. Returns 0-99, never a canned 50.
+ * tags, and the employer's live search query. Returns 0-100, never a canned 50.
  */
 export function scoreTalentMatch(
   candidate: MatchCandidatePayload,
@@ -281,17 +272,16 @@ export function scoreTalentMatch(
           : 0;
 
     match_percentage =
-      12 +
-      Math.round(skillOverlap * 46) +
-      Math.round(overlap * 22) +
-      Math.round(titleOverlap * 12) +
-      Math.round(queryHit * 8);
+      Math.round(skillOverlap * 50) +
+      Math.round(overlap * 25) +
+      Math.round(titleOverlap * 15) +
+      Math.round(queryHit * 10);
   } else {
     const skillDepth = Math.min(candidateSkills.length, 8) * 6;
     const bioSignal = Math.min(18, Math.round(bio.length / 40));
     const titleSignal = title ? 10 : 0;
     const degreeSignal = degree ? 6 : 0;
-    match_percentage = 8 + skillDepth + bioSignal + titleSignal + degreeSignal;
+    match_percentage = skillDepth + bioSignal + titleSignal + degreeSignal;
   }
 
   match_percentage = clampMatchPercentage(match_percentage);

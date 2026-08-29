@@ -36,9 +36,14 @@ export default function EmployerNotificationBell({
 
     setLoading(true);
     const supabase = createClient();
-    const rows = await fetchEmployerNotifications(supabase, userId);
-    setNotifications(rows);
-    setLoading(false);
+    try {
+      const rows = await fetchEmployerNotifications(supabase, userId);
+      setNotifications(rows);
+    } catch (error) {
+      console.error("Failed to fetch notifications:", error);
+    } finally {
+      setLoading(false);
+    }
   }, [userId]);
 
   useEffect(() => {
@@ -81,8 +86,12 @@ export default function EmployerNotificationBell({
     setOpen(false);
 
     if (!notification.is_read) {
-      const supabase = createClient();
-      await markEmployerNotificationRead(supabase, notification.id, userId);
+      try {
+        const supabase = createClient();
+        await markEmployerNotificationRead(supabase, notification.id, userId);
+      } catch (error) {
+        console.warn("Failed to mark notification as read:", error);
+      }
     }
 
     if (notification.job_id) {
