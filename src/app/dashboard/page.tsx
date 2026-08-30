@@ -3994,15 +3994,29 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               isGuest
             />
           ) : null}
-          {isStandaloneGuest && guestMobileNavOpen ? (
+          {isStandaloneGuest ? (
             <div className="md:hidden">
               <button
                 type="button"
                 aria-label="Close navigation menu"
+                aria-hidden={!guestMobileNavOpen}
+                tabIndex={guestMobileNavOpen ? 0 : -1}
                 onClick={() => setGuestMobileNavOpen(false)}
-                className="fixed inset-0 bg-black/60 z-40 cursor-pointer"
+                className={`fixed inset-0 z-40 cursor-pointer bg-black/60 transition-opacity duration-300 ease-in-out motion-reduce:transition-none ${
+                  guestMobileNavOpen
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0"
+                }`}
               />
-              <aside className="fixed inset-y-0 left-0 w-64 max-w-[85vw] bg-[#111111] border-r border-zinc-800 z-50 p-6 overflow-y-auto">
+              <aside
+                aria-hidden={!guestMobileNavOpen}
+                inert={!guestMobileNavOpen}
+                className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] overflow-y-auto border-r border-zinc-800 bg-[#111111] p-6 transition-transform duration-300 ease-in-out motion-reduce:transition-none ${
+                  guestMobileNavOpen
+                    ? "translate-x-0"
+                    : "pointer-events-none -translate-x-full"
+                }`}
+              >
                 {renderGuestNav()}
               </aside>
             </div>
@@ -4027,7 +4041,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             : "Profile hidden from employers"}
         </div>
       )}
-      <div className="w-full max-w-5xl mx-auto space-y-10 hero-fade-in">
+      <div
+        key={activeTab}
+        className="w-full max-w-5xl mx-auto space-y-10 animate-fadeIn"
+      >
 
           {/* MY PROFILE TAB WITH NESTED MENU OPTIONS */}
           {activeTab === "my_profile" && (

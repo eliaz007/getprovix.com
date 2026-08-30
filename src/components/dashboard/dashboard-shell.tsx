@@ -1,6 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+} from "react";
+import { usePathname } from "next/navigation";
 import EmployerNotificationBell from "@/components/EmployerNotificationBell";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import DashboardSidebar from "@/components/dashboard/dashboard-sidebar";
@@ -9,7 +14,32 @@ import GetVerifiedBanner from "@/components/GetVerifiedBanner";
 import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 
+function ContentFade({
+  trigger,
+  children,
+}: {
+  trigger: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.classList.remove("animate-fadeIn");
+    void el.offsetWidth;
+    el.classList.add("animate-fadeIn");
+  }, [trigger]);
+
+  return (
+    <div ref={ref} className="animate-fadeIn">
+      {children}
+    </div>
+  );
+}
+
 export default function DashboardShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const {
     authLoading,
     isBusinessAccount,
@@ -52,29 +82,42 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           }
         />
 
-        {mobileNavOpen && (
-          <div className="md:hidden">
-            <button
-              type="button"
-              aria-label="Close navigation menu"
-              onClick={() => setMobileNavOpen(false)}
-              className="fixed inset-0 bg-black/60 z-40 cursor-pointer"
-            />
-            <aside className="fixed inset-y-0 left-0 w-64 max-w-[85vw] bg-[#111111] border-r border-zinc-800 flex flex-col z-50 shadow-none overflow-y-auto">
-              <div className="flex items-center justify-end p-3 border-b border-zinc-800 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setMobileNavOpen(false)}
-                  aria-label="Close menu"
-                  className="p-2 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors duration-200 ease-out cursor-pointer"
-                >
-                  <DashboardIcons.XMark />
-                </button>
-              </div>
-              <DashboardSidebar />
-            </aside>
-          </div>
-        )}
+        <div className="md:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation menu"
+            aria-hidden={!mobileNavOpen}
+            tabIndex={mobileNavOpen ? 0 : -1}
+            onClick={() => setMobileNavOpen(false)}
+            className={`fixed inset-0 z-40 cursor-pointer bg-black/60 transition-opacity duration-300 ease-in-out motion-reduce:transition-none ${
+              mobileNavOpen
+                ? "opacity-100"
+                : "pointer-events-none opacity-0"
+            }`}
+          />
+          <aside
+            aria-hidden={!mobileNavOpen}
+            inert={!mobileNavOpen}
+            className={`fixed inset-y-0 left-0 z-50 flex w-64 max-w-[85vw] flex-col overflow-y-auto border-r border-zinc-800 bg-[#111111] shadow-none transition-transform duration-300 ease-in-out motion-reduce:transition-none ${
+              mobileNavOpen
+                ? "translate-x-0"
+                : "pointer-events-none -translate-x-full"
+            }`}
+          >
+            <div className="flex items-center justify-end p-3 border-b border-zinc-800 shrink-0">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                aria-label="Close menu"
+                tabIndex={mobileNavOpen ? 0 : -1}
+                className="p-2 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors duration-200 ease-out cursor-pointer"
+              >
+                <DashboardIcons.XMark />
+              </button>
+            </div>
+            <DashboardSidebar />
+          </aside>
+        </div>
 
         <main className="relative min-h-0 w-full flex-1 flex flex-col overflow-hidden bg-[#0A0A0A]">
           {!isGuest && isBusinessAccount && (
@@ -95,7 +138,9 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
                 <GetVerifiedBanner userId={userId} />
               </div>
             ) : null}
-            {children}
+            <ContentFade trigger={pathname}>
+              {children}
+            </ContentFade>
           </div>
         </main>
       </div>

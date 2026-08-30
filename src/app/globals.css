@@ -8,6 +8,15 @@
   --shadow-hard: 4px 4px 0 0 #000000;
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -19,6 +28,11 @@
   --shadow-lg: 4px 4px 0 0 #000000;
   --shadow-xl: 4px 4px 0 0 #000000;
   --shadow-2xl: 4px 4px 0 0 #000000;
+  --animate-fadeIn: fadeIn 300ms ease-in-out;
+}
+
+@utility animate-fadeIn {
+  animation: fadeIn 300ms ease-in-out;
 }
 
 @layer base {
@@ -102,6 +116,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hero-fade-in,
+  .animate-fadeIn,
   .card-lift,
   button,
   input[type="submit"],
