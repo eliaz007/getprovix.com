@@ -3,6 +3,7 @@ import {
   generateMaskedAliasFromUuid,
   getCodenameInitials,
 } from "@/lib/alias-generator";
+import { introUnlockKeysForCandidateId } from "@/lib/intro-request-status";
 
 export {
   CONTACT_DOSSIER_LOCK_MESSAGE,
@@ -114,16 +115,21 @@ export function isIntroUnlockedForCandidate(
   candidate: { profileId?: string | null; id?: string | null },
   unlockedProfileIds: Set<string>
 ): boolean {
-  const profileId = normalizeCandidateProfileKey(candidate.profileId);
-  if (profileId && unlockedProfileIds.has(profileId)) {
-    return true;
+  if (unlockedProfileIds.size === 0) {
+    return false;
   }
 
-  const displayId = normalizeCandidateProfileKey(candidate.id);
-  return Boolean(displayId && unlockedProfileIds.has(displayId));
+  const candidateKeys = [
+    ...introUnlockKeysForCandidateId(candidate.profileId ?? ""),
+    ...introUnlockKeysForCandidateId(candidate.id ?? ""),
+  ];
+
+  return candidateKeys.some((key) => unlockedProfileIds.has(key));
 }
 
 export {
   INTRO_UNLOCK_STATUSES,
+  collectUnlockedCandidateIds,
+  introUnlockKeysForCandidateId,
   isIntroUnlockStatus,
 } from "@/lib/intro-request-status";

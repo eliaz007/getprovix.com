@@ -24,6 +24,7 @@ import GuestAuthModal from "@/components/GuestAuthModal";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
+import ResumeFileUpload from "@/components/ResumeFileUpload";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
 import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
@@ -36,7 +37,7 @@ import {
 import {
   getPublicCandidateInitials,
   getPublicCandidateLocation,
-  isIntroUnlockStatus,
+  collectUnlockedCandidateIds,
   isIntroUnlockedForCandidate,
   redactPersonalNamesFromText,
 } from "@/lib/candidate-anonymization";
@@ -61,10 +62,6 @@ import {
   type ExperienceLevel,
 } from "@/lib/experience-level";
 import { formatSalaryRange } from "@/lib/format-salary-range";
-import {
-  getYouTubeUrlValidationMessage,
-  isValidYouTubeUrl,
-} from "@/lib/validate-youtube-url";
 import {
   getGitHubUrlValidationMessage,
   isValidGitHubUrl,
@@ -301,6 +298,8 @@ type ProfileRecord = {
   skills?: string[] | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
+  resume_filename?: string | null;
+  resume_uploaded_at?: string | null;
   experience_level?: string | null;
   availability_status?: string | null;
   is_visible_in_pool?: boolean | null;
@@ -1439,14 +1438,7 @@ export default function DashboardPage() {
         return;
       }
 
-      const unlocked = new Set<string>();
-      for (const row of data ?? []) {
-        if (isIntroUnlockStatus(row.status)) {
-          unlocked.add(row.candidate_id.trim().toLowerCase());
-        }
-      }
-
-      setUnlockedCandidateIds(unlocked);
+      setUnlockedCandidateIds(collectUnlockedCandidateIds(data ?? []));
     } catch (err) {
       console.error("Intro unlock fetch threw:", err);
     }
@@ -1485,7 +1477,34 @@ export default function DashboardPage() {
     }
 
     void fetchIntroUnlocks(user.id);
-  }, [user?.id, showTalentPoolNav, fetchIntroUnlocks]);
+
+    const shouldPoll = activeTab === "talent";
+    const interval = shouldPoll
+      ? window.setInterval(() => {
+          void fetchIntroUnlocks(user.id);
+        }, 4000)
+      : null;
+
+    const refreshUnlocks = () => {
+      void fetchIntroUnlocks(user.id);
+    };
+
+    window.addEventListener("focus", refreshUnlocks);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        refreshUnlocks();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+      }
+      window.removeEventListener("focus", refreshUnlocks);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [user?.id, showTalentPoolNav, activeTab, fetchIntroUnlocks]);
 
   useEffect(() => {
     if (!user?.id || isBusinessAccount || isEmployeeAccount) {
@@ -1687,16 +1706,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     : isCandidateDirty;
 
   const hasUnsavedChanges = isDirty;
-  const demoVideoValidationMessage = getYouTubeUrlValidationMessage(
-    profileData.demoVideo
-  );
-  const isDemoVideoValid = isValidYouTubeUrl(profileData.demoVideo);
   const githubValidationMessage = getGitHubUrlValidationMessage(portfolioUrl);
   const isGitHubUrlValid = isValidGitHubUrl(portfolioUrl);
-  const canSaveProfile =
-    hasUnsavedChanges &&
-    (isBusinessAccount || (isDemoVideoValid && isGitHubUrlValid)) &&
-    !isSaving;
+  const githubBlocksSave = !isBusinessAccount && !isGitHubUrlValid;
+  const canSaveProfile = hasUnsavedChanges && !githubBlocksSave && !isSaving;
+  const saveButtonLabel = isSaving
+    ? "Saving..."
+    : githubBlocksSave
+      ? "Add GitHub URL to save"
+      : hasUnsavedChanges
+        ? "Save Changes"
+        : "No Unsaved Changes";
 
   const handleVisibilityToggle = async () => {
     if (isTogglingVisibility) return;
@@ -1758,7 +1778,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
   const handleSaveProfile = async () => {
     if (isSaving || !hasUnsavedChanges) return;
-    if (!isBusinessAccount && !isDemoVideoValid) return;
     if (!isBusinessAccount && !isGitHubUrlValid) {
       showToast(
         githubValidationMessage ?? "GitHub profile URL is required."
@@ -1873,7 +1892,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           degree: academicMajor,
           skills: skillsArray,
           portfolioUrl: normalizedPortfolioUrl,
-          youtubeUrl: profileData.demoVideo,
+          youtubeUrl: dbProfile?.youtube_url ?? "",
           experienceLevel,
           availabilityStatus: normalizedAvailability,
           workPreference,
@@ -1948,31 +1967,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const updateDemoVideo = (value: string) => {
-    setProfileData((prev) => ({
-      ...prev,
-      demoVideo: value,
-    }));
-  };
-
-  const handleDemoVideoChange = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    updateDemoVideo(event.target.value);
-  };
-
-  const handleDemoVideoPaste = (
-    event: React.ClipboardEvent<HTMLInputElement>
-  ) => {
-    const pastedText = event.clipboardData.getData("text");
-    if (!pastedText) {
-      return;
-    }
-
-    event.preventDefault();
-    updateDemoVideo(pastedText);
   };
 
   // --- EMPLOYER JOB LISTINGS STATE (Business accounts only) ---
@@ -2129,6 +2123,20 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const [availabilityFilter, setAvailabilityFilter] = useState("all");
   const [selectedCandidate, setSelectedCandidate] =
     useState<TalentPoolCandidate | null>(null);
+
+  useEffect(() => {
+    if (!selectedCandidate || !user?.id || !showTalentPoolNav) {
+      return;
+    }
+
+    void fetchIntroUnlocks(user.id);
+  }, [
+    selectedCandidate?.profileId,
+    selectedCandidate?.id,
+    user?.id,
+    showTalentPoolNav,
+    fetchIntroUnlocks,
+  ]);
 
   useEffect(() => {
     if (!selectedCandidate) {
@@ -3433,32 +3441,40 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     : "Major / Specialization";
 
   const renderProfileFormActions = (options?: { showShareLink?: boolean }) => (
-    <div className="mt-6 pt-6 border-t border-zinc-800 flex flex-col sm:flex-row gap-3">
-      <button
-        type="button"
-        onClick={handleSaveProfile}
-        disabled={!canSaveProfile}
-        className={`w-full sm:flex-1 font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
-          canSaveProfile
-            ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
-            : "bg-slate-800 text-slate-500 cursor-not-allowed"
-        }`}
-      >
-        {isSaving ? null : hasUnsavedChanges ? <Icons.Save /> : <Icons.Check />}
-        {isSaving
-          ? "Saving..."
-          : hasUnsavedChanges
-            ? "Save Changes"
-            : "No Unsaved Changes"}
-      </button>
-      {options?.showShareLink && isBusinessAccount && (
+    <div className="mt-6 pt-6 border-t border-zinc-800 space-y-3">
+      <div className="flex flex-col sm:flex-row gap-3">
         <button
           type="button"
-          onClick={() => setShowPublicProfile(true)}
-          className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-4 py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+          onClick={handleSaveProfile}
+          disabled={!canSaveProfile}
+          className={`w-full sm:flex-1 font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
+            canSaveProfile
+              ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
+              : "bg-slate-800 text-slate-500 cursor-not-allowed"
+          }`}
         >
-          <Icons.Link /> Share Profile Link
+          {isSaving ? null : hasUnsavedChanges && !githubBlocksSave ? (
+            <Icons.Save />
+          ) : (
+            <Icons.Check />
+          )}
+          {saveButtonLabel}
         </button>
+        {options?.showShareLink && isBusinessAccount && (
+          <button
+            type="button"
+            onClick={() => setShowPublicProfile(true)}
+            className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-4 py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Icons.Link /> Share Profile Link
+          </button>
+        )}
+      </div>
+      {githubBlocksSave && (
+        <p className="text-[11px] text-rose-400">
+          {githubValidationMessage ??
+            "A valid GitHub profile URL is required on the Proof of Work tab before profile changes can be saved."}
+        </p>
       )}
     </div>
   );
@@ -3561,9 +3577,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 className="block mb-8 hover:opacity-90 transition-opacity"
               >
                 <ProvixLogo />
-                <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase mt-2 block">
-                  Verified Intelligence
-                </span>
               </Link>
               <div className="flex-1">{renderGuestNav()}</div>
               <button
@@ -4068,7 +4081,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       Verifiable Projects & Links
                     </h3>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
                           GitHub Profile URL{" "}
@@ -4098,31 +4111,32 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       </div>
                       <div>
                         <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
-                          Video Intro / Demo Link
+                          Resume
                         </label>
                         {loadingProfile ? (
-                          <div className="h-11 w-full rounded-xl bg-slate-800 animate-pulse" />
+                          <div className="h-24 w-full rounded-xl bg-slate-800 animate-pulse" />
                         ) : (
-                          <>
-                            <input
-                              type="text"
-                              value={profileData.demoVideo}
-                              onChange={handleDemoVideoChange}
-                              onPaste={handleDemoVideoPaste}
-                              aria-invalid={Boolean(demoVideoValidationMessage)}
-                              placeholder="https://www.youtube.com/watch?v=..."
-                              className={`w-full bg-[#0A0A0A] border rounded-xl p-3 text-sm text-white font-mono focus:outline-none ${
-                                demoVideoValidationMessage
-                                  ? "border-rose-500/70 focus:border-rose-500"
-                                  : "border-zinc-800 focus:border-indigo-500"
-                              }`}
-                            />
-                            {demoVideoValidationMessage && (
-                              <p className="mt-2 text-[11px] text-rose-400">
-                                {demoVideoValidationMessage}
-                              </p>
-                            )}
-                          </>
+                          <ResumeFileUpload
+                            persistToProfile
+                            initialFilename={dbProfile?.resume_filename ?? null}
+                            helperText="Parsed on upload so the GitHub auditor can cross-check claims against your repos."
+                            onPersisted={(meta) => {
+                              setDbProfile((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      resume_filename: meta.filename,
+                                      resume_uploaded_at: meta.uploadedAt,
+                                    }
+                                  : prev
+                              );
+                              showToast(
+                                meta.hasResume
+                                  ? "Resume parsed and saved for AI audits."
+                                  : "Resume removed from your profile."
+                              );
+                            }}
+                          />
                         )}
                       </div>
                     </div>

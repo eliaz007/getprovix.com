@@ -10,6 +10,9 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
+import ResumeFileUpload, {
+  type StoredResumeMeta,
+} from "@/components/ResumeFileUpload";
 import ScoreMeter from "@/components/ScoreMeter";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
@@ -38,8 +41,11 @@ function getScoreBadgeClass(score: number): string {
 export default function GitHubResumeAuditor() {
   const [targetRole, setTargetRole] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
-  const [resumeSummary, setResumeSummary] = useState("");
   const [resumeOpen, setResumeOpen] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [storedResume, setStoredResume] = useState<StoredResumeMeta | null>(
+    null
+  );
   const [compensationLevel, setCompensationLevel] =
     useState<(typeof COMPENSATION_LEVELS)[number]>("Mid");
   const [loading, setLoading] = useState(false);
@@ -68,7 +74,29 @@ export default function GitHubResumeAuditor() {
       }
     };
 
+    const loadStoredResume = async () => {
+      try {
+        const response = await fetch("/api/profile/resume");
+        if (response.status === 401) {
+          return;
+        }
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as StoredResumeMeta;
+        if (!cancelled) {
+          setStoredResume(data);
+          if (data.hasResume) {
+            setResumeOpen(true);
+          }
+        }
+      } catch (err) {
+        console.error("Could not load saved resume:", err);
+      }
+    };
+
     void loadUsage();
+    void loadStoredResume();
 
     return () => {
       cancelled = true;
@@ -79,7 +107,10 @@ export default function GitHubResumeAuditor() {
   }, []);
 
   const canSubmit = Boolean(
-    targetRole.trim() || githubUrl.trim() || resumeSummary.trim()
+    targetRole.trim() ||
+      githubUrl.trim() ||
+      resumeFile ||
+      storedResume?.hasResume
   );
 
   const startStageProgress = () => {
@@ -112,16 +143,29 @@ export default function GitHubResumeAuditor() {
     startStageProgress();
 
     try {
-      const response = await fetch("/api/audit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetRole: targetRole.trim(),
-          githubUrl: githubUrl.trim(),
-          resumeSummary: resumeSummary.trim(),
-          compensationLevel,
-        }),
-      });
+      let response: Response;
+
+      if (resumeFile) {
+        const formData = new FormData();
+        formData.append("targetRole", targetRole.trim());
+        formData.append("githubUrl", githubUrl.trim());
+        formData.append("compensationLevel", compensationLevel);
+        formData.append("resumeFile", resumeFile);
+        response = await fetch("/api/audit", {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        response = await fetch("/api/audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetRole: targetRole.trim(),
+            githubUrl: githubUrl.trim(),
+            compensationLevel,
+          }),
+        });
+      }
 
       const data = (await response.json()) as AuditResult &
         DailyScanUsage & { error?: string };
@@ -221,13 +265,21 @@ export default function GitHubResumeAuditor() {
               <span className="text-zinc-600"> (Optional)</span>
             </button>
             {resumeOpen && (
-              <textarea
-                rows={5}
-                value={resumeSummary}
-                onChange={(e) => setResumeSummary(e.target.value)}
-                placeholder="Paste resume bullets or an experience summary for claim cross-verification..."
-                className="mt-1 w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500 leading-relaxed"
-              />
+              <div className="mt-1">
+                <ResumeFileUpload
+                  persistToProfile
+                  localFallbackOnAuthError
+                  initialFilename={storedResume?.filename ?? null}
+                  helperText="The auditor reads the parsed resume and checks it against GitHub profile and repo artifacts."
+                  onLocalFileChange={setResumeFile}
+                  onPersisted={(meta) => {
+                    setStoredResume(meta);
+                    if (!meta.hasResume) {
+                      setResumeFile(null);
+                    }
+                  }}
+                />
+              </div>
             )}
           </div>
 

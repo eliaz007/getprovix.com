@@ -158,9 +158,6 @@ export default function DashboardSidebar() {
     <div className="p-6 flex flex-col min-h-full">
       <Link href="/" className="block mb-8 hover:opacity-90 transition-opacity">
         <ProvixLogo />
-        <span className="text-[10px] text-zinc-400 font-semibold tracking-widest uppercase mt-2 block">
-          Verified Intelligence
-        </span>
       </Link>
 
       <div className="flex-1">

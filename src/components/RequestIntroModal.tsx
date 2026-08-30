@@ -92,6 +92,12 @@ export default function RequestIntroModal({
       return;
     }
 
+    const candidateId = candidate.profileId?.trim() || "";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId)) {
+      setError("This candidate profile is missing a valid ID. Refresh and try again.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -99,7 +105,7 @@ export default function RequestIntroModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          candidateId: candidate.profileId ?? candidate.id,
+          candidateId,
           candidateName: candidate.name || "Candidate",
           companyName: trimmedCompanyName,
           companyEmail: trimmedWorkEmail,

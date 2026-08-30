@@ -52,6 +52,12 @@ function isValidBody(body: unknown): body is Required<
   );
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const authClient = await createClient();
@@ -81,12 +87,20 @@ export async function POST(request: Request) {
       );
     }
 
+    const candidateId = body.candidateId.trim();
+    if (!isUuid(candidateId)) {
+      return NextResponse.json(
+        { error: "A valid candidate profile id is required." },
+        { status: 400 }
+      );
+    }
+
     const serviceClient = createServiceRoleClient() ?? authClient;
     const tosAcceptedAt = new Date().toISOString();
     const responseToken = randomUUID();
     const insertPayload = buildIntroRequestInsertPayload({
       userId: user.id,
-      candidateId: body.candidateId.trim(),
+      candidateId,
       candidateName: body.candidateName.trim(),
       companyName: body.companyName.trim(),
       companyEmail: body.companyEmail.trim(),
@@ -113,7 +127,7 @@ export async function POST(request: Request) {
     const { data: candidateProfile } = await serviceClient
       .from("profiles")
       .select("contact_email, email")
-      .eq("id", body.candidateId.trim())
+      .eq("id", candidateId)
       .maybeSingle();
 
     const candidateEmail =

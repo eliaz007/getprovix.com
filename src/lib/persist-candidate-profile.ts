@@ -250,6 +250,9 @@ export async function persistCandidateProfile(
     "timezone",
     "is_visible_in_pool",
     "graduation_year",
+    "resume_text",
+    "resume_filename",
+    "resume_uploaded_at",
   ] as const;
 
   for (let attempt = 0; attempt <= optionalColumnKeys.length + 2; attempt += 1) {

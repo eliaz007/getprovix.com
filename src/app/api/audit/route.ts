@@ -8,12 +8,20 @@ import {
   type DailyScanUsage,
 } from "@/lib/daily-scan-limit";
 import {
+  fetchGitHubProfileArtifacts,
+  type GitHubArtifactAudit,
+} from "@/lib/github-audit";
+import {
   consumeRateLimit,
   getRequestIp,
   tooManyRequestsResponse,
 } from "@/lib/ip-rate-limit";
+import { extractResumeTextFromFile } from "@/lib/parse-resume";
+import { RESUME_TEXT_LIMIT } from "@/lib/resume-file";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { createClient } from "@/utils/supabase/server";
+
+export const runtime = "nodejs";
 
 export type AuditRequestBody = {
   targetRole?: string;
@@ -31,7 +39,7 @@ export type AuditResult = {
 
 const SYSTEM_PROMPT = `You are Provix's GitHub & Resume Credibility Auditor.
 
-Evaluate whether a candidate's stated role, GitHub presence, and resume/experience summary demonstrate credible proof-of-work for founders and hiring managers.
+Evaluate whether a candidate's stated role, GitHub presence, live repository artifacts, and resume text demonstrate credible proof-of-work for founders and hiring managers.
 
 Return strict JSON only:
 {
@@ -43,10 +51,11 @@ Return strict JSON only:
 
 Rules:
 - score: 0-100 integer reflecting overall hiring readiness for the target role and level. 0 is the absolute minimum, 100 is the maximum.
-- strengths: 3-5 bullets citing concrete signals from GitHub URL and/or resume text when provided.
+- strengths: 3-5 bullets citing concrete signals from GitHub artifacts and/or resume text when provided.
 - redFlags: 2-5 bullets flagging gaps, vague claims, missing artifacts, or timeline inconsistencies.
 - recommendations: exactly 3 specific, actionable steps to stand out to founders (not generic advice).
-- Be skeptical but fair. If GitHub URL is missing, note that in redFlags. If resume is thin, score accordingly.
+- Cross-reference resume claims (skills, titles, employers, projects, dates, stack) against GitHub profile metadata and code artifacts (languages, READMEs, commit activity, repo age). Flag resume claims that are not supported by GitHub evidence, and GitHub activity that contradicts resume seniority or dates.
+- Be skeptical but fair. If GitHub URL is missing, note that in redFlags. If resume is thin or missing, score accordingly.
 - No markdown, no extra keys.`;
 
 const AUDIT_RESPONSE_SCHEMA = {
@@ -117,22 +126,64 @@ function normalizeAuditResult(raw: unknown): AuditResult {
   };
 }
 
-function isValidRequestBody(body: unknown): body is AuditRequestBody {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const record = body as AuditRequestBody;
-  const hasContent =
-    !!record.targetRole?.trim() ||
-    !!record.githubUrl?.trim() ||
-    !!record.resumeSummary?.trim();
-
-  return hasContent;
+function isValidRequestBody(body: AuditRequestBody): boolean {
+  return Boolean(
+    body.targetRole?.trim() ||
+      body.githubUrl?.trim() ||
+      body.resumeSummary?.trim()
+  );
 }
 
-function buildFallbackAudit(body: AuditRequestBody): AuditResult {
-  const hasGithub = !!body.githubUrl?.trim();
+function formString(form: FormData, key: string): string | undefined {
+  const value = form.get(key);
+  return typeof value === "string" ? value : undefined;
+}
+
+async function readAuditRequest(request: Request): Promise<
+  | { ok: true; body: AuditRequestBody; resumeFile: File | null }
+  | { ok: false }
+> {
+  const contentType = request.headers.get("content-type") ?? "";
+
+  if (contentType.includes("multipart/form-data")) {
+    try {
+      const form = await request.formData();
+      const resumeValue = form.get("resumeFile") ?? form.get("file");
+      return {
+        ok: true,
+        body: {
+          targetRole: formString(form, "targetRole"),
+          githubUrl: formString(form, "githubUrl"),
+          resumeSummary: formString(form, "resumeSummary"),
+          compensationLevel: formString(form, "compensationLevel"),
+        },
+        resumeFile:
+          resumeValue instanceof File && resumeValue.size > 0
+            ? resumeValue
+            : null,
+      };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  try {
+    const json = (await request.json()) as AuditRequestBody;
+    if (!json || typeof json !== "object") {
+      return { ok: false };
+    }
+    return { ok: true, body: json, resumeFile: null };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function buildFallbackAudit(
+  body: AuditRequestBody,
+  githubArtifacts: GitHubArtifactAudit | null
+): AuditResult {
+  const hasGithub =
+    !!body.githubUrl?.trim() || (githubArtifacts?.artifacts.length ?? 0) > 0;
   const hasResume = !!body.resumeSummary?.trim();
   const role = body.targetRole?.trim() || "your target role";
   const level = body.compensationLevel?.trim() || "Mid";
@@ -145,7 +196,7 @@ function buildFallbackAudit(body: AuditRequestBody): AuditResult {
   if (hasResume) {
     score += 35;
     strengths.push(
-      "Resume summary provides material to evaluate claimed experience and scope."
+      "Resume text was parsed and is available to evaluate claimed experience and scope."
     );
   } else {
     redFlags.push("No resume or experience summary provided for proof-of-work review.");
@@ -153,12 +204,22 @@ function buildFallbackAudit(body: AuditRequestBody): AuditResult {
 
   if (hasGithub) {
     score += 40;
+    const artifact = githubArtifacts?.artifacts[0];
     strengths.push(
-      `GitHub URL supplied — reviewers can trace repository activity for ${role}.`
+      artifact
+        ? `GitHub artifacts sampled from ${artifact.owner}/${artifact.repo} (${artifact.language ?? "unknown language"}, ${artifact.commit_count_sampled} recent commits).`
+        : `GitHub URL supplied — reviewers can trace repository activity for ${role}.`
     );
   } else {
     redFlags.push(
       "Missing GitHub profile or repository URL limits artifact verification."
+    );
+  }
+
+  if (hasResume && hasGithub) {
+    score += 10;
+    strengths.push(
+      "Resume and GitHub artifacts can be cross-referenced for claim verification."
     );
   }
 
@@ -170,7 +231,7 @@ function buildFallbackAudit(body: AuditRequestBody): AuditResult {
   recommendations.push(
     `Pin 1-2 production repos that map directly to ${level}-level ${role} expectations.`,
     "Rewrite top resume bullets with metrics, stack tags, and links to live demos or PRs.",
-    "Add a concise README per repo covering architecture, your contributions, and setup steps.",
+    "Add a concise README per repo covering architecture, your contributions, and setup steps."
   );
 
   if (strengths.length === 0) {
@@ -185,7 +246,10 @@ function buildFallbackAudit(body: AuditRequestBody): AuditResult {
   });
 }
 
-async function generateGeminiAudit(body: AuditRequestBody): Promise<AuditResult> {
+async function generateGeminiAudit(
+  body: AuditRequestBody,
+  githubArtifacts: GitHubArtifactAudit | null
+): Promise<AuditResult> {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
@@ -197,8 +261,22 @@ async function generateGeminiAudit(body: AuditRequestBody): Promise<AuditResult>
   const userPrompt = JSON.stringify({
     targetRole: body.targetRole?.trim() ?? "",
     githubUrl: body.githubUrl?.trim() ?? "",
-    resumeSummary: (body.resumeSummary ?? "").slice(0, 4000),
+    resumeText: (body.resumeSummary ?? "").slice(0, RESUME_TEXT_LIMIT),
     compensationLevel: body.compensationLevel?.trim() ?? "Mid",
+    githubProfile: githubArtifacts?.profile ?? null,
+    githubArtifacts: (githubArtifacts?.artifacts ?? []).map((artifact) => ({
+      repo_url: artifact.repo_url,
+      owner: artifact.owner,
+      repo: artifact.repo,
+      stars: artifact.stars,
+      forks: artifact.forks,
+      created_at: artifact.created_at,
+      language: artifact.language,
+      commit_count_sampled: artifact.commit_count_sampled,
+      commit_dates: artifact.commit_dates,
+      readme_excerpt: artifact.readme_excerpt,
+    })),
+    githubFetchWarnings: githubArtifacts?.fetch_warnings ?? [],
   });
 
   let lastError: unknown;
@@ -308,33 +386,71 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: unknown;
-
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsed = await readAuditRequest(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  if (!isValidRequestBody(body)) {
+  const payload: AuditRequestBody = { ...parsed.body };
+
+  if (parsed.resumeFile) {
+    try {
+      payload.resumeSummary = await extractResumeTextFromFile(parsed.resumeFile);
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Could not parse the uploaded resume.",
+        },
+        { status: 422 }
+      );
+    }
+  }
+
+  if (access.user && (!payload.resumeSummary?.trim() || !payload.githubUrl?.trim())) {
+    const { data } = await access.supabase
+      .from("profiles")
+      .select("resume_text, portfolio_url")
+      .eq("id", access.user.id)
+      .maybeSingle();
+
+    if (!payload.resumeSummary?.trim() && data?.resume_text?.trim()) {
+      payload.resumeSummary = data.resume_text;
+    }
+
+    if (!payload.githubUrl?.trim() && data?.portfolio_url?.trim()) {
+      payload.githubUrl = data.portfolio_url;
+    }
+  }
+
+  if (!isValidRequestBody(payload)) {
     return NextResponse.json(
       {
         error:
-          "Provide at least a target role, GitHub URL, or resume summary to audit.",
+          "Provide at least a target role, GitHub URL, or resume to audit.",
       },
       { status: 400 }
     );
   }
 
-  const payload = body as AuditRequestBody;
+  let githubArtifacts: GitHubArtifactAudit | null = null;
+  if (payload.githubUrl?.trim()) {
+    try {
+      githubArtifacts = await fetchGitHubProfileArtifacts(payload.githubUrl);
+    } catch (error) {
+      console.error("[audit] GitHub artifact fetch failed:", error);
+    }
+  }
 
   let result: AuditResult;
 
   try {
-    result = await generateGeminiAudit(payload);
+    result = await generateGeminiAudit(payload, githubArtifacts);
   } catch (error) {
     console.error("Gemini audit API failed, using fallback:", error);
-    result = buildFallbackAudit(payload);
+    result = buildFallbackAudit(payload, githubArtifacts);
   }
 
   const usage = access.user

@@ -24,7 +24,7 @@ export const INTRO_PIPELINE_STATUSES = [
 export type IntroPipelineStatus =
   (typeof INTRO_PIPELINE_STATUSES)[number]["value"];
 
-export const INTRO_UNLOCK_STATUSES = new Set<IntroPipelineStatus | string>([
+export const INTRO_UNLOCK_STATUSES = new Set<string>([
   "accepted",
   "approved_intro_sent",
   "interviewing",
@@ -35,6 +35,7 @@ export const INTRO_UNLOCK_STATUSES = new Set<IntroPipelineStatus | string>([
 
 const LEGACY_STATUS_MAP: Record<string, IntroPipelineStatus> = {
   pending: "pending_admin_approval",
+  pending_admin_approval: "pending_admin_approval",
   accepted: "approved_intro_sent",
   approved: "approved_intro_sent",
   approved_intro_sent: "approved_intro_sent",
@@ -54,7 +55,50 @@ export function normalizeIntroPipelineStatus(
 }
 
 export function isIntroUnlockStatus(status: string | null | undefined): boolean {
+  const raw = (status ?? "").trim().toLowerCase();
+  if (!raw) {
+    return false;
+  }
+
+  if (INTRO_UNLOCK_STATUSES.has(raw)) {
+    return true;
+  }
+
   return INTRO_UNLOCK_STATUSES.has(normalizeIntroPipelineStatus(status));
+}
+
+export function introUnlockKeysForCandidateId(candidateId: string): string[] {
+  const key = candidateId.trim().toLowerCase();
+  if (!key) {
+    return [];
+  }
+
+  const keys = new Set<string>([key]);
+  const compact = key.replace(/-/g, "");
+  if (/^[0-9a-f]{32}$/.test(compact)) {
+    keys.add(`c-${compact.slice(0, 3)}`);
+  }
+
+  return [...keys];
+}
+
+export function collectUnlockedCandidateIds(
+  rows: Array<{ candidate_id?: string | null; status?: string | null }>
+): Set<string> {
+  const unlocked = new Set<string>();
+
+  for (const row of rows) {
+    const candidateId = row.candidate_id?.trim();
+    if (!candidateId || !isIntroUnlockStatus(row.status)) {
+      continue;
+    }
+
+    for (const key of introUnlockKeysForCandidateId(candidateId)) {
+      unlocked.add(key);
+    }
+  }
+
+  return unlocked;
 }
 
 export function getIntroStatusLabel(status: IntroPipelineStatus): string {
