@@ -136,6 +136,7 @@ import {
   persistEmployerProfile,
   type EmployerProfileFormData,
 } from "@/lib/persist-employer-profile";
+import { employerIsVerifiedInDatabase } from "@/lib/persist-employer-verified";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import type { DashboardTab } from "@/lib/dashboard-account";
 import { clampScore0to100 } from "@/lib/score-scale";
@@ -1176,6 +1177,17 @@ export default function DashboardPage() {
           }
         }
 
+        const verifiedInDb = await employerIsVerifiedInDatabase(
+          supabase,
+          sessionUser.id
+        );
+        if (profileWithRole) {
+          profileWithRole = {
+            ...profileWithRole,
+            is_verified: verifiedInDb,
+          };
+        }
+
         setDbProfile(profileWithRole);
         setAccountRole(resolvedRole);
 
@@ -1689,21 +1701,64 @@ export default function DashboardPage() {
 
     const params = new URLSearchParams(window.location.search);
     const verifiedParam = params.get("employer_verified");
-    if (verifiedParam === "1") {
-      setNavIsVerifiedEmployer(true);
-      setDbProfile((prev) =>
-        prev ? { ...prev, is_verified: true } : prev
-      );
-      setToastMessage(
-        "Work email confirmed. Employer hiring tools are unlocked."
-      );
-      setToastVariant("success");
-      window.setTimeout(() => setToastMessage(null), 4000);
-      params.delete("employer_verified");
-      params.delete("verify_error");
-      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+    const clearVerificationQuery = () => {
+      const nextParams = new URLSearchParams(window.location.search);
+      nextParams.delete("employer_verified");
+      nextParams.delete("verify_error");
+      const next = `${window.location.pathname}${
+        nextParams.toString() ? `?${nextParams}` : ""
+      }`;
       window.history.replaceState({}, "", next);
-    } else if (verifiedParam === "0") {
+    };
+
+    if (verifiedParam === "1") {
+      if (!user?.id) {
+        return;
+      }
+
+      let cancelled = false;
+      const supabase = createClient();
+
+      void (async () => {
+        let verified = await employerIsVerifiedInDatabase(supabase, user.id);
+        for (let attempt = 0; !verified && attempt < 4; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 400));
+          if (cancelled) {
+            return;
+          }
+          verified = await employerIsVerifiedInDatabase(supabase, user.id);
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        if (verified) {
+          setNavIsVerifiedEmployer(true);
+          setDbProfile((prev) =>
+            prev ? { ...prev, is_verified: true } : prev
+          );
+          setToastMessage(
+            "Work email confirmed. Employer hiring tools are unlocked."
+          );
+          setToastVariant("success");
+        } else {
+          setToastMessage(
+            "Could not confirm your work email. Request a new link from Get Verified."
+          );
+          setToastVariant("error");
+        }
+
+        window.setTimeout(() => setToastMessage(null), 4000);
+        clearVerificationQuery();
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (verifiedParam === "0") {
       const reason = params.get("verify_error");
       setToastMessage(
         reason === "invalid" || reason === "missing_token"
@@ -1712,10 +1767,7 @@ export default function DashboardPage() {
       );
       setToastVariant("error");
       window.setTimeout(() => setToastMessage(null), 4000);
-      params.delete("employer_verified");
-      params.delete("verify_error");
-      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
-      window.history.replaceState({}, "", next);
+      clearVerificationQuery();
     }
 
     const tab = params.get("tab");

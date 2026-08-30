@@ -39,12 +39,13 @@ function copyResponseCookies(from: NextResponse, to: NextResponse) {
 function redirectWithSessionCookies(
   request: NextRequest,
   supabaseResponse: NextResponse,
-  pathname: string
+  pathname: string,
+  search = ""
 ) {
   const url = request.nextUrl.clone();
   url.pathname = pathname;
-  url.search = "";
-  const redirectResponse = NextResponse.redirect(url);
+  url.search = search;
+  const redirectResponse = NextResponse.redirect(url, 303);
   copyResponseCookies(supabaseResponse, redirectResponse);
   return redirectResponse;
 }
@@ -131,7 +132,23 @@ export async function updateSession(request: NextRequest) {
 
   // Protected routes: no session → login (cookies still copied on redirect).
   if (isProtectedRoute && !user) {
-    return redirectWithSessionCookies(request, supabaseResponse, "/login");
+    const loginSearch = new URLSearchParams();
+    loginSearch.set("next", `${pathname}${request.nextUrl.search}`);
+    const verified = request.nextUrl.searchParams.get("employer_verified");
+    const verifyError = request.nextUrl.searchParams.get("verify_error");
+    if (verified) {
+      loginSearch.set("employer_verified", verified);
+    }
+    if (verifyError) {
+      loginSearch.set("verify_error", verifyError);
+    }
+
+    return redirectWithSessionCookies(
+      request,
+      supabaseResponse,
+      "/login",
+      `?${loginSearch.toString()}`
+    );
   }
 
   if (isEmployer) {

@@ -39,6 +39,36 @@ function BackToHomeLink({ className = "" }: { className?: string }) {
   );
 }
 
+function safePostAuthPath(user: User, search: string): string {
+  if (getPostLoginPath(user) === "/admin") {
+    return "/admin";
+  }
+
+  const params = new URLSearchParams(search);
+  const next = params.get("next")?.trim() ?? "";
+  const verified = params.get("employer_verified");
+  const verifyError = params.get("verify_error");
+
+  let path = "/dashboard";
+  if (
+    next.startsWith("/") &&
+    !next.startsWith("//") &&
+    !next.includes("\\")
+  ) {
+    path = next;
+  }
+
+  const url = new URL(path, "https://getprovix.com");
+  if (verified && !url.searchParams.has("employer_verified")) {
+    url.searchParams.set("employer_verified", verified);
+  }
+  if (verifyError && !url.searchParams.has("verify_error")) {
+    url.searchParams.set("verify_error", verifyError);
+  }
+
+  return `${url.pathname}${url.search}`;
+}
+
 function hasAuthEmail(
   value: User | null | undefined
 ): value is User & { email: string } {
@@ -70,7 +100,10 @@ export default function LoginPage() {
       }
 
       if (hasAuthEmail(session?.user ?? null)) {
-        window.location.href = getPostLoginPath(session!.user);
+        window.location.href = safePostAuthPath(
+          session!.user,
+          window.location.search
+        );
         return;
       }
 
@@ -81,7 +114,7 @@ export default function LoginPage() {
       .getUser()
       .then(({ data: { user } }) => {
         if (hasAuthEmail(user)) {
-          window.location.href = getPostLoginPath(user);
+          window.location.href = safePostAuthPath(user, window.location.search);
           return;
         }
 
@@ -157,7 +190,9 @@ export default function LoginPage() {
 
   const redirectAfterAuth = async (user: User | null | undefined) => {
     await supabase.auth.getSession();
-    const destination = getPostLoginPath(user);
+    const destination = user
+      ? safePostAuthPath(user, window.location.search)
+      : getPostLoginPath(user);
     router.refresh();
     router.push(destination);
   };

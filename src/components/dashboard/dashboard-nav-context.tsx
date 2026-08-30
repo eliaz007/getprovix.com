@@ -149,25 +149,41 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
 
         let profile: { role?: string | null; is_verified?: boolean | null } | null =
           null;
-        const withVerified = await supabase
+        const byId = await supabase
           .from("profiles")
           .select("role, is_verified")
           .eq("id", user.id)
           .maybeSingle();
 
-        if (withVerified.error) {
-          const fallback = await supabase
+        profile = byId.data;
+
+        if (!profile) {
+          const byUserId = await supabase
             .from("profiles")
-            .select("role")
-            .eq("id", user.id)
+            .select("role, is_verified")
+            .eq("user_id", user.id)
             .maybeSingle();
-          profile = fallback.data;
-          const resolved = resolveAccountRole(profile?.role, user);
-          setIsVerifiedEmployer(isEmployerRole(resolved));
-        } else {
-          profile = withVerified.data;
-          setIsVerifiedEmployer(profile?.is_verified === true);
+          profile = byUserId.data;
+
+          if (!profile && (byId.error || byUserId.error)) {
+            const fallbackById = await supabase
+              .from("profiles")
+              .select("role")
+              .eq("id", user.id)
+              .maybeSingle();
+            profile = fallbackById.data;
+            if (!profile) {
+              const fallbackByUserId = await supabase
+                .from("profiles")
+                .select("role")
+                .eq("user_id", user.id)
+                .maybeSingle();
+              profile = fallbackByUserId.data;
+            }
+          }
         }
+
+        setIsVerifiedEmployer(profile?.is_verified === true);
 
         if (!active) {
           return;
