@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { educationFromProfileRow } from "@/lib/talent-pool-profiles";
+import { educationFromProfileRow, hydrateRowsWithEducation } from "@/lib/talent-pool-profiles";
 import {
   findMentionedColumn,
   isSupabaseSchemaError,
@@ -67,6 +67,32 @@ function withIdColumn(selectColumns: string): string {
   return parts.join(", ");
 }
 
+function isEmptyProfileValue(value: unknown): boolean {
+  if (value == null) {
+    return true;
+  }
+  if (typeof value === "string") {
+    return value.trim() === "";
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0;
+  }
+  return false;
+}
+
+function mergeProfileRows(
+  current: Record<string, unknown>,
+  incoming: Record<string, unknown>
+): Record<string, unknown> {
+  const merged = { ...current };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (isEmptyProfileValue(merged[key]) && !isEmptyProfileValue(value)) {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
 function indexProfileRow(
   map: Map<string, Record<string, unknown>>,
   row: Record<string, unknown> | null | undefined,
@@ -78,9 +104,8 @@ function indexProfileRow(
 
   const keys = [...profileRowLookupKeys(row), ...extraKeys];
   for (const key of keys) {
-    if (!map.has(key)) {
-      map.set(key, row);
-    }
+    const existing = map.get(key);
+    map.set(key, existing ? mergeProfileRows(existing, row) : row);
   }
 }
 
@@ -136,26 +161,29 @@ export async function fetchProfilesForCandidateIds(
     indexProfileRow(map, row);
   }
 
-  let missing = ids.filter((id) => !map.has(id));
   for (const column of AUTH_LINK_COLUMNS) {
-    if (missing.length === 0) {
-      break;
-    }
-
     const rows = await selectProfilesByColumn(
       supabase,
       column,
-      missing,
-      withIdColumn(`${select}, ${column}`)
+      ids,
+      select === "*" ? "*" : withIdColumn(`${select}, ${column}`)
     );
     for (const row of rows) {
       const linkedId = asTrimmedId(row[column]);
       indexProfileRow(map, row, linkedId ? [linkedId] : []);
     }
-    missing = ids.filter((id) => !map.has(id));
   }
 
-  return map;
+  const uniqueRows = [...new Map(
+    [...map.values()].map((row) => [asTrimmedId(row.id) ?? JSON.stringify(row), row])
+  ).values()];
+  const hydratedRows = await hydrateRowsWithEducation(supabase, uniqueRows);
+  const hydrated = new Map<string, Record<string, unknown>>();
+  for (const row of hydratedRows) {
+    indexProfileRow(hydrated, row);
+  }
+
+  return hydrated.size > 0 ? hydrated : map;
 }
 
 export async function fetchProfileForCandidateId(

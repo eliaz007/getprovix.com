@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
-import { requireApiUser } from "@/lib/api-auth";
-import { resolveAccountRole } from "@/lib/account-role";
-import { isEmployerRole } from "@/lib/dashboard-account";
-import { fetchProfileForCandidateId, fetchProfilesForCandidateIds } from "@/lib/resolve-candidate-profile";
+import { requireVerifiedEmployer } from "@/lib/api-auth";
+import { fetchProfilesForCandidateIds } from "@/lib/resolve-candidate-profile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +13,7 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const access = await requireApiUser(request);
+  const access = await requireVerifiedEmployer(request);
   if (access instanceof NextResponse) {
     return access;
   }
@@ -23,23 +21,6 @@ export async function GET(
   const { id: jobId } = await context.params;
   if (!UUID_PATTERN.test(jobId)) {
     return NextResponse.json({ error: "Invalid job id." }, { status: 400 });
-  }
-
-  const viewerRow =
-    (await fetchProfileForCandidateId(access.supabase, access.user.id, "role")) ??
-    (await access.supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", access.user.id)
-      .maybeSingle()).data;
-
-  const viewerRole = resolveAccountRole(
-    typeof viewerRow?.role === "string" ? viewerRow.role : null,
-    access.user
-  );
-
-  if (!isEmployerRole(viewerRole)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { data: job, error: jobError } = await access.supabase

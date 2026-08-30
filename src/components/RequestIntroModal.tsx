@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 
 export const COMP_BAND_OPTIONS = [
   "$60k–$80k",
@@ -74,15 +75,15 @@ export default function RequestIntroModal({
     const trimmedCompanyName = companyName.trim();
     const trimmedWorkEmail = workEmail.trim();
     const trimmedRoleTitle = roleTitle.trim();
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!trimmedCompanyName || !trimmedWorkEmail || !trimmedRoleTitle || !compBand) {
       setError("Please complete all required fields.");
       return;
     }
 
-    if (!emailPattern.test(trimmedWorkEmail)) {
-      setError("Enter a valid work email address.");
+    const workEmailError = getCorporateWorkEmailValidationMessage(trimmedWorkEmail);
+    if (workEmailError) {
+      setError(workEmailError);
       return;
     }
 

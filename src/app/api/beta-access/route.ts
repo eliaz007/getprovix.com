@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import { createClient } from "@/utils/supabase/server";
 
 type BetaAccessBody = {
@@ -99,7 +100,8 @@ async function saveBetaLead(
 async function unlockEmployerProfile(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
-  companyName: string
+  companyName: string,
+  workEmail: string
 ): Promise<{ updated: boolean; warning?: string }> {
   try {
     const { data: profile, error: profileError } = await supabase
@@ -108,6 +110,8 @@ async function unlockEmployerProfile(
         is_pro: true,
         tier: "pro",
         company_name: companyName,
+        contact_email: workEmail,
+        email: workEmail,
       })
       .eq("id", userId)
       .select("id, is_pro, tier, company_name")
@@ -169,12 +173,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailPattern.test(workEmail)) {
-    return NextResponse.json(
-      { error: "Enter a valid work email address." },
-      { status: 400 }
-    );
+  const emailError = getCorporateWorkEmailValidationMessage(workEmail);
+  if (emailError) {
+    return NextResponse.json({ error: emailError }, { status: 400 });
   }
 
   const supabase = await createClient();
@@ -202,7 +203,8 @@ export async function POST(request: Request) {
   const profileResult = await unlockEmployerProfile(
     supabase,
     user.id,
-    companyName
+    companyName,
+    workEmail
   );
   if (profileResult.warning) {
     warnings.push(profileResult.warning);

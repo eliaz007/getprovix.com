@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
-import { requireAiApiUser } from "@/lib/api-auth";
+import { requireAiApiUser, rejectUnlessVerifiedEmployer } from "@/lib/api-auth";
 import {
   fetchGitHubAudit,
   type GitHubAuditContext,
@@ -60,8 +60,10 @@ export type ScreenResult = {
 
 const SYSTEM_PROMPT = `You are a rigorous Technical & Academic Auditor for Provix employer screening.
 
+Provix is an anonymized talent platform. The candidate's display name is a generated codename (for example "Ember Echo"), not a legal identity. GitHub handles, GitHub profile names, and resume bylines are expected to differ from that codename.
+
 You receive:
-- Candidate profile claims (skills, bio, degree, experience level, projects)
+- Candidate profile claims (codename, skills, bio, degree, experience level, projects)
 - Target job requirements
 - Optional live GitHub repository audit data (stars, forks, creation date, language, recent commits, README excerpt)
 
@@ -69,6 +71,7 @@ Perform Check 1 (GitHub artifact audit) and Check 3 (chronological timeline conf
 - Cross-check claimed skills against actual repository evidence (e.g., flag claiming full architecture on a repo with only 1 commit or no README).
 - Evaluate timeline plausibility (flag years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history).
 - Be skeptical but fair; cite concrete evidence from the provided repo metadata when available.
+- Do not treat GitHub handle, GitHub login, or GitHub profile name vs Provix display name/codename as a red flag, identity issue, or scoring penalty. Never add a timeline_flag or lower integrity_score because those strings do not match.
 
 Return strict JSON only in this exact structure:
 {
@@ -90,9 +93,9 @@ Also generate an Employer Interview Cheat Sheet:
 - Each question must include a category badge label and a concise what_to_listen_for tip for hiring managers.
 
 Rules:
-- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with artifacts.
-- timeline_flags: array of specific red-flag strings; empty array if none.
-- artifact_analysis and technical_depth_summary: single concise sentences or short paragraphs, no markdown.
+- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with artifacts. Do not deduct points for GitHub handle / display-name mismatch.
+- timeline_flags: array of specific red-flag strings; empty array if none. Never include flags about GitHub handle, username, or login not matching the candidate display name or codename.
+- artifact_analysis and technical_depth_summary: single concise sentences or short paragraphs, no markdown. Do not mention handle-vs-name mismatch.
 - interview_questions: exactly 3 objects; categories should vary (e.g., Architecture / Process, Metric Verification, Technical Depth).
 - Do not include extra keys or markdown fences.`;
 
@@ -106,6 +109,8 @@ const SCREEN_RESPONSE_SCHEMA = {
     timeline_flags: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
+      description:
+        "Red flags from artifact or timeline review. Do not include GitHub handle vs display-name/codename mismatch.",
     },
     artifact_analysis: {
       type: Type.STRING,
@@ -141,6 +146,59 @@ const MODEL_CANDIDATES = [
   "gemini-3.6-flash",
   "gemini-2.0-flash",
 ] as const;
+
+const HANDLE_MISMATCH_PATTERN =
+  /\b(mismatch|does not match|doesn't match|do not match|don't match|inconsistent|discrepan|unrelated|not (the )?same|differs? from|no(t)? overlap)\b/i;
+
+function isGithubHandleDisplayNameFlag(flag: string): boolean {
+  const text = flag.trim();
+  if (!text) {
+    return false;
+  }
+
+  const mentionsGithubIdentity =
+    /\b(github\s+)?(handle|username|user\s*name|login)\b/i.test(text) ||
+    /\bgithub\.com\//i.test(text);
+  const mentionsDisplayIdentity =
+    /\b(display\s+name|candidate(?:'s)?\s+name|profile\s+name|codename|alias)\b/i.test(
+      text
+    ) || /\bname\b/i.test(text);
+
+  return (
+    mentionsGithubIdentity &&
+    mentionsDisplayIdentity &&
+    HANDLE_MISMATCH_PATTERN.test(text)
+  );
+}
+
+function stripGithubHandleDisplayNameFlags(flags: string[]): {
+  flags: string[];
+  stripped: number;
+} {
+  const kept = flags.filter((flag) => !isGithubHandleDisplayNameFlag(flag));
+  return { flags: kept, stripped: flags.length - kept.length };
+}
+
+function stripHandleMismatchFromProse(text: string, fallback: string): string {
+  const sentences = text
+    .split(/[.!?]+\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  const kept = sentences.filter(
+    (sentence) => !isGithubHandleDisplayNameFlag(sentence)
+  );
+
+  if (kept.length === 0) {
+    return isGithubHandleDisplayNameFlag(text) ? fallback : text;
+  }
+
+  return kept
+    .map((sentence) =>
+      /[.!?]$/.test(sentence) ? sentence : `${sentence}.`
+    )
+    .join(" ");
+}
 
 function normalizeStringArray(value: unknown, maxItems: number): string[] {
   if (typeof value === "string") {
@@ -234,19 +292,31 @@ function normalizeScreenResult(
   const record =
     raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
-  const timeline_flags = normalizeStringArray(record.timeline_flags, 8);
+  const { flags: timeline_flags, stripped: strippedHandleFlags } =
+    stripGithubHandleDisplayNameFlags(
+      normalizeStringArray(record.timeline_flags, 8)
+    );
 
-  const artifact_analysis =
+  const artifactFallback =
+    "Insufficient artifact data to fully validate proof-of-work claims.";
+  const depthFallback =
+    "Technical depth appears partially aligned with stated skills.";
+
+  const artifact_analysis = stripHandleMismatchFromProse(
     typeof record.artifact_analysis === "string" &&
-    record.artifact_analysis.trim()
+      record.artifact_analysis.trim()
       ? record.artifact_analysis.trim()
-      : "Insufficient artifact data to fully validate proof-of-work claims.";
+      : artifactFallback,
+    artifactFallback
+  );
 
-  const technical_depth_summary =
+  const technical_depth_summary = stripHandleMismatchFromProse(
     typeof record.technical_depth_summary === "string" &&
-    record.technical_depth_summary.trim()
+      record.technical_depth_summary.trim()
       ? record.technical_depth_summary.trim()
-      : "Technical depth appears partially aligned with stated skills.";
+      : depthFallback,
+    depthFallback
+  );
 
   let interview_questions = normalizeInterviewQuestions(
     record.interview_questions
@@ -256,8 +326,16 @@ function normalizeScreenResult(
     interview_questions.push(defaults[interview_questions.length]);
   }
 
+  const restoredScore =
+    strippedHandleFlags > 0
+      ? clampIntegrityScore(
+          clampIntegrityScore(record.integrity_score) +
+            Math.min(12, strippedHandleFlags * 6)
+        )
+      : clampIntegrityScore(record.integrity_score);
+
   return {
-    integrity_score: clampIntegrityScore(record.integrity_score),
+    integrity_score: restoredScore,
     timeline_flags,
     artifact_analysis,
     technical_depth_summary,
@@ -466,7 +544,9 @@ async function generateGeminiScreen(
   const userPrompt = JSON.stringify(
     {
       candidate: {
-        name: candidate.name ?? "",
+        codename: candidate.name ?? "",
+        identity_context:
+          "codename is an anonymized Provix alias (e.g. Ember Echo), not a legal name. Do not compare it to the GitHub handle.",
         title: candidate.title ?? "",
         skills: normalizeStringArray(candidate.skills, 12),
         degree: candidate.degree ?? "",
@@ -533,6 +613,11 @@ export async function POST(request: Request) {
   const access = await requireAiApiUser();
   if (access instanceof NextResponse) {
     return access;
+  }
+
+  const unverified = await rejectUnlessVerifiedEmployer(access);
+  if (unverified) {
+    return unverified;
   }
 
   let body: unknown;

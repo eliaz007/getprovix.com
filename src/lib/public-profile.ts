@@ -8,9 +8,18 @@ import { createClient } from "@/utils/supabase/server";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
+  educationFromProfileRow,
+  hydrateRowsWithEducation,
+} from "@/lib/talent-pool-profiles";
+import {
+  findMentionedColumn,
+  isSupabaseSchemaError,
+} from "@/lib/supabase-schema-errors";
+import {
   normalizeCandidateTimezone,
   normalizeWorkPreference,
 } from "@/lib/work-preference";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type PublicCandidateProfile = {
   id: string;
@@ -25,6 +34,8 @@ export type PublicCandidateProfile = {
   university: string | null;
   major: string | null;
   school: string | null;
+  gpa: string | null;
+  graduationYear: string | null;
   experienceLevel: string | null;
   location: string;
   workPreference: string;
@@ -55,6 +66,8 @@ type PublicProfileRow = {
   major?: string | null;
   school?: string | null;
   degree?: string | null;
+  gpa?: string | number | null;
+  graduation_year?: string | number | null;
   experience_level?: string | null;
   country?: string | null;
   timezone?: string | null;
@@ -77,12 +90,37 @@ function formatExternalUrl(value: string): string {
   return `https://${trimmed}`;
 }
 
+function unwrapRpcProfile(data: unknown): PublicProfileRow | null {
+  let payload: unknown = data;
+
+  if (typeof payload === "string") {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return null;
+    }
+  }
+
+  if (Array.isArray(payload)) {
+    payload = payload[0];
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  return payload as PublicProfileRow;
+}
+
 function mapRowToPublicProfile(row: PublicProfileRow): PublicCandidateProfile {
   const portfolioUrl = row.portfolio_url?.trim() || null;
   const youtubeUrl = row.youtube_url?.trim() || null;
   const skills = Array.isArray(row.skills)
     ? row.skills.filter((skill) => skill.trim())
     : [];
+  const education = educationFromProfileRow(
+    row as unknown as Record<string, unknown>
+  );
 
   const identity = {
     codenameAlias: row.codename_alias,
@@ -102,9 +140,11 @@ function mapRowToPublicProfile(row: PublicProfileRow): PublicCandidateProfile {
     skills,
     youtubeUrl: youtubeUrl ? formatExternalUrl(youtubeUrl) : null,
     availabilityStatus: row.availability_status?.trim() || null,
-    university: row.university?.trim() || null,
-    major: row.major?.trim() || null,
-    school: row.school?.trim() || null,
+    university: education.university || null,
+    major: education.major || null,
+    school: row.school?.trim() || education.university || null,
+    gpa: education.gpa || null,
+    graduationYear: education.graduationYear || null,
     experienceLevel: row.experience_level?.trim() || null,
     location: getPublicCandidateLocation(identity),
     workPreference: normalizeWorkPreference(row.work_preference),
@@ -120,24 +160,133 @@ function mapRowToPublicProfile(row: PublicProfileRow): PublicCandidateProfile {
   };
 }
 
+const PUBLIC_PROFILE_RPC = "get_public_profile_by_slug";
+
+// 0052 SQL argument name is `slug`. Older overloads used p_slug / username.
+const PUBLIC_PROFILE_RPC_ARG_KEYS = ["slug", "p_slug", "username"] as const;
+
+const PUBLIC_PROFILE_SELECT_COLUMNS = [
+  "id",
+  "user_id",
+  "profile_slug",
+  "full_name",
+  "name",
+  "first_name",
+  "last_name",
+  "job_title",
+  "headline",
+  "bio",
+  "skills",
+  "portfolio_url",
+  "youtube_url",
+  "codename_alias",
+  "availability_status",
+  "availability",
+  "university",
+  "major",
+  "school",
+  "degree",
+  "gpa",
+  "graduation_year",
+  "experience_level",
+  "country",
+  "timezone",
+  "work_preference",
+  "is_visible_in_pool",
+  "integrity_score",
+] as const;
+
+function isMissingRpcFunctionError(error: {
+  code?: string;
+  message?: string;
+}): boolean {
+  const message = error.message ?? "";
+  return (
+    error.code === "PGRST202" ||
+    error.code === "PGRST203" ||
+    message.includes("Could not find the function") ||
+    (message.includes(PUBLIC_PROFILE_RPC) &&
+      message.toLowerCase().includes("schema cache"))
+  );
+}
+
 async function fetchViaRpc(
   slug: string
 ): Promise<PublicCandidateProfile | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_public_profile_by_slug", {
-    slug,
-  });
+  let lastError: { code?: string; message?: string } | null = null;
 
-  if (error) {
-    console.error("[public-profile] rpc failed:", error);
+  for (const argKey of PUBLIC_PROFILE_RPC_ARG_KEYS) {
+    const { data, error } = await supabase.rpc(PUBLIC_PROFILE_RPC, {
+      [argKey]: slug,
+    });
+
+    if (!error) {
+      const row = unwrapRpcProfile(data);
+      return row ? mapRowToPublicProfile(row) : null;
+    }
+
+    lastError = error;
+    if (!isMissingRpcFunctionError(error)) {
+      break;
+    }
+  }
+
+  if (lastError) {
+    console.error("[public-profile] rpc failed:", lastError);
+  }
+
+  return null;
+}
+
+async function selectVisibleProfileBySlug(
+  supabase: SupabaseClient,
+  slug: string
+): Promise<Record<string, unknown> | null> {
+  let columns: string[] = [...PUBLIC_PROFILE_SELECT_COLUMNS];
+
+  for (let attempt = 0; attempt < PUBLIC_PROFILE_SELECT_COLUMNS.length; attempt += 1) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select(columns.join(", "))
+      .eq("profile_slug", slug)
+      .eq("is_visible_in_pool", true)
+      .maybeSingle();
+
+    if (!error) {
+      return (data as Record<string, unknown> | null) ?? null;
+    }
+
+    if (!isSupabaseSchemaError(error)) {
+      console.error("[public-profile] service role lookup failed:", error);
+      break;
+    }
+
+    const mentioned = findMentionedColumn(error, columns);
+    if (mentioned) {
+      columns = columns.filter((column) => column !== mentioned);
+      continue;
+    }
+
+    break;
+  }
+
+  const fallback = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("profile_slug", slug)
+    .eq("is_visible_in_pool", true)
+    .maybeSingle();
+
+  if (fallback.error) {
+    console.error(
+      "[public-profile] service role lookup failed:",
+      fallback.error
+    );
     return null;
   }
 
-  if (!data || typeof data !== "object") {
-    return null;
-  }
-
-  return mapRowToPublicProfile(data as PublicProfileRow);
+  return (fallback.data as Record<string, unknown> | null) ?? null;
 }
 
 async function fetchViaServiceRole(
@@ -148,25 +297,13 @@ async function fetchViaServiceRole(
     return null;
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select(
-      "id, profile_slug, full_name, name, first_name, last_name, job_title, headline, bio, skills, portfolio_url, youtube_url, codename_alias, availability_status, availability, university, major, school, degree, experience_level, country, timezone, work_preference, is_visible_in_pool, integrity_score"
-    )
-    .eq("profile_slug", slug)
-    .eq("is_visible_in_pool", true)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[public-profile] service role lookup failed:", error);
+  const row = await selectVisibleProfileBySlug(supabase, slug);
+  if (!row) {
     return null;
   }
 
-  if (!data) {
-    return null;
-  }
-
-  return mapRowToPublicProfile(data as PublicProfileRow);
+  const [hydrated] = await hydrateRowsWithEducation(supabase, [row]);
+  return mapRowToPublicProfile(hydrated as PublicProfileRow);
 }
 
 export async function getPublicProfileBySlug(
@@ -178,9 +315,33 @@ export async function getPublicProfileBySlug(
   }
 
   const viaRpc = await fetchViaRpc(slug);
-  if (viaRpc) {
+  const rpcHasEducation = Boolean(
+    viaRpc?.university ||
+      viaRpc?.major ||
+      viaRpc?.school ||
+      viaRpc?.gpa ||
+      viaRpc?.graduationYear
+  );
+
+  if (viaRpc && rpcHasEducation) {
     return viaRpc;
   }
 
-  return fetchViaServiceRole(slug);
+  const viaServiceRole = await fetchViaServiceRole(slug);
+  if (!viaServiceRole) {
+    return viaRpc;
+  }
+
+  if (!viaRpc) {
+    return viaServiceRole;
+  }
+
+  return {
+    ...viaServiceRole,
+    university: viaServiceRole.university || viaRpc.university,
+    major: viaServiceRole.major || viaRpc.major,
+    school: viaServiceRole.school || viaRpc.school,
+    gpa: viaServiceRole.gpa || viaRpc.gpa,
+    graduationYear: viaServiceRole.graduationYear || viaRpc.graduationYear,
+  };
 }

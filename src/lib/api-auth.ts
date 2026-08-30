@@ -3,6 +3,9 @@ import { createClient as createJwtClient } from "@supabase/supabase-js";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { consumeRateLimit, tooManyRequestsResponse } from "@/lib/ip-rate-limit";
 import { createClient } from "@/utils/supabase/server";
+import { resolveAccountRole } from "@/lib/account-role";
+import { canAccessTalentPool, isEmployerRole } from "@/lib/dashboard-account";
+import { fetchProfileForCandidateId } from "@/lib/resolve-candidate-profile";
 
 const AUTHENTICATED_AI_LIMIT = 30;
 const AUTHENTICATED_AI_WINDOW_MS = 60_000;
@@ -83,6 +86,52 @@ export async function requireAiApiUser(): Promise<ApiUserAccess | NextResponse> 
 
   if (!limited.ok) {
     return tooManyRequestsResponse(limited.retryAfterSec);
+  }
+
+  return access;
+}
+
+export async function rejectUnlessVerifiedEmployer(
+  access: ApiUserAccess
+): Promise<NextResponse | null> {
+  const viewerRow = await fetchProfileForCandidateId(
+    access.supabase,
+    access.user.id,
+    "role, is_verified"
+  );
+  const viewerRole = resolveAccountRole(
+    typeof viewerRow?.role === "string" ? viewerRow.role : null,
+    access.user
+  );
+
+  if (!isEmployerRole(viewerRole)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  if (!canAccessTalentPool(viewerRole, viewerRow?.is_verified === true)) {
+    return NextResponse.json(
+      {
+        error:
+          "A verified corporate work email is required to use employer dashboard features.",
+      },
+      { status: 403 }
+    );
+  }
+
+  return null;
+}
+
+export async function requireVerifiedEmployer(
+  request?: Request
+): Promise<ApiUserAccess | NextResponse> {
+  const access = await requireApiUser(request);
+  if (access instanceof NextResponse) {
+    return access;
+  }
+
+  const rejected = await rejectUnlessVerifiedEmployer(access);
+  if (rejected) {
+    return rejected;
   }
 
   return access;

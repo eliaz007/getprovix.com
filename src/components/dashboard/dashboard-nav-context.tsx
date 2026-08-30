@@ -27,6 +27,8 @@ type DashboardNavContextValue = {
   setMobileNavOpen: (open: boolean) => void;
   accountRole: string | null;
   setAccountRole: (role: string | null) => void;
+  isVerifiedEmployer: boolean;
+  setIsVerifiedEmployer: (verified: boolean) => void;
   userId: string | null;
   userAvatarUrl: string | null;
   userInitials: string;
@@ -79,6 +81,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<DashboardTab>("my_profile");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountRole, setAccountRole] = useState<string | null>(null);
+  const [isVerifiedEmployer, setIsVerifiedEmployer] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   const [userInitials, setUserInitials] = useState("U");
@@ -134,6 +137,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
           setUserAvatarUrl(null);
           setUserInitials("U");
           setAccountRole(null);
+          setIsVerifiedEmployer(false);
           return;
         }
 
@@ -143,11 +147,27 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
         setUserInitials(identity.initials);
         setAuthModalOpen(false);
 
-        const { data: profile } = await supabase
+        let profile: { role?: string | null; is_verified?: boolean | null } | null =
+          null;
+        const withVerified = await supabase
           .from("profiles")
-          .select("role")
+          .select("role, is_verified")
           .eq("id", user.id)
           .maybeSingle();
+
+        if (withVerified.error) {
+          const fallback = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .maybeSingle();
+          profile = fallback.data;
+          const resolved = resolveAccountRole(profile?.role, user);
+          setIsVerifiedEmployer(isEmployerRole(resolved));
+        } else {
+          profile = withVerified.data;
+          setIsVerifiedEmployer(profile?.is_verified === true);
+        }
 
         if (!active) {
           return;
@@ -161,6 +181,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
           setUserAvatarUrl(null);
           setUserInitials("U");
           setAccountRole(null);
+          setIsVerifiedEmployer(false);
         }
       } finally {
         if (active) {
@@ -181,7 +202,10 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
   const isGuest = !userId;
   const isBusinessAccount = isEmployerRole(accountRole);
   const isEmployeeAccount = isEmployeeRole(accountRole);
-  const showTalentPoolNav = canAccessTalentPool(accountRole);
+  const showTalentPoolNav = canAccessTalentPool(
+    accountRole,
+    isVerifiedEmployer
+  );
 
   const value = useMemo(
     () => ({
@@ -191,6 +215,8 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
       setMobileNavOpen,
       accountRole,
       setAccountRole,
+      isVerifiedEmployer,
+      setIsVerifiedEmployer,
       userId,
       userAvatarUrl,
       userInitials,
@@ -211,6 +237,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
       activeTab,
       mobileNavOpen,
       accountRole,
+      isVerifiedEmployer,
       userId,
       userAvatarUrl,
       userInitials,

@@ -96,16 +96,25 @@ export async function syncEmployerProfileAfterSignup(
       ) => PromiseLike<{ error: { message?: string } | null }>;
     };
   },
-  userId: string
+  userId: string,
+  email?: string | null
 ): Promise<void> {
-  const { error } = await supabase.from("profiles").upsert(
-    {
-      id: userId,
-      role: "employer",
-      is_visible_in_pool: false,
-    },
-    { onConflict: "id" }
-  );
+  const workEmail = email?.trim() || null;
+  const payload: Record<string, unknown> = {
+    id: userId,
+    role: "employer",
+    is_visible_in_pool: false,
+    is_verified: false,
+  };
+
+  if (workEmail) {
+    payload.email = workEmail;
+    payload.contact_email = workEmail;
+  }
+
+  const { error } = await supabase.from("profiles").upsert(payload, {
+    onConflict: "id",
+  });
 
   if (error) {
     console.warn("Employer profile sync after signup failed:", error.message);

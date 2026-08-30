@@ -5,6 +5,7 @@ import EmployerNotificationBell from "@/components/EmployerNotificationBell";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import DashboardSidebar from "@/components/dashboard/dashboard-sidebar";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
+import GetVerifiedBanner from "@/components/GetVerifiedBanner";
 import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 
@@ -12,6 +13,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const {
     authLoading,
     isBusinessAccount,
+    isVerifiedEmployer,
     isGuest,
     mobileNavOpen,
     setMobileNavOpen,
@@ -85,6 +87,14 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           )}
 
           <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 pt-8 sm:p-6 sm:pt-10 md:p-12">
+            {!isGuest &&
+            isBusinessAccount &&
+            !isVerifiedEmployer &&
+            !authLoading ? (
+              <div className="mb-6">
+                <GetVerifiedBanner userId={userId} />
+              </div>
+            ) : null}
             {children}
           </div>
         </main>

@@ -8,6 +8,7 @@ import {
   signupMetadataForKind,
   syncEmployerProfileAfterSignup,
 } from "@/lib/account-role";
+import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import { createClient } from "@/utils/supabase/server";
 
 function authFailure(error?: unknown, err?: unknown): { error: string } {
@@ -63,6 +64,14 @@ export async function signUpWithEmail(
     last_name: string;
   }
 ) {
+  const corporateEmailError =
+    rawData.role === "business"
+      ? getCorporateWorkEmailValidationMessage(email)
+      : null;
+  if (corporateEmailError) {
+    return { error: corporateEmailError };
+  }
+
   let authError: { error: string } | undefined;
 
   try {
@@ -98,7 +107,11 @@ export async function signUpWithEmail(
       } = await supabase.auth.getUser();
 
       if (user && isEmployerSignup(user)) {
-        await syncEmployerProfileAfterSignup(supabase, user.id);
+        await syncEmployerProfileAfterSignup(
+          supabase,
+          user.id,
+          user.email ?? email
+        );
       }
     }
   } catch (err) {

@@ -98,11 +98,13 @@ import {
   fetchCandidateEducationForEmployer,
   fetchEmployerTalentPoolProfiles,
   hasTalentEducation,
+  hydrateRowsWithEducation,
   mergeTalentEducation,
   resolveTalentProfileId,
   type TalentPoolEducation,
   type TalentPoolProfileRow,
 } from "@/lib/talent-pool-profiles";
+import { fetchProfileForCandidateId } from "@/lib/resolve-candidate-profile";
 import {
   ensureTalentPoolVisibilityChannel,
   publishTalentPoolVisibility,
@@ -134,6 +136,7 @@ import {
   persistEmployerProfile,
   type EmployerProfileFormData,
 } from "@/lib/persist-employer-profile";
+import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import type { DashboardTab } from "@/lib/dashboard-account";
 import { clampScore0to100 } from "@/lib/score-scale";
 import ScoreMeter from "@/components/ScoreMeter";
@@ -298,6 +301,7 @@ const Icons = {
 
 type ProfileRecord = {
   id: string | null;
+  user_id?: string | null;
   full_name: string | null;
   role: string | null;
   graduation_year: number | null;
@@ -327,6 +331,7 @@ type ProfileRecord = {
   linkedin_url?: string | null;
   contact_email?: string | null;
   email?: string | null;
+  is_verified?: boolean | null;
   name?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -505,11 +510,14 @@ function isEmployeeRole(role: string | null | undefined): boolean {
   return role === "employee";
 }
 
-function canAccessTalentPool(role: string | null | undefined): boolean {
-  if (!role || role === "employee" || role === "candidate") {
+function canAccessTalentPool(
+  role: string | null | undefined,
+  isVerified?: boolean | null
+): boolean {
+  if (!isEmployerRole(role)) {
     return false;
   }
-  return isEmployerRole(role);
+  return isVerified === true;
 }
 
 function isProfileEligibleForTalentPool(row: ProfileRecord): boolean {
@@ -778,7 +786,39 @@ async function fetchProfileRow(
   supabase: ReturnType<typeof createClient>,
   userId: string
 ) {
-  return supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+  const resolved = await fetchProfileForCandidateId(supabase, userId, "*");
+  if (resolved) {
+    const [hydrated] = await hydrateRowsWithEducation(supabase, [resolved]);
+    return { data: hydrated as ProfileRecord, error: null };
+  }
+
+  const byId = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!byId.error && byId.data) {
+    const [hydrated] = await hydrateRowsWithEducation(supabase, [
+      byId.data as Record<string, unknown>,
+    ]);
+    return { data: hydrated as ProfileRecord, error: null };
+  }
+
+  const byUserId = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!byUserId.error && byUserId.data) {
+    const [hydrated] = await hydrateRowsWithEducation(supabase, [
+      byUserId.data as Record<string, unknown>,
+    ]);
+    return { data: hydrated as ProfileRecord, error: null };
+  }
+
+  return byId.error ? byId : byUserId;
 }
 
 async function ensureUserProfile(
@@ -796,7 +836,11 @@ async function ensureUserProfile(
     if (shouldBeEmployer && !storedAsEmployer) {
       const { data: repaired, error: repairError } = await supabase
         .from("profiles")
-        .update({ role: "employer", is_visible_in_pool: false })
+        .update({
+          role: "employer",
+          is_visible_in_pool: false,
+          is_verified: false,
+        })
         .eq("id", user.id)
         .select("*")
         .maybeSingle();
@@ -834,6 +878,7 @@ async function ensureUserProfile(
     full_name: fullName,
     role,
     is_visible_in_pool,
+    is_verified: false,
   };
 
   let insertResult = await supabase
@@ -900,6 +945,7 @@ export default function DashboardPage() {
   const navSetActiveTab = dashboardNav?.setActiveTab;
   const navSetMobileNavOpen = dashboardNav?.setMobileNavOpen;
   const navSetAccountRole = dashboardNav?.setAccountRole;
+  const navSetIsVerifiedEmployer = dashboardNav?.setIsVerifiedEmployer;
   const navSetOnOpenJobApplicants = dashboardNav?.setOnOpenJobApplicants;
   const navRequireAuth = dashboardNav?.requireAuth;
   const navSetAuthModalOpen = dashboardNav?.setAuthModalOpen;
@@ -925,6 +971,12 @@ export default function DashboardPage() {
       navSetAccountRole?.(role);
     },
     [navSetAccountRole]
+  );
+  const setNavIsVerifiedEmployer = useCallback(
+    (verified: boolean) => {
+      navSetIsVerifiedEmployer?.(verified);
+    },
+    [navSetIsVerifiedEmployer]
   );
 
   const [showPublicProfile, setShowPublicProfile] = useState(false);
@@ -1024,7 +1076,11 @@ export default function DashboardPage() {
   const profileRole = accountRole ?? dbProfile?.role;
   const isBusinessAccount = isEmployerRole(profileRole);
   const isEmployeeAccount = isEmployeeRole(profileRole);
-  const showTalentPoolNav = canAccessTalentPool(profileRole);
+  const isVerifiedEmployer = dbProfile?.is_verified === true;
+  const showTalentPoolNav = canAccessTalentPool(
+    profileRole,
+    isVerifiedEmployer
+  );
   const [candidates, setCandidates] = useState<TalentPoolCandidate[]>([]);
   const [selectedCandidate, setSelectedCandidate] =
     useState<TalentPoolCandidate | null>(null);
@@ -1036,6 +1092,10 @@ export default function DashboardPage() {
   useEffect(() => {
     setNavAccountRole(profileRole ?? null);
   }, [profileRole, setNavAccountRole]);
+
+  useEffect(() => {
+    setNavIsVerifiedEmployer(isVerifiedEmployer);
+  }, [isVerifiedEmployer, setNavIsVerifiedEmployer]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -1130,15 +1190,11 @@ export default function DashboardPage() {
         const loadedName = displayName || "";
         const loadedTitle = profileWithRole?.job_title ?? "";
         const loadedBio = profileWithRole?.bio ?? "";
-        const loadedSchool =
-          profileWithRole?.university ??
-          profileWithRole?.school ??
-          "";
-        const loadedMajor = profileWithRole?.major ?? "";
-        const loadedDegree =
-          profileWithRole?.degree ??
-          profileWithRole?.major ??
-          "";
+        const education = educationFromProfileRow(
+          profileWithRole as unknown as Record<string, unknown>
+        );
+        const loadedSchool = education.university;
+        const loadedDegree = education.major;
         const loadedSkills = Array.isArray(profileWithRole?.skills)
           ? profileWithRole.skills.join(", ")
           : "";
@@ -1176,11 +1232,8 @@ export default function DashboardPage() {
           bio: loadedBio,
           school: loadedSchool,
           degree: loadedDegree,
-          gpa:
-            profileWithRole?.gpa != null && String(profileWithRole.gpa).trim()
-              ? String(profileWithRole.gpa).trim()
-              : "",
-          gradYear: loadedGradYear,
+          gpa: education.gpa,
+          gradYear: education.graduationYear || loadedGradYear,
           github: loadedPortfolioUrl,
           demoVideo: loadedYoutubeUrl,
           projects: profileWithRole?.key_accomplishments?.trim() || "",
@@ -1213,7 +1266,7 @@ export default function DashboardPage() {
         setBusinessProfileData(hydratedBusiness);
         setSavedBusinessProfileData(hydratedBusiness);
 
-        if (canAccessTalentPool(resolvedRole)) {
+        if (canAccessTalentPool(resolvedRole, profileWithRole?.is_verified === true)) {
           setProfileSubMenu("companyInfo");
           setActiveTab("talent");
         } else if (isEmployeeRole(resolvedRole)) {
@@ -1415,13 +1468,37 @@ export default function DashboardPage() {
       }
 
       try {
-        const { data, error } = await fetchEmployerTalentPoolProfiles(supabase);
+        const clientResult = await fetchEmployerTalentPoolProfiles(supabase);
+        let data = clientResult.data;
+        const error = clientResult.error;
+
+        if (error || data.length === 0) {
+          try {
+            const response = await fetchWithAuth("/api/talent-pool");
+            if (response.ok) {
+              const payload = (await response.json()) as {
+                profiles?: TalentPoolProfileRow[];
+              };
+              if (Array.isArray(payload.profiles) && payload.profiles.length > 0) {
+                data = payload.profiles;
+              }
+            } else if (error) {
+              console.error(
+                "Talent pool API fallback failed:",
+                response.status,
+                await response.text()
+              );
+            }
+          } catch (apiError) {
+            console.error("Talent pool API fallback threw:", apiError);
+          }
+        }
 
         if (!isMounted) {
           return;
         }
 
-        if (error) {
+        if (error && data.length === 0) {
           console.error("Talent pool fetch failed:", error);
           if (!opts?.silent) {
             setTalentPoolError("Could not load the talent pool. Please try again.");
@@ -1611,6 +1688,36 @@ export default function DashboardPage() {
     }
 
     const params = new URLSearchParams(window.location.search);
+    const verifiedParam = params.get("employer_verified");
+    if (verifiedParam === "1") {
+      setNavIsVerifiedEmployer(true);
+      setDbProfile((prev) =>
+        prev ? { ...prev, is_verified: true } : prev
+      );
+      setToastMessage(
+        "Work email confirmed. Employer hiring tools are unlocked."
+      );
+      setToastVariant("success");
+      window.setTimeout(() => setToastMessage(null), 4000);
+      params.delete("employer_verified");
+      params.delete("verify_error");
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+      window.history.replaceState({}, "", next);
+    } else if (verifiedParam === "0") {
+      const reason = params.get("verify_error");
+      setToastMessage(
+        reason === "invalid" || reason === "missing_token"
+          ? "That confirmation link is invalid or expired. Request a new one from Get Verified."
+          : "Could not confirm your work email. Request a new link from Get Verified."
+      );
+      setToastVariant("error");
+      window.setTimeout(() => setToastMessage(null), 4000);
+      params.delete("employer_verified");
+      params.delete("verify_error");
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
+      window.history.replaceState({}, "", next);
+    }
+
     const tab = params.get("tab");
     if (tab === "intro_requests" && !isBusinessAccount && !isEmployeeAccount) {
       if (!user) {
@@ -1626,6 +1733,7 @@ export default function DashboardPage() {
     }
   }, [
     navSetAuthModalOpen,
+    setNavIsVerifiedEmployer,
     isBusinessAccount,
     isEmployeeAccount,
     setActiveTab,
@@ -1893,6 +2001,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         return;
       }
 
+      const workEmailError = getCorporateWorkEmailValidationMessage(
+        businessProfileData.workEmail
+      );
+      if (workEmailError) {
+        showToast(workEmailError);
+        return;
+      }
+
       setIsSaving(true);
 
       try {
@@ -1907,7 +2023,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           return;
         }
 
-        const { error } = await persistEmployerProfile(
+        const { error, isVerified } = await persistEmployerProfile(
           supabase,
           session.user.id,
           {
@@ -1933,12 +2049,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 industry: businessProfileData.industry.trim() || null,
                 bio: businessProfileData.companyBio.trim() || null,
                 contact_email: businessProfileData.workEmail.trim() || null,
+                email: businessProfileData.workEmail.trim() || null,
                 phone: businessProfileData.phone.trim() || null,
+                is_verified: isVerified,
               }
             : prev
         );
         setSavedBusinessProfileData(businessProfileData);
-        showToast("Profile changes saved successfully!");
+        showToast(
+          isVerified
+            ? "Profile changes saved successfully!"
+            : "Profile saved. Confirm your work email from Get Verified to unlock hiring tools."
+        );
       } catch (error) {
         console.error("Employer profile update failed:", error);
         showToast("Could not save company profile. Please try again.");
@@ -3544,6 +3666,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   };
 
   const openPostJobModal = () => {
+    if (!isVerifiedEmployer) {
+      showToast(
+        "Confirm your work email from Get Verified to unlock job posting."
+      );
+      setProfileSubMenu("companyInfo");
+      setActiveTab("my_profile");
+      return;
+    }
     setNewJobCompany(employerCompanyName);
     setPostJobModalOpen(true);
   };
@@ -3551,6 +3681,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const handleCreateJob = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!user?.id || isCreatingJob) return;
+
+    if (!isVerifiedEmployer) {
+      showToast(
+        "Confirm your work email from Get Verified before posting jobs."
+      );
+      return;
+    }
 
     if (!newJobTitle.trim()) {
       showToast("Job title is required.");
@@ -3986,8 +4123,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               workEmail: e.target.value,
                             })
                           }
+                          placeholder="you@company.com"
                           className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
                         />
+                        <p className="mt-1.5 text-[11px] text-zinc-500">
+                          Corporate domain required. Use Get Verified to confirm this inbox — saving the profile does not unlock hiring tools.
+                        </p>
                       </div>
                       <div>
                         <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
@@ -4193,6 +4334,51 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       <p className="text-[11px] text-slate-500 mt-2">
                         Comma-separated skills used for job matching.
                       </p>
+                    </div>
+
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
+                        Education & Credentials
+                      </div>
+                      <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-xs text-slate-200 space-y-2">
+                        {school ? (
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="text-slate-500 shrink-0">University</span>
+                            <span className="text-right">{school}</span>
+                          </div>
+                        ) : null}
+                        {degree ? (
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="text-slate-500 shrink-0">Major</span>
+                            <span className="text-right">{degree}</span>
+                          </div>
+                        ) : null}
+                        {profileData.gpa ? (
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="text-slate-500 shrink-0">GPA</span>
+                            <span className="text-right font-mono">
+                              {profileData.gpa}
+                            </span>
+                          </div>
+                        ) : null}
+                        {profileData.gradYear ? (
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="text-slate-500 shrink-0">Graduation</span>
+                            <span className="text-right">
+                              Class of {profileData.gradYear}
+                            </span>
+                          </div>
+                        ) : null}
+                        {!school &&
+                        !degree &&
+                        !profileData.gpa &&
+                        !profileData.gradYear ? (
+                          <p className="text-slate-500">
+                            Education details not provided. Add them in Academics
+                            & Major.
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
 
                     {renderProfileFormActions()}

@@ -71,9 +71,14 @@ export default async function PublicCandidateProfilePage({
     notFound();
   }
 
-  const academicLine = [profile.university, profile.major]
-    .filter(Boolean)
-    .join(" · ");
+          const academicLine = [
+            profile.university,
+            profile.major,
+            profile.gpa ? `GPA ${profile.gpa}` : null,
+            profile.graduationYear ? `Class of ${profile.graduationYear}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
   const proofScore = resolveCandidateScore({
     integrity_score: profile.integrityScore,
   });
@@ -186,29 +191,59 @@ export default async function PublicCandidateProfilePage({
               </section>
             )}
 
-            {(academicLine || profile.school) && (
-              <section>
-                <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-zinc-400">
-                  Academics
-                </h2>
+            <section>
+              <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-zinc-400">
+                Education & Credentials
+              </h2>
+              {academicLine || profile.school ? (
                 <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-[#0A0A0A] p-4">
                   <GraduationCap
                     className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400"
                     aria-hidden
                   />
-                  <div>
-                    <p className="text-sm font-semibold text-white">
-                      {academicLine || profile.school}
-                    </p>
-                    {profile.school && academicLine && (
-                      <p className="mt-1 text-xs text-zinc-300">
-                        {profile.school}
-                      </p>
-                    )}
+                  <div className="min-w-0 space-y-2 text-sm text-zinc-200">
+                    {profile.university || profile.school ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-zinc-500 shrink-0">University</span>
+                        <span className="text-right font-semibold text-white">
+                          {profile.university || profile.school}
+                        </span>
+                      </div>
+                    ) : null}
+                    {profile.major ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-zinc-500 shrink-0">Major</span>
+                        <span className="text-right">{profile.major}</span>
+                      </div>
+                    ) : null}
+                    {profile.gpa ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-zinc-500 shrink-0">GPA</span>
+                        <span className="text-right font-mono">{profile.gpa}</span>
+                      </div>
+                    ) : null}
+                    {profile.graduationYear ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-zinc-500 shrink-0">Graduation</span>
+                        <span className="text-right">
+                          Class of {profile.graduationYear}
+                        </span>
+                      </div>
+                    ) : null}
+                    {profile.school &&
+                    profile.university &&
+                    profile.school !== profile.university ? (
+                      <p className="text-xs text-zinc-300">{profile.school}</p>
+                    ) : null}
                   </div>
                 </div>
-              </section>
-            )}
+              ) : (
+                <div className="rounded-2xl border border-dashed border-zinc-700 bg-[#0A0A0A] px-4 py-6 text-sm text-zinc-400">
+                  Education details will appear here once the candidate adds
+                  school, major, GPA, or graduation year.
+                </div>
+              )}
+            </section>
 
             <section>
               <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-zinc-400">

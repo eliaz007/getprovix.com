@@ -35,6 +35,7 @@ const GRADUATION_YEAR_KEYS = [
 
 export const PROFILE_EDUCATION_COLUMNS = [
   "id",
+  "user_id",
   "university",
   "school",
   "major",
@@ -42,6 +43,8 @@ export const PROFILE_EDUCATION_COLUMNS = [
   "gpa",
   "graduation_year",
 ] as const;
+
+const PROFILE_ID_COLUMNS = ["id", "user_id"] as const;
 
 function coerceProfileText(value: unknown): string {
   if (value == null) {
@@ -158,6 +161,89 @@ export function mergeTalentEducation(
   };
 }
 
+function profileRowLookupIds(row: Record<string, unknown>): string[] {
+  return PROFILE_ID_COLUMNS.map((column) => coerceProfileText(row[column])).filter(
+    Boolean
+  );
+}
+
+function isEmptyProfileValue(value: unknown): boolean {
+  if (value == null) {
+    return true;
+  }
+  if (typeof value === "string") {
+    return value.trim() === "";
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0;
+  }
+  return false;
+}
+
+function mergeProfileRowFields(
+  current: Record<string, unknown>,
+  incoming: Record<string, unknown>
+): Record<string, unknown> {
+  const merged = { ...current };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (isEmptyProfileValue(merged[key]) && !isEmptyProfileValue(value)) {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+async function selectProfilesByIds(
+  supabase: SupabaseClient,
+  ids: string[],
+  columns: string[]
+): Promise<Record<string, unknown>[]> {
+  const uniqueIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+
+  const collected: Record<string, unknown>[] = [];
+
+  for (const column of PROFILE_ID_COLUMNS) {
+    const selectColumns =
+      columns[0] === "*"
+        ? ["*"]
+        : columns.includes(column)
+          ? columns
+          : [...columns, column];
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select(selectColumns.join(", "))
+      .in(column, uniqueIds);
+
+    if (!error) {
+      collected.push(
+        ...(((data ?? []) as unknown) as Record<string, unknown>[])
+      );
+      continue;
+    }
+
+    if (
+      isSupabaseSchemaError(error) &&
+      (findMentionedColumn(error, [column]) ||
+        error.message?.toLowerCase().includes(column))
+    ) {
+      continue;
+    }
+
+    if (!isSupabaseSchemaError(error)) {
+      console.error(
+        `Talent pool education select by ${column} failed:`,
+        error
+      );
+    }
+  }
+
+  return collected;
+}
+
 async function selectProfileEducationRows(
   supabase: SupabaseClient,
   ids: string[]
@@ -170,13 +256,19 @@ async function selectProfileEducationRows(
   let columns: string[] = [...PROFILE_EDUCATION_COLUMNS];
 
   for (let attempt = 0; attempt < PROFILE_EDUCATION_COLUMNS.length; attempt += 1) {
-    const { data, error } = await supabase
+    const rows = await selectProfilesByIds(supabase, uniqueIds, columns);
+    if (rows.length > 0) {
+      return rows;
+    }
+
+    const { error } = await supabase
       .from("profiles")
       .select(columns.join(", "))
-      .in("id", uniqueIds);
+      .in("id", uniqueIds)
+      .limit(1);
 
     if (!error) {
-      return (data ?? []) as unknown as Record<string, unknown>[];
+      return [];
     }
 
     if (!isSupabaseSchemaError(error)) {
@@ -194,6 +286,11 @@ async function selectProfileEducationRows(
     break;
   }
 
+  const fallback = await selectProfilesByIds(supabase, uniqueIds, ["*"]);
+  if (fallback.length > 0) {
+    return fallback;
+  }
+
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
@@ -209,27 +306,43 @@ async function selectProfileEducationRows(
   return (data ?? []) as Record<string, unknown>[];
 }
 
-function mergeEducationIntoProfileRows(
-  rows: TalentPoolProfileRow[],
+function mergeEducationIntoProfileRows<T extends Record<string, unknown>>(
+  rows: T[],
   educationRows: Record<string, unknown>[]
-): TalentPoolProfileRow[] {
+): T[] {
   if (educationRows.length === 0) {
     return rows;
   }
 
   const educationById = new Map<string, Record<string, unknown>>();
   for (const row of educationRows) {
-    const id = coerceProfileText(row.id);
-    if (id) {
-      educationById.set(id, row);
+    const mergedKeys = profileRowLookupIds(row);
+    for (const id of mergedKeys) {
+      const existing = educationById.get(id);
+      educationById.set(
+        id,
+        existing ? mergeProfileRowFields(existing, row) : row
+      );
     }
   }
 
   return rows.map((row) => {
-    const id = coerceProfileText(row.id);
-    const extra = id ? educationById.get(id) : undefined;
-    return extra ? { ...row, ...extra } : row;
+    let extra: Record<string, unknown> | undefined;
+    for (const id of profileRowLookupIds(row)) {
+      const match = educationById.get(id);
+      extra = extra && match ? mergeProfileRowFields(extra, match) : extra ?? match;
+    }
+    return extra ? ({ ...row, ...extra } as T) : row;
   });
+}
+
+export async function hydrateRowsWithEducation<T extends Record<string, unknown>>(
+  supabase: SupabaseClient,
+  rows: T[]
+): Promise<T[]> {
+  const ids = rows.flatMap((row) => profileRowLookupIds(row));
+  const educationRows = await selectProfileEducationRows(supabase, ids);
+  return mergeEducationIntoProfileRows(rows, educationRows);
 }
 
 export async function fetchCandidateEducationForEmployer(
@@ -242,12 +355,16 @@ export async function fetchCandidateEducationForEmployer(
   }
 
   const rows = await selectProfileEducationRows(supabase, [id]);
-  const row = rows[0];
-  if (!row) {
+  if (rows.length === 0) {
     return null;
   }
 
-  return educationFromProfileRow(row);
+  const merged = rows.reduce(
+    (current, row) => mergeProfileRowFields(current, row),
+    {} as Record<string, unknown>
+  );
+
+  return educationFromProfileRow(merged);
 }
 
 export type TalentPoolProfileRow = {
@@ -310,9 +427,7 @@ export async function fetchEmployerTalentPoolProfiles(
         const filtered = filterTalentPoolRows(
           (data ?? []) as TalentPoolProfileRow[]
         );
-        const ids = filtered
-          .map((row) => coerceProfileText(row.id))
-          .filter(Boolean);
+        const ids = filtered.flatMap((row) => profileRowLookupIds(row));
         const educationRows = await selectProfileEducationRows(supabase, ids);
 
         return {

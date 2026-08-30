@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  isSupabaseSchemaError,
+  schemaErrorMentionsColumn,
+} from "@/lib/supabase-schema-errors";
 
 export type EmployerProfileFormData = {
   businessName: string;
@@ -61,14 +65,44 @@ export function buildEmployerProfileUpdatePayload(
     EmployerProfileFormData,
     "businessName" | "industry" | "companyBio" | "workEmail" | "phone"
   >
-): Record<string, string | null> {
+): Record<string, string | boolean | null> {
+  const workEmail = nullIfEmpty(input.workEmail);
+
   return {
     company_name: nullIfEmpty(input.businessName),
     industry: nullIfEmpty(input.industry),
     bio: nullIfEmpty(input.companyBio),
-    contact_email: nullIfEmpty(input.workEmail),
+    contact_email: workEmail,
+    email: workEmail,
     phone: nullIfEmpty(input.phone),
   };
+}
+
+async function updateEmployerProfile(
+  supabase: SupabaseClient,
+  userId: string,
+  payload: Record<string, string | boolean | null>
+): Promise<{ error: { message?: string } | null }> {
+  const { error } = await supabase
+    .from("profiles")
+    .update(payload)
+    .eq("id", userId);
+
+  if (
+    error &&
+    isSupabaseSchemaError(error) &&
+    schemaErrorMentionsColumn(error, "is_verified")
+  ) {
+    const retryPayload = { ...payload };
+    delete retryPayload.is_verified;
+    const retry = await supabase
+      .from("profiles")
+      .update(retryPayload)
+      .eq("id", userId);
+    return { error: retry.error };
+  }
+
+  return { error };
 }
 
 export async function persistEmployerProfile(
@@ -78,13 +112,32 @@ export async function persistEmployerProfile(
     EmployerProfileFormData,
     "businessName" | "industry" | "companyBio" | "workEmail" | "phone"
   >
-): Promise<{ error: { message?: string } | null }> {
+): Promise<{ error: { message?: string } | null; isVerified: boolean }> {
   const payload = buildEmployerProfileUpdatePayload(input);
+  const nextEmail = (payload.contact_email ?? "").toString().trim().toLowerCase();
 
-  const { error } = await supabase
+  const { data: current } = await supabase
     .from("profiles")
-    .update(payload)
-    .eq("id", userId);
+    .select("contact_email, email, is_verified")
+    .eq("id", userId)
+    .maybeSingle();
 
-  return { error };
+  const previousEmail = (
+    current?.contact_email?.trim() ||
+    current?.email?.trim() ||
+    ""
+  ).toLowerCase();
+  const emailChanged = Boolean(nextEmail) && nextEmail !== previousEmail;
+  const stillVerified = current?.is_verified === true && !emailChanged;
+
+  if (emailChanged && current?.is_verified === true) {
+    payload.is_verified = false;
+  }
+
+  const { error } = await updateEmployerProfile(supabase, userId, payload);
+
+  return {
+    error,
+    isVerified: stillVerified,
+  };
 }

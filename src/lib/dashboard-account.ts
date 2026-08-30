@@ -19,11 +19,20 @@ export function isEmployeeRole(role: string | null | undefined): boolean {
   return role === "employee";
 }
 
-export function canAccessTalentPool(role: string | null | undefined): boolean {
-  if (!role || role === "employee" || role === "candidate") {
+export function isVerifiedEmployerFlag(
+  isVerified: boolean | null | undefined
+): boolean {
+  return isVerified === true;
+}
+
+export function canAccessTalentPool(
+  role: string | null | undefined,
+  isVerified?: boolean | null
+): boolean {
+  if (!isEmployerRole(role)) {
     return false;
   }
-  return isEmployerRole(role);
+  return isVerifiedEmployerFlag(isVerified);
 }
 
 export function isDashboardRootPath(pathname: string): boolean {

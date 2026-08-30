@@ -296,6 +296,27 @@ export async function persistCandidateProfile(
     }
 
     if (!result.error && result.data) {
+      const educationPatch: ProfilePayload = {};
+      for (const key of [
+        "university",
+        "school",
+        "major",
+        "degree",
+        "gpa",
+        "graduation_year",
+      ] as const) {
+        if (key in attemptPayload) {
+          educationPatch[key] = attemptPayload[key];
+        }
+      }
+
+      if (Object.keys(educationPatch).length > 0) {
+        await supabase
+          .from("profiles")
+          .update(educationPatch)
+          .eq("user_id", userId);
+      }
+
       return { data: result.data, error: null, userMessage: null };
     }
 

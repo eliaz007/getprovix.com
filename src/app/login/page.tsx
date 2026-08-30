@@ -20,6 +20,7 @@ import {
   getStandardEmailValidationMessage,
   normalizeEmail,
 } from "@/lib/validate-email";
+import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
@@ -189,6 +190,19 @@ export default function LoginPage() {
       return;
     }
 
+    const trimmedEmail = normalizeEmail(email);
+    setEmail(trimmedEmail);
+
+    if (signUpType === "business") {
+      const corporateEmailError =
+        getCorporateWorkEmailValidationMessage(trimmedEmail);
+      if (corporateEmailError) {
+        setError(corporateEmailError);
+        setLoading(false);
+        return;
+      }
+    }
+
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -207,7 +221,11 @@ export default function LoginPage() {
     }
 
     if (data.session?.user && isEmployerSignup(data.session.user)) {
-      await syncEmployerProfileAfterSignup(supabase, data.session.user.id);
+      await syncEmployerProfileAfterSignup(
+        supabase,
+        data.session.user.id,
+        data.session.user.email ?? trimmedEmail
+      );
     }
 
     if (!data.session) {
@@ -266,7 +284,8 @@ export default function LoginPage() {
             </div>
           )}
 
-          {!showResetPassword && (
+          {!showResetPassword &&
+            !(mode === "sign-up" && signUpType === "business") && (
             <>
               <OAuthSignInButtons
                 onError={(message) => {
@@ -434,12 +453,21 @@ export default function LoginPage() {
                 id="email"
                 type="email"
                 name="email"
-                placeholder="name@example.com"
+                placeholder={
+                  mode === "sign-up" && signUpType === "business"
+                    ? "you@company.com"
+                    : "name@example.com"
+                }
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
               />
+              {mode === "sign-up" && signUpType === "business" && (
+                <p className="text-xs text-zinc-400">
+                  Corporate work email required. Gmail, Yahoo, Hotmail, Outlook, and iCloud are not accepted.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">

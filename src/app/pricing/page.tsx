@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 
 type FeatureHighlight = {
   title: string;
@@ -60,15 +61,15 @@ export default function PricingPage() {
   const handleUnlockBetaAccess = async () => {
     const trimmedCompany = companyName.trim();
     const trimmedEmail = workEmail.trim();
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!trimmedCompany || !trimmedEmail) {
       setErrorMessage("Enter your company name and work email.");
       return;
     }
 
-    if (!emailPattern.test(trimmedEmail)) {
-      setErrorMessage("Enter a valid work email address.");
+    const workEmailError = getCorporateWorkEmailValidationMessage(trimmedEmail);
+    if (workEmailError) {
+      setErrorMessage(workEmailError);
       return;
     }
 

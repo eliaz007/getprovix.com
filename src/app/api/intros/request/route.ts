@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
-import { requireApiUser } from "@/lib/api-auth";
-import { isEmployerRole } from "@/lib/dashboard-account";
+import { requireVerifiedEmployer } from "@/lib/api-auth";
+import { isCorporateWorkEmail } from "@/lib/corporate-email";
 import {
   buildIntroRequestInsertPayload,
   CANDIDATE_INTRO_REQUEST_COLUMNS,
@@ -43,7 +43,7 @@ function isValidBody(body: unknown): body is Required<
     typeof record.companyName === "string" &&
     record.companyName.trim().length > 0 &&
     typeof record.companyEmail === "string" &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.companyEmail.trim()) &&
+    isCorporateWorkEmail(record.companyEmail.trim()) &&
     typeof record.targetRole === "string" &&
     record.targetRole.trim().length > 0 &&
     typeof record.compensationRange === "string" &&
@@ -60,22 +60,12 @@ function isUuid(value: string): boolean {
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiUser(request);
+    const access = await requireVerifiedEmployer(request);
     if (access instanceof NextResponse) {
       return access;
     }
 
     const { user, supabase: authClient } = access;
-
-    const { data: profile } = await authClient
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (!isEmployerRole(profile?.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
 
     const body = (await request.json()) as IntroRequestBody;
     if (!isValidBody(body)) {

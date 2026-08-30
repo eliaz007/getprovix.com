@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/admin-access";
-import { requireApiUser } from "@/lib/api-auth";
-import { resolveAccountRole } from "@/lib/account-role";
-import { isEmployerRole } from "@/lib/dashboard-account";
+import { requireVerifiedEmployer } from "@/lib/api-auth";
 import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
 import {
   educationFromProfileRow,
+  fetchCandidateEducationForEmployer,
   hasTalentEducation,
+  hydrateRowsWithEducation,
+  mergeTalentEducation,
 } from "@/lib/talent-pool-profiles";
 import {
   employerHasApplicantForProfile,
@@ -34,7 +35,7 @@ async function loadProfileRow(
 }
 
 export async function GET(request: Request) {
-  const access = await requireApiUser(request);
+  const access = await requireVerifiedEmployer(request);
   if (access instanceof NextResponse) {
     return access;
   }
@@ -55,23 +56,6 @@ export async function GET(request: Request) {
       },
       { status: 400 }
     );
-  }
-
-  const viewerRow =
-    (await fetchProfileForCandidateId(access.supabase, access.user.id, "role")) ??
-    (await access.supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", access.user.id)
-      .maybeSingle()).data;
-
-  const viewerRole = resolveAccountRole(
-    typeof viewerRow?.role === "string" ? viewerRow.role : null,
-    access.user
-  );
-
-  if (!isEmployerRole(viewerRole)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const userRow = await loadProfileRow(access.supabase, profileId);
@@ -105,7 +89,34 @@ export async function GET(request: Request) {
     }
   }
 
-  const education = educationFromProfileRow(row);
+  if (row && userRow && row !== userRow) {
+    row = { ...userRow, ...row };
+    for (const [key, value] of Object.entries(userRow)) {
+      const current = row[key];
+      const currentEmpty =
+        current == null || (typeof current === "string" && !current.trim());
+      const incomingEmpty =
+        value == null || (typeof value === "string" && !value.trim());
+      if (currentEmpty && !incomingEmpty) {
+        row[key] = value;
+      }
+    }
+  }
+
+  if (row) {
+    const reader = admin ?? access.supabase;
+    const [hydrated] = await hydrateRowsWithEducation(reader, [row]);
+    row = hydrated;
+  }
+
+  const dedicatedEducation = await fetchCandidateEducationForEmployer(
+    admin ?? access.supabase,
+    profileId
+  );
+  const education = mergeTalentEducation(
+    educationFromProfileRow(row),
+    dedicatedEducation ?? EMPTY_EDUCATION
+  );
 
   console.info("[talent-pool/education]", {
     profileId,
