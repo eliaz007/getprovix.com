@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchProfilesForCandidateIds } from "@/lib/resolve-candidate-profile";
 import { requireAdminApiAccess } from "@/lib/admin-api-auth";
 
 const JOB_COLUMNS = "id, title, company, employer_id, created_at";
@@ -57,18 +58,11 @@ export async function GET() {
     let dossierById = new Map<string, Record<string, unknown>>();
 
     if (candidateIds.length > 0) {
-      const { data: profiles, error: profileError } = await access.dataClient
-        .from("profiles")
-        .select(CANDIDATE_DOSSIER_COLUMNS)
-        .in("id", candidateIds);
-
-      if (profileError) {
-        console.error("Admin job interest dossier fetch error:", profileError);
-      } else {
-        dossierById = new Map(
-          (profiles ?? []).map((profile) => [profile.id as string, profile])
-        );
-      }
+      dossierById = await fetchProfilesForCandidateIds(
+        access.dataClient,
+        candidateIds,
+        CANDIDATE_DOSSIER_COLUMNS
+      );
     }
 
     const applicationsByJobId = new Map<

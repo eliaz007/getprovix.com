@@ -49,6 +49,7 @@ import {
   persistCandidateProfile,
 } from "@/lib/persist-candidate-profile";
 import { createClient } from "@/utils/supabase/client";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import {
   AVAILABILITY_STATUS_OPTIONS,
   DEFAULT_AVAILABILITY_STATUS,
@@ -92,9 +93,21 @@ import {
   saveTalentMatchScore,
 } from "@/lib/talent-match-scores";
 import {
+  candidateEducationFields,
+  educationFromProfileRow,
+  fetchCandidateEducationForEmployer,
   fetchEmployerTalentPoolProfiles,
+  hasTalentEducation,
+  mergeTalentEducation,
+  resolveTalentProfileId,
+  type TalentPoolEducation,
   type TalentPoolProfileRow,
 } from "@/lib/talent-pool-profiles";
+import {
+  ensureTalentPoolVisibilityChannel,
+  publishTalentPoolVisibility,
+  subscribeTalentPoolVisibility,
+} from "@/lib/talent-pool-visibility-sync";
 import { fetchDashboardJobs, type JobRow } from "@/lib/jobs";
 import OpportunitiesJobFeed from "@/components/opportunities/opportunities-job-feed";
 import {
@@ -288,6 +301,8 @@ type ProfileRecord = {
   full_name: string | null;
   role: string | null;
   graduation_year: number | null;
+  gpa?: string | number | null;
+  key_accomplishments?: string | null;
   status?: string | null;
   major?: string | null;
   degree?: string | null;
@@ -356,7 +371,11 @@ type DeepScreeningResult = {
 };
 
 function getCandidateScreeningKey(candidate: TalentPoolCandidate): string {
-  return candidate.profileId ?? candidate.id;
+  return (
+    resolveTalentProfileId(candidate) ||
+    candidate.profileId?.trim() ||
+    candidate.id
+  );
 }
 
 function parseStoredScreeningResult(raw: string): DeepScreeningResult | null {
@@ -420,6 +439,20 @@ function formatExternalUrl(url: string): string {
   return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
 }
 
+function formatTalentEducationLines(candidate: {
+  university: string;
+  major: string;
+  gpa: string;
+  graduationYear: string;
+}): string[] {
+  return [
+    candidate.university,
+    candidate.major,
+    candidate.gpa ? `GPA ${candidate.gpa}` : "",
+    candidate.graduationYear ? `Class of ${candidate.graduationYear}` : "",
+  ].filter(Boolean);
+}
+
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     value
@@ -444,7 +477,10 @@ type TalentPoolCandidate = {
   linkedin_url?: string | null;
   github_url?: string | null;
   role: string;
+  university: string;
   major: string;
+  gpa: string;
+  graduationYear: string;
   skills: string[];
   rating: string;
   execution_score?: number | string | null;
@@ -509,6 +545,8 @@ function candidateMatchesTalentSearch(
     candidate.codenameAlias,
     candidate.headline,
     candidate.role,
+    candidate.university,
+    candidate.major,
     getPublicCandidateLocation(candidate),
     ...candidate.skills,
   ];
@@ -545,12 +583,13 @@ function mapProfileRowToTalentCandidate(
     Number.isFinite(row.integrity_score)
       ? clampScore0to100(row.integrity_score)
       : null;
-  const major =
-    row.major?.trim() ||
-    row.degree?.trim() ||
-    row.university?.trim() ||
-    row.school?.trim() ||
-    "";
+  const education = educationFromProfileRow(
+    row as unknown as Record<string, unknown>
+  );
+  const university = education.university;
+  const major = education.major;
+  const gpa = education.gpa;
+  const graduationYear = education.graduationYear;
   const bio = redactPersonalNamesFromText(
     row.bio?.trim() || "",
     {
@@ -581,7 +620,10 @@ function mapProfileRowToTalentCandidate(
     linkedin_url: row.linkedin_url?.trim() || (isLinkedIn ? portfolioUrl : "") || "",
     github_url: !isLinkedIn && portfolioUrl ? portfolioUrl : "",
     role: headline,
+    university,
     major,
+    gpa,
+    graduationYear,
     skills,
     rating: integrityScore !== null ? `${integrityScore}%` : "",
     execution_score: integrityScore,
@@ -592,7 +634,10 @@ function mapProfileRowToTalentCandidate(
     bio,
     github: portfolioUrl || "",
     demoVideo: row.youtube_url?.trim() || "",
-    projects: [],
+    projects: (row.key_accomplishments ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
     verifiedOnProvix: isVerifiedOnProvix(row),
     matchScore: scoreTalentMatch(
       {
@@ -710,21 +755,24 @@ function getTalentMatchId(
   return profileId || candidate.id;
 }
 
-function talentPoolFingerprint(candidates: TalentPoolCandidate[]): string {
-  return candidates
-    .map((candidate) =>
-      [
-        getTalentMatchId(candidate),
-        candidate.role,
-        candidate.headline,
-        candidate.bio,
-        candidate.availability,
-        candidate.skills.join(","),
-      ].join(":")
-    )
-    .sort()
-    .join("|");
+function applyCachedTalentEducation(
+  candidate: TalentPoolCandidate,
+  cache: Map<string, TalentPoolEducation>
+): TalentPoolCandidate {
+  const extra =
+    cache.get(resolveTalentProfileId(candidate)) ||
+    cache.get(getTalentMatchId(candidate));
+  if (!extra) {
+    return candidate;
+  }
+
+  return {
+    ...candidate,
+    ...mergeTalentEducation(candidateEducationFields(candidate), extra),
+  };
 }
+
+type TalentPoolLoadFn = (opts?: { silent?: boolean }) => Promise<void>;
 
 async function fetchProfileRow(
   supabase: ReturnType<typeof createClient>,
@@ -963,6 +1011,9 @@ export default function DashboardPage() {
   const talentMatchFetchedRef = useRef<Set<string>>(new Set());
   const talentMatchInFlightRef = useRef<Set<string>>(new Set());
   const candidatesRef = useRef<TalentPoolCandidate[]>([]);
+  const educationByProfileIdRef = useRef<Map<string, TalentPoolEducation>>(
+    new Map()
+  );
   const primaryMatchingJobRef = useRef<MatchingJob | null>(null);
   const talentSearchRef = useRef("");
   // Talent pool visibility — synced from profiles.is_visible_in_pool (visible to employers).
@@ -975,9 +1026,12 @@ export default function DashboardPage() {
   const isEmployeeAccount = isEmployeeRole(profileRole);
   const showTalentPoolNav = canAccessTalentPool(profileRole);
   const [candidates, setCandidates] = useState<TalentPoolCandidate[]>([]);
+  const [selectedCandidate, setSelectedCandidate] =
+    useState<TalentPoolCandidate | null>(null);
   const [talentPoolLoading, setTalentPoolLoading] = useState(false);
   const [talentPoolError, setTalentPoolError] = useState<string | null>(null);
   const [talentPoolRefreshKey, setTalentPoolRefreshKey] = useState(0);
+  const loadTalentPoolRef = useRef<TalentPoolLoadFn>(async () => {});
 
   useEffect(() => {
     setNavAccountRole(profileRole ?? null);
@@ -1122,11 +1176,14 @@ export default function DashboardPage() {
           bio: loadedBio,
           school: loadedSchool,
           degree: loadedDegree,
-          gpa: "",
+          gpa:
+            profileWithRole?.gpa != null && String(profileWithRole.gpa).trim()
+              ? String(profileWithRole.gpa).trim()
+              : "",
           gradYear: loadedGradYear,
           github: loadedPortfolioUrl,
           demoVideo: loadedYoutubeUrl,
-          projects: "",
+          projects: profileWithRole?.key_accomplishments?.trim() || "",
         };
         setProfileData(hydratedProfile);
         setSavedProfileData(hydratedProfile);
@@ -1383,13 +1440,15 @@ export default function DashboardPage() {
 
         const mapped = profileRows
           .filter(isProfileEligibleForTalentPool)
-          .map(mapProfileRowToTalentCandidate);
+          .map(mapProfileRowToTalentCandidate)
+          .map((candidate) =>
+            applyCachedTalentEducation(
+              candidate,
+              educationByProfileIdRef.current
+            )
+          );
 
-        setCandidates((prev) =>
-          talentPoolFingerprint(prev) === talentPoolFingerprint(mapped)
-            ? prev
-            : mapped
-        );
+        setCandidates(mapped);
       } catch (err) {
         console.error("Talent pool fetch threw:", err);
         if (isMounted && !opts?.silent) {
@@ -1402,6 +1461,7 @@ export default function DashboardPage() {
       }
     };
 
+    loadTalentPoolRef.current = loadTalentPool;
     void loadTalentPool();
 
     const shouldPoll = activeTab === "talent";
@@ -1414,7 +1474,13 @@ export default function DashboardPage() {
     const handleWindowFocus = () => {
       void loadTalentPool({ silent: true });
     };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadTalentPool({ silent: true });
+      }
+    };
     window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isMounted = false;
@@ -1422,8 +1488,33 @@ export default function DashboardPage() {
         window.clearInterval(interval);
       }
       window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [showTalentPoolNav, activeTab, talentPoolRefreshKey]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    const supabase = createClient();
+    if (!showTalentPoolNav) {
+      return ensureTalentPoolVisibilityChannel(supabase);
+    }
+
+    return subscribeTalentPoolVisibility(supabase, ({ profileId, visible }) => {
+      if (!visible) {
+        setCandidates((current) =>
+          current.filter((candidate) => getTalentMatchId(candidate) !== profileId)
+        );
+        setSelectedCandidate((current) =>
+          current && getTalentMatchId(current) === profileId ? null : current
+        );
+      }
+
+      void loadTalentPoolRef.current({ silent: true });
+    });
+  }, [showTalentPoolNav, user?.id]);
 
   const fetchIntroUnlocks = useCallback(async (userId: string) => {
     const supabase = createClient();
@@ -1757,11 +1848,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       }
 
       setDbProfile((prev) =>
-        prev ? { ...prev, is_visible_in_pool: nextVisible } : prev
+        prev
+          ? {
+              ...prev,
+              is_visible_in_pool: nextVisible,
+              visible_to_employers: nextVisible,
+            }
+          : prev
       );
       setSavedCandidateProfile((prev) =>
         prev ? { ...prev, visibleInPool: nextVisible } : prev
       );
+      void publishTalentPoolVisibility(supabase, {
+        profileId,
+        visible: nextVisible,
+      });
       showToast(
         nextVisible
           ? "You are now visible to employers."
@@ -1899,6 +2000,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           candidateTimezone,
           isVisibleInPool: effectiveVisibleInPool,
           gradYear: profileData.gradYear,
+          gpa: profileData.gpa,
+          keyAccomplishments: profileData.projects,
         },
         session.user.id,
         { existingProfileSlug: dbProfile?.profile_slug }
@@ -1960,6 +2063,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       setPortfolioUrl(normalizedPortfolioUrl);
       setAvailabilityStatus(normalizedAvailability);
       setIsVisibleInPool(effectiveVisibleInPool);
+      void publishTalentPoolVisibility(supabase, {
+        profileId: session.user.id,
+        visible: effectiveVisibleInPool,
+      });
       showToast("Profile saved successfully.");
     } catch (error) {
       console.error("Profile update failed:", error);
@@ -2121,8 +2228,93 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const [experienceFilter, setExperienceFilter] = useState("all");
   const [roleTypeFilter, setRoleTypeFilter] = useState("all");
   const [availabilityFilter, setAvailabilityFilter] = useState("all");
-  const [selectedCandidate, setSelectedCandidate] =
-    useState<TalentPoolCandidate | null>(null);
+
+  useEffect(() => {
+    if (!selectedCandidate || !showTalentPoolNav) {
+      return;
+    }
+
+    const profileId = resolveTalentProfileId(selectedCandidate);
+    if (!profileId) {
+      console.warn(
+        "[talent-pool/education] skipped fetch: candidate has no profiles.id UUID",
+        { id: selectedCandidate.id, profileId: selectedCandidate.profileId }
+      );
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const supabase = createClient();
+      const emptyEducation: TalentPoolEducation = {
+        university: "",
+        major: "",
+        gpa: "",
+        graduationYear: "",
+      };
+
+      const [clientEducation, apiEducation] = await Promise.all([
+        fetchCandidateEducationForEmployer(supabase, profileId),
+        (async () => {
+          try {
+            const response = await fetchWithAuth(
+              `/api/talent-pool/education?profileId=${encodeURIComponent(profileId)}`
+            );
+            if (!response.ok) {
+              console.error(
+                "[talent-pool/education] API status",
+                response.status,
+                await response.text()
+              );
+              return null;
+            }
+            const payload = (await response.json()) as Record<string, unknown>;
+            return educationFromProfileRow(payload);
+          } catch (error) {
+            console.error("Talent pool education API failed:", error);
+            return null;
+          }
+        })(),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      const education = mergeTalentEducation(
+        clientEducation ?? emptyEducation,
+        apiEducation ?? emptyEducation
+      );
+
+      if (!hasTalentEducation(education)) {
+        console.warn("[talent-pool/education] empty payload for", profileId);
+        return;
+      }
+
+      educationByProfileIdRef.current.set(profileId, education);
+
+      const applyEducation = (candidate: TalentPoolCandidate) => {
+        if (resolveTalentProfileId(candidate) !== profileId) {
+          return candidate;
+        }
+
+        return {
+          ...candidate,
+          ...mergeTalentEducation(candidateEducationFields(candidate), education),
+        };
+      };
+
+      setSelectedCandidate((current) =>
+        current ? applyEducation(current) : current
+      );
+      setCandidates((current) => current.map(applyEducation));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCandidate?.profileId, selectedCandidate?.id, showTalentPoolNav]);
 
   useEffect(() => {
     if (!selectedCandidate || !user?.id || !showTalentPoolNav) {
@@ -2833,7 +3025,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       timezone: applicant.location,
       workPreference: DEFAULT_WORK_PREFERENCE,
       role: applicant.headline,
-      major: "Credentials on file",
+      university: applicant.university,
+      major: applicant.major,
+      gpa: applicant.gpa,
+      graduationYear: applicant.graduationYear,
       skills: applicant.skills,
       rating: applicant.aiScoreLabel,
       execution_score: Number.isFinite(parsedScore) ? parsedScore : 94,
@@ -3007,6 +3202,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             bio: getCandidateLockedBio(selectedCandidate),
             skills: selectedCandidate.skills,
             degree: selectedCandidate.major,
+            university: selectedCandidate.university,
+            major: selectedCandidate.major,
+            gpa: selectedCandidate.gpa,
+            graduation_year: selectedCandidate.graduationYear,
             experience: selectedCandidate.experienceLevel,
             projects: selectedCandidate.projects,
             github_url:
@@ -3020,7 +3219,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             location: screeningJob.location,
           },
           candidate_key: screeningKey,
-          profile_id: selectedCandidate.profileId ?? undefined,
+          profile_id:
+            resolveTalentProfileId(selectedCandidate) ||
+            selectedCandidate.profileId ||
+            undefined,
         }),
       });
 
@@ -5981,7 +6183,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 {col.experienceLevel}
                               </span>
                               <p className="text-[11px] text-slate-500 mt-2">
-                                {col.major}
+                                {formatTalentEducationLines(col).join(" · ") ||
+                                  "Education details not provided"}
                               </p>
                             </div>
 
@@ -6174,11 +6377,22 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             {selectedCandidate && (
               <div className="p-6 space-y-6">
                 {(() => {
-                  const liveCandidate =
+                  const scoredCandidate =
                     scoredCandidates.find(
                       (candidate) =>
-                        candidate.profileId === selectedCandidate.profileId
+                        resolveTalentProfileId(candidate) ===
+                        resolveTalentProfileId(selectedCandidate)
                     ) ?? selectedCandidate;
+                  const liveCandidate = applyCachedTalentEducation(
+                    {
+                      ...scoredCandidate,
+                      ...mergeTalentEducation(
+                        candidateEducationFields(scoredCandidate),
+                        candidateEducationFields(selectedCandidate)
+                      ),
+                    },
+                    educationByProfileIdRef.current
+                  );
                   const introUnlocked = isCandidateUnlocked(liveCandidate);
                   const publicName = getCandidatePublicName(liveCandidate);
                   const displayName = publicName;
@@ -6278,8 +6492,39 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
                     Education & Credentials
                   </div>
-                  <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-xs text-slate-200">
-                    {selectedCandidate.major}
+                  <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-xs text-slate-200 space-y-2">
+                    {liveCandidate.university ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-500 shrink-0">University</span>
+                        <span className="text-right">{liveCandidate.university}</span>
+                      </div>
+                    ) : null}
+                    {liveCandidate.major ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-500 shrink-0">Major</span>
+                        <span className="text-right">{liveCandidate.major}</span>
+                      </div>
+                    ) : null}
+                    {liveCandidate.gpa ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-500 shrink-0">GPA</span>
+                        <span className="text-right font-mono">{liveCandidate.gpa}</span>
+                      </div>
+                    ) : null}
+                    {liveCandidate.graduationYear ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-500 shrink-0">Graduation</span>
+                        <span className="text-right">{liveCandidate.graduationYear}</span>
+                      </div>
+                    ) : null}
+                    {!liveCandidate.university &&
+                    !liveCandidate.major &&
+                    !liveCandidate.gpa &&
+                    !liveCandidate.graduationYear ? (
+                      <p className="text-slate-500">
+                        Education details not provided.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 

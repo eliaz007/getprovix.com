@@ -20,3 +20,28 @@ export function isSupabaseSchemaError(
     (error.message?.includes("Could not find the") ?? false)
   );
 }
+
+export function schemaErrorMentionsColumn(
+  error: { message?: string } | null | undefined,
+  column: string
+): boolean {
+  const message = error?.message?.toLowerCase() ?? "";
+  const name = column.trim().toLowerCase();
+  if (!message || !name) {
+    return false;
+  }
+
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9_])${escaped}(?:$|[^a-z0-9_])`).test(
+    message
+  );
+}
+
+export function findMentionedColumn(
+  error: { message?: string } | null | undefined,
+  columns: readonly string[]
+): string | null {
+  return (
+    columns.find((column) => schemaErrorMentionsColumn(error, column)) ?? null
+  );
+}

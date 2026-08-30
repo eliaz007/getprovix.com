@@ -15,6 +15,7 @@ import {
   FLAT_FEE_THRESHOLD,
   parseCompensationValue,
 } from "@/lib/placement-revenue";
+import { fetchProfilesForCandidateIds } from "@/lib/resolve-candidate-profile";
 import { sendIntroEmail } from "@/lib/send-intro-email";
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 
@@ -88,18 +89,11 @@ export async function GET() {
     let dossierById = new Map<string, Record<string, unknown>>();
 
     if (candidateIds.length > 0) {
-      const { data: profiles, error: profileError } = await access.dataClient
-        .from("profiles")
-        .select(CANDIDATE_DOSSIER_COLUMNS)
-        .in("id", candidateIds);
-
-      if (profileError) {
-        console.error("Admin candidate dossier fetch error:", profileError);
-      } else {
-        dossierById = new Map(
-          (profiles ?? []).map((profile) => [profile.id as string, profile])
-        );
-      }
+      dossierById = await fetchProfilesForCandidateIds(
+        access.dataClient,
+        candidateIds,
+        CANDIDATE_DOSSIER_COLUMNS
+      );
     }
 
     return NextResponse.json({

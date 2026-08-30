@@ -7,12 +7,21 @@ import { getPublicCandidateLocation } from "@/lib/candidate-anonymization";
 import { scoreTalentMatch } from "@/lib/match-heuristic";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
+import {
+  educationFromProfileRow,
+  hasTalentEducation,
+} from "@/lib/talent-pool-profiles";
+import {
+  fetchProfilesForCandidateIds,
+  resolvedProfileId,
+} from "@/lib/resolve-candidate-profile";
 import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { createClient } from "@/utils/supabase/client";
 
 type ApplicantProfileRow = {
   id: string;
+  user_id?: string | null;
   codename_alias?: string | null;
   full_name?: string | null;
   name?: string | null;
@@ -33,6 +42,8 @@ type ApplicantProfileRow = {
   degree?: string | null;
   school?: string | null;
   university?: string | null;
+  gpa?: string | number | null;
+  graduation_year?: number | string | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
   availability_status?: string | null;
@@ -58,6 +69,10 @@ export type JobApplicantView = {
   location: string;
   headline: string;
   skills: string[];
+  university: string;
+  major: string;
+  gpa: string;
+  graduationYear: string;
   aiScoreLabel: string;
   appliedAtLabel: string;
   unlocked: boolean;
@@ -137,15 +152,94 @@ function resolveContactEmail(profile: ApplicantProfileRow | null): string | null
   return email || null;
 }
 
+const APPLICANT_PROFILE_COLUMNS = [
+  "id",
+  "user_id",
+  "codename_alias",
+  "full_name",
+  "name",
+  "first_name",
+  "last_name",
+  "contact_email",
+  "email",
+  "phone",
+  "linkedin_url",
+  "skills",
+  "timezone",
+  "country",
+  "job_title",
+  "headline",
+  "bio",
+  "experience_level",
+  "major",
+  "degree",
+  "school",
+  "university",
+  "gpa",
+  "graduation_year",
+  "portfolio_url",
+  "youtube_url",
+  "availability_status",
+  "availability",
+  "work_preference",
+  "role",
+] as const;
+
+async function fetchApplicantProfiles(
+  supabase: ReturnType<typeof createClient>,
+  candidateIds: string[]
+): Promise<Map<string, ApplicantProfileRow>> {
+  const byId = new Map<string, ApplicantProfileRow>();
+  const uniqueIds = [...new Set(candidateIds.filter(Boolean))];
+  if (uniqueIds.length === 0) {
+    return byId;
+  }
+
+  const resolved = await fetchProfilesForCandidateIds(
+    supabase,
+    uniqueIds,
+    APPLICANT_PROFILE_COLUMNS.join(", ")
+  );
+
+  if (resolved.size > 0) {
+    for (const id of uniqueIds) {
+      const row = resolved.get(id) as ApplicantProfileRow | undefined;
+      if (row) {
+        byId.set(id, row);
+      }
+    }
+    if (byId.size > 0) {
+      return byId;
+    }
+  }
+
+  const starRows = await fetchProfilesForCandidateIds(supabase, uniqueIds, "*");
+  for (const id of uniqueIds) {
+    const row = starRows.get(id) as ApplicantProfileRow | undefined;
+    if (row) {
+      byId.set(id, row);
+    }
+  }
+
+  return byId;
+}
+
 function mapApplicationToApplicant(
   row: JobApplicationRow,
   matchByCandidateId: Map<string, number>,
   jobTitle: string
 ): JobApplicantView {
   const profile = resolveProfileRow(row.profiles);
-  const profileId = profile?.id ?? row.candidate_id;
+  const profileId =
+    resolvedProfileId(
+      profile as Record<string, unknown> | null,
+      row.candidate_id
+    ) ?? row.candidate_id;
   const isUnlocked = Boolean(row.unlocked);
   const maskedAlias = generateMaskedAliasFromUuid(profileId);
+  const education = educationFromProfileRow(
+    profile as Record<string, unknown> | null
+  );
 
   const skills = Array.isArray(profile?.skills) ? profile.skills : [];
   const headline =
@@ -165,6 +259,10 @@ function mapApplicationToApplicant(
     }),
     headline,
     skills,
+    university: education.university,
+    major: education.major,
+    gpa: education.gpa,
+    graduationYear: education.graduationYear,
     aiScoreLabel: formatAiScoreLabel(
       matchByCandidateId.get(row.candidate_id),
       { skills, headline, bio: profile?.bio },
@@ -211,46 +309,54 @@ export default function JobApplicantsDrawer({
       setError(null);
 
       try {
+        const fromApi = await fetch(
+          `/api/jobs/${encodeURIComponent(jobId)}/applicants`,
+          { cache: "no-store" }
+        );
+
+        if (fromApi.ok) {
+          const payload = (await fromApi.json()) as {
+            applications?: Array<
+              Pick<
+                JobApplicationRow,
+                "id" | "candidate_id" | "created_at" | "unlocked"
+              >
+            >;
+            profiles?: Record<string, ApplicantProfileRow>;
+            matches?: Record<string, number>;
+          };
+
+          const rows = payload.applications ?? [];
+          const matchByCandidateId = new Map(
+            Object.entries(payload.matches ?? {}).map(([id, score]) => [
+              id,
+              score,
+            ])
+          );
+
+          if (!active) {
+            return;
+          }
+
+          setApplicants(
+            rows.map((row) =>
+              mapApplicationToApplicant(
+                {
+                  ...row,
+                  profiles: payload.profiles?.[row.candidate_id] ?? null,
+                },
+                matchByCandidateId,
+                jobTitle
+              )
+            )
+          );
+          return;
+        }
+
         const { data: applicationRows, error: applicationsError } =
           await supabase
             .from("job_applications")
-            .select(
-              `
-              id,
-              candidate_id,
-              created_at,
-              unlocked,
-              profiles (
-                id,
-                codename_alias,
-                full_name,
-                name,
-                first_name,
-                last_name,
-                contact_email,
-                email,
-                phone,
-                linkedin_url,
-                skills,
-                timezone,
-                country,
-                job_title,
-                headline,
-                bio,
-                experience_level,
-                major,
-                degree,
-                school,
-                university,
-                portfolio_url,
-                youtube_url,
-                availability_status,
-                availability,
-                work_preference,
-                role
-              )
-            `
-            )
+            .select("id, candidate_id, created_at, unlocked")
             .eq("job_id", jobId)
             .order("created_at", { ascending: false });
 
@@ -258,10 +364,14 @@ export default function JobApplicantsDrawer({
           throw applicationsError;
         }
 
-        const rows = (applicationRows ?? []) as JobApplicationRow[];
+        const rows = (applicationRows ?? []) as Pick<
+          JobApplicationRow,
+          "id" | "candidate_id" | "created_at" | "unlocked"
+        >[];
         const candidateIds = [
           ...new Set(rows.map((row) => row.candidate_id).filter(Boolean)),
         ];
+        const profilesById = await fetchApplicantProfiles(supabase, candidateIds);
 
         const matchByCandidateId = new Map<string, number>();
 
@@ -293,7 +403,14 @@ export default function JobApplicantsDrawer({
 
         setApplicants(
           rows.map((row) =>
-            mapApplicationToApplicant(row, matchByCandidateId, jobTitle)
+            mapApplicationToApplicant(
+              {
+                ...row,
+                profiles: profilesById.get(row.candidate_id) ?? null,
+              },
+              matchByCandidateId,
+              jobTitle
+            )
           )
         );
       } catch (loadError) {
@@ -418,6 +535,43 @@ export default function JobApplicantsDrawer({
                         score={Number.parseInt(applicant.aiScoreLabel, 10)}
                         className="w-16"
                       />
+                    ) : null}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                    Education
+                  </span>
+                  <div className="rounded-xl border border-zinc-800 bg-[#111111] p-3.5 text-xs text-slate-200 space-y-2">
+                    {applicant.university ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-500 shrink-0">University</span>
+                        <span className="text-right">{applicant.university}</span>
+                      </div>
+                    ) : null}
+                    {applicant.major ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-500 shrink-0">Major</span>
+                        <span className="text-right">{applicant.major}</span>
+                      </div>
+                    ) : null}
+                    {applicant.gpa ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-500 shrink-0">GPA</span>
+                        <span className="text-right font-mono">{applicant.gpa}</span>
+                      </div>
+                    ) : null}
+                    {applicant.graduationYear ? (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-slate-500 shrink-0">Graduation</span>
+                        <span className="text-right">{applicant.graduationYear}</span>
+                      </div>
+                    ) : null}
+                    {!hasTalentEducation(applicant) ? (
+                      <p className="text-slate-500">
+                        Education details not provided.
+                      </p>
                     ) : null}
                   </div>
                 </div>

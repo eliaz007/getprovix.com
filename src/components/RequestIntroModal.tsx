@@ -5,6 +5,7 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
 
 export const COMP_BAND_OPTIONS = [
   "$60k–$80k",
@@ -101,7 +102,7 @@ export default function RequestIntroModal({
     setSubmitting(true);
 
     try {
-      const response = await fetch("/api/intros/request", {
+      const response = await fetchWithAuth("/api/intros/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

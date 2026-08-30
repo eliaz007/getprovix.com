@@ -1,13 +1,13 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
+import { requireApiUser } from "@/lib/api-auth";
 import { isEmployerRole } from "@/lib/dashboard-account";
 import {
   buildIntroRequestInsertPayload,
   CANDIDATE_INTRO_REQUEST_COLUMNS,
 } from "@/lib/candidate-intro-requests";
 import { sendCandidateIntroRequestEmail } from "@/lib/send-intro-email";
-import { createClient } from "@/utils/supabase/server";
 
 type IntroRequestBody = {
   candidateId?: string;
@@ -60,14 +60,12 @@ function isUuid(value: string): boolean {
 
 export async function POST(request: Request) {
   try {
-    const authClient = await createClient();
-    const {
-      data: { user },
-    } = await authClient.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await requireApiUser(request);
+    if (access instanceof NextResponse) {
+      return access;
     }
+
+    const { user, supabase: authClient } = access;
 
     const { data: profile } = await authClient
       .from("profiles")

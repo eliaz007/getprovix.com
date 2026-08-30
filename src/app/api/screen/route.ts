@@ -1,10 +1,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireAiApiUser } from "@/lib/api-auth";
 import {
   fetchGitHubAudit,
   type GitHubAuditContext,
 } from "@/lib/github-audit";
+import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
+import {
+  employerHasApplicantForProfile,
+  fetchProfileForCandidateId,
+  hydrateScreenCandidateFromProfile,
+  isProfileUuid,
+  resolvedProfileId,
+} from "@/lib/resolve-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { createClient } from "@/utils/supabase/server";
 
@@ -14,6 +23,10 @@ type CandidatePayload = {
   bio?: string;
   skills?: string[] | string;
   degree?: string;
+  university?: string;
+  major?: string;
+  gpa?: string;
+  graduation_year?: string;
   experience?: string;
   projects?: string[] | string;
   github_url?: string;
@@ -364,20 +377,30 @@ async function persistScreeningResult(
 
   try {
     const supabase = await createClient();
+    const admin = createServiceRoleClient();
     const key = candidateKey.trim();
     const payload = result as unknown as Record<string, unknown>;
-    const requestedProfileId = profileId?.trim() || null;
-    const ownedProfileId =
-      requestedProfileId && requestedProfileId === userId
-        ? requestedProfileId
-        : null;
+    const requestedId = profileId?.trim() || null;
+    const lookupId =
+      requestedId && isProfileUuid(requestedId)
+        ? requestedId
+        : isProfileUuid(key)
+          ? key
+          : null;
+
+    const profileRow = lookupId
+      ? (await fetchProfileForCandidateId(supabase, lookupId)) ??
+        (admin ? await fetchProfileForCandidateId(admin, lookupId) : null)
+      : null;
+
+    const candidateProfileId = resolvedProfileId(profileRow, lookupId);
 
     const { error: screeningError } = await supabase
       .from("candidate_screenings")
       .upsert(
         {
           candidate_key: key,
-          profile_id: ownedProfileId,
+          profile_id: candidateProfileId,
           integrity_score: result.integrity_score,
           audit_data: payload,
           updated_at: new Date().toISOString(),
@@ -389,14 +412,31 @@ async function persistScreeningResult(
       console.error("[screen] candidate_screenings upsert failed:", screeningError);
     }
 
-    if (ownedProfileId) {
-      const { error: profileError } = await supabase
+    if (!candidateProfileId) {
+      return !screeningError;
+    }
+
+    const canWriteOwnProfile = candidateProfileId === userId;
+    const canWriteCandidateProfile =
+      canWriteOwnProfile ||
+      (profileRow != null &&
+        (profileRowIsPublicToEmployers(profileRow) ||
+          (await employerHasApplicantForProfile(
+            admin ?? supabase,
+            userId,
+            profileRow,
+            [lookupId]
+          ))));
+
+    if (canWriteCandidateProfile) {
+      const writer = canWriteOwnProfile ? supabase : admin ?? supabase;
+      const { error: profileError } = await writer
         .from("profiles")
         .update({
           integrity_score: result.integrity_score,
           audit_data: payload,
         })
-        .eq("id", userId);
+        .eq("id", candidateProfileId);
 
       if (profileError) {
         console.error("[screen] profiles audit update failed:", profileError);
@@ -430,6 +470,10 @@ async function generateGeminiScreen(
         title: candidate.title ?? "",
         skills: normalizeStringArray(candidate.skills, 12),
         degree: candidate.degree ?? "",
+        university: candidate.university ?? "",
+        major: candidate.major ?? "",
+        gpa: candidate.gpa ?? "",
+        graduation_year: candidate.graduation_year ?? "",
         bio: (candidate.bio ?? "").slice(0, 600),
         experience: candidate.experience ?? "",
         projects: normalizeStringArray(candidate.projects, 6),
@@ -516,7 +560,28 @@ export async function POST(request: Request) {
     profile_id?: string;
   };
 
-  const { candidate, job, candidate_key, profile_id } = record;
+  const { job, candidate_key, profile_id } = record;
+  let { candidate } = record;
+
+  const lookupId =
+    (profile_id && isProfileUuid(profile_id) ? profile_id.trim() : null) ||
+    (candidate_key && isProfileUuid(candidate_key) ? candidate_key.trim() : null);
+
+  if (lookupId) {
+    const admin = createServiceRoleClient();
+    const profileRow =
+      (await fetchProfileForCandidateId(access.supabase, lookupId)) ??
+      (admin ? await fetchProfileForCandidateId(admin, lookupId) : null);
+
+    if (profileRow) {
+      candidate = hydrateScreenCandidateFromProfile(candidate, profileRow);
+    } else {
+      console.warn("[screen] could not resolve candidate profile row", {
+        profile_id,
+        candidate_key,
+      });
+    }
+  }
 
   const githubUrl = resolveCandidateGitHubUrl(candidate);
   let githubAudit: GitHubAuditContext | null = null;

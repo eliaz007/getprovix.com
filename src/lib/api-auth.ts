@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient as createJwtClient } from "@supabase/supabase-js";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { consumeRateLimit, tooManyRequestsResponse } from "@/lib/ip-rate-limit";
 import { createClient } from "@/utils/supabase/server";
@@ -11,18 +12,61 @@ export type ApiUserAccess = {
   supabase: SupabaseClient;
 };
 
-export async function requireApiUser(): Promise<ApiUserAccess | NextResponse> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+function readBearerToken(request?: Request): string | null {
+  const header = request?.headers.get("authorization")?.trim();
+  if (!header) {
+    return null;
   }
 
-  return { user, supabase };
+  const match = /^Bearer\s+(\S+)/i.exec(header);
+  return match?.[1] ?? null;
+}
+
+function createAccessTokenClient(accessToken: string): SupabaseClient {
+  return createJwtClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    }
+  );
+}
+
+export async function requireApiUser(
+  request?: Request
+): Promise<ApiUserAccess | NextResponse> {
+  const cookieClient = await createClient();
+  const {
+    data: { user },
+  } = await cookieClient.auth.getUser();
+
+  if (user) {
+    return { user, supabase: cookieClient };
+  }
+
+  const accessToken = readBearerToken(request);
+  if (accessToken) {
+    const tokenClient = createAccessTokenClient(accessToken);
+    const {
+      data: { user: tokenUser },
+      error: tokenError,
+    } = await tokenClient.auth.getUser(accessToken);
+
+    if (tokenUser && !tokenError) {
+      return { user: tokenUser, supabase: tokenClient };
+    }
+  }
+
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 
 export async function requireAiApiUser(): Promise<ApiUserAccess | NextResponse> {

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildUniqueProfileSlug } from "@/lib/profile-slug";
-import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
+import { isSupabaseSchemaError, findMentionedColumn } from "@/lib/supabase-schema-errors";
 import { normalizeAvailabilityStatus } from "@/lib/availability-status";
 import {
   normalizeCandidateTimezone,
@@ -24,6 +24,8 @@ export type CandidateProfileSaveInput = {
   candidateTimezone: string;
   isVisibleInPool: boolean;
   gradYear: string;
+  gpa: string;
+  keyAccomplishments: string;
 };
 
 type PersistOptions = {
@@ -70,9 +72,11 @@ export function buildCandidateProfileUpdatePayload(
     job_title: nullIfEmpty(input.jobTitle),
     bio: nullIfEmpty(input.bio),
     university: nullIfEmpty(input.university),
+    school: nullIfEmpty(input.university),
     major: nullIfEmpty(input.major),
     degree: nullIfEmpty(input.degree),
     skills: normalizeSkillsForDb(input.skills),
+    user_id: userId,
     portfolio_url: nullIfEmpty(normalizeGitHubUrl(input.portfolioUrl)),
     youtube_url: nullIfEmpty(input.youtubeUrl),
     experience_level: nullIfEmpty(input.experienceLevel),
@@ -80,7 +84,10 @@ export function buildCandidateProfileUpdatePayload(
     work_preference: normalizeWorkPreference(input.workPreference),
     timezone: normalizeCandidateTimezone(input.candidateTimezone),
     is_visible_in_pool: Boolean(input.isVisibleInPool),
+    visible_to_employers: Boolean(input.isVisibleInPool),
     graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
+    gpa: nullIfEmpty(input.gpa),
+    key_accomplishments: nullIfEmpty(input.keyAccomplishments),
   };
 
   if (existingSlug) {
@@ -138,12 +145,33 @@ async function runProfileWrite(
   mode: "update" | "upsert"
 ) {
   if (mode === "update") {
-    return supabase
+    const byId = await supabase
       .from("profiles")
       .update(payload)
       .eq("id", userId)
       .select("*")
       .maybeSingle();
+
+    if (byId.data || byId.error) {
+      return byId;
+    }
+
+    const byUserId = await supabase
+      .from("profiles")
+      .update(payload)
+      .eq("user_id", userId)
+      .select("*")
+      .maybeSingle();
+
+    if (
+      byUserId.error &&
+      (isMissingColumnError(byUserId.error) ||
+        isSupabaseSchemaError(byUserId.error))
+    ) {
+      return byId;
+    }
+
+    return byUserId;
   }
 
   return supabase
@@ -187,10 +215,30 @@ export async function persistCandidatePoolVisibility(
     };
   }
 
-  const { error } = await supabase
+  const payload: ProfilePayload = {
+    is_visible_in_pool: isVisibleInPool,
+    visible_to_employers: isVisibleInPool,
+  };
+
+  let { error } = await supabase
     .from("profiles")
-    .update({ is_visible_in_pool: isVisibleInPool })
+    .update(payload)
     .eq("id", userId);
+
+  if (
+    error &&
+    (isMissingColumnError(error) || isSupabaseSchemaError(error))
+  ) {
+    const mentioned = findMentionedColumn(error, [
+      "visible_to_employers",
+    ]);
+    if (mentioned) {
+      ({ error } = await supabase
+        .from("profiles")
+        .update({ is_visible_in_pool: isVisibleInPool })
+        .eq("id", userId));
+    }
+  }
 
   if (error) {
     return { error, userMessage: formatPersistError(error) };
@@ -238,24 +286,9 @@ export async function persistCandidateProfile(
   }
 
   let attemptPayload: ProfilePayload = { ...payload };
-  const optionalColumnKeys = [
-    "profile_slug",
-    "availability_status",
-    "experience_level",
-    "university",
-    "degree",
-    "major",
-    "youtube_url",
-    "work_preference",
-    "timezone",
-    "is_visible_in_pool",
-    "graduation_year",
-    "resume_text",
-    "resume_filename",
-    "resume_uploaded_at",
-  ] as const;
+  const maxAttempts = Object.keys(attemptPayload).length + 3;
 
-  for (let attempt = 0; attempt <= optionalColumnKeys.length + 2; attempt += 1) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     let result = await runProfileWrite(supabase, userId, attemptPayload, "update");
 
     if (!result.error && !result.data) {
@@ -287,20 +320,13 @@ export async function persistCandidateProfile(
 
     if (
       result.error &&
-      isMissingColumnError(result.error) &&
-      attempt < optionalColumnKeys.length
+      (isMissingColumnError(result.error) || isSupabaseSchemaError(result.error))
     ) {
-      const keyToDrop = optionalColumnKeys[attempt];
-      if (keyToDrop in attemptPayload) {
-        const { [keyToDrop]: _removed, ...rest } = attemptPayload;
-        attemptPayload = rest;
-        continue;
-      }
-    }
-
-    if (result.error && isSupabaseSchemaError(result.error) && attempt < optionalColumnKeys.length + 1) {
-      const keyToDrop = optionalColumnKeys[Math.min(attempt, optionalColumnKeys.length - 1)];
-      if (keyToDrop in attemptPayload) {
+      const keyToDrop = findMentionedColumn(
+        result.error,
+        Object.keys(attemptPayload)
+      );
+      if (keyToDrop && keyToDrop in attemptPayload) {
         const { [keyToDrop]: _removed, ...rest } = attemptPayload;
         attemptPayload = rest;
         continue;

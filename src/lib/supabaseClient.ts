@@ -15,6 +15,10 @@ export function createBrowserSupabaseClient(): SupabaseClient {
   if (!browserClient) {
     browserClient = createBrowserClient(supabaseUrl, supabaseAnonKey, {
       cookieOptions,
+      global: {
+        fetch: (url, options = {}) =>
+          fetch(url, { ...options, cache: "no-store" }),
+      },
     });
   }
 
