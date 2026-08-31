@@ -9,7 +9,7 @@ export type DashboardTab =
   | "applications"
   | "talent"
   | "evaluator"
-  | "revenue";
+  | "auditor";
 
 export function isEmployerRole(role: string | null | undefined): boolean {
   return role === "employer" || role === "business";

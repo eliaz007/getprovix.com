@@ -128,7 +128,6 @@ import {
   type CandidateTimezone,
   type WorkPreference,
 } from "@/lib/work-preference";
-import { CANDIDATE_BONUS_RANGE_LABEL } from "@/lib/placement-revenue";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
 import {
@@ -141,6 +140,7 @@ import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import type { DashboardTab } from "@/lib/dashboard-account";
 import { clampScore0to100 } from "@/lib/score-scale";
 import ScoreMeter from "@/components/ScoreMeter";
+import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const AUDIT_STORAGE_PREFIX = "vanguardx_audit_";
@@ -944,6 +944,7 @@ export default function DashboardPage() {
     useState<DashboardTab>("opportunities");
   const activeTab = dashboardNav?.activeTab ?? fallbackActiveTab;
   const navSetActiveTab = dashboardNav?.setActiveTab;
+  const navSetDefaultTab = dashboardNav?.setDefaultTab;
   const navSetMobileNavOpen = dashboardNav?.setMobileNavOpen;
   const navSetAccountRole = dashboardNav?.setAccountRole;
   const navSetIsVerifiedEmployer = dashboardNav?.setIsVerifiedEmployer;
@@ -1280,9 +1281,17 @@ export default function DashboardPage() {
 
         if (canAccessTalentPool(resolvedRole, profileWithRole?.is_verified === true)) {
           setProfileSubMenu("companyInfo");
-          setActiveTab("talent");
+          if (navSetDefaultTab) {
+            navSetDefaultTab("talent");
+          } else {
+            setActiveTab("talent");
+          }
         } else if (isEmployeeRole(resolvedRole)) {
-          setActiveTab("opportunities");
+          if (navSetDefaultTab) {
+            navSetDefaultTab("opportunities");
+          } else {
+            setActiveTab("opportunities");
+          }
         }
 
         const { data: applicationRows, error: applicationsError } = await supabase
@@ -1793,16 +1802,15 @@ export default function DashboardPage() {
   ]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !authChecked) {
       return;
     }
 
-    if (!showTalentPoolNav && activeTab === "talent") {
-      setActiveTab(isEmployeeAccount ? "opportunities" : "my_profile");
-    }
     if (
       !showTalentPoolNav &&
-      (activeTab === "evaluator" || activeTab === "revenue")
+      (activeTab === "talent" ||
+        activeTab === "evaluator" ||
+        activeTab === "auditor")
     ) {
       setActiveTab(isEmployeeAccount ? "opportunities" : "my_profile");
     }
@@ -1821,7 +1829,7 @@ export default function DashboardPage() {
     ) {
       setActiveTab("my_profile");
     }
-  }, [showTalentPoolNav, isEmployeeAccount, isBusinessAccount, activeTab, user]);
+  }, [showTalentPoolNav, isEmployeeAccount, isBusinessAccount, activeTab, user, authChecked, setActiveTab]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -3135,13 +3143,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       const title = job?.title ?? listing?.title ?? "Role";
 
       window.setTimeout(() => {
-        router.push("/dashboard");
         setActiveTab("my_profile");
         setProfileSubMenu("activeListings");
         setApplicantsDrawerJob({
           id: jobId,
           title,
         });
+        if (window.location.pathname !== "/dashboard") {
+          router.push("/dashboard");
+        }
       }, 0);
     },
     [jobs, businessListings, router, setActiveTab]
@@ -6486,7 +6496,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           )}
 
           {/* EMPLOYER: AI SCREEN CANDIDATE */}
-          {activeTab === "evaluator" && (
+          {showTalentPoolNav && activeTab === "evaluator" && (
             <div>
               <div className="mb-8">
                 <h1 className="text-3xl font-extrabold tracking-tight text-white">Employer AI Screen</h1>
@@ -6575,43 +6585,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             </div>
           )}
 
-          {/* EMPLOYER: PLACEMENT REVENUE */}
-          {activeTab === "revenue" && (
-            <div className="max-w-3xl">
-              <div className="mb-8">
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">Placement Economics</h1>
-                <p className="text-zinc-300 text-sm mt-2">
-                  Provix operates on a pure contingency model — no upfront subscriptions or unlock fees.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-                <div className="card-edge bg-[#111111] p-6 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Above $25k Roles</span>
-                  <span className="text-3xl font-mono font-extrabold tabular-nums text-white">10%</span>
-                  <p className="text-xs text-slate-400 mt-2">
-                    of first-year salary upon hire
-                  </p>
-                </div>
-                <div className="card-edge bg-[#111111] p-6 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">Under $25k Roles</span>
-                  <span className="text-3xl font-mono font-extrabold tabular-nums text-emerald-400">$2,500</span>
-                  <p className="text-xs text-slate-400 mt-2">
-                    flat placement fee upon hire
-                  </p>
-                </div>
-              </div>
-              <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl shadow-2xl p-6">
-                <h3 className="text-sm font-bold text-white mb-4">How billing works</h3>
-                <div className="space-y-3 text-sm text-slate-300 leading-relaxed">
-                  <p>
-                    Request intros for free. You only pay Provix after a successful hire is confirmed.
-                  </p>
-                  <p>
-                    Candidate bonuses of {CANDIDATE_BONUS_RANGE_LABEL} may be allocated on sub-$25k placements to support verified talent.
-                  </p>
-                </div>
-              </div>
-            </div>
+          {showTalentPoolNav && activeTab === "auditor" && (
+            <GitHubResumeAuditor />
           )}
 
         </div>

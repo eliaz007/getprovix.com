@@ -193,15 +193,15 @@ export default function GitHubResumeAuditor() {
     <div className="w-full max-w-5xl mx-auto space-y-10">
       <div className="mb-8">
         <div className="inline-flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-widest mb-2">
-          <ShieldCheck className="w-4 h-4" aria-hidden />
+          <ShieldCheck className="w-4 h-4" aria-hidden="true" />
           Career Accelerator
         </div>
         <h1 className="text-3xl font-extrabold tracking-tight text-white">
-          GitHub &amp; Resume Auditor
+          GitHub & Resume Auditor
         </h1>
         <p className="text-slate-400 text-sm mt-2 max-w-2xl">
           Deep-audit your GitHub artifacts and resume claims for founder-ready
-          credibility — before recruiters do.
+          credibility - before recruiters do.
         </p>
       </div>
 
@@ -235,7 +235,7 @@ export default function GitHubResumeAuditor() {
 
           <div>
             <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
-              Target Compensation &amp; Level
+              Target Compensation & Level
             </label>
             <select
               value={compensationLevel}
@@ -300,12 +300,12 @@ export default function GitHubResumeAuditor() {
           >
             {loading ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                 Running AI Audit...
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" aria-hidden />
+                <Sparkles className="w-4 h-4" aria-hidden="true" />
                 Run AI Audit
               </>
             )}
@@ -459,7 +459,7 @@ export default function GitHubResumeAuditor() {
           {!loading && !result && !error && (
             <div className="flex flex-col items-center justify-center text-center min-h-[360px] px-4">
               <div className="w-14 h-14 rounded-2xl bg-indigo-600/15 border border-indigo-500/25 flex items-center justify-center mb-4">
-                <ShieldCheck className="w-7 h-7 text-indigo-400" aria-hidden />
+                <ShieldCheck className="w-7 h-7 text-indigo-400" aria-hidden="true" />
               </div>
               <h2 className="text-base font-bold text-white mb-2">
                 Audit results will appear here

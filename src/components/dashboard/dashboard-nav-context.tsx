@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -23,6 +24,7 @@ import { createClient } from "@/utils/supabase/client";
 type DashboardNavContextValue = {
   activeTab: DashboardTab;
   setActiveTab: (tab: DashboardTab) => void;
+  setDefaultTab: (tab: DashboardTab) => void;
   mobileNavOpen: boolean;
   setMobileNavOpen: (open: boolean) => void;
   accountRole: string | null;
@@ -78,7 +80,8 @@ function getUserHeaderIdentity(user: User): {
 
 export function DashboardNavProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [activeTab, setActiveTab] = useState<DashboardTab>("my_profile");
+  const [activeTab, setActiveTabState] = useState<DashboardTab>("my_profile");
+  const userSelectedTabRef = useRef(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [isVerifiedEmployer, setIsVerifiedEmployer] = useState(false);
@@ -99,6 +102,18 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const setActiveTab = useCallback((tab: DashboardTab) => {
+    userSelectedTabRef.current = true;
+    setActiveTabState(tab);
+  }, []);
+
+  const setDefaultTab = useCallback((tab: DashboardTab) => {
+    if (userSelectedTabRef.current) {
+      return;
+    }
+    setActiveTabState(tab);
+  }, []);
 
   const requireAuth = useCallback(() => {
     if (userId) {
@@ -227,6 +242,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
     () => ({
       activeTab,
       setActiveTab,
+      setDefaultTab,
       mobileNavOpen,
       setMobileNavOpen,
       accountRole,
@@ -251,6 +267,8 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
     }),
     [
       activeTab,
+      setActiveTab,
+      setDefaultTab,
       mobileNavOpen,
       accountRole,
       isVerifiedEmployer,

@@ -7,6 +7,7 @@ import { PenTool, ShieldCheck, Terminal } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import {
   isAuditorPath,
+  isDashboardAuditorPath,
   isDashboardRootPath,
   isInterviewPrepPath,
   isOpportunitiesPath,
@@ -52,7 +53,10 @@ function DashboardTabLink({
     tab === "opportunities"
       ? isOpportunitiesPath(pathname) ||
         (isDashboardRootPath(pathname) && activeTab === tab)
-      : isDashboardRootPath(pathname) && activeTab === tab;
+      : tab === "auditor"
+        ? isDashboardAuditorPath(pathname) ||
+          (isDashboardRootPath(pathname) && activeTab === tab)
+        : isDashboardRootPath(pathname) && activeTab === tab;
 
   if (isGuest) {
     if (tab === "opportunities") {
@@ -83,13 +87,28 @@ function DashboardTabLink({
     );
   }
 
+  const selectTab = () => {
+    setActiveTab(tab);
+    setMobileNavOpen(false);
+  };
+
+  if (isDashboardRootPath(pathname)) {
+    return (
+      <button
+        type="button"
+        onClick={selectTab}
+        className={navItemClass(isActive, variant)}
+      >
+        {icon}
+        {label}
+      </button>
+    );
+  }
+
   return (
     <Link
       href="/dashboard"
-      onClick={() => {
-        setActiveTab(tab);
-        setMobileNavOpen(false);
-      }}
+      onClick={selectTab}
       className={navItemClass(isActive, variant)}
     >
       {icon}
@@ -103,11 +122,13 @@ function ProtectedNavLink({
   label,
   icon,
   isActive,
+  variant = "default",
 }: {
   href: string;
   label: ReactNode;
   icon: ReactNode;
   isActive: boolean;
+  variant?: "default" | "employer";
 }) {
   const { isGuest, requireAuth, setMobileNavOpen } = useDashboardNav();
 
@@ -119,7 +140,7 @@ function ProtectedNavLink({
           setMobileNavOpen(false);
           requireAuth();
         }}
-        className={navItemClass(isActive)}
+        className={navItemClass(isActive, variant)}
       >
         {icon}
         {label}
@@ -131,7 +152,7 @@ function ProtectedNavLink({
     <Link
       href={href}
       onClick={() => setMobileNavOpen(false)}
-      className={navItemClass(isActive)}
+      className={navItemClass(isActive, variant)}
     >
       {icon}
       {label}
@@ -269,9 +290,9 @@ export default function DashboardSidebar() {
                 variant="employer"
               />
               <DashboardTabLink
-                tab="revenue"
-                label="Placement Revenue"
-                icon={<DashboardIcons.Briefcase />}
+                tab="auditor"
+                label="GitHub Auditor"
+                icon={<ShieldCheck className="w-4 h-4" aria-hidden="true" />}
                 variant="employer"
               />
             </nav>
