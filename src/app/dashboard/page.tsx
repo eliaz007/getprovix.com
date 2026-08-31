@@ -4407,7 +4407,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                     <div>
                       <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
-                        Education & Credentials
+                        Academic Snapshot
                       </div>
                       <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-xs text-slate-200 space-y-2">
                         {school ? (
