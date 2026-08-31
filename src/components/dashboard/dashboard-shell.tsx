@@ -121,7 +121,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
 
         <main className="relative min-h-0 w-full flex-1 flex flex-col overflow-hidden bg-[#0A0A0A]">
           {!isGuest && isBusinessAccount && (
-            <div className="hidden md:flex shrink-0 items-center justify-end px-6 md:px-12 py-3 border-b border-zinc-800 bg-[#111111]/95">
+            <div className="hidden md:flex shrink-0 items-center justify-end px-6 md:px-12 pt-4">
               <EmployerNotificationBell
                 userId={userId}
                 onOpenJobApplicants={(jobId) => onOpenJobApplicants?.(jobId)}

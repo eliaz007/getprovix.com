@@ -20,6 +20,7 @@ import JobApplicantsDrawer, {
   type JobApplicantView,
 } from "@/components/JobApplicantsDrawer";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
+import DashboardSkeleton from "@/components/dashboard/dashboard-skeleton";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { ProvixLogo } from "@/components/ProvixLogo";
@@ -3987,6 +3988,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   );
 
   const isStandaloneGuest = Boolean(!user && !dashboardNav);
+  const isLoading =
+    loadingProfile ||
+    ((activeTab === "opportunities" || activeTab === "opportunity_radar") &&
+      jobsLoading) ||
+    (activeTab === "intro_requests" && candidateIntroLoading);
 
   return (
     <>
@@ -4067,6 +4073,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   : "min-h-screen bg-[#0A0A0A] text-slate-200 p-4 pt-8 sm:p-6 sm:pt-10 md:p-12"
             }
           >
+      {isLoading ? (
+        <DashboardSkeleton />
+      ) : (
+        <>
       {isEmployeeAccount && activeTab === "opportunity_radar" && (
         <div
           className={`mb-6 inline-flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-md border border-zinc-800 bg-[#111111] ${
@@ -6616,6 +6626,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           )}
 
         </div>
+        </>
+      )}
 
         {/* CANDIDATE SLIDE-OVER DRAWER */}
         <div className={`fixed inset-0 z-50 ${isDrawerOpen ? "" : "pointer-events-none"}`}>
