@@ -1,8 +1,7 @@
+import { SITE_URL } from "@/lib/site";
+
 export function getPublicProfileBaseUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ??
-    "https://www.getprovix.com"
-  );
+  return SITE_URL;
 }
 
 export function buildPublicProfileUrl(profileSlug: string): string {

@@ -30,21 +30,34 @@ export async function generateMetadata({
 
   if (!profile) {
     return {
-      title: "Profile Not Found | Provix",
+      title: "Profile Not Found",
+      robots: { index: false, follow: false },
     };
   }
 
+  const description =
+    profile.bio ??
+    `${profile.displayName} — verified candidate profile on Provix.`;
+  const url = buildPublicProfileUrl(profile.profileSlug);
+  const title = profile.displayName;
+
   return {
-    title: `${profile.displayName} | Provix`,
-    description:
-      profile.bio ??
-      `${profile.displayName} — verified candidate profile on Provix.`,
+    title,
+    description,
+    alternates: { canonical: url },
     openGraph: {
-      title: `${profile.displayName} | Provix`,
+      type: "profile",
+      locale: "en_US",
+      siteName: "Provix",
+      title: `${title} | Provix`,
       description:
-        profile.bio ??
-        "Verified proof-of-work profile on Provix.",
-      url: buildPublicProfileUrl(profile.profileSlug),
+        profile.bio ?? "Verified proof-of-work profile on Provix.",
+      url,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${title} | Provix`,
+      description,
     },
   };
 }

@@ -1,11 +1,11 @@
-import type { Metadata } from "next";
 import Link from "next/link";
+import { buildPageMetadata } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "Terms of Service — Provix",
-  description:
-    "Terms governing use of the Provix candidate auditing and matchmaking platform.",
-};
+export const metadata = buildPageMetadata(
+  "Terms of Service",
+  "Terms governing use of the Provix candidate auditing and matchmaking platform.",
+  "/terms"
+);
 
 const sections = [
   {

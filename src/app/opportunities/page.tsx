@@ -1,11 +1,11 @@
-import type { Metadata } from "next";
 import PublicOpportunitiesFeed from "@/components/opportunities/public-opportunities-feed";
+import { buildPageMetadata } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "Opportunities — Provix",
-  description:
-    "Browse curated job listings, companies, and requirements. Sign in to express interest.",
-};
+export const metadata = buildPageMetadata(
+  "Opportunities",
+  "Browse curated job listings, companies, and requirements. Sign in to express interest.",
+  "/opportunities"
+);
 
 export default function PublicOpportunitiesPage() {
   return <PublicOpportunitiesFeed />;
