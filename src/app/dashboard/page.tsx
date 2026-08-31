@@ -157,6 +157,8 @@ const DEEP_SCREENING_STAGES = [
   "Synthesizing 0–100 score & founder interview rubrics...",
 ] as const;
 
+const DEEP_SCREENING_FETCH_TIMEOUT_MS = 90_000;
+
 const COLLEGE_FIT_STAGES = [
   "Analyzing academic stats...",
   "Evaluating reach & target programs...",
@@ -3397,7 +3399,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
     const controller = new AbortController();
     deepScreeningAbortRef.current = controller;
-    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      DEEP_SCREENING_FETCH_TIMEOUT_MS
+    );
     const screeningKey = getCandidateScreeningKey(selectedCandidate);
 
     try {
