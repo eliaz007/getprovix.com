@@ -15,6 +15,12 @@ import {
   resolvedProfileId,
 } from "@/lib/resolve-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
+import {
+  CANONICAL_AUDIT_CHECKS,
+  defaultAuditCheckSummary,
+  normalizeAuditChecks,
+  type AuditCheck,
+} from "@/lib/audit-checks";
 import { createClient } from "@/utils/supabase/server";
 
 type CandidatePayload = {
@@ -55,6 +61,7 @@ export type ScreenResult = {
   artifact_analysis: string;
   technical_depth_summary: string;
   interview_questions: InterviewQuestion[];
+  checks: AuditCheck[];
   github_audit?: GitHubAuditContext | null;
 };
 
@@ -67,9 +74,11 @@ You receive:
 - Target job requirements
 - Optional live GitHub repository audit data (stars, forks, creation date, language, recent commits, README excerpt)
 
-Perform Check 1 (GitHub artifact audit) and Check 3 (chronological timeline conflict check):
-- Cross-check claimed skills against actual repository evidence (e.g., flag claiming full architecture on a repo with only 1 commit or no README).
-- Evaluate timeline plausibility (flag years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history).
+Perform three artifact checks plus a chronological timeline conflict check:
+- Check 1 artifact_analysis: README quality, commit history, repo age, languages, and whether artifacts support claimed skills.
+- Check 2 architecture_review: system design signals, folder/module structure, and whether the candidate demonstrates architectural thinking.
+- Check 3 api_resiliency: API design, data handling, error handling, and production resiliency signals. If evidence is thin, say so explicitly.
+- timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history).
 - Be skeptical but fair; cite concrete evidence from the provided repo metadata when available.
 - Do not treat GitHub handle, GitHub login, or GitHub profile name vs Provix display name/codename as a red flag, identity issue, or scoring penalty. Never add a timeline_flag or lower integrity_score because those strings do not match.
 
@@ -77,13 +86,30 @@ Return strict JSON only in this exact structure:
 {
   "integrity_score": number (integer 0-100),
   "timeline_flags": ["flag1", "flag2"],
-  "artifact_analysis": "Concise paragraph on repository/proof-of-work authenticity.",
+  "artifact_analysis": "Concise paragraph on repository/proof-of-work authenticity (same content as Check 1).",
   "technical_depth_summary": "Concise paragraph on demonstrated technical depth vs role requirements.",
   "interview_questions": [
     {
       "question": "Tailored interview question",
       "category": "Architecture / Process | Metric Verification | Technical Depth",
       "what_to_listen_for": "Concise coaching tip on strong vs weak answers."
+    }
+  ],
+  "checks": [
+    {
+      "id": "artifact_analysis",
+      "title": "Artifact Analysis (Check 1)",
+      "summary": "1-3 sentence paragraph"
+    },
+    {
+      "id": "architecture_review",
+      "title": "Architecture Review (Check 2)",
+      "summary": "1-3 sentence paragraph"
+    },
+    {
+      "id": "api_resiliency",
+      "title": "API & Data Resiliency Check (Check 3)",
+      "summary": "1-3 sentence paragraph"
     }
   ]
 }
@@ -95,9 +121,24 @@ Also generate an Employer Interview Cheat Sheet:
 Rules:
 - integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with artifacts. Do not deduct points for GitHub handle / display-name mismatch.
 - timeline_flags: array of specific red-flag strings; empty array if none. Never include flags about GitHub handle, username, or login not matching the candidate display name or codename.
-- artifact_analysis and technical_depth_summary: single concise sentences or short paragraphs, no markdown. Do not mention handle-vs-name mismatch.
+- checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown. Do not mention handle-vs-name mismatch.
+- artifact_analysis should match Check 1. technical_depth_summary remains a separate overall depth paragraph.
 - interview_questions: exactly 3 objects; categories should vary (e.g., Architecture / Process, Metric Verification, Technical Depth).
 - Do not include extra keys or markdown fences.`;
+
+const SCREEN_CHECK_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    id: {
+      type: Type.STRING,
+      description:
+        "One of artifact_analysis, architecture_review, or api_resiliency.",
+    },
+    title: { type: Type.STRING },
+    summary: { type: Type.STRING },
+  },
+  required: ["id", "title", "summary"],
+};
 
 const SCREEN_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
@@ -130,6 +171,12 @@ const SCREEN_RESPONSE_SCHEMA = {
         required: ["question", "category", "what_to_listen_for"],
       },
     },
+    checks: {
+      type: Type.ARRAY,
+      description:
+        "Exactly three artifact checks: Artifact Analysis, Architecture Review, and API & Data Resiliency.",
+      items: SCREEN_CHECK_SCHEMA,
+    },
   },
   required: [
     "integrity_score",
@@ -137,6 +184,7 @@ const SCREEN_RESPONSE_SCHEMA = {
     "artifact_analysis",
     "technical_depth_summary",
     "interview_questions",
+    "checks",
   ],
 };
 
@@ -302,13 +350,29 @@ function normalizeScreenResult(
   const depthFallback =
     "Technical depth appears partially aligned with stated skills.";
 
-  const artifact_analysis = stripHandleMismatchFromProse(
-    typeof record.artifact_analysis === "string" &&
-      record.artifact_analysis.trim()
-      ? record.artifact_analysis.trim()
-      : artifactFallback,
-    artifactFallback
-  );
+  const rawChecks =
+    Array.isArray(record.checks) && record.checks.length > 0
+      ? record.checks
+      : [
+          {
+            id: "artifact_analysis",
+            title: CANONICAL_AUDIT_CHECKS[0].title,
+            summary:
+              typeof record.artifact_analysis === "string"
+                ? record.artifact_analysis
+                : artifactFallback,
+          },
+        ];
+
+  const checks = normalizeAuditChecks(rawChecks).map((check) => ({
+    ...check,
+    summary: stripHandleMismatchFromProse(
+      check.summary,
+      defaultAuditCheckSummary(check.id)
+    ),
+  }));
+
+  const artifact_analysis = checks[0]?.summary || artifactFallback;
 
   const technical_depth_summary = stripHandleMismatchFromProse(
     typeof record.technical_depth_summary === "string" &&
@@ -340,6 +404,7 @@ function normalizeScreenResult(
     artifact_analysis,
     technical_depth_summary,
     interview_questions: interview_questions.slice(0, 3),
+    checks,
   };
 }
 
@@ -405,15 +470,35 @@ function buildFallbackScreen(
   }
 
   const roleLabel = job.title ?? "this role";
+  const artifact_analysis = githubAudit
+    ? `Fallback audit of ${githubAudit.owner}/${githubAudit.repo}: ${githubAudit.commit_count_sampled} recent commits sampled, primary language ${githubAudit.language ?? "unknown"}.`
+    : "Fallback screening could not verify proof-of-work artifacts against a public GitHub repository.";
 
   return {
     integrity_score: clampIntegrityScore(integrity_score),
     timeline_flags,
-    artifact_analysis: githubAudit
-      ? `Fallback audit of ${githubAudit.owner}/${githubAudit.repo}: ${githubAudit.commit_count_sampled} recent commits sampled, primary language ${githubAudit.language ?? "unknown"}.`
-      : "Fallback screening could not verify proof-of-work artifacts against a public GitHub repository.",
+    artifact_analysis,
     technical_depth_summary: `Skill overlap with ${roleLabel}: ${overlap.join(", ") || skills.slice(0, 2).join(", ") || "limited explicit matches"}.`,
     interview_questions: buildDefaultInterviewQuestions(candidate, job),
+    checks: normalizeAuditChecks([
+      {
+        id: "artifact_analysis",
+        title: CANONICAL_AUDIT_CHECKS[0].title,
+        summary: artifact_analysis,
+      },
+      {
+        id: "architecture_review",
+        title: CANONICAL_AUDIT_CHECKS[1].title,
+        summary: githubAudit?.readme_excerpt
+          ? `README excerpt from ${githubAudit.owner}/${githubAudit.repo} was reviewed for design notes. Module-level architecture still needs a clearer ownership map.`
+          : defaultAuditCheckSummary("architecture_review"),
+      },
+      {
+        id: "api_resiliency",
+        title: CANONICAL_AUDIT_CHECKS[2].title,
+        summary: defaultAuditCheckSummary("api_resiliency"),
+      },
+    ]),
     github_audit: githubAudit,
   };
 }

@@ -1,6 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import {
+  CANONICAL_AUDIT_CHECKS,
+  normalizeAuditChecks,
+  type AuditCheck,
+} from "@/lib/audit-checks";
+import {
   DAILY_LIMIT_API_MESSAGE,
   incrementDailyScanUsage,
   loadDailyScanUsage,
@@ -30,11 +35,14 @@ export type AuditRequestBody = {
   compensationLevel?: string;
 };
 
+export type { AuditCheck };
+
 export type AuditResult = {
   score: number;
   strengths: string[];
   redFlags: string[];
   recommendations: string[];
+  checks: AuditCheck[];
 };
 
 const SYSTEM_PROMPT = `You are Provix's GitHub & Resume Credibility Auditor.
@@ -46,7 +54,24 @@ Return strict JSON only:
   "score": number (integer 0-100, hiring readiness),
   "strengths": ["verified strength with evidence", "..."],
   "redFlags": ["missing proof or credibility gap", "..."],
-  "recommendations": ["specific actionable fix", "...", "..."]
+  "recommendations": ["specific actionable fix", "...", "..."],
+  "checks": [
+    {
+      "id": "artifact_analysis",
+      "title": "Artifact Analysis (Check 1)",
+      "summary": "1-3 sentence paragraph"
+    },
+    {
+      "id": "architecture_review",
+      "title": "Architecture Review (Check 2)",
+      "summary": "1-3 sentence paragraph"
+    },
+    {
+      "id": "api_resiliency",
+      "title": "API & Data Resiliency Check (Check 3)",
+      "summary": "1-3 sentence paragraph"
+    }
+  ]
 }
 
 Rules:
@@ -54,9 +79,27 @@ Rules:
 - strengths: 3-5 bullets citing concrete signals from GitHub artifacts and/or resume text when provided.
 - redFlags: 2-5 bullets flagging gaps, vague claims, missing artifacts, or timeline inconsistencies.
 - recommendations: exactly 3 specific, actionable steps to stand out to founders (not generic advice).
+- checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown, citing evidence from GitHub artifacts and/or resume text when available.
+  - Check 1 artifact_analysis: README quality, commit history, repo age, languages, and whether artifacts support resume claims.
+  - Check 2 architecture_review: system design signals, folder/module structure, and whether the candidate demonstrates architectural thinking.
+  - Check 3 api_resiliency: API design, data handling, error handling, and production resiliency signals. If evidence is thin, say so explicitly.
 - Cross-reference resume claims (skills, titles, employers, projects, dates, stack) against GitHub profile metadata and code artifacts (languages, READMEs, commit activity, repo age). Flag resume claims that are not supported by GitHub evidence, and GitHub activity that contradicts resume seniority or dates.
-- Be skeptical but fair. If GitHub URL is missing, note that in redFlags. If resume is thin or missing, score accordingly.
+- Be skeptical but fair. If GitHub URL is missing, note that in redFlags and in the relevant check summaries. If resume is thin or missing, score accordingly.
 - No markdown, no extra keys.`;
+
+const AUDIT_CHECK_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    id: {
+      type: Type.STRING,
+      description:
+        "One of artifact_analysis, architecture_review, or api_resiliency.",
+    },
+    title: { type: Type.STRING },
+    summary: { type: Type.STRING },
+  },
+  required: ["id", "title", "summary"],
+};
 
 const AUDIT_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
@@ -77,8 +120,14 @@ const AUDIT_RESPONSE_SCHEMA = {
       type: Type.ARRAY,
       items: { type: Type.STRING },
     },
+    checks: {
+      type: Type.ARRAY,
+      description:
+        "Exactly three artifact checks: Artifact Analysis, Architecture Review, and API & Data Resiliency.",
+      items: AUDIT_CHECK_SCHEMA,
+    },
   },
-  required: ["score", "strengths", "redFlags", "recommendations"],
+  required: ["score", "strengths", "redFlags", "recommendations", "checks"],
 };
 
 const MODEL_CANDIDATES = [
@@ -123,6 +172,7 @@ function normalizeAuditResult(raw: unknown): AuditResult {
             "Quantify resume bullets with metrics, scope, and verifiable links.",
             "Align project stack keywords with the target role in your headline and bio.",
           ].slice(0, 3),
+    checks: normalizeAuditChecks(record.checks),
   };
 }
 
@@ -238,11 +288,41 @@ function buildFallbackAudit(
     strengths.push("Profile inputs give a baseline starting point for a credibility audit.");
   }
 
+  const artifact = githubArtifacts?.artifacts[0];
+  const checks = CANONICAL_AUDIT_CHECKS.map((canonical) => {
+    if (canonical.id === "artifact_analysis") {
+      return {
+        ...canonical,
+        summary: artifact
+          ? `Sampled ${artifact.owner}/${artifact.repo} (${artifact.language ?? "unknown language"}, ${artifact.commit_count_sampled} recent commits). README and commit history ${artifact.readme_excerpt ? "are present" : "are limited"} for claim verification.`
+          : hasGithub
+            ? `A GitHub URL was supplied for ${role}, but repository artifacts were too thin to verify README quality or commit history.`
+            : "No GitHub artifacts were available to verify README quality, commit history, or language signals.",
+      };
+    }
+
+    if (canonical.id === "architecture_review") {
+      return {
+        ...canonical,
+        summary: artifact?.readme_excerpt
+          ? `README excerpt from ${artifact.owner}/${artifact.repo} was reviewed for design notes. Folder-level architecture still needs a clearer ownership and module map for ${level}-level ${role} work.`
+          : "Architecture signals were limited. No documented module structure or system-design notes were available from the provided artifacts.",
+      };
+    }
+
+    return {
+      ...canonical,
+      summary:
+        "API and data-resiliency evidence was not confirmed. Error handling, persistence, and production hardening could not be verified from the sampled artifacts.",
+    };
+  });
+
   return normalizeAuditResult({
     score,
     strengths,
     redFlags,
     recommendations,
+    checks,
   });
 }
 

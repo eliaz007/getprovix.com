@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
+import AuditChecksList from "@/components/auditor/audit-checks-list";
 import ResumeFileUpload, {
   type StoredResumeMeta,
 } from "@/components/ResumeFileUpload";
@@ -23,9 +24,9 @@ import {
 const COMPENSATION_LEVELS = ["Junior", "Mid", "Senior"] as const;
 
 const AUDIT_STAGES = [
-  "Scanning repository architecture...",
-  "Evaluating resume proof-of-work...",
-  "Generating hiring readiness score...",
+  "Artifact Analysis (Check 1)...",
+  "Architecture Review (Check 2)...",
+  "API & Data Resiliency Check (Check 3)...",
 ] as const;
 
 function getScoreBadgeClass(score: number): string {
@@ -398,6 +399,8 @@ export default function GitHubResumeAuditor() {
               </div>
               <ScoreMeter score={result.score} />
 
+              <AuditChecksList checks={result.checks} />
+
               <div>
                 <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-3">
                   Verified Strengths
@@ -465,9 +468,9 @@ export default function GitHubResumeAuditor() {
                 Audit results will appear here
               </h2>
               <p className="text-sm text-slate-500 leading-relaxed max-w-sm">
-                Provix analyzes repository architecture signals, resume
-                proof-of-work depth, timeline plausibility, and role alignment
-                to produce a founder-ready credibility score.
+                Provix runs Artifact Analysis, Architecture Review, and an API
+                & Data Resiliency Check, then produces a founder-ready
+                credibility score.
               </p>
             </div>
           )}

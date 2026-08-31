@@ -140,7 +140,12 @@ import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import type { DashboardTab } from "@/lib/dashboard-account";
 import { clampScore0to100 } from "@/lib/score-scale";
 import ScoreMeter from "@/components/ScoreMeter";
+import AuditChecksList from "@/components/auditor/audit-checks-list";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
+import {
+  normalizeAuditChecks,
+  type AuditCheck,
+} from "@/lib/audit-checks";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 const AUDIT_STORAGE_PREFIX = "vanguardx_audit_";
@@ -361,6 +366,7 @@ type DeepScreeningResult = {
   artifact_analysis: string;
   technical_depth_summary: string;
   interview_questions: InterviewCheatSheetQuestion[];
+  checks: AuditCheck[];
   github_audit?: {
     repo_url: string;
     owner: string;
@@ -384,6 +390,26 @@ function getCandidateScreeningKey(candidate: TalentPoolCandidate): string {
   );
 }
 
+function coerceDeepScreeningResult(
+  result: DeepScreeningResult
+): DeepScreeningResult {
+  return {
+    ...result,
+    integrity_score: clampScore0to100(result.integrity_score),
+    checks: normalizeAuditChecks(
+      Array.isArray(result.checks) && result.checks.length > 0
+        ? result.checks
+        : [
+            {
+              id: "artifact_analysis",
+              title: "Artifact Analysis (Check 1)",
+              summary: result.artifact_analysis,
+            },
+          ]
+    ),
+  };
+}
+
 function parseStoredScreeningResult(raw: string): DeepScreeningResult | null {
   try {
     const parsed = JSON.parse(raw) as DeepScreeningResult;
@@ -392,10 +418,7 @@ function parseStoredScreeningResult(raw: string): DeepScreeningResult | null {
       Array.isArray(parsed.timeline_flags) &&
       typeof parsed.artifact_analysis === "string"
     ) {
-      return {
-        ...parsed,
-        integrity_score: clampScore0to100(parsed.integrity_score),
-      };
+      return coerceDeepScreeningResult(parsed);
     }
   } catch {
     // Ignore malformed cache entries.
@@ -2574,7 +2597,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         }
 
         if (!error && data?.audit_data) {
-          const audit = data.audit_data as DeepScreeningResult;
+          const audit = coerceDeepScreeningResult(
+            data.audit_data as DeepScreeningResult
+          );
           setDeepScreeningResult(audit);
           setDeepScreeningShowResults(true);
           if (typeof window !== "undefined") {
@@ -3414,7 +3439,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         throw new Error(`Deep screening failed (${response.status})`);
       }
 
-      const data = (await response.json()) as DeepScreeningResult;
+      const data = coerceDeepScreeningResult(
+        (await response.json()) as DeepScreeningResult
+      );
       setDeepScreeningStage(DEEP_SCREENING_STAGES.length - 1);
       await new Promise((resolve) => window.setTimeout(resolve, 450));
       setDeepScreeningResult(data);
@@ -6536,6 +6563,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         className="mt-3"
                       />
 
+                      <AuditChecksList checks={employerAuditResult.checks} />
+
                       {employerAuditResult.strengths.length > 0 && (
                         <div>
                           <span className="font-bold text-white block mb-2 text-sm">
@@ -6956,7 +6985,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       {deepScreeningResult.timeline_flags.length > 0 && (
                         <div>
                           <div className="text-[10px] uppercase font-bold text-red-400 tracking-wider mb-2">
-                            Timeline &amp; Repository Flags
+                            Timeline & Repository Flags
                           </div>
                           <ul className="space-y-1.5">
                             {deepScreeningResult.timeline_flags.map(
@@ -6973,14 +7002,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         </div>
                       )}
 
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-indigo-300 tracking-wider mb-2">
-                          Artifact Analysis (Check 1)
-                        </div>
-                        <p className="text-xs text-slate-300 leading-relaxed bg-indigo-500/5 border border-indigo-500/10 rounded-lg px-3 py-2">
-                          {deepScreeningResult.artifact_analysis}
-                        </p>
-                      </div>
+                      <AuditChecksList checks={deepScreeningResult.checks} />
 
                       <div>
                         <div className="text-[10px] uppercase font-bold text-purple-300 tracking-wider mb-2">
