@@ -58,12 +58,28 @@ function parseCheckRecord(value: unknown): {
   };
 }
 
+function asCheckList(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) {
+    return raw.length === 1 && Array.isArray(raw[0]) ? raw[0] : raw;
+  }
+
+  if (raw && typeof raw === "object") {
+    const values = Object.values(raw as Record<string, unknown>);
+    if (values.length === 1 && Array.isArray(values[0])) {
+      return values[0];
+    }
+    if (values.length > 0) {
+      return values;
+    }
+  }
+
+  return [];
+}
+
 export function normalizeAuditChecks(raw: unknown): AuditCheck[] {
-  const parsed = Array.isArray(raw)
-    ? raw
-        .map(parseCheckRecord)
-        .filter((item): item is NonNullable<typeof item> => Boolean(item))
-    : [];
+  const parsed = asCheckList(raw)
+    .map(parseCheckRecord)
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   return CANONICAL_AUDIT_CHECKS.map((canonical, index) => {
     const byId = parsed.find((item) => item.id === canonical.id);

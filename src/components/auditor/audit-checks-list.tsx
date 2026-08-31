@@ -1,4 +1,8 @@
-import type { AuditCheck, AuditCheckId } from "@/lib/audit-checks";
+import {
+  normalizeAuditChecks,
+  type AuditCheck,
+  type AuditCheckId,
+} from "@/lib/audit-checks";
 
 const CHECK_STYLES: Record<
   AuditCheckId,
@@ -23,17 +27,15 @@ export default function AuditChecksList({
 }: {
   checks?: AuditCheck[] | null;
 }) {
-  if (!checks?.length) {
-    return null;
-  }
+  const items = normalizeAuditChecks(checks);
 
   return (
     <div className="space-y-3">
-      {checks.map((check) => {
+      {items.map((check, index) => {
         const style = CHECK_STYLES[check.id] ?? CHECK_STYLES.artifact_analysis;
 
         return (
-          <div key={check.id}>
+          <div key={`${check.id}-${index}`}>
             <div
               className={`text-[10px] uppercase font-bold tracking-wider mb-2 ${style.title}`}
             >

@@ -10,11 +10,14 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
-import AuditChecksList from "@/components/auditor/audit-checks-list";
 import ResumeFileUpload, {
   type StoredResumeMeta,
 } from "@/components/ResumeFileUpload";
 import ScoreMeter from "@/components/ScoreMeter";
+import {
+  normalizeAuditChecks,
+  type AuditCheckId,
+} from "@/lib/audit-checks";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   DAILY_LIMIT_UI_MESSAGE,
@@ -28,6 +31,21 @@ const AUDIT_STAGES = [
   "Architecture Review (Check 2)...",
   "API & Data Resiliency Check (Check 3)...",
 ] as const;
+
+const CHECK_STYLES: Record<AuditCheckId, { title: string; body: string }> = {
+  artifact_analysis: {
+    title: "text-indigo-300",
+    body: "bg-indigo-500/5 border-indigo-500/10",
+  },
+  architecture_review: {
+    title: "text-purple-300",
+    body: "bg-purple-500/5 border-purple-500/10",
+  },
+  api_resiliency: {
+    title: "text-cyan-300",
+    body: "bg-cyan-500/5 border-cyan-500/10",
+  },
+};
 
 function getScoreBadgeClass(score: number): string {
   if (score >= 80) {
@@ -179,7 +197,10 @@ export default function GitHubResumeAuditor() {
       }
 
       setLimitReached(Boolean(data.limit_reached));
-      setResult(data);
+      setResult({
+        ...data,
+        checks: normalizeAuditChecks(data.checks),
+      });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Could not complete audit.";
@@ -189,6 +210,8 @@ export default function GitHubResumeAuditor() {
       setLoading(false);
     }
   };
+
+  const auditChecks = result ? normalizeAuditChecks(result.checks) : [];
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-10">
@@ -313,7 +336,7 @@ export default function GitHubResumeAuditor() {
           </button>
         </div>
 
-        <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[480px] shadow-2xl">
+        <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[480px] overflow-y-auto shadow-2xl">
           {loading && (
             <div className="space-y-4">
               <div className="text-sm font-bold text-white mb-1">
@@ -399,7 +422,27 @@ export default function GitHubResumeAuditor() {
               </div>
               <ScoreMeter score={result.score} />
 
-              <AuditChecksList checks={result.checks} />
+              <div className="space-y-3">
+                {auditChecks.map((check, index) => {
+                  const style =
+                    CHECK_STYLES[check.id] ?? CHECK_STYLES.artifact_analysis;
+
+                  return (
+                    <div key={`${check.id}-${index}`}>
+                      <div
+                        className={`text-[10px] uppercase font-bold tracking-wider mb-2 ${style.title}`}
+                      >
+                        {check.title}
+                      </div>
+                      <p
+                        className={`text-xs text-slate-300 leading-relaxed border rounded-lg px-3 py-2 ${style.body}`}
+                      >
+                        {check.summary}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
 
               <div>
                 <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-3">
