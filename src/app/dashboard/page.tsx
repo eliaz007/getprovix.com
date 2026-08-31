@@ -4658,159 +4658,156 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                 {profileSubMenu === "settings" && (
                   <div className="space-y-6">
-                    <h3 className="text-sm font-bold text-white mb-4">
-                      {isBusinessAccount
-                        ? "Account Settings"
-                        : "Account & Visibility Settings"}
-                    </h3>
-
                     {!isBusinessAccount && (
-                    <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
-                        <div>
-                          <span className="font-bold text-xs text-white block">
-                            Work Preference
-                          </span>
-                          <span className="text-[11px] text-slate-500">
-                            Shown on your public builder card and talent pool
-                            profile.
-                          </span>
-                        </div>
-                        <select
-                          value={workPreference}
-                          onChange={(e) =>
-                            setWorkPreference(e.target.value as WorkPreference)
-                          }
-                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
-                        >
-                          {WORK_PREFERENCE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
+                            <div>
+                              <span className="font-bold text-xs text-white block">
+                                Work Preference
+                              </span>
+                              <span className="text-[11px] text-slate-500">
+                                Shown on your public builder card and talent pool
+                                profile.
+                              </span>
+                            </div>
+                            <select
+                              value={workPreference}
+                              onChange={(e) =>
+                                setWorkPreference(e.target.value as WorkPreference)
+                              }
+                              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                            >
+                              {WORK_PREFERENCE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                      <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
-                        <div>
-                          <span className="font-bold text-xs text-white block">
-                            Timezone
-                          </span>
-                          <span className="text-[11px] text-slate-500">
-                            Helps employers understand your working hours.
-                          </span>
+                          <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
+                            <div>
+                              <span className="font-bold text-xs text-white block">
+                                Timezone
+                              </span>
+                              <span className="text-[11px] text-slate-500">
+                                Helps employers understand your working hours.
+                              </span>
+                            </div>
+                            <select
+                              value={candidateTimezone}
+                              onChange={(e) =>
+                                setCandidateTimezone(
+                                  e.target.value as CandidateTimezone
+                                )
+                              }
+                              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                            >
+                              {TIMEZONE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
-                        <select
-                          value={candidateTimezone}
-                          onChange={(e) =>
-                            setCandidateTimezone(
-                              e.target.value as CandidateTimezone
-                            )
-                          }
-                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
-                        >
-                          {TIMEZONE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
 
-                    <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
+                        <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
+                          <div>
+                            <span className="font-bold text-xs text-white block">
+                              Availability Status
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              Shown on your talent pool card and used by recruiter
+                              availability filters.
+                            </span>
+                          </div>
+                          <select
+                            value={availabilityStatus}
+                            onChange={(e) =>
+                              setAvailabilityStatus(
+                                e.target.value as AvailabilityStatus
+                              )
+                            }
+                            className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                          >
+                            {AVAILABILITY_STATUS_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4 p-4 bg-slate-900/50 border border-zinc-800 rounded-xl">
+                          <div>
+                            <span className="font-bold text-xs text-white block">
+                              Visible to Employers
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              Off by default. Turn this on to opt in to the talent
+                              pool. Requires a valid GitHub profile URL.
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={isVisibleInPool}
+                            aria-label="Visible to Employers"
+                            disabled={isTogglingVisibility}
+                            onClick={() => {
+                              void handleVisibilityToggle();
+                            }}
+                            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                              isTogglingVisibility
+                                ? "opacity-60 cursor-wait"
+                                : "cursor-pointer"
+                            } ${
+                              isVisibleInPool ? "bg-emerald-500" : "bg-zinc-700"
+                            }`}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200"
+                              style={{
+                                transform: isVisibleInPool
+                                  ? "translateX(1.25rem)"
+                                  : "translateX(0)",
+                              }}
+                            />
+                          </button>
+                        </div>
+
+                        {renderProfileFormActions()}
+                      </>
+                    )}
+
+                    <div
+                      className={`flex items-center justify-between gap-4 ${
+                        isBusinessAccount ? "" : "pt-2"
+                      }`}
+                    >
                       <div>
                         <span className="font-bold text-xs text-white block">
-                          Availability Status
+                          Sign out of Provix
                         </span>
                         <span className="text-[11px] text-slate-500">
-                          Shown on your talent pool card and used by recruiter
-                          availability filters.
+                          You'll be returned to the login screen on this device.
                         </span>
-                      </div>
-                      <select
-                        value={availabilityStatus}
-                        onChange={(e) =>
-                          setAvailabilityStatus(
-                            e.target.value as AvailabilityStatus
-                          )
-                        }
-                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
-                      >
-                        {AVAILABILITY_STATUS_OPTIONS.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-4 p-4 bg-slate-900/50 border border-zinc-800 rounded-xl">
-                      <div>
-                        <span className="font-bold text-xs text-white block">
-                          Visible to Employers
-                        </span>
-                        <span className="text-[11px] text-slate-500">
-                          Off by default. Turn this on to opt in to the talent
-                          pool. Requires a valid GitHub profile URL.
+                        <span className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                          {user?.email
+                            ? `Signed in as ${user.email}`
+                            : "Signed in"}
                         </span>
                       </div>
                       <button
                         type="button"
-                        role="switch"
-                        aria-checked={isVisibleInPool}
-                        aria-label="Visible to Employers"
-                        disabled={isTogglingVisibility}
-                        onClick={() => {
-                          void handleVisibilityToggle();
-                        }}
-                        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                          isTogglingVisibility
-                            ? "opacity-60 cursor-wait"
-                            : "cursor-pointer"
-                        } ${
-                          isVisibleInPool ? "bg-emerald-500" : "bg-zinc-700"
-                        }`}
+                        onClick={handleSignOut}
+                        className="bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0"
                       >
-                        <span
-                          aria-hidden
-                          className="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200"
-                          style={{
-                            transform: isVisibleInPool
-                              ? "translateX(1.25rem)"
-                              : "translateX(0)",
-                          }}
-                        />
+                        <Icons.Logout /> Sign Out
                       </button>
-                    </div>
-                    </>
-                    )}
-
-                    {renderProfileFormActions()}
-
-                    {/* Account Settings */}
-                    <div className="pt-4">
-                      <h3 className="text-sm font-bold text-white pb-3 border-b border-zinc-800">
-                        Account Settings
-                      </h3>
-                      <div className="pt-4 flex items-center justify-between">
-                        <div>
-                          <span className="font-bold text-xs text-white block">
-                            Sign out of Provix
-                          </span>
-                          <span className="text-[11px] text-slate-500">
-                            You&apos;ll be returned to the login screen on this device.
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleSignOut}
-                          className="bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
-                        >
-                          <Icons.Logout /> Sign Out
-                        </button>
-                      </div>
                     </div>
                   </div>
                 )}
