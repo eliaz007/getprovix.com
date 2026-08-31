@@ -23,6 +23,8 @@ import {
 } from "@/lib/audit-checks";
 import { createClient } from "@/utils/supabase/server";
 
+export const maxDuration = 60;
+
 type CandidatePayload = {
   name?: string;
   title?: string;
@@ -756,15 +758,11 @@ export async function POST(request: Request) {
   const githubUrl = resolveCandidateGitHubUrl(candidate);
   let githubAudit: GitHubAuditContext | null = null;
 
-  if (githubUrl) {
-    try {
-      githubAudit = await fetchGitHubAudit(githubUrl);
-    } catch (error) {
-      console.error("[screen] GitHub audit failed:", error);
-    }
-  }
-
   try {
+    if (githubUrl) {
+      githubAudit = await fetchGitHubAudit(githubUrl);
+    }
+
     const result = await generateGeminiScreen(candidate, job, githubAudit);
     const persisted = await persistScreeningResult(
       candidate_key,
@@ -774,14 +772,13 @@ export async function POST(request: Request) {
     );
     return NextResponse.json({ ...result, persisted });
   } catch (error) {
-    console.error("Gemini screen API failed, using fallback:", error);
-    const fallback = buildFallbackScreen(candidate, job, githubAudit);
-    const persisted = await persistScreeningResult(
-      candidate_key,
-      profile_id,
-      fallback,
-      access.user.id
+    console.error("[screen] GitHub/Gemini execution failed:", error);
+    return NextResponse.json(
+      {
+        error:
+          "The live GitHub audit could not be completed. Please retry.",
+      },
+      { status: 500 }
     );
-    return NextResponse.json({ ...fallback, persisted });
   }
 }
