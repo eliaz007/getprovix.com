@@ -3959,10 +3959,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   };
 
   const guestNavClass = (active: boolean) =>
-    `w-full text-left px-3 py-2 rounded-lg transition-colors duration-200 ease-out flex items-center gap-3 text-[13px] cursor-pointer ${
+    `order-none w-full text-left px-3 py-2 rounded-lg border font-medium transition-colors duration-200 ease-out flex items-center gap-3 text-[13px] cursor-pointer ${
       active
-        ? "bg-slate-800/60 text-white font-bold"
-        : "text-zinc-400 hover:bg-zinc-800/50 hover:text-white"
+        ? "bg-slate-800/60 text-white border-transparent"
+        : "text-zinc-400 border-transparent hover:bg-zinc-800/50 hover:text-white"
     }`;
 
   const renderGuestNav = () => (
@@ -3971,63 +3971,75 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
           Candidate Dashboard
         </span>
-        <nav className="space-y-1">
-          <Link
-            href="/opportunities"
-            onClick={() => setGuestMobileNavOpen(false)}
-            className={guestNavClass(false)}
-          >
-            <Icons.Compass />
-            Opportunities
-          </Link>
-          <button
-            type="button"
-            onClick={() => handleGuestNavClick()}
-            className={guestNavClass(false)}
-          >
-            <Icons.User />
-            Profile Studio
-          </button>
-          <button
-            type="button"
-            onClick={() => handleGuestNavClick()}
-            className={guestNavClass(false)}
-          >
-            <Icons.Mail />
-            Intro Requests
-          </button>
-        </nav>
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
+          <li className="order-none w-full shrink-0">
+            <button
+              type="button"
+              onClick={() => handleGuestNavClick()}
+              className={guestNavClass(false)}
+            >
+              <Icons.User />
+              My Profile
+            </button>
+          </li>
+          <li className="order-none w-full shrink-0">
+            <Link
+              href="/opportunities"
+              onClick={() => setGuestMobileNavOpen(false)}
+              className={guestNavClass(false)}
+            >
+              <Icons.Compass />
+              Opportunities
+            </Link>
+          </li>
+          <li className="order-none w-full shrink-0">
+            <button
+              type="button"
+              onClick={() => handleGuestNavClick()}
+              className={guestNavClass(false)}
+            >
+              <Icons.Mail />
+              Intro Requests
+            </button>
+          </li>
+        </ul>
       </div>
       <div className="mt-8 pt-8 border-t border-zinc-800">
         <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
           Career Accelerator
         </span>
-        <nav className="space-y-1">
-          <button
-            type="button"
-            onClick={() => handleGuestNavClick()}
-            className={guestNavClass(false)}
-          >
-            <FileText className="w-4 h-4" aria-hidden="true" />
-            Pitch Studio
-          </button>
-          <Link
-            href="/audits"
-            onClick={() => setGuestMobileNavOpen(false)}
-            className={guestNavClass(false)}
-          >
-            <ShieldCheck className="w-4 h-4" aria-hidden="true" />
-            GitHub Auditor
-          </Link>
-          <button
-            type="button"
-            onClick={() => handleGuestNavClick()}
-            className={guestNavClass(false)}
-          >
-            <Target className="w-4 h-4" aria-hidden="true" />
-            Interview Simulator
-          </button>
-        </nav>
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
+          <li className="order-none w-full shrink-0">
+            <button
+              type="button"
+              onClick={() => handleGuestNavClick()}
+              className={guestNavClass(false)}
+            >
+              <FileText className="w-4 h-4 shrink-0" aria-hidden="true" />
+              Pitch Studio
+            </button>
+          </li>
+          <li className="order-none w-full shrink-0">
+            <Link
+              href="/audits"
+              onClick={() => setGuestMobileNavOpen(false)}
+              className={guestNavClass(false)}
+            >
+              <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
+              GitHub Auditor
+            </Link>
+          </li>
+          <li className="order-none w-full shrink-0">
+            <button
+              type="button"
+              onClick={() => handleGuestNavClick()}
+              className={guestNavClass(false)}
+            >
+              <Target className="w-4 h-4 shrink-0" aria-hidden="true" />
+              Interview Simulator
+            </button>
+          </li>
+        </ul>
       </div>
     </div>
   );

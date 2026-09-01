@@ -17,23 +17,171 @@ import {
 import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 
-function navButtonClass(isActive: boolean, variant: "default" | "employer" = "default") {
+const navListClass = "m-0 flex list-none flex-col gap-1 p-0";
+const navItemShellClass = "order-none w-full shrink-0";
+
+function navButtonClass(
+  isActive: boolean,
+  variant: "default" | "employer" = "default"
+) {
   if (variant === "employer") {
     return isActive
-      ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold"
-      : "text-zinc-400 hover:bg-zinc-800/50 hover:text-white";
+      ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+      : "text-zinc-400 border-transparent hover:bg-zinc-800/50 hover:text-white";
   }
 
   return isActive
-    ? "bg-slate-800/60 text-white font-bold"
-    : "text-zinc-400 hover:bg-zinc-800/50 hover:text-white";
+    ? "bg-slate-800/60 text-white border-transparent"
+    : "text-zinc-400 border-transparent hover:bg-zinc-800/50 hover:text-white";
 }
 
-function navItemClass(isActive: boolean, variant: "default" | "employer" = "default") {
-  return `w-full text-left px-3 py-2 rounded-lg transition-colors duration-200 ease-out flex items-center gap-3 text-[13px] cursor-pointer ${navButtonClass(isActive, variant)}`;
+function navItemClass(
+  isActive: boolean,
+  variant: "default" | "employer" = "default"
+) {
+  return `w-full text-left px-3 py-2 rounded-lg border font-medium transition-colors duration-200 ease-out flex items-center gap-3 text-[13px] cursor-pointer ${navButtonClass(isActive, variant)}`;
 }
 
 const secondaryNavSectionClass = "mt-8 pt-8 border-t border-zinc-800";
+
+type NavVisibility = {
+  isBusinessAccount: boolean;
+  isEmployeeAccount: boolean;
+  isGuest: boolean;
+  showTalentPoolNav: boolean;
+};
+
+const CANDIDATE_PRIMARY_NAV = [
+  {
+    key: "my_profile",
+    tab: "my_profile" as const,
+    label: "My Profile",
+    icon: "User" as const,
+  },
+  {
+    key: "opportunities",
+    tab: "opportunities" as const,
+    label: "Opportunities",
+    icon: "Compass" as const,
+  },
+  {
+    key: "intro_requests",
+    tab: "intro_requests" as const,
+    label: "Intro Requests",
+    icon: "Mail" as const,
+  },
+] as const;
+
+const CAREER_ACCELERATOR_NAV = [
+  {
+    key: "pitch-studio",
+    href: "/dashboard/pitch-studio",
+    label: "Pitch Studio",
+    kind: "protected" as const,
+  },
+  {
+    key: "github-auditor",
+    href: "/audits",
+    label: "GitHub Auditor",
+    kind: "public" as const,
+  },
+  {
+    key: "interview-prep",
+    href: "/dashboard/interview-prep",
+    label: "Interview Simulator",
+    kind: "protected" as const,
+  },
+] as const;
+
+const EMPLOYEE_HUB_NAV = [
+  {
+    key: "opportunity_radar",
+    tab: "opportunity_radar" as const,
+    label: "Opportunity Radar",
+    icon: "Radar" as const,
+  },
+  {
+    key: "applications",
+    tab: "applications" as const,
+    label: "Applications",
+    icon: "Document" as const,
+  },
+] as const;
+
+const EMPLOYER_CONSOLE_NAV = [
+  {
+    key: "talent",
+    tab: "talent" as const,
+    label: "Vetted Talent Pool",
+    icon: "Users" as const,
+  },
+  {
+    key: "evaluator",
+    tab: "evaluator" as const,
+    label: "AI Screen Candidate",
+    icon: "Document" as const,
+  },
+  {
+    key: "auditor",
+    tab: "auditor" as const,
+    label: "GitHub Auditor",
+    icon: "Shield" as const,
+  },
+] as const;
+
+function isPrimaryNavVisible(
+  key: (typeof CANDIDATE_PRIMARY_NAV)[number]["key"],
+  visibility: NavVisibility
+) {
+  if (key === "my_profile") {
+    return true;
+  }
+
+  return !visibility.isBusinessAccount;
+}
+
+function isNavTabActive(
+  tab: DashboardTab,
+  pathname: string,
+  activeTab: DashboardTab
+) {
+  if (tab === "opportunities") {
+    return (
+      isOpportunitiesPath(pathname) ||
+      (isDashboardRootPath(pathname) && activeTab === tab)
+    );
+  }
+
+  if (tab === "auditor") {
+    return (
+      isDashboardAuditorPath(pathname) ||
+      (isDashboardRootPath(pathname) && activeTab === tab)
+    );
+  }
+
+  return isDashboardRootPath(pathname) && activeTab === tab;
+}
+
+function NavIcon({
+  name,
+}: {
+  name: "User" | "Compass" | "Mail" | "Radar" | "Document" | "Users" | "Shield";
+}) {
+  if (name === "Shield") {
+    return (
+      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+        <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+      </span>
+    );
+  }
+
+  const Icon = DashboardIcons[name];
+  return (
+    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+      <Icon />
+    </span>
+  );
+}
 
 function DashboardTabLink({
   tab,
@@ -49,18 +197,18 @@ function DashboardTabLink({
   const pathname = usePathname();
   const { activeTab, setActiveTab, setMobileNavOpen, isGuest, requireAuth } =
     useDashboardNav();
-  const isActive =
-    tab === "opportunities"
-      ? isOpportunitiesPath(pathname) ||
-        (isDashboardRootPath(pathname) && activeTab === tab)
-      : tab === "auditor"
-        ? isDashboardAuditorPath(pathname) ||
-          (isDashboardRootPath(pathname) && activeTab === tab)
-        : isDashboardRootPath(pathname) && activeTab === tab;
+  const isActive = isNavTabActive(tab, pathname, activeTab);
+
+  const selectTab = () => {
+    setActiveTab(tab);
+    setMobileNavOpen(false);
+  };
+
+  let control: ReactNode;
 
   if (isGuest) {
-    if (tab === "opportunities") {
-      return (
+    control =
+      tab === "opportunities" ? (
         <Link
           href="/opportunities"
           onClick={() => setMobileNavOpen(false)}
@@ -69,31 +217,21 @@ function DashboardTabLink({
           {icon}
           {label}
         </Link>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setMobileNavOpen(false);
+            requireAuth();
+          }}
+          className={navItemClass(isActive, variant)}
+        >
+          {icon}
+          {label}
+        </button>
       );
-    }
-
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          setMobileNavOpen(false);
-          requireAuth();
-        }}
-        className={navItemClass(isActive, variant)}
-      >
-        {icon}
-        {label}
-      </button>
-    );
-  }
-
-  const selectTab = () => {
-    setActiveTab(tab);
-    setMobileNavOpen(false);
-  };
-
-  if (isDashboardRootPath(pathname)) {
-    return (
+  } else if (isDashboardRootPath(pathname)) {
+    control = (
       <button
         type="button"
         onClick={selectTab}
@@ -103,18 +241,20 @@ function DashboardTabLink({
         {label}
       </button>
     );
+  } else {
+    control = (
+      <Link
+        href="/dashboard"
+        onClick={selectTab}
+        className={navItemClass(isActive, variant)}
+      >
+        {icon}
+        {label}
+      </Link>
+    );
   }
 
-  return (
-    <Link
-      href="/dashboard"
-      onClick={selectTab}
-      className={navItemClass(isActive, variant)}
-    >
-      {icon}
-      {label}
-    </Link>
-  );
+  return <li className={navItemShellClass}>{control}</li>;
 }
 
 function ProtectedNavLink({
@@ -132,23 +272,19 @@ function ProtectedNavLink({
 }) {
   const { isGuest, requireAuth, setMobileNavOpen } = useDashboardNav();
 
-  if (isGuest) {
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          setMobileNavOpen(false);
-          requireAuth();
-        }}
-        className={navItemClass(isActive, variant)}
-      >
-        {icon}
-        {label}
-      </button>
-    );
-  }
-
-  return (
+  const control = isGuest ? (
+    <button
+      type="button"
+      onClick={() => {
+        setMobileNavOpen(false);
+        requireAuth();
+      }}
+      className={navItemClass(isActive, variant)}
+    >
+      {icon}
+      {label}
+    </button>
+  ) : (
     <Link
       href={href}
       onClick={() => setMobileNavOpen(false)}
@@ -158,6 +294,8 @@ function ProtectedNavLink({
       {label}
     </Link>
   );
+
+  return <li className={navItemShellClass}>{control}</li>;
 }
 
 export default function DashboardSidebar() {
@@ -172,8 +310,19 @@ export default function DashboardSidebar() {
     setMobileNavOpen,
   } = useDashboardNav();
 
+  const visibility: NavVisibility = {
+    isBusinessAccount,
+    isEmployeeAccount,
+    isGuest,
+    showTalentPoolNav,
+  };
+
   const showCandidateAccelerator =
     isGuest || (!isBusinessAccount && !isEmployeeAccount);
+
+  const primaryItems = CANDIDATE_PRIMARY_NAV.filter((item) =>
+    isPrimaryNavVisible(item.key, visibility)
+  );
 
   return (
     <div className="p-6 flex flex-col min-h-full">
@@ -196,27 +345,20 @@ export default function DashboardSidebar() {
                 ? "Employee Dashboard"
                 : "Candidate Dashboard"}
           </span>
-          <nav className="space-y-1">
-            <DashboardTabLink
-              tab="my_profile"
-              label={isBusinessAccount ? "Company Profile" : "My Profile"}
-              icon={<DashboardIcons.User />}
-            />
-            {!isBusinessAccount && (
-              <>
-                <DashboardTabLink
-                  tab="opportunities"
-                  label="Opportunities"
-                  icon={<DashboardIcons.Compass />}
-                />
-                <DashboardTabLink
-                  tab="intro_requests"
-                  label="Intro Requests"
-                  icon={<DashboardIcons.Mail />}
-                />
-              </>
-            )}
-          </nav>
+          <ul className={navListClass}>
+            {primaryItems.map((item) => (
+              <DashboardTabLink
+                key={item.key}
+                tab={item.tab}
+                label={
+                  item.key === "my_profile" && isBusinessAccount
+                    ? "Company Profile"
+                    : item.label
+                }
+                icon={<NavIcon name={item.icon} />}
+              />
+            ))}
+          </ul>
         </div>
 
         {showCandidateAccelerator && (
@@ -224,28 +366,40 @@ export default function DashboardSidebar() {
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
               Career Accelerator
             </span>
-            <nav className="space-y-1">
-              <ProtectedNavLink
-                href="/dashboard/pitch-studio"
-                isActive={isPitchStudioPath(pathname)}
-                icon={<PenTool className="w-4 h-4" aria-hidden="true" />}
-                label="Pitch Studio"
-              />
-              <Link
-                href="/audits"
-                onClick={() => setMobileNavOpen(false)}
-                className={navItemClass(isAuditorPath(pathname))}
-              >
-                <ShieldCheck className="w-4 h-4" aria-hidden="true" />
-                GitHub Auditor
-              </Link>
-              <ProtectedNavLink
-                href="/dashboard/interview-prep"
-                isActive={isInterviewPrepPath(pathname)}
-                icon={<Terminal className="w-4 h-4" aria-hidden="true" />}
-                label="Interview Simulator"
-              />
-            </nav>
+            <ul className={navListClass}>
+              {CAREER_ACCELERATOR_NAV.map((item) =>
+                item.kind === "public" ? (
+                  <li key={item.key} className={navItemShellClass}>
+                    <Link
+                      href={item.href}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={navItemClass(isAuditorPath(pathname))}
+                    >
+                      <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
+                      {item.label}
+                    </Link>
+                  </li>
+                ) : (
+                  <ProtectedNavLink
+                    key={item.key}
+                    href={item.href}
+                    isActive={
+                      item.key === "pitch-studio"
+                        ? isPitchStudioPath(pathname)
+                        : isInterviewPrepPath(pathname)
+                    }
+                    icon={
+                      item.key === "pitch-studio" ? (
+                        <PenTool className="w-4 h-4 shrink-0" aria-hidden="true" />
+                      ) : (
+                        <Terminal className="w-4 h-4 shrink-0" aria-hidden="true" />
+                      )
+                    }
+                    label={item.label}
+                  />
+                )
+              )}
+            </ul>
           </div>
         )}
 
@@ -254,20 +408,17 @@ export default function DashboardSidebar() {
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
               Opportunity Hub
             </span>
-            <nav className="space-y-1">
-              <DashboardTabLink
-                tab="opportunity_radar"
-                label="Opportunity Radar"
-                icon={<DashboardIcons.Radar />}
-                variant="employer"
-              />
-              <DashboardTabLink
-                tab="applications"
-                label="Applications"
-                icon={<DashboardIcons.Document />}
-                variant="employer"
-              />
-            </nav>
+            <ul className={navListClass}>
+              {EMPLOYEE_HUB_NAV.map((item) => (
+                <DashboardTabLink
+                  key={item.key}
+                  tab={item.tab}
+                  label={item.label}
+                  icon={<NavIcon name={item.icon} />}
+                  variant="employer"
+                />
+              ))}
+            </ul>
           </div>
         )}
 
@@ -276,26 +427,17 @@ export default function DashboardSidebar() {
             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
               Employer Console (B2B)
             </span>
-            <nav className="space-y-1">
-              <DashboardTabLink
-                tab="talent"
-                label="Vetted Talent Pool"
-                icon={<DashboardIcons.Users />}
-                variant="employer"
-              />
-              <DashboardTabLink
-                tab="evaluator"
-                label="AI Screen Candidate"
-                icon={<DashboardIcons.Document />}
-                variant="employer"
-              />
-              <DashboardTabLink
-                tab="auditor"
-                label="GitHub Auditor"
-                icon={<ShieldCheck className="w-4 h-4" aria-hidden="true" />}
-                variant="employer"
-              />
-            </nav>
+            <ul className={navListClass}>
+              {EMPLOYER_CONSOLE_NAV.map((item) => (
+                <DashboardTabLink
+                  key={item.key}
+                  tab={item.tab}
+                  label={item.label}
+                  icon={<NavIcon name={item.icon} />}
+                  variant="employer"
+                />
+              ))}
+            </ul>
           </div>
         )}
       </div>
