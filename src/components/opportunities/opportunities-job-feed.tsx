@@ -53,7 +53,6 @@ export default function OpportunitiesJobFeed({
 }: OpportunitiesJobFeedProps) {
   const [search, setSearch] = useState("");
   const [remoteOnly, setRemoteOnly] = useState(false);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
 
   const activeJobs = useMemo(() => getActiveJobs(jobs), [jobs]);
@@ -64,14 +63,6 @@ export default function OpportunitiesJobFeed({
   const skillMatchingJobsCount = useMemo(
     () => countJobsMatchingCandidateSkills(jobs, candidateSkills),
     [jobs, candidateSkills]
-  );
-
-  const opportunityTagOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(activeJobs.flatMap((job) => jobDisplayTags(job)))
-      ).filter((tag) => tag.trim().length > 0),
-    [activeJobs]
   );
 
   const hasAiMatchResults = Object.keys(matchInsights).length > 0;
@@ -85,7 +76,7 @@ export default function OpportunitiesJobFeed({
   const filteredJobFeed = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return activeJobs.filter((job) => {
+    const filtered = activeJobs.filter((job) => {
       const tags = jobDisplayTags(job);
       const matchesSearch =
         !query ||
@@ -94,11 +85,24 @@ export default function OpportunitiesJobFeed({
         tags.some((tag) => tag.toLowerCase().includes(query));
       const matchesRemote =
         !remoteOnly || (job.location ?? "").toLowerCase().includes("remote");
-      const matchesTag = !selectedTag || tags.includes(selectedTag);
 
-      return matchesSearch && matchesRemote && matchesTag;
+      return matchesSearch && matchesRemote;
     });
-  }, [activeJobs, remoteOnly, search, selectedTag]);
+
+    if (!hasAiMatchResults) {
+      return filtered;
+    }
+
+    return [...filtered].sort((left, right) => {
+      const leftScore = clampScore0to100(
+        matchInsights[left.id]?.match_score ?? 0
+      );
+      const rightScore = clampScore0to100(
+        matchInsights[right.id]?.match_score ?? 0
+      );
+      return rightScore - leftScore;
+    });
+  }, [activeJobs, hasAiMatchResults, matchInsights, remoteOnly, search]);
 
   return (
     <div>
@@ -229,29 +233,6 @@ export default function OpportunitiesJobFeed({
             Remote Only
           </button>
         </div>
-        {opportunityTagOptions.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-3">
-            {opportunityTagOptions.map((tag) => {
-              const isSelected = selectedTag === tag;
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() =>
-                    setSelectedTag((prev) => (prev === tag ? null : tag))
-                  }
-                  className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-colors duration-200 ease-out cursor-pointer ${
-                    isSelected
-                      ? "bg-indigo-600 border-indigo-500 text-white"
-                      : "bg-[#0A0A0A] border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-500"
-                  }`}
-                >
-                  {tag}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {jobsLoading ? (
@@ -350,24 +331,18 @@ export default function OpportunitiesJobFeed({
                 ) : null}
                 <p className="text-xs text-zinc-300 mb-4">{job.location}</p>
 
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {tags.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() =>
-                        setSelectedTag((prev) => (prev === tag ? null : tag))
-                      }
-                      className={`px-2 py-1 rounded-md text-[10px] font-bold border cursor-pointer transition-colors duration-200 ease-out ${
-                        selectedTag === tag
-                          ? "bg-indigo-600 text-white border-indigo-500"
-                          : "bg-indigo-500/10 text-indigo-200 border-indigo-500/30 hover:border-indigo-300/60"
-                      }`}
-                    >
-                      {tag}
-                    </button>
-                  ))}
-                </div>
+                {tags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-2 py-1 rounded-md text-[10px] font-bold border bg-indigo-500/10 text-indigo-200 border-indigo-500/30"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
 
                 {jobDescription ? (
                   <div className="mb-4">
