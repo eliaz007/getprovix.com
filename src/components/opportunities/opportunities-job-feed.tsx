@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Search } from "lucide-react";
+import { Check, LoaderCircle, Search, Sparkles } from "lucide-react";
 import { formatSalaryRange } from "@/lib/format-salary-range";
 import type { JobRow } from "@/lib/jobs";
 import {
@@ -28,6 +28,10 @@ export type OpportunitiesJobFeedProps = {
   candidateSkills?: string[];
   profileVisibleToEmployers?: boolean;
   loadingProfile?: boolean;
+  enableAiMatch?: boolean;
+  aiMatchRunning?: boolean;
+  aiMatchError?: string | null;
+  onRunAiMatch?: () => void;
 };
 
 export default function OpportunitiesJobFeed({
@@ -42,6 +46,10 @@ export default function OpportunitiesJobFeed({
   candidateSkills = [],
   profileVisibleToEmployers = false,
   loadingProfile = false,
+  enableAiMatch = false,
+  aiMatchRunning = false,
+  aiMatchError = null,
+  onRunAiMatch,
 }: OpportunitiesJobFeedProps) {
   const [search, setSearch] = useState("");
   const [remoteOnly, setRemoteOnly] = useState(false);
@@ -67,6 +75,14 @@ export default function OpportunitiesJobFeed({
       ).filter((tag) => tag.trim().length > 0),
     [activeJobs]
   );
+
+  const hasAiMatchResults = Object.keys(matchInsights).length > 0;
+  const canRunAiMatch =
+    enableAiMatch &&
+    !jobsLoading &&
+    activeJobs.length > 0 &&
+    !aiMatchRunning &&
+    (isGuest || !loadingProfile);
 
   const filteredJobFeed = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -100,6 +116,39 @@ export default function OpportunitiesJobFeed({
             ? "Browse openings, companies, and requirements. Sign in when you are ready to express interest."
             : "Curated openings matched to your profile — express interest in one click."}
         </p>
+        {enableAiMatch ? (
+          <div className="mt-5">
+            <button
+              type="button"
+              onClick={() => onRunAiMatch?.()}
+              disabled={!canRunAiMatch}
+              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 disabled:cursor-not-allowed text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
+            >
+              {aiMatchRunning ? (
+                <LoaderCircle
+                  className="h-3.5 w-3.5 animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              {aiMatchRunning
+                ? `Matching ${activeJobs.length} roles…`
+                : hasAiMatchResults
+                  ? "Re-run Provix AI Match"
+                  : "Run Provix AI Match"}
+            </button>
+            {aiMatchRunning ? (
+              <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                Scoring your audited skills against active listings. This can
+                take a few seconds.
+              </p>
+            ) : null}
+            {aiMatchError ? (
+              <p className="text-xs text-rose-400 mt-2">{aiMatchError}</p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div
@@ -267,7 +316,7 @@ export default function OpportunitiesJobFeed({
                       {job.company}
                     </p>
                   </div>
-                  {!isGuest ? (
+                  {enableAiMatch && !isGuest ? (
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                       <span
                         className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
@@ -347,7 +396,7 @@ export default function OpportunitiesJobFeed({
                   </div>
                 ) : null}
 
-                {!isGuest && (isMatching || insight) && (
+                {enableAiMatch && !isGuest && (isMatching || insight) && (
                   <div className="mb-4 rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3">
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       AI Match Analysis

@@ -71,11 +71,6 @@ import {
 } from "@/lib/validate-github-url";
 import { buildFallbackMatch, isCannedMatchScore, scoreTalentMatch, type MatchResult } from "@/lib/match-heuristic";
 import {
-  fetchJobMatches,
-  toOpportunityMatchInsight,
-} from "@/lib/job-match";
-import {
-  buildFallbackOpportunityMatch,
   getFitVerdictBadgeClass,
   type OpportunityMatchResult,
 } from "@/lib/opportunity-match";
@@ -1072,9 +1067,8 @@ export default function DashboardPage() {
   const [jobInterestCounts, setJobInterestCounts] = useState<
     Record<string, number>
   >({});
-  const [matchInsights, setMatchInsights] = useState<Record<string, MatchInsight>>({});
-  const [matchLoadingIds, setMatchLoadingIds] = useState<Record<string, boolean>>({});
-  const matchFetchedRef = useRef<Set<string>>(new Set());
+  const matchInsights: Record<string, MatchInsight> = {};
+  const matchLoadingIds: Record<string, boolean> = {};
   const [candidateIntroRequests, setCandidateIntroRequests] = useState<
     CandidateIntroRequestRow[]
   >([]);
@@ -2769,160 +2763,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     const insight = matchInsights[job.id];
     return insight?.fit_verdict === "Strong Fit";
   }).length;
-
-  const liveMatchingCount = Object.values(matchInsights).filter(
-    (insight) =>
-      insight.fit_verdict === "Strong Fit" ||
-      insight.fit_verdict === "Moderate Fit"
-  ).length;
-  const isMatchEvaluating = Object.values(matchLoadingIds).some(Boolean);
-
-  useEffect(() => {
-    if (jobsLoading || activeJobs.length === 0 || isBusinessAccount || !user?.id) {
-      return;
-    }
-
-    const candidateSkills = (skills ?? "")
-      .split(",")
-      .map((skill) => skill.trim())
-      .filter(Boolean);
-
-    const candidatePayload = {
-      title: title.trim() || profileData.role || "",
-      bio: bio.trim() || profileData.bio || "",
-      skills: candidateSkills.length > 0 ? candidateSkills : candidateSkillsForMatching,
-      role_type:
-        dbProfile?.role_type?.trim() ||
-        profileData.role?.trim() ||
-        title.trim() ||
-        "",
-      github_url: portfolioUrl.trim() || dbProfile?.portfolio_url?.trim() || "",
-      experience_level:
-        dbProfile?.experience_level?.trim() ||
-        experienceLevel.trim() ||
-        "",
-    };
-
-    const pendingJobs = activeJobs.filter((job) => !matchInsights[job.id]);
-
-    if (pendingJobs.length === 0) {
-      return;
-    }
-
-    setMatchLoadingIds((prev) => {
-      const next = { ...prev };
-      for (const job of pendingJobs) {
-        next[job.id] = true;
-      }
-      return next;
-    });
-
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const { matches } = await fetchJobMatches(
-          {
-            skills: candidatePayload.skills,
-            experienceTier: candidatePayload.experience_level,
-            githubUrl: candidatePayload.github_url,
-          },
-          pendingJobs.map((job) => ({
-            jobId: job.id,
-            title: job.title ?? "",
-            company: job.company ?? "",
-            requiredSkills: Array.isArray(job.tags) ? job.tags : [],
-            description: job.description ?? "",
-          }))
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        const nextInsights: Record<string, OpportunityMatchResult> = {};
-        for (const match of matches) {
-          nextInsights[String(match.jobId)] = toOpportunityMatchInsight(match);
-        }
-
-        for (const job of pendingJobs) {
-          if (!nextInsights[job.id]) {
-            nextInsights[job.id] = buildFallbackOpportunityMatch(
-              candidatePayload,
-              {
-                title: job.title ?? "",
-                company: job.company ?? "",
-                tags: Array.isArray(job.tags) ? job.tags : [],
-                location: job.location ?? "",
-                description: job.description ?? "",
-                salary_range: job.salary_range ?? "",
-              }
-            );
-          }
-          matchFetchedRef.current.add(job.id);
-        }
-
-        setMatchInsights((prev) => ({ ...prev, ...nextInsights }));
-      } catch (err) {
-        console.warn("Failed to fetch Provix AI Job Match scores:", err);
-        if (cancelled) {
-          return;
-        }
-
-        const nextInsights: Record<string, OpportunityMatchResult> = {};
-        for (const job of pendingJobs) {
-          nextInsights[job.id] = buildFallbackOpportunityMatch(
-            candidatePayload,
-            {
-              title: job.title ?? "",
-              company: job.company ?? "",
-              tags: Array.isArray(job.tags) ? job.tags : [],
-              location: job.location ?? "",
-              description: job.description ?? "",
-              salary_range: job.salary_range ?? "",
-            }
-          );
-          matchFetchedRef.current.add(job.id);
-        }
-        setMatchInsights((prev) => ({ ...prev, ...nextInsights }));
-      } finally {
-        if (cancelled) {
-          return;
-        }
-
-        setMatchLoadingIds((prev) => {
-          const next = { ...prev };
-          for (const job of pendingJobs) {
-            next[job.id] = false;
-          }
-          return next;
-        });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeTab,
-    isBusinessAccount,
-    activeJobs,
-    jobsLoading,
-    title,
-    bio,
-    skills,
-    degree,
-    experienceLevel,
-    portfolioUrl,
-    dbProfile?.role_type,
-    dbProfile?.portfolio_url,
-    dbProfile?.experience_level,
-    candidateSkillsForMatching,
-    profileData.role,
-    profileData.bio,
-    profileData.degree,
-    user?.id,
-  ]);
 
   useEffect(() => {
     talentMatchFetchedRef.current.clear();
@@ -4891,8 +4731,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               isGuest={!user}
               appliedJobIds={appliedJobIds}
               onExpressInterest={handleExpressInterestToJob}
-              matchInsights={matchInsights}
-              matchLoadingIds={matchLoadingIds}
               candidateSkills={candidateSkillsForMatching}
               profileVisibleToEmployers={profileVisibleToEmployers}
               loadingProfile={loadingProfile}
