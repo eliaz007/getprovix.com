@@ -109,7 +109,12 @@ import {
   publishTalentPoolVisibility,
   subscribeTalentPoolVisibility,
 } from "@/lib/talent-pool-visibility-sync";
-import { fetchDashboardJobs, type JobRow } from "@/lib/jobs";
+import {
+  fetchDashboardJobs,
+  jobDisplayTags,
+  parseJobListInput,
+  type JobRow,
+} from "@/lib/jobs";
 import OpportunitiesJobFeed from "@/components/opportunities/opportunities-job-feed";
 import { useProvixAiMatch } from "@/components/opportunities/use-provix-ai-match";
 import {
@@ -748,6 +753,8 @@ type MatchingJob = {
   title: string;
   company?: string | null;
   tags?: string[] | null;
+  tech_stack?: string[] | null;
+  required_skills?: string[] | null;
   location?: string | null;
   description?: string | null;
 };
@@ -759,6 +766,8 @@ function buildTalentMatchJobPayload(
   title: string;
   company: string;
   tags: string[];
+  tech_stack: string[];
+  required_skills: string[];
   location: string;
   description: string;
   searchQuery: string;
@@ -767,7 +776,9 @@ function buildTalentMatchJobPayload(
   return {
     title: job?.title ?? (query || "Open talent search"),
     company: job?.company ?? "",
-    tags: Array.isArray(job?.tags) ? job.tags.filter(Boolean) : [],
+    tags: jobDisplayTags(job ?? {}),
+    tech_stack: parseJobListInput(job?.tech_stack),
+    required_skills: parseJobListInput(job?.required_skills),
     location: job?.location ?? "",
     description: job?.description ?? "",
     searchQuery: query,
@@ -1037,7 +1048,8 @@ export default function DashboardPage() {
   const [newJobCompany, setNewJobCompany] = useState("");
   const [newJobLocation, setNewJobLocation] = useState("");
   const [newJobSalaryRange, setNewJobSalaryRange] = useState("");
-  const [newJobTags, setNewJobTags] = useState("");
+  const [newJobRequiredSkills, setNewJobRequiredSkills] = useState("");
+  const [newJobTechStack, setNewJobTechStack] = useState("");
   const [isCreatingJob, setIsCreatingJob] = useState(false);
   const [appOrigin, setAppOrigin] = useState("");
 
@@ -1957,7 +1969,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       id: selectedJob.id,
       title: selectedJob.title ?? "Open Role",
       company: selectedJob.company ?? employerCompanyNameForMatching,
-      tags: Array.isArray(selectedJob.tags) ? selectedJob.tags : [],
+      tags: jobDisplayTags(selectedJob),
+      tech_stack: parseJobListInput(selectedJob.tech_stack),
+      required_skills: parseJobListInput(selectedJob.required_skills),
       location: selectedJob.location ?? "",
       description: selectedJob.description ?? "",
     };
@@ -2777,7 +2791,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
   const filteredRadarJobFeed = activeJobs.filter((job) => {
     const query = radarSearch.trim().toLowerCase();
-    const tags = Array.isArray(job.tags) ? job.tags : [];
+    const tags = jobDisplayTags(job);
     const matchesSearch =
       !query ||
       (job.title ?? "").toLowerCase().includes(query) ||
@@ -3293,6 +3307,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       title: selectedCandidate.role || "General Talent Evaluation",
       company: employerCompanyNameForMatching,
       tags: selectedCandidate.skills.slice(0, 8),
+      tech_stack: [],
+      required_skills: selectedCandidate.skills.slice(0, 8),
       location: "",
     };
 
@@ -3340,7 +3356,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           job: {
             title: screeningJob.title,
             company: screeningJob.company,
-            tags: screeningJob.tags,
+            tags: jobDisplayTags(screeningJob),
+            tech_stack: parseJobListInput(screeningJob.tech_stack),
+            required_skills: parseJobListInput(screeningJob.required_skills),
             location: screeningJob.location,
           },
           candidate_key: screeningKey,
@@ -3666,7 +3684,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     setNewJobTitle("");
     setNewJobLocation("");
     setNewJobSalaryRange("");
-    setNewJobTags("");
+    setNewJobRequiredSkills("");
+    setNewJobTechStack("");
     setNewJobCompany(employerCompanyName);
   };
 
@@ -3710,37 +3729,56 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       showToast("Salary range is required.");
       return;
     }
-    if (!newJobTags.trim()) {
-      showToast("Required skills / tags are required.");
-      return;
-    }
+    const requiredSkills = parseJobListInput(newJobRequiredSkills);
+    const techStack = parseJobListInput(newJobTechStack);
 
-    const tagsArray = (newJobTags ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    if (tagsArray.length === 0) {
-      showToast("Add at least one skill or tag.");
+    if (requiredSkills.length === 0) {
+      showToast("Add at least one required skill.");
       return;
     }
 
     setIsCreatingJob(true);
     const supabase = createClient();
 
+    const displayTags = jobDisplayTags({
+      tech_stack: techStack,
+      required_skills: requiredSkills,
+    });
+
+    const jobPayload = {
+      title: newJobTitle.trim(),
+      company: newJobCompany.trim(),
+      location: newJobLocation.trim(),
+      salary_range: formatSalaryRange(newJobSalaryRange.trim()),
+      tags: displayTags,
+      tech_stack: techStack.length > 0 ? techStack : null,
+      required_skills: requiredSkills,
+      employer_id: user.id,
+    };
+
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("jobs")
-        .insert({
-          title: newJobTitle.trim(),
-          company: newJobCompany.trim(),
-          location: newJobLocation.trim(),
-          salary_range: formatSalaryRange(newJobSalaryRange.trim()),
-          tags: tagsArray,
-          employer_id: user.id,
-        })
+        .insert(jobPayload)
         .select("*")
         .single();
+
+      if (error && isMissingColumnError(error)) {
+        const fallback = await supabase
+          .from("jobs")
+          .insert({
+            title: jobPayload.title,
+            company: jobPayload.company,
+            location: jobPayload.location,
+            salary_range: jobPayload.salary_range,
+            tags: jobPayload.tags,
+            employer_id: jobPayload.employer_id,
+          })
+          .select("*")
+          .single();
+        data = fallback.data;
+        error = fallback.error;
+      }
 
       if (error) {
         console.error("Create job error:", JSON.stringify(error, null, 2));
@@ -5905,7 +5943,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   {filteredRadarJobFeed.map((job) => {
                     const alreadyInterested = appliedJobIds.includes(job.id);
                     const isSaved = savedOpportunityIds.includes(job.id);
-                    const tags = Array.isArray(job.tags) ? job.tags : [];
+                    const tags = jobDisplayTags(job);
                     const insight = matchInsights[job.id];
                     const isMatching = matchLoadingIds[job.id];
                     const matchScore = insight?.match_score ?? 0;
@@ -7208,7 +7246,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         {/* POST NEW JOB MODAL (Employer) */}
         {postJobModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-8 max-w-lg w-full relative shadow-2xl">
+            <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-8 max-w-lg w-full relative shadow-2xl max-h-[90vh] overflow-y-auto">
               <button
                 type="button"
                 onClick={() => {
@@ -7297,18 +7335,39 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
-                    Required Skills / Tags
+                    Required Skills
                   </label>
                   <input
                     type="text"
-                    value={newJobTags}
-                    onChange={(e) => setNewJobTags(e.target.value)}
-                    placeholder="React, TypeScript, Next.js"
+                    value={newJobRequiredSkills}
+                    onChange={(e) => setNewJobRequiredSkills(e.target.value)}
+                    placeholder="Agile, system design, 3+ years backend"
                     required
                     className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                   />
                   <p className="text-[11px] text-slate-500 mt-2">
-                    Comma-separated skills shown on the job card.
+                    Comma-separated methodologies, experience, or general
+                    requirements.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                    Tech Stack
+                    <span className="ml-1.5 font-medium normal-case tracking-normal text-slate-500">
+                      optional
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newJobTechStack}
+                    onChange={(e) => setNewJobTechStack(e.target.value)}
+                    placeholder="React, TypeScript, Next.js"
+                    className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-2">
+                    Optional. Comma-separated tools, languages, and frameworks.
+                    Leave blank for non-technical roles.
                   </p>
                 </div>
 

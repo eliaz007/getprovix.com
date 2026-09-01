@@ -13,7 +13,7 @@ import { requireAiApiAccess } from "@/lib/api-auth";
 export type { MatchResult };
 
 const SYSTEM_PROMPT = `Score how well this candidate fits the employer's job and search query.
-Use skills, tech stack, bio, job title, job description, tags, and searchQuery.
+Use skills, tech stack, required skills, bio, job title, job description, tags, and searchQuery.
 Return JSON only:
 {"score":0-100,"breakdown":"one short sentence about the candidate's fit"}
 Keep breakdown under 20 words. No markdown. Do not default to a mid-range score.`;
@@ -77,6 +77,10 @@ async function generateGeminiMatch(
     job: {
       title: job.title ?? "",
       company: job.company ?? "",
+      techStack: normalizeStringArray(job.techStack ?? job.tech_stack),
+      requiredSkills: normalizeStringArray(
+        job.requiredSkills ?? job.required_skills
+      ),
       tags: normalizeStringArray(job.tags),
       location: job.location ?? "",
       description: (job.description ?? "").slice(0, 600),

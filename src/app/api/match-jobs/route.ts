@@ -21,7 +21,7 @@ export const maxDuration = 60;
 
 const SYSTEM_PROMPT = `You are Provix AI Job Match — a skill-matching engine for verified engineering candidates.
 
-Cross-reference the candidate's audited GitHub skills and experience tier against each active job's required skills and description.
+Cross-reference the candidate's audited GitHub skills and experience tier against each active job's tech stack, required skills, and description.
 
 Return strict JSON only:
 {
@@ -36,10 +36,11 @@ Return strict JSON only:
 
 Rules:
 - Return exactly one match object per job in the input, using the same jobId values.
-- matchScore: integer 0-100 based on audited skill overlap, experience-tier fit, and role description. Do not default to a mid-range score.
-- matchingReason: one sentence explaining why the candidate's audited skills fit (or miss) the required skills. No markdown.
+- matchScore: integer 0-100 based on audited skill overlap with techStack and requiredSkills, experience-tier fit, and role description. Do not default to a mid-range score.
+- matchingReason: one sentence explaining why the candidate's audited skills fit (or miss) the required skills and tech stack. No markdown.
 - Only cite skills present in the candidate audit data. Never invent GitHub evidence.
-- If a job has no required skills, score conservatively from the description and experience tier.
+- techStack may be empty for non-technical roles. Score those from requiredSkills, description, and experience tier.
+- If a job has no required skills and no tech stack, score conservatively from the description and experience tier.
 - No extra keys.`;
 
 const MATCH_JOBS_RESPONSE_SCHEMA = {
@@ -115,6 +116,7 @@ async function generateGeminiJobMatches(
       jobId: String(job.jobId),
       title: job.title,
       company: job.company,
+      techStack: job.techStack,
       requiredSkills: job.requiredSkills,
       description: job.description.slice(0, 500),
     })),

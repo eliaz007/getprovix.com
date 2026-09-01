@@ -23,7 +23,10 @@ export type JobMatchJobPayload = {
   id?: string | number;
   title?: string;
   company?: string;
+  techStack?: string[] | string;
+  tech_stack?: string[] | string;
   requiredSkills?: string[] | string;
+  required_skills?: string[] | string;
   skills?: string[] | string;
   tags?: string[] | string;
   description?: string;
@@ -43,6 +46,7 @@ export type ParsedJobListing = {
   jobId: string | number;
   title: string;
   company: string;
+  techStack: string[];
   requiredSkills: string[];
   description: string;
 };
@@ -172,13 +176,22 @@ export function parseJobListings(jobs: unknown): ParsedJobListing[] {
       continue;
     }
 
+    const requiredSkills = normalizeStringArray(
+      record.requiredSkills ??
+        record.required_skills ??
+        record.skills ??
+        record.tags
+    );
+    const techStack = normalizeStringArray(
+      record.techStack ?? record.tech_stack
+    );
+
     listings.push({
       jobId,
       title: typeof record.title === "string" ? record.title.trim() : "",
       company: typeof record.company === "string" ? record.company.trim() : "",
-      requiredSkills: normalizeStringArray(
-        record.requiredSkills ?? record.skills ?? record.tags
-      ),
+      techStack,
+      requiredSkills,
       description:
         typeof record.description === "string"
           ? record.description.slice(0, 800)
@@ -249,7 +262,15 @@ export function buildHeuristicJobMatch(
   }
 
   const normalizedSkills = skills.map((skill) => skill.toLowerCase());
-  const overlapping = job.requiredSkills.filter((required) =>
+  const jobRequirements = Array.from(
+    new Map(
+      [...job.techStack, ...job.requiredSkills].map((item) => [
+        item.toLowerCase(),
+        item,
+      ])
+    ).values()
+  );
+  const overlapping = jobRequirements.filter((required) =>
     normalizedSkills.some(
       (skill) =>
         skill.includes(required.toLowerCase()) ||
@@ -258,12 +279,10 @@ export function buildHeuristicJobMatch(
   );
 
   let matchScore = 0;
-  if (job.requiredSkills.length === 0) {
+  if (jobRequirements.length === 0) {
     matchScore = experienceTier ? 35 : 20;
   } else {
-    matchScore = Math.round(
-      (overlapping.length / job.requiredSkills.length) * 80
-    );
+    matchScore = Math.round((overlapping.length / jobRequirements.length) * 80);
   }
 
   if (experienceTier) {
@@ -273,7 +292,7 @@ export function buildHeuristicJobMatch(
   const matchingReason =
     overlapping.length > 0
       ? `Audited skills in ${overlapping.slice(0, 3).join(", ")} align with this role's required stack.`
-      : job.requiredSkills.length > 0
+      : jobRequirements.length > 0
         ? "Audited GitHub skills have limited overlap with this role's required stack."
         : "Candidate audit data is present, but this listing has few explicit skill requirements.";
 

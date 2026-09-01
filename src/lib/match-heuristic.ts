@@ -11,6 +11,10 @@ export type MatchJobPayload = {
   title?: string;
   company?: string;
   tags?: string[] | string;
+  tech_stack?: string[] | string;
+  techStack?: string[] | string;
+  required_skills?: string[] | string;
+  requiredSkills?: string[] | string;
   location?: string;
   description?: string;
   searchQuery?: string;
@@ -149,11 +153,19 @@ function uniqueNormalized(values: string[]): string[] {
   return result;
 }
 
+function jobRequirementLists(job: MatchJobPayload): string[] {
+  return uniqueNormalized([
+    ...normalizeStringArray(job.techStack ?? job.tech_stack),
+    ...normalizeStringArray(job.requiredSkills ?? job.required_skills),
+    ...normalizeStringArray(job.tags),
+  ]);
+}
+
 function buildRequirementTokens(job: MatchJobPayload): string[] {
-  const tags = normalizeStringArray(job.tags);
+  const requirements = jobRequirementLists(job);
   const primary = uniqueNormalized(
     tokenize(
-      [job.title ?? "", job.searchQuery ?? "", tags.join(" ")].join(" ")
+      [job.title ?? "", job.searchQuery ?? "", requirements.join(" ")].join(" ")
     )
   );
   const descriptionTokens = uniqueNormalized(
@@ -195,7 +207,7 @@ export function scoreTalentMatch(
   const searchQuery = job.searchQuery?.trim() ?? "";
   const jobTitle = job.title?.trim() ?? "";
   const jobDescription = job.description?.trim() ?? "";
-  const jobTags = uniqueNormalized(normalizeStringArray(job.tags));
+  const jobTags = jobRequirementLists(job);
 
   const candidateTokens = uniqueNormalized(
     tokenize([title, bio, degree, candidateSkills.join(" ")].join(" "))

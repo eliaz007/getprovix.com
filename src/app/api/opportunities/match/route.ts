@@ -17,7 +17,7 @@ const SYSTEM_PROMPT = `You are Provix's candidate opportunity matching engine.
 Evaluate how well a verified candidate fits an open job using:
 - Candidate skills, role_type, bio, and experience level
 - Optional live GitHub repository audit (language, commits, README, stars)
-- Job title, company, tags, location, and description
+- Job title, company, tech stack, required skills, location, and description
 
 Return strict JSON only:
 {
@@ -117,6 +117,10 @@ async function generateGeminiOpportunityMatch(
     job: {
       title: job.title ?? "",
       company: job.company ?? "",
+      techStack: normalizeStringArray(job.techStack ?? job.tech_stack),
+      requiredSkills: normalizeStringArray(
+        job.requiredSkills ?? job.required_skills
+      ),
       tags: normalizeStringArray(job.tags),
       location: job.location ?? "",
       description: (job.description ?? "").slice(0, 400),

@@ -6,8 +6,8 @@ import {
   toOpportunityMatchInsight,
   type JobMatchCandidatePayload,
 } from "@/lib/job-match";
-import type { JobRow } from "@/lib/jobs";
 import { getActiveJobs } from "@/lib/opportunities-metrics";
+import { toJobMatchJobPayload, type JobRow } from "@/lib/jobs";
 import type { OpportunityMatchResult } from "@/lib/opportunity-match";
 
 export function useProvixAiMatch({
@@ -58,13 +58,7 @@ export function useProvixAiMatch({
     try {
       const { matches } = await fetchJobMatches(
         candidate,
-        jobsToMatch.map((job) => ({
-          jobId: job.id,
-          title: job.title ?? "",
-          company: job.company ?? "",
-          requiredSkills: Array.isArray(job.tags) ? job.tags : [],
-          description: job.description ?? "",
-        }))
+        jobsToMatch.map((job) => toJobMatchJobPayload(job))
       );
 
       const nextInsights: Record<string, OpportunityMatchResult> = {};

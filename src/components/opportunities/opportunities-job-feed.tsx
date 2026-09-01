@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Check, LoaderCircle, Search, Sparkles } from "lucide-react";
 import { formatSalaryRange } from "@/lib/format-salary-range";
-import type { JobRow } from "@/lib/jobs";
+import { jobDisplayTags, type JobRow } from "@/lib/jobs";
 import {
   countActiveOpenings,
   countJobsMatchingCandidateSkills,
@@ -69,9 +69,7 @@ export default function OpportunitiesJobFeed({
   const opportunityTagOptions = useMemo(
     () =>
       Array.from(
-        new Set(
-          activeJobs.flatMap((job) => (Array.isArray(job.tags) ? job.tags : []))
-        )
+        new Set(activeJobs.flatMap((job) => jobDisplayTags(job)))
       ).filter((tag) => tag.trim().length > 0),
     [activeJobs]
   );
@@ -88,7 +86,7 @@ export default function OpportunitiesJobFeed({
     const query = search.trim().toLowerCase();
 
     return activeJobs.filter((job) => {
-      const tags = Array.isArray(job.tags) ? job.tags : [];
+      const tags = jobDisplayTags(job);
       const matchesSearch =
         !query ||
         (job.title ?? "").toLowerCase().includes(query) ||
@@ -294,7 +292,7 @@ export default function OpportunitiesJobFeed({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {filteredJobFeed.map((job) => {
             const alreadyApplied = appliedJobIds.includes(job.id);
-            const tags = Array.isArray(job.tags) ? job.tags : [];
+            const tags = jobDisplayTags(job);
             const insight = matchInsights[job.id];
             const isMatching = Boolean(matchLoadingIds[job.id]);
             const matchScore = insight?.match_score ?? 0;

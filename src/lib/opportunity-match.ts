@@ -17,6 +17,10 @@ export type OpportunityMatchJobPayload = {
   title?: string;
   company?: string;
   tags?: string[] | string;
+  tech_stack?: string[] | string;
+  techStack?: string[] | string;
+  required_skills?: string[] | string;
+  requiredSkills?: string[] | string;
   location?: string;
   description?: string;
   salary_range?: string;
@@ -113,13 +117,33 @@ export function getFitVerdictBadgeClass(verdict: FitVerdict): string {
   }
 }
 
+function uniqueJobRequirements(job: OpportunityMatchJobPayload): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const item of [
+    ...normalizeStringArray(job.techStack ?? job.tech_stack),
+    ...normalizeStringArray(job.requiredSkills ?? job.required_skills),
+    ...normalizeStringArray(job.tags),
+  ]) {
+    const key = item.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(item);
+  }
+
+  return result;
+}
+
 export function buildFallbackOpportunityMatch(
   candidate: OpportunityMatchCandidatePayload,
   job: OpportunityMatchJobPayload,
   githubAudit?: GitHubAuditContext | null
 ): OpportunityMatchResult {
   const candidateSkills = normalizeStringArray(candidate.skills);
-  const jobTags = normalizeStringArray(job.tags);
+  const jobTags = uniqueJobRequirements(job);
   const roleType = candidate.role_type?.trim() ?? "";
 
   const normalizedCandidateSkills = candidateSkills.map((skill) =>

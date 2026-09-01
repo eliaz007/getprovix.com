@@ -45,6 +45,10 @@ type JobPayload = {
   title?: string;
   company?: string;
   tags?: string[] | string;
+  tech_stack?: string[] | string;
+  techStack?: string[] | string;
+  required_skills?: string[] | string;
+  requiredSkills?: string[] | string;
   location?: string;
   description?: string;
 };
@@ -431,7 +435,11 @@ function buildFallbackScreen(
   githubAudit: GitHubAuditContext | null
 ): ScreenResult {
   const skills = normalizeStringArray(candidate.skills, 8);
-  const jobTags = normalizeStringArray(job.tags, 8);
+  const jobTags = [
+    ...normalizeStringArray(job.techStack ?? job.tech_stack, 8),
+    ...normalizeStringArray(job.requiredSkills ?? job.required_skills, 8),
+    ...normalizeStringArray(job.tags, 8),
+  ];
   const overlap = jobTags.filter((tag) =>
     skills.some(
       (skill) =>
@@ -649,6 +657,11 @@ async function generateGeminiScreen(
       job: {
         title: job.title ?? "",
         company: job.company ?? "",
+        techStack: normalizeStringArray(job.techStack ?? job.tech_stack, 12),
+        requiredSkills: normalizeStringArray(
+          job.requiredSkills ?? job.required_skills,
+          12
+        ),
         tags: normalizeStringArray(job.tags, 12),
         location: job.location ?? "",
         description: (job.description ?? "").slice(0, 400),

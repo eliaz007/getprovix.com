@@ -1,4 +1,5 @@
 import { normalizeStringArray } from "@/lib/match-heuristic";
+import { jobDisplayTags } from "@/lib/jobs";
 
 export function normalizeJobStatus(status: string | null | undefined): string {
   return (status ?? "active").trim().toLowerCase();
@@ -43,13 +44,18 @@ export function skillsOverlap(
 }
 
 export function countJobsMatchingCandidateSkills(
-  jobs: Array<{ status?: string | null; tags?: string[] | null }>,
+  jobs: Array<{
+    status?: string | null;
+    tags?: string[] | null;
+    tech_stack?: string[] | null;
+    required_skills?: string[] | null;
+  }>,
   candidateSkills: string[] | string
 ): number {
   const skills = normalizeStringArray(candidateSkills);
 
   return getActiveJobs(jobs).filter((job) =>
-    skillsOverlap(skills, normalizeStringArray(job.tags))
+    skillsOverlap(skills, jobDisplayTags(job))
   ).length;
 }
 
