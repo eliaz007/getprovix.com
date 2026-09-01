@@ -7,6 +7,7 @@ export type DashboardTab =
   | "college-fit"
   | "opportunity_radar"
   | "applications"
+  | "applicants"
   | "talent"
   | "evaluator"
   | "auditor";

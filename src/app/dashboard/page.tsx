@@ -19,6 +19,8 @@ import RequestIntroModal from "@/components/RequestIntroModal";
 import JobApplicantsDrawer, {
   type JobApplicantView,
 } from "@/components/JobApplicantsDrawer";
+import EmployerApplicantsSection from "@/components/employer/employer-applicants-section";
+import type { EmployerApplicantView } from "@/lib/job-applicants";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import DashboardSkeleton from "@/components/dashboard/dashboard-skeleton";
 import GuestAuthModal from "@/components/GuestAuthModal";
@@ -1028,6 +1030,10 @@ export default function DashboardPage() {
     id: string;
     title: string;
   } | null>(null);
+  const [focusApplicantsJobId, setFocusApplicantsJobId] = useState<string | null>(
+    null
+  );
+  const [applicantsRefreshKey, setApplicantsRefreshKey] = useState(0);
   const [unlockedCandidateIds, setUnlockedCandidateIds] = useState<Set<string>>(
     new Set()
   );
@@ -1869,6 +1875,9 @@ export default function DashboardPage() {
       setActiveTab("my_profile");
     }
     if (isBusinessAccount && activeTab === "opportunities") {
+      setActiveTab("my_profile");
+    }
+    if (!isBusinessAccount && activeTab === "applicants") {
       setActiveTab("my_profile");
     }
     if (
@@ -3068,23 +3077,16 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
   const openApplicantsDrawerForJob = useCallback(
     (jobId: string) => {
-      const job = jobs.find((entry) => entry.id === jobId);
-      const listing = businessListings.find((entry) => entry.id === jobId);
-      const title = job?.title ?? listing?.title ?? "Role";
-
       window.setTimeout(() => {
-        setActiveTab("my_profile");
-        setProfileSubMenu("activeListings");
-        setApplicantsDrawerJob({
-          id: jobId,
-          title,
-        });
+        setFocusApplicantsJobId(jobId);
+        setApplicantsDrawerJob(null);
+        setActiveTab("applicants");
         if (window.location.pathname !== "/dashboard") {
           router.push("/dashboard");
         }
       }, 0);
     },
-    [jobs, businessListings, router, setActiveTab]
+    [router, setActiveTab]
   );
   const openApplicantsDrawerForJobRef = useRef(openApplicantsDrawerForJob);
   openApplicantsDrawerForJobRef.current = openApplicantsDrawerForJob;
@@ -3101,12 +3103,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     return () => navSetOnOpenJobApplicants(null);
   }, [navSetOnOpenJobApplicants]);
 
-  const handleApplicantIntroRequest = (applicant: JobApplicantView) => {
-    const roleTitle = applicantsDrawerJob?.title ?? applicant.headline;
-    const parsedScore = Number.parseInt(
-      applicant.aiScoreLabel.replace(/\D/g, ""),
-      10
-    );
+  const handleApplicantIntroRequest = (
+    applicant: JobApplicantView | EmployerApplicantView
+  ) => {
+    const roleTitle =
+      "jobTitle" in applicant
+        ? applicant.jobTitle
+        : applicantsDrawerJob?.title ?? applicant.headline;
+    const parsedScore =
+      "matchScore" in applicant
+        ? applicant.matchScore
+        : Number.parseInt(applicant.aiScoreLabel.replace(/\D/g, ""), 10);
     const codename = applicant.codenameAlias;
     const introCandidate: TalentPoolCandidate = {
       id: `C-${applicant.profileId.replace(/-/g, "").slice(0, 3).toUpperCase()}`,
@@ -3127,7 +3134,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       gpa: applicant.gpa,
       graduationYear: applicant.graduationYear,
       skills: applicant.skills,
-      rating: applicant.aiScoreLabel,
+      rating:
+        "aiScoreLabel" in applicant
+          ? applicant.aiScoreLabel
+          : `${applicant.matchScore}% Match`,
       execution_score: Number.isFinite(parsedScore) ? parsedScore : 94,
       matchScore: Number.isFinite(parsedScore) ? parsedScore : scoreTalentMatch(
         { title: applicant.headline, skills: applicant.skills },
@@ -3153,6 +3163,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     if (user?.id) {
       void fetchIntroUnlocks(user.id);
     }
+    setApplicantsRefreshKey((current) => current + 1);
 
     showToast(
       "Intro request submitted. The candidate will be notified to accept or decline."
@@ -4234,13 +4245,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       <h3 className="text-sm font-bold text-white">
                         Active Job Listings
                       </h3>
-                      <button
-                        type="button"
-                        onClick={openPostJobModal}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3.5 py-2 rounded-lg transition-all cursor-pointer"
-                      >
-                        + Post New Job
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFocusApplicantsJobId(null);
+                            setActiveTab("applicants");
+                          }}
+                          className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 px-2 py-2 transition-colors cursor-pointer"
+                        >
+                          View applicants
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openPostJobModal}
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3.5 py-2 rounded-lg transition-all cursor-pointer"
+                        >
+                          + Post New Job
+                        </button>
+                      </div>
                     </div>
 
                     {businessListings.length === 0 ? (
@@ -6132,6 +6155,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 </div>
               )}
             </div>
+          )}
+
+          {/* EMPLOYER: INTERESTED CANDIDATES */}
+          {isBusinessAccount && activeTab === "applicants" && (
+            <EmployerApplicantsSection
+              key={applicantsRefreshKey}
+              userId={user?.id ?? null}
+              focusJobId={focusApplicantsJobId}
+              onClearFocusJob={() => setFocusApplicantsJobId(null)}
+              onRequestIntro={handleApplicantIntroRequest}
+            />
           )}
 
           {/* EMPLOYER: VETTED TALENT POOL */}

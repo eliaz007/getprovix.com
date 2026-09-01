@@ -108,6 +108,21 @@ const EMPLOYEE_HUB_NAV = [
   },
 ] as const;
 
+const EMPLOYER_HUB_NAV = [
+  {
+    key: "my_profile",
+    tab: "my_profile" as const,
+    label: "Company Profile",
+    icon: "User" as const,
+  },
+  {
+    key: "applicants",
+    tab: "applicants" as const,
+    label: "Applicants",
+    icon: "Briefcase" as const,
+  },
+] as const;
+
 const EMPLOYER_CONSOLE_NAV = [
   {
     key: "talent",
@@ -165,7 +180,7 @@ function isNavTabActive(
 function NavIcon({
   name,
 }: {
-  name: "User" | "Compass" | "Mail" | "Radar" | "Document" | "Users" | "Shield";
+  name: "User" | "Compass" | "Mail" | "Radar" | "Document" | "Users" | "Shield" | "Briefcase";
 }) {
   if (name === "Shield") {
     return (
@@ -321,9 +336,11 @@ export default function DashboardSidebar() {
   const showCandidateAccelerator =
     isGuest || (!isBusinessAccount && !isEmployeeAccount);
 
-  const primaryItems = CANDIDATE_PRIMARY_NAV.filter((item) =>
-    isPrimaryNavVisible(item.key, visibility)
-  );
+  const primaryItems = isBusinessAccount
+    ? EMPLOYER_HUB_NAV
+    : CANDIDATE_PRIMARY_NAV.filter((item) =>
+        isPrimaryNavVisible(item.key, visibility)
+      );
 
   return (
     <div className="p-6 flex flex-col min-h-full">
@@ -351,11 +368,7 @@ export default function DashboardSidebar() {
               <DashboardTabLink
                 key={item.key}
                 tab={item.tab}
-                label={
-                  item.key === "my_profile" && isBusinessAccount
-                    ? "Company Profile"
-                    : item.label
-                }
+                label={item.label}
                 icon={<NavIcon name={item.icon} />}
               />
             ))}
