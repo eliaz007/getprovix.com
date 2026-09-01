@@ -45,6 +45,7 @@ export const PROFILE_EDUCATION_COLUMNS = [
 ] as const;
 
 const PROFILE_ID_COLUMNS = ["id", "user_id"] as const;
+const missingTalentPoolFilterColumns = new Set<string>();
 
 function coerceProfileText(value: unknown): string {
   if (value == null) {
@@ -206,6 +207,10 @@ async function selectProfilesByIds(
   const collected: Record<string, unknown>[] = [];
 
   for (const column of PROFILE_ID_COLUMNS) {
+    if (missingTalentPoolFilterColumns.has(column)) {
+      continue;
+    }
+
     const selectColumns =
       columns[0] === "*"
         ? ["*"]
@@ -230,6 +235,7 @@ async function selectProfilesByIds(
       (findMentionedColumn(error, [column]) ||
         error.message?.toLowerCase().includes(column))
     ) {
+      missingTalentPoolFilterColumns.add(column);
       continue;
     }
 
@@ -409,55 +415,42 @@ export async function fetchEmployerTalentPoolProfiles(
   { data: TalentPoolProfileRow[]; error: null } | { data: []; error: unknown }
 > {
   for (const visibilityColumn of VISIBILITY_COLUMNS) {
-    for (const excludeEmployerRoles of [true, false]) {
-      let query = supabase
-        .from("profiles")
-        .select("*")
-        .eq(visibilityColumn, true);
+    let query = supabase
+      .from("profiles")
+      .select("*")
+      .eq(visibilityColumn, true);
 
-      query = cacheBustTalentPoolQuery(query);
+    query = cacheBustTalentPoolQuery(query);
 
-      if (excludeEmployerRoles) {
-        query = query.not("role", "in", "(employer,business)");
-      }
+    const { data, error } = await query;
 
-      const { data, error } = await query;
-
-      if (!error) {
-        const filtered = filterTalentPoolRows(
-          (data ?? []) as TalentPoolProfileRow[]
-        );
-        const ids = filtered.flatMap((row) => profileRowLookupIds(row));
-        const educationRows = await selectProfileEducationRows(supabase, ids);
-
-        return {
-          data: mergeEducationIntoProfileRows(filtered, educationRows),
-          error: null,
-        };
-      }
-
-      if (!isSupabaseSchemaError(error)) {
-        console.error("Failed to fetch talent pool profiles:", error);
-        return { data: [], error };
-      }
-
-      if (schemaErrorMentionsColumn(error, visibilityColumn)) {
-        break;
-      }
-
-      if (
-        excludeEmployerRoles &&
-        schemaErrorMentionsColumn(error, "role")
-      ) {
-        continue;
-      }
-
-      console.warn(
-        "Talent pool fetch skipped due to schema mismatch:",
-        error.message
+    if (!error) {
+      const filtered = filterTalentPoolRows(
+        (data ?? []) as TalentPoolProfileRow[]
       );
-      return { data: [], error: null };
+      const ids = filtered.flatMap((row) => profileRowLookupIds(row));
+      const educationRows = await selectProfileEducationRows(supabase, ids);
+
+      return {
+        data: mergeEducationIntoProfileRows(filtered, educationRows),
+        error: null,
+      };
     }
+
+    if (!isSupabaseSchemaError(error)) {
+      console.error("Failed to fetch talent pool profiles:", error);
+      return { data: [], error };
+    }
+
+    if (schemaErrorMentionsColumn(error, visibilityColumn)) {
+      continue;
+    }
+
+    console.warn(
+      "Talent pool fetch skipped due to schema mismatch:",
+      error.message
+    );
+    return { data: [], error: null };
   }
 
   return { data: [], error: null };

@@ -8,7 +8,9 @@ import {
 export const PROFILE_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const AUTH_LINK_COLUMNS = ["user_id", "auth_user_id", "auth_id"] as const;
+const AUTH_LINK_QUERY_COLUMNS = ["user_id"] as const;
+const AUTH_LINK_ROW_COLUMNS = ["user_id", "auth_user_id", "auth_id"] as const;
+const missingProfileFilterColumns = new Set<string>();
 
 export function isProfileUuid(value: string | null | undefined): boolean {
   return typeof value === "string" && PROFILE_UUID_PATTERN.test(value.trim());
@@ -34,7 +36,7 @@ export function profileRowLookupKeys(
   }
 
   const keys = new Set<string>();
-  for (const column of ["id", ...AUTH_LINK_COLUMNS]) {
+  for (const column of ["id", ...AUTH_LINK_ROW_COLUMNS]) {
     const id = asTrimmedId(row[column]);
     if (id) {
       keys.add(id);
@@ -122,7 +124,7 @@ async function selectProfilesByColumn(
   ids: string[],
   selectColumns: string
 ): Promise<Record<string, unknown>[]> {
-  if (ids.length === 0) {
+  if (ids.length === 0 || missingProfileFilterColumns.has(column)) {
     return [];
   }
 
@@ -140,6 +142,7 @@ async function selectProfilesByColumn(
     (findMentionedColumn(error, [column]) ||
       error.message?.toLowerCase().includes(column))
   ) {
+    missingProfileFilterColumns.add(column);
     return [];
   }
 
@@ -168,7 +171,7 @@ export async function fetchProfilesForCandidateIds(
     indexProfileRow(map, row);
   }
 
-  for (const column of AUTH_LINK_COLUMNS) {
+  for (const column of AUTH_LINK_QUERY_COLUMNS) {
     const rows = await selectProfilesByColumn(
       supabase,
       column,

@@ -827,8 +827,7 @@ async function fetchProfileRow(
 ) {
   const resolved = await fetchProfileForCandidateId(supabase, userId, "*");
   if (resolved) {
-    const [hydrated] = await hydrateRowsWithEducation(supabase, [resolved]);
-    return { data: hydrated as ProfileRecord, error: null };
+    return { data: resolved as ProfileRecord, error: null };
   }
 
   const byId = await supabase
