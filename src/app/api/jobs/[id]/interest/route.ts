@@ -85,6 +85,7 @@ export async function POST(
         await createEmployerNotification(writer, {
           userId: job.employer_id,
           jobId: job.id,
+          title: "New Candidate Interest",
           message: `A candidate expressed interest in your role: ${
             job.title?.trim() || "Open Role"
           }`,

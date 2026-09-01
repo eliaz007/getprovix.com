@@ -146,7 +146,7 @@ export function subscribeIncomingJobInterest(
   onChange: () => void
 ): () => void {
   const channel = supabase
-    .channel(`job-interest-${employerId}`)
+    .channel(`job-interest-${employerId}-${Math.random()}`)
     .on(
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "job_applications" },

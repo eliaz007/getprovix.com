@@ -51,16 +51,18 @@ export async function markEmployerNotificationRead(
 
 export async function createEmployerNotification(
   supabase: SupabaseClient,
-  input: {
+  notification: {
     userId: string;
     jobId: string;
+    title?: string;
     message: string;
   }
 ): Promise<boolean> {
   const { error } = await supabase.from("notifications").insert({
-    user_id: input.userId,
-    job_id: input.jobId,
-    message: input.message,
+    user_id: notification.userId,
+    job_id: notification.jobId,
+    title: notification.title ?? "New Candidate Interest",
+    message: notification.message,
     is_read: false,
   });
 

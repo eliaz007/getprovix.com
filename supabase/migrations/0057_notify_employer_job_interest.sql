@@ -20,10 +20,11 @@ begin
     return new;
   end if;
 
-  insert into public.notifications (user_id, job_id, message, is_read)
+  insert into public.notifications (user_id, job_id, title, message, is_read)
   values (
     employer,
     new.job_id,
+    'New Candidate Interest',
     format(
       'A candidate expressed interest in your role: %s',
       coalesce(nullif(trim(listing_title), ''), 'Open Role')
