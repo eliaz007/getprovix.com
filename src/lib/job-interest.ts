@@ -140,6 +140,20 @@ export async function markJobInterestRead(
   }
 }
 
+function notificationChangeBelongsToEmployer(
+  payload: { new: Record<string, unknown>; old: Record<string, unknown> },
+  employerId: string
+): boolean {
+  const nextUserId = payload.new.user_id;
+  const prevUserId = payload.old.user_id;
+  // If Realtime omits user_id (replica identity / WAL), still refresh rather
+  // than drop the event. RLS already limits which rows this client can see.
+  if (typeof nextUserId !== "string" && typeof prevUserId !== "string") {
+    return true;
+  }
+  return nextUserId === employerId || prevUserId === employerId;
+}
+
 export function subscribeIncomingJobInterest(
   supabase: SupabaseClient,
   employerId: string,
@@ -158,9 +172,12 @@ export function subscribeIncomingJobInterest(
         event: "*",
         schema: "public",
         table: "notifications",
-        filter: `user_id=eq.${employerId}`,
       },
-      () => onChange()
+      (payload) => {
+        if (notificationChangeBelongsToEmployer(payload, employerId)) {
+          onChange();
+        }
+      }
     )
     .subscribe();
 
