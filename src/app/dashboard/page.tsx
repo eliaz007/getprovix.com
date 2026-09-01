@@ -71,8 +71,11 @@ import {
 } from "@/lib/validate-github-url";
 import { buildFallbackMatch, isCannedMatchScore, scoreTalentMatch, type MatchResult } from "@/lib/match-heuristic";
 import {
+  fetchJobMatches,
+  toOpportunityMatchInsight,
+} from "@/lib/job-match";
+import {
   buildFallbackOpportunityMatch,
-  fetchOpportunityMatch,
   getFitVerdictBadgeClass,
   type OpportunityMatchResult,
 } from "@/lib/opportunity-match";
@@ -2816,49 +2819,86 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
     let cancelled = false;
 
-    void Promise.all(
-      pendingJobs.map(async (job) => {
-        const jobPayload = {
-          title: job.title ?? "",
-          company: job.company ?? "",
-          tags: Array.isArray(job.tags) ? job.tags : [],
-          location: job.location ?? "",
-          description: job.description ?? "",
-          salary_range: job.salary_range ?? "",
-        };
+    void (async () => {
+      try {
+        const { matches } = await fetchJobMatches(
+          {
+            skills: candidatePayload.skills,
+            experienceTier: candidatePayload.experience_level,
+            githubUrl: candidatePayload.github_url,
+          },
+          pendingJobs.map((job) => ({
+            jobId: job.id,
+            title: job.title ?? "",
+            company: job.company ?? "",
+            requiredSkills: Array.isArray(job.tags) ? job.tags : [],
+            description: job.description ?? "",
+          }))
+        );
 
-        try {
-          const insight = await fetchOpportunityMatch(
-            candidatePayload,
-            jobPayload
-          );
-
-          if (cancelled) return;
-
-          setMatchInsights((prev) => ({
-            ...prev,
-            [job.id]: insight,
-          }));
-          matchFetchedRef.current.add(job.id);
-        } catch (err) {
-          console.warn(`Failed to fetch match for job ${job.id}:`, err);
-          if (cancelled) return;
-
-          setMatchInsights((prev) => ({
-            ...prev,
-            [job.id]: buildFallbackOpportunityMatch(
-              candidatePayload,
-              jobPayload
-            ),
-          }));
-        } finally {
-          setMatchLoadingIds((prev) => ({
-            ...prev,
-            [job.id]: false,
-          }));
+        if (cancelled) {
+          return;
         }
-      })
-    );
+
+        const nextInsights: Record<string, OpportunityMatchResult> = {};
+        for (const match of matches) {
+          nextInsights[String(match.jobId)] = toOpportunityMatchInsight(match);
+        }
+
+        for (const job of pendingJobs) {
+          if (!nextInsights[job.id]) {
+            nextInsights[job.id] = buildFallbackOpportunityMatch(
+              candidatePayload,
+              {
+                title: job.title ?? "",
+                company: job.company ?? "",
+                tags: Array.isArray(job.tags) ? job.tags : [],
+                location: job.location ?? "",
+                description: job.description ?? "",
+                salary_range: job.salary_range ?? "",
+              }
+            );
+          }
+          matchFetchedRef.current.add(job.id);
+        }
+
+        setMatchInsights((prev) => ({ ...prev, ...nextInsights }));
+      } catch (err) {
+        console.warn("Failed to fetch Provix AI Job Match scores:", err);
+        if (cancelled) {
+          return;
+        }
+
+        const nextInsights: Record<string, OpportunityMatchResult> = {};
+        for (const job of pendingJobs) {
+          nextInsights[job.id] = buildFallbackOpportunityMatch(
+            candidatePayload,
+            {
+              title: job.title ?? "",
+              company: job.company ?? "",
+              tags: Array.isArray(job.tags) ? job.tags : [],
+              location: job.location ?? "",
+              description: job.description ?? "",
+              salary_range: job.salary_range ?? "",
+            }
+          );
+          matchFetchedRef.current.add(job.id);
+        }
+        setMatchInsights((prev) => ({ ...prev, ...nextInsights }));
+      } finally {
+        if (cancelled) {
+          return;
+        }
+
+        setMatchLoadingIds((prev) => {
+          const next = { ...prev };
+          for (const job of pendingJobs) {
+            next[job.id] = false;
+          }
+          return next;
+        });
+      }
+    })();
 
     return () => {
       cancelled = true;
