@@ -5,6 +5,7 @@ import {
   alignMatchesToJobs,
   buildFallbackMatches,
   buildInsufficientDataMatches,
+  computeJobSkillOverlap,
   extractAuditedSkills,
   hasUsableCandidateMatchData,
   isGeminiRateLimitError,
@@ -12,6 +13,7 @@ import {
   parseExperienceTier,
   parseJobListings,
   readRetryAfterSeconds,
+  summarizeGithubAudit,
   type JobMatchCandidatePayload,
   type JobMatchResult,
   type ParsedJobListing,
@@ -29,7 +31,7 @@ Return strict JSON only:
     {
       "jobId": "the job's id, unchanged",
       "matchScore": 0-100,
-      "matchingReason": "one short sentence"
+      "matchingReasons": ["reason 1", "reason 2"]
     }
   ]
 }
@@ -37,10 +39,12 @@ Return strict JSON only:
 Rules:
 - Return exactly one match object per job in the input, using the same jobId values.
 - matchScore: integer 0-100 based on audited skill overlap with techStack and requiredSkills, experience-tier fit, and role description. Do not default to a mid-range score.
-- matchingReason: one sentence explaining why the candidate's audited skills fit (or miss) the required skills and tech stack. No markdown.
-- Only cite skills present in the candidate audit data. Never invent GitHub evidence.
+- matchingReasons: exactly 2-3 concise second-person bullets (You/Your). Each bullet must name a concrete overlapping skill, GitHub language/repo/commit signal, or missing required skill from the job payload. No markdown.
+- Use overlappingSkills and missingSkills from the job payload when present. Never invent GitHub evidence or skills that are not in the candidate audit data.
+- Prefer specific phrasing such as "Your React and TypeScript skills match this role's stack" or "This listing also asks for AWS, which is not in your audited skills."
+- Never write generic filler such as "your profile signals align", "partially overlap with this role's stack", or "completing your GitHub audit can sharpen match accuracy".
 - techStack may be empty for non-technical roles. Score those from requiredSkills, description, and experience tier.
-- If a job has no required skills and no tech stack, score conservatively from the description and experience tier.
+- If a job has no required skills and no tech stack, score conservatively from the description and experience tier, and still name the candidate's actual skills.
 - No extra keys.`;
 
 const MATCH_JOBS_RESPONSE_SCHEMA = {
@@ -59,13 +63,14 @@ const MATCH_JOBS_RESPONSE_SCHEMA = {
             type: Type.INTEGER,
             description: "Integer fit score from 0 to 100.",
           },
-          matchingReason: {
-            type: Type.STRING,
+          matchingReasons: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
             description:
-              "One sentence explaining why audited skills fit the job requirements.",
+              "Two or three specific bullets naming overlapping skills, GitHub evidence, or missing requirements.",
           },
         },
-        required: ["jobId", "matchScore", "matchingReason"],
+        required: ["jobId", "matchScore", "matchingReasons"],
       },
     },
   },
@@ -111,15 +116,21 @@ async function generateGeminiJobMatches(
       auditedSkills: skills,
       experienceTier,
       githubUrl: candidate.githubUrl?.trim() || candidate.github_url?.trim() || "",
+      githubAudit: summarizeGithubAudit(candidate.githubAudit),
     },
-    jobs: jobs.map((job) => ({
-      jobId: String(job.jobId),
-      title: job.title,
-      company: job.company,
-      techStack: job.techStack,
-      requiredSkills: job.requiredSkills,
-      description: job.description.slice(0, 500),
-    })),
+    jobs: jobs.map((job) => {
+      const { overlapping, missing } = computeJobSkillOverlap(skills, job);
+      return {
+        jobId: String(job.jobId),
+        title: job.title,
+        company: job.company,
+        techStack: job.techStack,
+        requiredSkills: job.requiredSkills,
+        overlappingSkills: overlapping,
+        missingSkills: missing,
+        description: job.description.slice(0, 500),
+      };
+    }),
   });
 
   let lastError: unknown;

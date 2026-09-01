@@ -29,8 +29,9 @@ Return strict JSON only:
 Rules:
 - match_score: 0-100 integer reflecting overall fit for THIS job.
 - fit_verdict: Strong Fit (75-100), Moderate Fit (50-74), Growth Fit (0-49).
-- match_reasons: exactly 2-3 concise second-person bullets (You/Your), each under 18 words.
-- Ground reasons in concrete skill/tag overlap, role_type alignment, bio themes, and GitHub audit evidence when present.
+- match_reasons: exactly 2-3 concise second-person bullets (You/Your), each under 22 words.
+- Name specific overlapping skills, GitHub language/repo/commits when present, and missing required skills. Never invent evidence.
+- Never write generic filler such as "your profile signals align" or "partially overlap with this role's stack".
 - No markdown, no extra keys.`;
 
 const MATCH_RESPONSE_SCHEMA = {

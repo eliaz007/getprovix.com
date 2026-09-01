@@ -64,26 +64,10 @@ export function normalizeFitVerdict(value: unknown, score: number): FitVerdict {
 }
 
 export function normalizeMatchReasons(value: unknown): string[] {
-  const reasons = normalizeStringArray(value)
-    .map((reason) => reason.trim())
+  return normalizeStringArray(value)
+    .map((reason) => reason.replace(/\s+/g, " ").trim())
     .filter(Boolean)
     .slice(0, 3);
-
-  if (reasons.length >= 2) {
-    return reasons;
-  }
-
-  if (reasons.length === 1) {
-    return [
-      reasons[0],
-      "Your verified profile signals align with parts of this role's requirements.",
-    ];
-  }
-
-  return [
-    "Your skills partially overlap with this role's stack.",
-    "Completing your bio and GitHub audit can sharpen match accuracy.",
-  ];
 }
 
 export function normalizeOpportunityMatchResult(
@@ -167,6 +151,22 @@ export function buildFallbackOpportunityMatch(
     );
   }
 
+  const missingTags = jobTags.filter(
+    (tag) =>
+      !matchingTags.some(
+        (match) =>
+          match.toLowerCase() === tag.toLowerCase() ||
+          match.toLowerCase().includes(tag.toLowerCase()) ||
+          tag.toLowerCase().includes(match.toLowerCase())
+      )
+  );
+
+  if (missingTags.length > 0) {
+    match_reasons.push(
+      `This listing also asks for ${missingTags.slice(0, 3).join(", ")}, which are not on your profile yet.`
+    );
+  }
+
   if (roleType && job.title) {
     const titleLower = job.title.toLowerCase();
     const roleLower = roleType.toLowerCase();
@@ -180,9 +180,6 @@ export function buildFallbackOpportunityMatch(
 
   if (candidate.bio?.trim()) {
     match_score += 15;
-    match_reasons.push(
-      "Your published bio gives employers context on your builder narrative."
-    );
   }
 
   if (githubAudit) {
@@ -196,25 +193,31 @@ export function buildFallbackOpportunityMatch(
     } else if (githubAudit.commit_count_sampled >= 3) {
       match_score += 10;
       match_reasons.push(
-        `Verified GitHub activity in ${githubAudit.owner}/${githubAudit.repo} supports your proof-of-work claims.`
+        `GitHub shows ${githubAudit.commit_count_sampled} recent commits on ${githubAudit.owner}/${githubAudit.repo}.`
+      );
+    } else if (githubAudit.language) {
+      match_reasons.push(
+        `Your GitHub repo ${githubAudit.owner}/${githubAudit.repo} is primarily ${githubAudit.language}.`
       );
     } else if (githubAudit.commit_count_sampled <= 1) {
       match_score -= 8;
       match_reasons.push(
-        "Limited GitHub commit history — strengthening your repo will improve match confidence."
+        `Limited commit history on ${githubAudit.owner}/${githubAudit.repo} — more activity would raise match confidence.`
       );
     }
-  } else if (candidate.github_url?.trim()) {
+  } else if (candidate.github_url?.trim() && match_reasons.length < 3) {
     match_reasons.push(
-      "Add a public GitHub repo to your profile for stronger verified matching."
+      "Add a public GitHub repo to your profile so matching can cite verified commits and languages."
     );
   }
 
-  if (match_reasons.length < 2) {
+  if (match_reasons.length < 2 && candidateSkills.length > 0) {
     match_reasons.push(
-      matchingTags.length > 0
-        ? "Express interest to signal availability — employers review verified Provix profiles first."
-        : "Your profile has limited overlap today; this role could be a stretch growth opportunity."
+      `Your profile highlights ${candidateSkills.slice(0, 3).join(", ")} against ${job.title?.trim() || "this role"}.`
+    );
+  } else if (match_reasons.length < 2) {
+    match_reasons.push(
+      "Add skills or a GitHub repo to your profile so this role can be scored against your work."
     );
   }
 
