@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import OpportunitiesJobFeed from "@/components/opportunities/opportunities-job-feed";
-import { createEmployerNotification } from "@/lib/employer-notifications";
+import { submitCandidateJobInterest } from "@/lib/job-interest";
 import { extractAuditedSkills, parseExperienceTier } from "@/lib/job-match";
 import { fetchPublicJobFeed, type JobRow } from "@/lib/jobs";
 import { fetchProfileForCandidateId } from "@/lib/resolve-candidate-profile";
@@ -200,42 +200,12 @@ export default function PublicOpportunitiesFeed() {
     }
 
     setAppliedJobIds((prev) => [...prev, job.id]);
-    showToast(
-      "Interest submitted. The team will review your proof-of-work dossier."
-    );
+    showToast("Interest sent. The employer will review your profile.");
 
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from("job_applications").insert({
-        job_id: job.id,
-        candidate_id: userId,
-      });
-
-      if (error) {
-        console.error("Failed to submit job interest:", error);
-        setAppliedJobIds((prev) => prev.filter((id) => id !== job.id));
-
-        if (error.code === "23505") {
-          setAppliedJobIds((prev) =>
-            prev.includes(job.id) ? prev : [...prev, job.id]
-          );
-          return;
-        }
-
-        showToast("Could not submit interest. Please try again.");
+      const result = await submitCandidateJobInterest(job.id);
+      if (result.alreadyApplied) {
         return;
-      }
-
-      if (job.employer_id && job.employer_id !== userId) {
-        try {
-          await createEmployerNotification(supabase, {
-            userId: job.employer_id,
-            jobId: job.id,
-            message: `A candidate expressed interest in your role: ${job.title ?? "Open Role"}`,
-          });
-        } catch (notifyError) {
-          console.warn("Failed to notify employer of interest:", notifyError);
-        }
       }
     } catch (err) {
       console.error("Failed to submit job interest:", err);

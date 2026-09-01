@@ -29,7 +29,7 @@ import ResumeFileUpload from "@/components/ResumeFileUpload";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
 import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
-import { buildAlliterativeAliasIdentity, resolveCodenameAlias } from "@/lib/alias-generator";
+import { buildAlliterativeAliasIdentity } from "@/lib/alias-generator";
 import {
   normalizeAccountKind,
   resolveAccountRole,
@@ -85,7 +85,7 @@ import {
   type CandidateIntroRequestRow,
 } from "@/lib/candidate-intro-requests";
 import { formatRelativeTime } from "@/lib/format-relative-time";
-import { createEmployerNotification } from "@/lib/employer-notifications";
+import { submitCandidateJobInterest } from "@/lib/job-interest";
 import {
   fetchTalentMatchInsight,
   loadCachedTalentMatchScores,
@@ -1458,7 +1458,7 @@ export default function DashboardPage() {
     let isMounted = true;
     const supabase = createClient();
 
-    (async () => {
+    const loadInterestCounts = async () => {
       try {
         const { data, error } = await supabase
           .from("job_applications")
@@ -1482,10 +1482,24 @@ export default function DashboardPage() {
       } catch (err) {
         console.error("Failed to fetch job interest counts:", err);
       }
-    })();
+    };
+
+    void loadInterestCounts();
+
+    const channel = supabase
+      .channel(`employer-job-interest-counts-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "job_applications" },
+        () => {
+          void loadInterestCounts();
+        }
+      )
+      .subscribe();
 
     return () => {
       isMounted = false;
+      void supabase.removeChannel(channel);
     };
   }, [isBusinessAccount, user?.id, jobs]);
 
@@ -3000,48 +3014,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       },
       ...prev,
     ]);
-    showToast(
-      "Interest submitted. The team will review your proof-of-work dossier."
-    );
+    showToast("Interest sent. The employer will review your profile.");
 
-    const supabase = createClient();
     try {
-      const { error } = await supabase.from("job_applications").insert({
-        job_id: job.id,
-        candidate_id: user.id,
-      });
-
-      if (error) {
-        console.error("Failed to submit job interest:", error);
-        setAppliedJobIds((prev) => prev.filter((id) => id !== job.id));
-        setAppliedJobs((prev) =>
-          prev.filter((application) => application.jobId !== job.id)
-        );
-
-        if (error.code === "23505") {
-          setAppliedJobIds((prev) =>
-            prev.includes(job.id) ? prev : [...prev, job.id]
-          );
-          return;
-        }
-
-        showToast("Could not submit interest. Please try again.");
+      const result = await submitCandidateJobInterest(job.id);
+      if (result.alreadyApplied) {
         return;
-      }
-
-      const employerId = job.employer_id as string | undefined;
-      if (employerId && employerId !== user.id) {
-        const alias = getCandidateNotificationAlias();
-        const jobTitle = job.title ?? "Open Role";
-        try {
-          await createEmployerNotification(supabase, {
-            userId: employerId,
-            jobId: job.id,
-            message: `${alias} expressed interest in your role: ${jobTitle}`,
-          });
-        } catch (notifyError) {
-          console.warn("Failed to notify employer of interest:", notifyError);
-        }
       }
     } catch (err) {
       console.error("Failed to submit job interest:", err);
@@ -3122,23 +3100,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     navSetOnOpenJobApplicants(handler);
     return () => navSetOnOpenJobApplicants(null);
   }, [navSetOnOpenJobApplicants]);
-
-  const getCandidateNotificationAlias = useCallback((): string => {
-    const skillTags = (skills ?? "")
-      .split(",")
-      .map((skill) => skill.trim())
-      .filter(Boolean);
-
-    return resolveCodenameAlias({
-      id: user?.id ?? "candidate",
-      codename_alias: dbProfile?.codename_alias,
-      job_title: title || dbProfile?.job_title,
-      headline: dbProfile?.headline,
-      major: dbProfile?.major,
-      role: dbProfile?.role,
-      skills: skillTags.length > 0 ? skillTags : dbProfile?.skills,
-    });
-  }, [dbProfile, skills, title, user?.id]);
 
   const handleApplicantIntroRequest = (applicant: JobApplicantView) => {
     const roleTitle = applicantsDrawerJob?.title ?? applicant.headline;
@@ -6086,7 +6047,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           >
                             {alreadyInterested ? (
                               <>
-                                Interest Submitted
+                                Interest Sent
                                 <Check className="w-3.5 h-3.5" aria-hidden="true" />
                               </>
                             ) : (

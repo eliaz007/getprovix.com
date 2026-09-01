@@ -412,7 +412,7 @@ export default function OpportunitiesJobFeed({
                   >
                     {alreadyApplied ? (
                       <>
-                        Interest Submitted
+                        Interest Sent
                         <Check className="w-3.5 h-3.5" aria-hidden="true" />
                       </>
                     ) : (

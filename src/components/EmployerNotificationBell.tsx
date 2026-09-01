@@ -4,13 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import {
-  fetchEmployerNotifications,
-  markEmployerNotificationRead,
-  type EmployerNotificationRow,
-} from "@/lib/employer-notifications";
+  fetchIncomingJobInterest,
+  markJobInterestRead,
+  subscribeIncomingJobInterest,
+  type IncomingJobInterest,
+} from "@/lib/job-interest";
 import { createClient } from "@/utils/supabase/client";
-
-export type EmployerNotification = EmployerNotificationRow;
 
 type EmployerNotificationBellProps = {
   userId: string | null;
@@ -23,28 +22,36 @@ export default function EmployerNotificationBell({
 }: EmployerNotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [notifications, setNotifications] = useState<EmployerNotification[]>([]);
+  const [notifications, setNotifications] = useState<IncomingJobInterest[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const unreadCount = notifications.filter((row) => !row.is_read).length;
+  const unreadCount = notifications.filter((row) => !row.isRead).length;
 
-  const fetchNotifications = useCallback(async () => {
-    if (!userId) {
-      setNotifications([]);
-      return;
-    }
+  const fetchNotifications = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!userId) {
+        setNotifications([]);
+        return;
+      }
 
-    setLoading(true);
-    const supabase = createClient();
-    try {
-      const rows = await fetchEmployerNotifications(supabase, userId);
-      setNotifications(rows);
-    } catch (error) {
-      console.error("Failed to fetch notifications:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]);
+      if (!options?.silent) {
+        setLoading(true);
+      }
+
+      const supabase = createClient();
+      try {
+        const rows = await fetchIncomingJobInterest(supabase, userId);
+        setNotifications(rows);
+      } catch (error) {
+        console.error("Failed to fetch incoming job interest:", error);
+      } finally {
+        if (!options?.silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [userId]
+  );
 
   useEffect(() => {
     void fetchNotifications();
@@ -57,6 +64,17 @@ export default function EmployerNotificationBell({
 
     void fetchNotifications();
   }, [open, fetchNotifications]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    const supabase = createClient();
+    return subscribeIncomingJobInterest(supabase, userId, () => {
+      void fetchNotifications({ silent: true });
+    });
+  }, [userId, fetchNotifications]);
 
   useEffect(() => {
     if (!open) {
@@ -73,30 +91,28 @@ export default function EmployerNotificationBell({
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [open]);
 
-  const handleNotificationClick = async (notification: EmployerNotification) => {
+  const handleNotificationClick = async (notification: IncomingJobInterest) => {
     if (!userId) {
       return;
     }
 
     setNotifications((current) =>
       current.map((row) =>
-        row.id === notification.id ? { ...row, is_read: true } : row
+        row.id === notification.id ? { ...row, isRead: true } : row
       )
     );
     setOpen(false);
 
-    if (!notification.is_read) {
+    if (!notification.isRead) {
       try {
         const supabase = createClient();
-        await markEmployerNotificationRead(supabase, notification.id, userId);
+        await markJobInterestRead(supabase, userId, notification.jobId);
       } catch (error) {
-        console.warn("Failed to mark notification as read:", error);
+        console.warn("Failed to mark job interest as read:", error);
       }
     }
 
-    if (notification.job_id) {
-      onOpenJobApplicants(notification.job_id);
-    }
+    onOpenJobApplicants(notification.jobId);
   };
 
   if (!userId) {
@@ -149,20 +165,20 @@ export default function EmployerNotificationBell({
                     type="button"
                     onClick={() => void handleNotificationClick(notification)}
                     className={`w-full text-left px-4 py-3 transition-colors cursor-pointer ${
-                      notification.is_read
+                      notification.isRead
                         ? "hover:bg-slate-900/40"
                         : "bg-indigo-500/5 hover:bg-indigo-500/10"
                     }`}
                   >
                     <p
                       className={`text-sm leading-snug ${
-                        notification.is_read ? "text-slate-300" : "text-white"
+                        notification.isRead ? "text-slate-300" : "text-white"
                       }`}
                     >
                       {notification.message}
                     </p>
                     <p className="text-[11px] text-slate-500 mt-1">
-                      {formatRelativeTime(notification.created_at)}
+                      {formatRelativeTime(notification.createdAt)}
                     </p>
                   </button>
                 </li>
