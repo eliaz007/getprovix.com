@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireVerifiedEmployer } from "@/lib/api-auth";
-import { fetchProfilesForCandidateIds } from "@/lib/resolve-candidate-profile";
+import {
+  employerIdentityIds,
+  fetchProfileForCandidateId,
+  fetchProfilesForCandidateIds,
+} from "@/lib/resolve-candidate-profile";
+import { isSupabaseSchemaError, schemaErrorMentionsColumn } from "@/lib/supabase-schema-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +28,15 @@ export async function GET(
     return NextResponse.json({ error: "Invalid job id." }, { status: 400 });
   }
 
-  const { data: job, error: jobError } = await access.supabase
+  const reader = createServiceRoleClient() ?? access.supabase;
+  const viewerRow = await fetchProfileForCandidateId(
+    reader,
+    access.user.id,
+    "id, user_id, role"
+  );
+  const employerIds = employerIdentityIds(access.user.id, viewerRow);
+
+  const { data: job, error: jobError } = await reader
     .from("jobs")
     .select("id, employer_id")
     .eq("id", jobId)
@@ -37,15 +50,42 @@ export async function GET(
     );
   }
 
-  if (!job || job.employer_id !== access.user.id) {
+  if (!job || !employerIds.includes(job.employer_id)) {
     return NextResponse.json({ error: "Job not found." }, { status: 404 });
   }
 
-  const { data: applications, error: applicationsError } = await access.supabase
-    .from("job_applications")
-    .select("id, candidate_id, created_at, unlocked")
-    .eq("job_id", jobId)
-    .order("created_at", { ascending: false });
+  let applications: Array<{
+    id: string;
+    candidate_id: string;
+    created_at: string;
+    unlocked?: boolean | null;
+  }> | null = null;
+  let applicationsError: { message: string } | null = null;
+
+  {
+    const first = await reader
+      .from("job_applications")
+      .select("id, candidate_id, created_at, unlocked")
+      .eq("job_id", jobId)
+      .order("created_at", { ascending: false });
+
+    applications = first.data ?? null;
+    applicationsError = first.error;
+
+    if (
+      applicationsError &&
+      isSupabaseSchemaError(applicationsError) &&
+      schemaErrorMentionsColumn(applicationsError, "unlocked")
+    ) {
+      const fallback = await reader
+        .from("job_applications")
+        .select("id, candidate_id, created_at")
+        .eq("job_id", jobId)
+        .order("created_at", { ascending: false });
+      applications = fallback.data ?? [];
+      applicationsError = fallback.error;
+    }
+  }
 
   if (applicationsError) {
     console.error(
@@ -63,7 +103,6 @@ export async function GET(
     .map((row) => row.candidate_id)
     .filter((value): value is string => typeof value === "string");
 
-  const reader = createServiceRoleClient() ?? access.supabase;
   const profilesByRef = await fetchProfilesForCandidateIds(reader, candidateIds);
 
   const profiles: Record<string, Record<string, unknown>> = {};
@@ -76,10 +115,10 @@ export async function GET(
 
   const matches: Record<string, number> = {};
   if (candidateIds.length > 0) {
-    const { data: matchRows, error: matchError } = await access.supabase
+    const { data: matchRows, error: matchError } = await reader
       .from("talent_match_scores")
       .select("candidate_id, match_percentage")
-      .eq("employer_id", access.user.id)
+      .in("employer_id", employerIds)
       .eq("job_id", jobId)
       .in("candidate_id", candidateIds);
 

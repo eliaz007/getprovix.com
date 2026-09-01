@@ -43,6 +43,13 @@ export function profileRowLookupKeys(
   return [...keys];
 }
 
+export function employerIdentityIds(
+  userId: string,
+  profile?: Record<string, unknown> | null
+): string[] {
+  return uniqueCandidateIds([userId, ...profileRowLookupKeys(profile)]);
+}
+
 export function resolvedProfileId(
   row: Record<string, unknown> | null | undefined,
   fallback?: string | null

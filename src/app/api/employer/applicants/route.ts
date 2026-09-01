@@ -11,8 +11,13 @@ import {
 } from "@/lib/job-applicants";
 import { parseJobListInput } from "@/lib/jobs";
 import type { MatchResult } from "@/lib/match-heuristic";
-import { fetchProfileForCandidateId, fetchProfilesForCandidateIds } from "@/lib/resolve-candidate-profile";
+import {
+  employerIdentityIds,
+  fetchProfileForCandidateId,
+  fetchProfilesForCandidateIds,
+} from "@/lib/resolve-candidate-profile";
 import { isSupabaseSchemaError, schemaErrorMentionsColumn } from "@/lib/supabase-schema-errors";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,16 +45,84 @@ function matchKey(jobId: string, candidateId: string): string {
   return `${jobId}:${candidateId}`;
 }
 
+async function fetchEmployerJobs(
+  client: SupabaseClient,
+  employerIds: string[]
+): Promise<{ jobs: JobRow[]; error: { message: string } | null }> {
+  const first = await client
+    .from("jobs")
+    .select("id, title, status, tags, tech_stack, required_skills, created_at")
+    .in("employer_id", employerIds)
+    .order("created_at", { ascending: false });
+
+  if (
+    first.error &&
+    isSupabaseSchemaError(first.error) &&
+    (schemaErrorMentionsColumn(first.error, "tech_stack") ||
+      schemaErrorMentionsColumn(first.error, "required_skills"))
+  ) {
+    const fallback = await client
+      .from("jobs")
+      .select("id, title, status, tags, created_at")
+      .in("employer_id", employerIds)
+      .order("created_at", { ascending: false });
+    return {
+      jobs: (fallback.data ?? []) as JobRow[],
+      error: fallback.error,
+    };
+  }
+
+  return {
+    jobs: (first.data ?? []) as JobRow[],
+    error: first.error,
+  };
+}
+
+async function fetchJobApplications(
+  client: SupabaseClient,
+  jobIds: string[]
+): Promise<{ rows: ApplicationRow[]; error: { message: string } | null }> {
+  const first = await client
+    .from("job_applications")
+    .select("id, job_id, candidate_id, created_at, unlocked")
+    .in("job_id", jobIds)
+    .order("created_at", { ascending: false })
+    .limit(MAX_APPLICATIONS);
+
+  if (
+    first.error &&
+    isSupabaseSchemaError(first.error) &&
+    schemaErrorMentionsColumn(first.error, "unlocked")
+  ) {
+    const fallback = await client
+      .from("job_applications")
+      .select("id, job_id, candidate_id, created_at")
+      .in("job_id", jobIds)
+      .order("created_at", { ascending: false })
+      .limit(MAX_APPLICATIONS);
+    return {
+      rows: (fallback.data ?? []) as ApplicationRow[],
+      error: fallback.error,
+    };
+  }
+
+  return {
+    rows: (first.data ?? []) as ApplicationRow[],
+    error: first.error,
+  };
+}
+
 export async function GET(request: Request) {
   const access = await requireApiUser(request);
   if (access instanceof NextResponse) {
     return access;
   }
 
+  const reader = createServiceRoleClient() ?? access.supabase;
   const viewerRow = await fetchProfileForCandidateId(
-    access.supabase,
+    reader,
     access.user.id,
-    "role"
+    "id, user_id, role"
   );
   const viewerRole = resolveAccountRole(
     typeof viewerRow?.role === "string" ? viewerRow.role : null,
@@ -60,34 +133,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  let listings: JobRow[] | null = null;
-  let jobsError: { message: string } | null = null;
-
-  {
-    const first = await access.supabase
-      .from("jobs")
-      .select("id, title, status, tags, tech_stack, required_skills, created_at")
-      .eq("employer_id", access.user.id)
-      .order("created_at", { ascending: false });
-
-    listings = (first.data ?? null) as JobRow[] | null;
-    jobsError = first.error;
-
-    if (
-      jobsError &&
-      isSupabaseSchemaError(jobsError) &&
-      (schemaErrorMentionsColumn(jobsError, "tech_stack") ||
-        schemaErrorMentionsColumn(jobsError, "required_skills"))
-    ) {
-      const fallback = await access.supabase
-        .from("jobs")
-        .select("id, title, status, tags, created_at")
-        .eq("employer_id", access.user.id)
-        .order("created_at", { ascending: false });
-      listings = (fallback.data ?? []) as JobRow[];
-      jobsError = fallback.error;
-    }
-  }
+  const employerIds = employerIdentityIds(access.user.id, viewerRow);
+  const { jobs, error: jobsError } = await fetchEmployerJobs(reader, employerIds);
 
   if (jobsError) {
     console.error("[employer applicants] jobs lookup failed:", jobsError.message);
@@ -97,7 +144,6 @@ export async function GET(request: Request) {
     );
   }
 
-  const jobs = (listings ?? []) as JobRow[];
   const jobSummaries = jobs.map((job) => ({
     id: job.id,
     title: job.title?.trim() || "Open Role",
@@ -114,35 +160,10 @@ export async function GET(request: Request) {
   const jobIds = jobs.map((job) => job.id);
   const jobsById = new Map(jobs.map((job) => [job.id, job]));
 
-  let applications: ApplicationRow[] | null = null;
-  let applicationsError: { message: string } | null = null;
-
-  {
-    const first = await access.supabase
-      .from("job_applications")
-      .select("id, job_id, candidate_id, created_at, unlocked")
-      .in("job_id", jobIds)
-      .order("created_at", { ascending: false })
-      .limit(MAX_APPLICATIONS);
-
-    applications = (first.data ?? null) as ApplicationRow[] | null;
-    applicationsError = first.error;
-
-    if (
-      applicationsError &&
-      isSupabaseSchemaError(applicationsError) &&
-      schemaErrorMentionsColumn(applicationsError, "unlocked")
-    ) {
-      const fallback = await access.supabase
-        .from("job_applications")
-        .select("id, job_id, candidate_id, created_at")
-        .in("job_id", jobIds)
-        .order("created_at", { ascending: false })
-        .limit(MAX_APPLICATIONS);
-      applications = (fallback.data ?? []) as ApplicationRow[];
-      applicationsError = fallback.error;
-    }
-  }
+  const { rows, error: applicationsError } = await fetchJobApplications(
+    reader,
+    jobIds
+  );
 
   if (applicationsError) {
     console.error(
@@ -155,12 +176,10 @@ export async function GET(request: Request) {
     );
   }
 
-  const rows = (applications ?? []) as ApplicationRow[];
   const candidateIds = [
     ...new Set(rows.map((row) => row.candidate_id).filter(Boolean)),
   ];
 
-  const reader = createServiceRoleClient() ?? access.supabase;
   const profilesByRef = await fetchProfilesForCandidateIds(
     reader,
     candidateIds,
@@ -169,12 +188,12 @@ export async function GET(request: Request) {
 
   const matchByKey = new Map<string, MatchResult | number>();
   if (candidateIds.length > 0) {
-    const { data: matchRows, error: matchError } = await access.supabase
+    const { data: matchRows, error: matchError } = await reader
       .from("talent_match_scores")
       .select(
         "candidate_id, job_id, match_percentage, reasoning, matching_skills, missing_skills"
       )
-      .eq("employer_id", access.user.id)
+      .in("employer_id", employerIds)
       .in("job_id", jobIds)
       .in("candidate_id", candidateIds);
 
@@ -223,10 +242,10 @@ export async function GET(request: Request) {
   ];
 
   if (profileIds.length > 0) {
-    const { data: introRows, error: introError } = await access.supabase
+    const { data: introRows, error: introError } = await reader
       .from("intro_requests")
       .select("candidate_id")
-      .eq("user_id", access.user.id)
+      .in("user_id", employerIds)
       .in("candidate_id", profileIds);
 
     if (introError) {
