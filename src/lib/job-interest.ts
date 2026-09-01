@@ -161,9 +161,8 @@ export function subscribeIncomingJobInterest(
         filter: `user_id=eq.${employerId}`,
       },
       () => onChange()
-    );
-
-  channel.subscribe();
+    )
+    .subscribe();
 
   return () => {
     void supabase.removeChannel(channel);
