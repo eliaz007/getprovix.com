@@ -224,9 +224,21 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
 
     void bootstrapSession();
 
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (!active) {
+        return;
+      }
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+        void bootstrapSession();
+      }
+    });
+
     return () => {
       active = false;
       window.clearTimeout(timeoutId);
+      subscription.unsubscribe();
     };
   }, [pathname]);
 

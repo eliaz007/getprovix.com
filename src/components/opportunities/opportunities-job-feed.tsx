@@ -316,7 +316,7 @@ export default function OpportunitiesJobFeed({
                       {job.company}
                     </p>
                   </div>
-                  {enableAiMatch && !isGuest ? (
+                  {enableAiMatch ? (
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                       <span
                         className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
@@ -396,7 +396,7 @@ export default function OpportunitiesJobFeed({
                   </div>
                 ) : null}
 
-                {enableAiMatch && !isGuest && (isMatching || insight) && (
+                {enableAiMatch && (isMatching || insight) && (
                   <div className="mb-4 rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3">
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
                       AI Match Analysis

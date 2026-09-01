@@ -111,6 +111,7 @@ import {
 } from "@/lib/talent-pool-visibility-sync";
 import { fetchDashboardJobs, type JobRow } from "@/lib/jobs";
 import OpportunitiesJobFeed from "@/components/opportunities/opportunities-job-feed";
+import { useProvixAiMatch } from "@/components/opportunities/use-provix-ai-match";
 import {
   countActiveOpenings,
   getActiveJobs,
@@ -1067,8 +1068,6 @@ export default function DashboardPage() {
   const [jobInterestCounts, setJobInterestCounts] = useState<
     Record<string, number>
   >({});
-  const matchInsights: Record<string, MatchInsight> = {};
-  const matchLoadingIds: Record<string, boolean> = {};
   const [candidateIntroRequests, setCandidateIntroRequests] = useState<
     CandidateIntroRequestRow[]
   >([]);
@@ -2733,6 +2732,37 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       .map((skill) => skill.trim())
       .filter(Boolean);
   }, [dbProfile?.skills, skills]);
+
+  const matchCandidate = useMemo(
+    () => ({
+      skills: candidateSkillsForMatching,
+      experienceTier: dbProfile?.experience_level?.trim() || experienceLevel,
+      githubUrl: portfolioUrl.trim() || dbProfile?.portfolio_url?.trim() || "",
+      githubAudit: deepScreeningResult?.github_audit,
+    }),
+    [
+      candidateSkillsForMatching,
+      dbProfile?.experience_level,
+      dbProfile?.portfolio_url,
+      deepScreeningResult?.github_audit,
+      experienceLevel,
+      portfolioUrl,
+    ]
+  );
+
+  const {
+    matchInsights,
+    matchLoadingIds,
+    aiMatchRunning,
+    aiMatchError,
+    runAiMatch,
+  } = useProvixAiMatch({
+    jobs,
+    userId: user?.id ?? null,
+    authLoading: !authChecked,
+    requireAuth,
+    candidate: matchCandidate,
+  });
 
   const activeJobs = useMemo(() => getActiveJobs(jobs), [jobs]);
 
@@ -4731,9 +4761,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               isGuest={!user}
               appliedJobIds={appliedJobIds}
               onExpressInterest={handleExpressInterestToJob}
+              matchInsights={matchInsights}
+              matchLoadingIds={matchLoadingIds}
               candidateSkills={candidateSkillsForMatching}
               profileVisibleToEmployers={profileVisibleToEmployers}
               loadingProfile={loadingProfile}
+              enableAiMatch
+              aiMatchRunning={aiMatchRunning}
+              aiMatchError={aiMatchError}
+              onRunAiMatch={runAiMatch}
             />
           )}
 

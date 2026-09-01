@@ -206,30 +206,31 @@ function DashboardTabLink({
 
   let control: ReactNode;
 
-  if (isGuest) {
-    control =
-      tab === "opportunities" ? (
-        <Link
-          href="/opportunities"
-          onClick={() => setMobileNavOpen(false)}
-          className={navItemClass(isActive, variant)}
-        >
-          {icon}
-          {label}
-        </Link>
-      ) : (
-        <button
-          type="button"
-          onClick={() => {
-            setMobileNavOpen(false);
-            requireAuth();
-          }}
-          className={navItemClass(isActive, variant)}
-        >
-          {icon}
-          {label}
-        </button>
-      );
+  if (tab === "opportunities") {
+    control = (
+      <Link
+        href="/opportunities"
+        onClick={() => setMobileNavOpen(false)}
+        className={navItemClass(isActive, variant)}
+      >
+        {icon}
+        {label}
+      </Link>
+    );
+  } else if (isGuest) {
+    control = (
+      <button
+        type="button"
+        onClick={() => {
+          setMobileNavOpen(false);
+          requireAuth();
+        }}
+        className={navItemClass(isActive, variant)}
+      >
+        {icon}
+        {label}
+      </button>
+    );
   } else if (isDashboardRootPath(pathname)) {
     control = (
       <button

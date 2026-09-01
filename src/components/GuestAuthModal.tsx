@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { GitHubSignInButton } from "@/components/GitHubSignInButton";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
@@ -17,6 +18,12 @@ export default function GuestAuthModal({
   onClose: () => void;
   onError: (message: string | null) => void;
 }) {
+  const pathname = usePathname();
+  const loginHref =
+    pathname && pathname.startsWith("/") && !pathname.startsWith("//")
+      ? `/login?next=${encodeURIComponent(pathname)}`
+      : "/login";
+
   if (!open) {
     return null;
   }
@@ -64,7 +71,7 @@ export default function GuestAuthModal({
         <p className="text-[11px] text-zinc-400 mt-4 text-center">
           Prefer email?{" "}
           <Link
-            href="/login"
+            href={loginHref}
             className="text-indigo-300 hover:text-indigo-200 font-semibold transition-colors duration-200"
           >
             Sign in / Sign up

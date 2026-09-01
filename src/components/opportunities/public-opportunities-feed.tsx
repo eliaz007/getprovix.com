@@ -4,16 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import OpportunitiesJobFeed from "@/components/opportunities/opportunities-job-feed";
 import { createEmployerNotification } from "@/lib/employer-notifications";
-import {
-  extractAuditedSkills,
-  fetchJobMatches,
-  parseExperienceTier,
-  toOpportunityMatchInsight,
-} from "@/lib/job-match";
+import { extractAuditedSkills, parseExperienceTier } from "@/lib/job-match";
 import { fetchPublicJobFeed, type JobRow } from "@/lib/jobs";
-import { getActiveJobs } from "@/lib/opportunities-metrics";
-import type { OpportunityMatchResult } from "@/lib/opportunity-match";
 import { fetchProfileForCandidateId } from "@/lib/resolve-candidate-profile";
+import { useProvixAiMatch } from "@/components/opportunities/use-provix-ai-match";
 import { createClient } from "@/utils/supabase/client";
 import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
 
@@ -61,19 +55,33 @@ export default function PublicOpportunitiesFeed() {
   const [appliedJobIds, setAppliedJobIds] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastVariant, setToastVariant] = useState<ToastVariant>("success");
-  const [matchInsights, setMatchInsights] = useState<
-    Record<string, OpportunityMatchResult>
-  >({});
-  const [matchLoadingIds, setMatchLoadingIds] = useState<
-    Record<string, boolean>
-  >({});
-  const [aiMatchRunning, setAiMatchRunning] = useState(false);
-  const [aiMatchError, setAiMatchError] = useState<string | null>(null);
   const [candidateProfile, setCandidateProfile] =
     useState<CandidateMatchProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
 
-  const activeJobs = useMemo(() => getActiveJobs(jobs), [jobs]);
+  const matchCandidate = useMemo(
+    () => ({
+      skills: candidateProfile?.skills ?? [],
+      experienceTier: candidateProfile?.experienceTier ?? "",
+      githubUrl: candidateProfile?.githubUrl ?? "",
+      githubAudit: candidateProfile?.githubAudit,
+    }),
+    [candidateProfile]
+  );
+
+  const {
+    matchInsights,
+    matchLoadingIds,
+    aiMatchRunning,
+    aiMatchError,
+    runAiMatch,
+  } = useProvixAiMatch({
+    jobs,
+    userId,
+    authLoading,
+    requireAuth,
+    candidate: matchCandidate,
+  });
 
   const showToast = useCallback((message: string, variant?: ToastVariant) => {
     setToastMessage(message);
@@ -178,60 +186,6 @@ export default function PublicOpportunitiesFeed() {
     };
   }, [userId]);
 
-  const handleRunAiMatch = async () => {
-    if (authLoading || aiMatchRunning) {
-      return;
-    }
-
-    if (!requireAuth() || !userId) {
-      return;
-    }
-
-    if (activeJobs.length === 0) {
-      setAiMatchError("No active job listings to match right now.");
-      return;
-    }
-
-    const jobsToMatch = activeJobs;
-    setAiMatchError(null);
-    setAiMatchRunning(true);
-    setMatchLoadingIds(
-      Object.fromEntries(jobsToMatch.map((job) => [job.id, true]))
-    );
-
-    try {
-      const { matches } = await fetchJobMatches(
-        {
-          skills: candidateProfile?.skills ?? [],
-          experienceTier: candidateProfile?.experienceTier ?? "",
-          githubUrl: candidateProfile?.githubUrl ?? "",
-          githubAudit: candidateProfile?.githubAudit,
-        },
-        jobsToMatch.map((job) => ({
-          jobId: job.id,
-          title: job.title ?? "",
-          company: job.company ?? "",
-          requiredSkills: Array.isArray(job.tags) ? job.tags : [],
-          description: job.description ?? "",
-        }))
-      );
-
-      const nextInsights: Record<string, OpportunityMatchResult> = {};
-      for (const match of matches) {
-        nextInsights[String(match.jobId)] = toOpportunityMatchInsight(match);
-      }
-      setMatchInsights(nextInsights);
-    } catch (err) {
-      console.warn("Failed to run Provix AI Match:", err);
-      setAiMatchError(
-        "Could not complete AI matching. Please try again in a moment."
-      );
-    } finally {
-      setAiMatchRunning(false);
-      setMatchLoadingIds({});
-    }
-  };
-
   const handleExpressInterest = async (job: JobRow) => {
     if (authLoading) {
       return;
@@ -309,7 +263,7 @@ export default function PublicOpportunitiesFeed() {
         enableAiMatch
         aiMatchRunning={aiMatchRunning}
         aiMatchError={aiMatchError}
-        onRunAiMatch={handleRunAiMatch}
+        onRunAiMatch={runAiMatch}
       />
       <Toast
         message={toastMessage}
