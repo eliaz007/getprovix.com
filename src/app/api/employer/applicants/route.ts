@@ -182,11 +182,22 @@ export async function GET(request: Request) {
     ...new Set(rows.map((row) => row.candidate_id).filter(Boolean)),
   ];
 
-  const profilesByRef = await fetchProfilesForCandidateIds(
+  let profilesByRef = await fetchProfilesForCandidateIds(
     reader,
     candidateIds,
     APPLICANT_PROFILE_COLUMNS.join(", ")
   );
+
+  if (profilesByRef.size === 0 && candidateIds.length > 0) {
+    const fallbackColumns = APPLICANT_PROFILE_COLUMNS.filter(
+      (column) => column !== "key_accomplishments"
+    );
+    profilesByRef = await fetchProfilesForCandidateIds(
+      reader,
+      candidateIds,
+      fallbackColumns.join(", ")
+    );
+  }
 
   const matchByKey = new Map<string, MatchResult | number>();
   if (candidateIds.length > 0) {

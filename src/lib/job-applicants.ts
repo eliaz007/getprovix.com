@@ -13,7 +13,19 @@ import {
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { resolvedProfileId } from "@/lib/resolve-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { normalizeAvailabilityStatus } from "@/lib/availability-status";
+import { DEFAULT_EXPERIENCE_LEVEL } from "@/lib/experience-level";
+import {
+  parseProofOfWorkProjects,
+  resolveCandidateGithubUrl,
+  type TalentPoolCandidate,
+} from "@/lib/talent-pool-candidate";
 import { educationFromProfileRow } from "@/lib/talent-pool-profiles";
+import {
+  DEFAULT_WORK_PREFERENCE,
+  normalizeCandidateTimezone,
+  normalizeWorkPreference,
+} from "@/lib/work-preference";
 
 export const APPLICANT_PROFILE_COLUMNS = [
   "id",
@@ -46,6 +58,7 @@ export const APPLICANT_PROFILE_COLUMNS = [
   "availability",
   "work_preference",
   "role",
+  "key_accomplishments",
 ] as const;
 
 export type ApplicantProfileRow = {
@@ -79,6 +92,8 @@ export type ApplicantProfileRow = {
   availability?: string | null;
   work_preference?: string | null;
   role?: string | null;
+  key_accomplishments?: string | null;
+  github_url?: string | null;
 };
 
 export type ApplicantReviewStatus = "new" | "intro_requested" | "rejected";
@@ -114,6 +129,15 @@ export type EmployerApplicantView = {
   matchingSkills: string[];
   missingSkills: string[];
   matchReasoning: string;
+  bio: string;
+  githubUrl: string;
+  github: string;
+  demoVideo: string;
+  projects: string[];
+  availability: string;
+  workPreference: string;
+  timezone: string;
+  country: string;
   appliedAt: string;
   appliedAtLabel: string;
   status: ApplicantReviewStatus;
@@ -297,6 +321,10 @@ export function mapEmployerApplicant(input: {
     }
   );
   const matchScore = clampScore0to100(match.match_percentage);
+  const github = resolveCandidateGithubUrl({
+    github_url: profile?.github_url,
+    portfolio_url: profile?.portfolio_url,
+  });
 
   return {
     applicationId: input.applicationId,
@@ -323,6 +351,17 @@ export function mapEmployerApplicant(input: {
     matchingSkills: match.matching_skills.slice(0, 4),
     missingSkills: match.missing_skills.slice(0, 4),
     matchReasoning: match.reasoning,
+    bio: profile?.bio?.trim() || "",
+    githubUrl: github.githubUrl,
+    github: github.github,
+    demoVideo: profile?.youtube_url?.trim() || "",
+    projects: parseProofOfWorkProjects(profile?.key_accomplishments),
+    availability: normalizeAvailabilityStatus(
+      profile?.availability_status ?? profile?.availability
+    ),
+    workPreference: normalizeWorkPreference(profile?.work_preference),
+    timezone: normalizeCandidateTimezone(profile?.timezone) || "",
+    country: profile?.country?.trim() || "",
     appliedAt: input.createdAt,
     appliedAtLabel: formatApplicantAppliedAt(input.createdAt),
     status: applicantReviewStatus({
@@ -334,5 +373,92 @@ export function mapEmployerApplicant(input: {
     email: isUnlocked ? resolveApplicantContactEmail(profile) : null,
     phone: isUnlocked ? profile?.phone?.trim() || null : null,
     linkedinUrl: isUnlocked ? profile?.linkedin_url?.trim() || null : null,
+  };
+}
+
+export type ApplicantIntelligenceSource = {
+  profileId: string;
+  codenameAlias: string;
+  headline: string;
+  location: string;
+  skills: string[];
+  university: string;
+  major: string;
+  gpa: string;
+  graduationYear: string;
+  verifiedOnProvix: boolean;
+  email?: string | null;
+  phone?: string | null;
+  linkedinUrl?: string | null;
+  jobTitle?: string;
+  matchScore?: number;
+  aiScoreLabel?: string;
+  experienceLevel?: string;
+  bio?: string;
+  github?: string;
+  githubUrl?: string;
+  demoVideo?: string;
+  projects?: string[];
+  availability?: string;
+  workPreference?: string;
+  timezone?: string;
+  country?: string;
+};
+
+export function mapApplicantToTalentCandidate(
+  applicant: ApplicantIntelligenceSource
+): TalentPoolCandidate {
+  const roleTitle = applicant.jobTitle?.trim() || applicant.headline;
+  const parsedScore =
+    typeof applicant.matchScore === "number" && Number.isFinite(applicant.matchScore)
+      ? applicant.matchScore
+      : Number.parseInt(applicant.aiScoreLabel?.replace(/\D/g, "") ?? "", 10);
+  const matchScore = Number.isFinite(parsedScore)
+    ? parsedScore
+    : scoreTalentMatch(
+        { title: applicant.headline, skills: applicant.skills },
+        { title: roleTitle }
+      ).match_percentage;
+  const codename = applicant.codenameAlias;
+  const github = resolveCandidateGithubUrl({
+    github_url: applicant.githubUrl,
+    github: applicant.github,
+  });
+
+  return {
+    id: `C-${applicant.profileId.replace(/-/g, "").slice(0, 3).toUpperCase()}`,
+    profileId: applicant.profileId,
+    name: codename,
+    fullName: codename,
+    profileName: codename,
+    firstName: codename.split(/\s+/)[0] ?? codename,
+    lastName: codename.split(/\s+/).slice(1).join(" "),
+    headline: applicant.headline,
+    codenameAlias: codename,
+    country: applicant.country || applicant.location,
+    timezone: applicant.timezone || applicant.location,
+    workPreference: applicant.workPreference || DEFAULT_WORK_PREFERENCE,
+    email: applicant.email ?? "",
+    phone: applicant.phone ?? "",
+    linkedin_url: applicant.linkedinUrl ?? "",
+    github_url: github.githubUrl,
+    role: applicant.headline,
+    university: applicant.university,
+    major: applicant.major,
+    gpa: applicant.gpa,
+    graduationYear: applicant.graduationYear,
+    skills: applicant.skills,
+    rating: applicant.aiScoreLabel || `${matchScore}% Match`,
+    execution_score: matchScore,
+    matchScore,
+    status: applicant.availability || "Available Now",
+    experienceLevel: applicant.experienceLevel || DEFAULT_EXPERIENCE_LEVEL,
+    roleType: "General",
+    availability: applicant.availability || "Available Now",
+    bio: applicant.bio || "Candidate expressed interest in this role via Provix.",
+    github: github.github,
+    demoVideo: applicant.demoVideo || "",
+    projects: applicant.projects ?? [],
+    verifiedOnProvix: applicant.verifiedOnProvix,
   };
 }

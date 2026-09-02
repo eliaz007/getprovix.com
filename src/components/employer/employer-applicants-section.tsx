@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
+import CandidateIntelligenceDrawer from "@/components/employer/candidate-intelligence-drawer";
 import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
@@ -10,6 +11,7 @@ import {
   applicantStatusClass,
   applicantStatusLabel,
   getFitVerdictBadgeClass,
+  mapApplicantToTalentCandidate,
   type EmployerApplicantView,
   type EmployerApplicantsPayload,
 } from "@/lib/job-applicants";
@@ -22,6 +24,9 @@ type EmployerApplicantsSectionProps = {
   focusJobId?: string | null;
   onClearFocusJob?: () => void;
   onRequestIntro: (applicant: EmployerApplicantView) => void;
+  requireAuth?: () => boolean;
+  onToast?: (message: string) => void;
+  companyName?: string;
 };
 
 export default function EmployerApplicantsSection({
@@ -29,6 +34,9 @@ export default function EmployerApplicantsSection({
   focusJobId = null,
   onClearFocusJob,
   onRequestIntro,
+  requireAuth,
+  onToast,
+  companyName,
 }: EmployerApplicantsSectionProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +46,8 @@ export default function EmployerApplicantsSection({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedApplicant, setSelectedApplicant] =
+    useState<EmployerApplicantView | null>(null);
 
   const loadApplicants = useCallback(async () => {
     if (!userId) {
@@ -146,6 +156,31 @@ export default function EmployerApplicantsSection({
 
   const newCount = applicants.filter((row) => row.status === "new").length;
 
+  const selectedTalentCandidate = selectedApplicant
+    ? mapApplicantToTalentCandidate(selectedApplicant)
+    : null;
+
+  const openApplicantIntelligence = (applicant: EmployerApplicantView) => {
+    setSelectedApplicant(applicant);
+  };
+
+  useEffect(() => {
+    if (!selectedApplicant) {
+      return;
+    }
+
+    const latest = applicants.find(
+      (row) => row.applicationId === selectedApplicant.applicationId
+    );
+    if (!latest) {
+      setSelectedApplicant(null);
+      return;
+    }
+    if (latest !== selectedApplicant) {
+      setSelectedApplicant(latest);
+    }
+  }, [applicants, selectedApplicant]);
+
   return (
     <div>
       <div className="mb-8">
@@ -156,8 +191,9 @@ export default function EmployerApplicantsSection({
           Interested Candidates
         </h1>
         <p className="text-zinc-300 text-sm mt-2 max-w-2xl">
-          Candidates who expressed interest in your listings. Review anonymized
-          profiles, AI match analysis, and request an intro when you want to talk.
+          Candidates who expressed interest in your listings. Open a profile to
+          review AI match analysis, run Gemini Deep Screening, and request an
+          intro when you want to talk.
         </p>
       </div>
 
@@ -259,10 +295,19 @@ export default function EmployerApplicantsSection({
           ) : null}
           <ul className="space-y-4">
           {visibleApplicants.map((applicant) => (
-            <li
-              key={applicant.applicationId}
-              className="card-edge rounded-2xl border border-zinc-800 bg-[#111111] p-5"
-            >
+            <li key={applicant.applicationId}>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => openApplicantIntelligence(applicant)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openApplicantIntelligence(applicant);
+                  }
+                }}
+                className="card-edge rounded-2xl border border-zinc-800 bg-[#111111] p-5 cursor-pointer hover:border-indigo-500/40 transition-colors"
+              >
               <div className="flex flex-col lg:flex-row lg:items-start gap-5">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   <div className="w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-xs font-bold text-indigo-300 shrink-0">
@@ -396,6 +441,7 @@ export default function EmployerApplicantsSection({
                   {applicant.email ? (
                     <a
                       href={`mailto:${applicant.email}`}
+                      onClick={(event) => event.stopPropagation()}
                       className="block text-xs text-slate-200 hover:text-white break-all"
                     >
                       {applicant.email}
@@ -418,14 +464,20 @@ export default function EmployerApplicantsSection({
                   <>
                     <button
                       type="button"
-                      onClick={() => onRequestIntro(applicant)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRequestIntro(applicant);
+                      }}
                       className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer"
                     >
                       Request Intro
                     </button>
                     <button
                       type="button"
-                      onClick={() => void rejectApplicant(applicant)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void rejectApplicant(applicant);
+                      }}
                       disabled={rejectingId === applicant.applicationId}
                       className="text-[11px] font-bold px-3.5 py-2 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-200 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                     >
@@ -441,11 +493,40 @@ export default function EmployerApplicantsSection({
                   </>
                 )}
               </div>
+              </div>
             </li>
           ))}
           </ul>
         </>
       )}
+
+      <CandidateIntelligenceDrawer
+        candidate={selectedTalentCandidate}
+        open={selectedApplicant !== null}
+        isUnlocked={Boolean(selectedApplicant?.unlocked)}
+        onClose={() => setSelectedApplicant(null)}
+        onRequestIntro={() => {
+          if (selectedApplicant) {
+            onRequestIntro(selectedApplicant);
+          }
+        }}
+        screeningJob={
+          selectedApplicant
+            ? {
+                title: selectedApplicant.jobTitle,
+                tags: selectedApplicant.skills.slice(0, 8),
+                required_skills: [
+                  ...selectedApplicant.matchingSkills,
+                  ...selectedApplicant.missingSkills,
+                ].slice(0, 8),
+                tech_stack: selectedApplicant.matchingSkills,
+              }
+            : null
+        }
+        companyName={companyName}
+        requireAuth={requireAuth}
+        onToast={onToast}
+      />
     </div>
   );
 }

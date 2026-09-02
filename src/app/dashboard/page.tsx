@@ -19,14 +19,23 @@ import RequestIntroModal from "@/components/RequestIntroModal";
 import JobApplicantsDrawer, {
   type JobApplicantView,
 } from "@/components/JobApplicantsDrawer";
+import CandidateIntelligenceDrawer from "@/components/employer/candidate-intelligence-drawer";
 import EmployerApplicantsSection from "@/components/employer/employer-applicants-section";
-import type { EmployerApplicantView } from "@/lib/job-applicants";
+import {
+  mapApplicantToTalentCandidate,
+  type EmployerApplicantView,
+} from "@/lib/job-applicants";
+import {
+  formatExternalUrl,
+  formatTalentMatchLabel,
+  getIntegrityScoreClass,
+  type TalentPoolCandidate,
+} from "@/lib/talent-pool-candidate";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import DashboardSkeleton from "@/components/dashboard/dashboard-skeleton";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { ProvixLogo } from "@/components/ProvixLogo";
-import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
 import ResumeFileUpload from "@/components/ResumeFileUpload";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
@@ -149,21 +158,8 @@ import { clampScore0to100 } from "@/lib/score-scale";
 import ScoreMeter from "@/components/ScoreMeter";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
-import {
-  normalizeAuditChecks,
-  type AuditCheck,
-} from "@/lib/audit-checks";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
-const AUDIT_STORAGE_PREFIX = "vanguardx_audit_";
-
-const DEEP_SCREENING_STAGES = [
-  "Auditing GitHub repositories & branch structure...",
-  "Verifying commit chronology & code authenticity...",
-  "Synthesizing 0–100 score & founder interview rubrics...",
-] as const;
-
-const DEEP_SCREENING_FETCH_TIMEOUT_MS = 90_000;
 
 const COLLEGE_FIT_STAGES = [
   "Analyzing academic stats...",
@@ -363,88 +359,6 @@ type ProfileRecord = {
   last_scan_date?: string | null;
 };
 
-type InterviewCheatSheetQuestion = {
-  question: string;
-  category: string;
-  what_to_listen_for: string;
-};
-
-type DeepScreeningResult = {
-  integrity_score: number;
-  timeline_flags: string[];
-  artifact_analysis: string;
-  technical_depth_summary: string;
-  interview_questions: InterviewCheatSheetQuestion[];
-  checks: AuditCheck[];
-  github_audit?: {
-    repo_url: string;
-    owner: string;
-    repo: string;
-    stars: number | null;
-    forks: number | null;
-    created_at: string | null;
-    language: string | null;
-    commit_count_sampled: number;
-    commit_dates: string[];
-    readme_excerpt: string | null;
-    fetch_warnings: string[];
-  } | null;
-};
-
-function getCandidateScreeningKey(candidate: TalentPoolCandidate): string {
-  return (
-    resolveTalentProfileId(candidate) ||
-    candidate.profileId?.trim() ||
-    candidate.id
-  );
-}
-
-function coerceDeepScreeningResult(
-  result: DeepScreeningResult
-): DeepScreeningResult {
-  return {
-    ...result,
-    integrity_score: clampScore0to100(result.integrity_score),
-    checks: normalizeAuditChecks(
-      Array.isArray(result.checks) && result.checks.length > 0
-        ? result.checks
-        : [
-            {
-              id: "artifact_analysis",
-              title: "Artifact Analysis (Check 1)",
-              summary: result.artifact_analysis,
-            },
-          ]
-    ),
-  };
-}
-
-function parseStoredScreeningResult(raw: string): DeepScreeningResult | null {
-  try {
-    const parsed = JSON.parse(raw) as DeepScreeningResult;
-    if (
-      typeof parsed.integrity_score === "number" &&
-      Array.isArray(parsed.timeline_flags) &&
-      typeof parsed.artifact_analysis === "string"
-    ) {
-      return coerceDeepScreeningResult(parsed);
-    }
-  } catch {
-    // Ignore malformed cache entries.
-  }
-  return null;
-}
-
-function getIntegrityScoreClass(score: number): string {
-  if (score >= 80) {
-    return "text-emerald-400 border-emerald-500/30 bg-emerald-500/10";
-  }
-  if (score >= 60) {
-    return "text-amber-400 border-amber-500/30 bg-amber-500/10";
-  }
-  return "text-red-400 border-red-500/30 bg-red-500/10";
-}
-
 type MatchInsight = OpportunityMatchResult;
 
 function resolveProfileContactEmail(
@@ -468,15 +382,6 @@ function isMissingColumnError(error: { message?: string; code?: string } | null)
   );
 }
 
-function formatExternalUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
-}
-
 function formatTalentEducationLines(candidate: {
   university: string;
   major: string;
@@ -496,44 +401,6 @@ function isUuid(value: string): boolean {
     value
   );
 }
-
-type TalentPoolCandidate = {
-  id: string;
-  profileId?: string | null;
-  name: string;
-  fullName: string;
-  profileName: string;
-  firstName: string;
-  lastName: string;
-  headline: string;
-  codenameAlias: string;
-  country: string;
-  timezone: string;
-  workPreference: string;
-  email?: string | null;
-  phone?: string | null;
-  linkedin_url?: string | null;
-  github_url?: string | null;
-  role: string;
-  university: string;
-  major: string;
-  gpa: string;
-  graduationYear: string;
-  skills: string[];
-  rating: string;
-  execution_score?: number | string | null;
-  status: string;
-  experienceLevel: string;
-  roleType: string;
-  availability: string;
-  bio: string;
-  github: string;
-  demoVideo: string;
-  projects: string[];
-  matchScore: number;
-  matchPending?: boolean;
-  verifiedOnProvix?: boolean;
-};
 
 function isEmployerRole(role: string | null | undefined): boolean {
   return role === "employer" || role === "business";
@@ -704,50 +571,6 @@ function getCandidateProfileLink(candidate: TalentPoolCandidate): string | null 
     null;
 
   return github ? formatExternalUrl(github) : null;
-}
-
-function getCandidateProjectLinks(
-  candidate: TalentPoolCandidate
-): Array<{ label: string; url: string }> {
-  const links: Array<{ label: string; url: string }> = [];
-
-  const github =
-    candidate.github_url?.trim() || candidate.github?.trim() || "";
-  if (github) {
-    links.push({
-      label: github.includes("github.com") ? "GitHub" : "Portfolio",
-      url: formatExternalUrl(github),
-    });
-  }
-
-  const linkedin = candidate.linkedin_url?.trim() || "";
-  if (linkedin) {
-    links.push({
-      label: "LinkedIn",
-      url: formatExternalUrl(linkedin),
-    });
-  }
-
-  const demo = candidate.demoVideo?.trim() || "";
-  if (demo) {
-    links.push({
-      label: "Demo Reel",
-      url: formatExternalUrl(demo),
-    });
-  }
-
-  return links;
-}
-
-function formatTalentMatchLabel(percentage: number, isPending = false): string {
-  if (isPending) {
-    return "Match Pending";
-  }
-  return `${clampDisplayedMatch(percentage)}% Match`;
-}
-
-function clampDisplayedMatch(value: number): number {
-  return clampScore0to100(value, 0);
 }
 
 type MatchingJob = {
@@ -1036,18 +859,6 @@ export default function DashboardPage() {
   const [unlockedCandidateIds, setUnlockedCandidateIds] = useState<Set<string>>(
     new Set()
   );
-  const [deepScreeningLoading, setDeepScreeningLoading] = useState(false);
-  const [deepScreeningResult, setDeepScreeningResult] =
-    useState<DeepScreeningResult | null>(null);
-  const [deepScreeningStage, setDeepScreeningStage] = useState(0);
-  const [deepScreeningError, setDeepScreeningError] = useState<string | null>(
-    null
-  );
-  const [deepScreeningShowResults, setDeepScreeningShowResults] = useState(false);
-  const deepScreeningIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null
-  );
-  const deepScreeningAbortRef = useRef<AbortController | null>(null);
   const [postJobModalOpen, setPostJobModalOpen] = useState(false);
   const [newJobTitle, setNewJobTitle] = useState("");
   const [newJobCompany, setNewJobCompany] = useState("");
@@ -2570,96 +2381,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     fetchIntroUnlocks,
   ]);
 
-  useEffect(() => {
-    if (!selectedCandidate) {
-      setDeepScreeningResult(null);
-      setDeepScreeningShowResults(false);
-      setDeepScreeningError(null);
-      setDeepScreeningLoading(false);
-      setDeepScreeningStage(0);
-      return;
-    }
-
-    const screeningKey = getCandidateScreeningKey(selectedCandidate);
-    let cancelled = false;
-
-    const applyCachedResult = () => {
-      if (typeof window === "undefined") {
-        return false;
-      }
-
-      const cached = localStorage.getItem(`${AUDIT_STORAGE_PREFIX}${screeningKey}`);
-      if (!cached) {
-        return false;
-      }
-
-      const parsed = parseStoredScreeningResult(cached);
-      if (!parsed) {
-        return false;
-      }
-
-      if (!cancelled) {
-        setDeepScreeningResult(parsed);
-        setDeepScreeningShowResults(true);
-      }
-      return true;
-    };
-
-    setDeepScreeningError(null);
-    setDeepScreeningLoading(false);
-    setDeepScreeningStage(0);
-
-    if (applyCachedResult()) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setDeepScreeningResult(null);
-    setDeepScreeningShowResults(false);
-
-    void (async () => {
-      try {
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from("candidate_screenings")
-          .select("audit_data")
-          .eq("candidate_key", screeningKey)
-          .maybeSingle();
-
-        if (cancelled) {
-          return;
-        }
-
-        if (!error && data?.audit_data) {
-          const audit = coerceDeepScreeningResult(
-            data.audit_data as DeepScreeningResult
-          );
-          setDeepScreeningResult(audit);
-          setDeepScreeningShowResults(true);
-          if (typeof window !== "undefined") {
-            localStorage.setItem(
-              `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
-              JSON.stringify(audit)
-            );
-          }
-          return;
-        }
-
-        applyCachedResult();
-      } catch (err) {
-        console.error("Failed to load persisted screening:", err);
-        if (!cancelled) {
-          applyCachedResult();
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedCandidate?.id]);
-
   candidatesRef.current = candidates;
   primaryMatchingJobRef.current = primaryMatchingJob;
   talentSearchRef.current = talentSearch;
@@ -2774,13 +2495,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       skills: candidateSkillsForMatching,
       experienceTier: dbProfile?.experience_level?.trim() || experienceLevel,
       githubUrl: portfolioUrl.trim() || dbProfile?.portfolio_url?.trim() || "",
-      githubAudit: deepScreeningResult?.github_audit,
+      githubAudit: null,
     }),
     [
       candidateSkillsForMatching,
       dbProfile?.experience_level,
       dbProfile?.portfolio_url,
-      deepScreeningResult?.github_audit,
       experienceLevel,
       portfolioUrl,
     ]
@@ -3109,49 +2829,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       "jobTitle" in applicant
         ? applicant.jobTitle
         : applicantsDrawerJob?.title ?? applicant.headline;
-    const parsedScore =
-      "matchScore" in applicant
-        ? applicant.matchScore
-        : Number.parseInt(applicant.aiScoreLabel.replace(/\D/g, ""), 10);
-    const codename = applicant.codenameAlias;
-    const introCandidate: TalentPoolCandidate = {
-      id: `C-${applicant.profileId.replace(/-/g, "").slice(0, 3).toUpperCase()}`,
-      profileId: applicant.profileId,
-      name: codename,
-      fullName: codename,
-      profileName: codename,
-      firstName: codename.split(/\s+/)[0] ?? codename,
-      lastName: codename.split(/\s+/).slice(1).join(" "),
-      headline: applicant.headline,
-      codenameAlias: codename,
-      country: applicant.location,
-      timezone: applicant.location,
-      workPreference: DEFAULT_WORK_PREFERENCE,
-      role: applicant.headline,
-      university: applicant.university,
-      major: applicant.major,
-      gpa: applicant.gpa,
-      graduationYear: applicant.graduationYear,
-      skills: applicant.skills,
-      rating:
-        "aiScoreLabel" in applicant
-          ? applicant.aiScoreLabel
-          : `${applicant.matchScore}% Match`,
-      execution_score: Number.isFinite(parsedScore) ? parsedScore : 94,
-      matchScore: Number.isFinite(parsedScore) ? parsedScore : scoreTalentMatch(
-        { title: applicant.headline, skills: applicant.skills },
-        { title: roleTitle }
-      ).match_percentage,
-      status: "Available Now",
-      experienceLevel: DEFAULT_EXPERIENCE_LEVEL,
-      roleType: "General",
-      availability: "Available Now",
-      bio: "Candidate expressed interest in this role via Provix.",
-      github: "",
-      demoVideo: "",
-      projects: [],
-      verifiedOnProvix: applicant.verifiedOnProvix,
-    };
+    const introCandidate = mapApplicantToTalentCandidate(applicant);
 
     setApplicantsDrawerJob(null);
     setIntroDefaultRoleTitle(roleTitle);
@@ -3228,154 +2906,36 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const getCandidatePublicName = (candidate: TalentPoolCandidate) =>
     buildAlliterativeAliasIdentity(candidate.profileId?.trim() || "").alias;
 
-  const getCandidateLockedBio = (candidate: TalentPoolCandidate) =>
-    redactPersonalNamesFromText(
-      candidate.bio ?? "",
-      candidate,
-      getCandidatePublicName(candidate)
-    );
-
   const getCandidatePublicInitials = (candidate: TalentPoolCandidate) =>
     getPublicCandidateInitials({
       codenameAlias: getCandidatePublicName(candidate),
       candidateId: candidate.profileId ?? candidate.id,
     });
 
-  const getCandidatePublicLocation = (candidate: TalentPoolCandidate) =>
-    getPublicCandidateLocation(candidate);
-
   const isCandidateUnlocked = (candidate: TalentPoolCandidate) =>
     isIntroUnlockedForCandidate(candidate, unlockedCandidateIds);
 
-  const handleCopyInterviewQuestion = async (question: string) => {
-    try {
-      await navigator.clipboard.writeText(question);
-      showToast("Interview question copied.");
-    } catch {
-      showToast("Could not copy question.");
-    }
-  };
-
-  const clearDeepScreeningTimers = () => {
-    if (deepScreeningIntervalRef.current) {
-      clearInterval(deepScreeningIntervalRef.current);
-      deepScreeningIntervalRef.current = null;
-    }
-    deepScreeningAbortRef.current?.abort();
-    deepScreeningAbortRef.current = null;
-  };
-
-  const runDeepScreening = async () => {
-    if (!requireAuth()) {
-      return;
-    }
-
-    if (!selectedCandidate) {
-      return;
-    }
-
-    const screeningJob = primaryMatchingJob ?? {
-      title: selectedCandidate.role || "General Talent Evaluation",
-      company: employerCompanyNameForMatching,
-      tags: selectedCandidate.skills.slice(0, 8),
-      tech_stack: [],
-      required_skills: selectedCandidate.skills.slice(0, 8),
-      location: "",
-    };
-
-    clearDeepScreeningTimers();
-    setDeepScreeningLoading(true);
-    setDeepScreeningError(null);
-    setDeepScreeningShowResults(false);
-    setDeepScreeningResult(null);
-    setDeepScreeningStage(0);
-
-    deepScreeningIntervalRef.current = setInterval(() => {
-      setDeepScreeningStage((prev) => (prev < DEEP_SCREENING_STAGES.length - 1 ? prev + 1 : prev));
-    }, 1400);
-
-    const controller = new AbortController();
-    deepScreeningAbortRef.current = controller;
-    const timeoutId = window.setTimeout(
-      () => controller.abort(),
-      DEEP_SCREENING_FETCH_TIMEOUT_MS
-    );
-    const screeningKey = getCandidateScreeningKey(selectedCandidate);
-
-    try {
-      const response = await fetch("/api/screen", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          candidate: {
-            name: getCandidatePublicName(selectedCandidate),
-            title: selectedCandidate.role,
-            bio: getCandidateLockedBio(selectedCandidate),
-            skills: selectedCandidate.skills,
-            degree: selectedCandidate.major,
-            university: selectedCandidate.university,
-            major: selectedCandidate.major,
-            gpa: selectedCandidate.gpa,
-            graduation_year: selectedCandidate.graduationYear,
-            experience: selectedCandidate.experienceLevel,
-            projects: selectedCandidate.projects,
-            github_url:
-              selectedCandidate.github_url ?? selectedCandidate.github ?? "",
-            github: selectedCandidate.github ?? "",
-          },
-          job: {
-            title: screeningJob.title,
-            company: screeningJob.company,
-            tags: jobDisplayTags(screeningJob),
-            tech_stack: parseJobListInput(screeningJob.tech_stack),
-            required_skills: parseJobListInput(screeningJob.required_skills),
-            location: screeningJob.location,
-          },
-          candidate_key: screeningKey,
-          profile_id:
-            resolveTalentProfileId(selectedCandidate) ||
-            selectedCandidate.profileId ||
-            undefined,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Deep screening failed (${response.status})`);
-      }
-
-      const data = coerceDeepScreeningResult(
-        (await response.json()) as DeepScreeningResult
-      );
-      setDeepScreeningStage(DEEP_SCREENING_STAGES.length - 1);
-      await new Promise((resolve) => window.setTimeout(resolve, 450));
-      setDeepScreeningResult(data);
-      setDeepScreeningShowResults(true);
-      if (typeof window !== "undefined") {
-        localStorage.setItem(
-          `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
-          JSON.stringify(data)
-        );
-      }
-    } catch (err) {
-      console.error("Deep screening request failed:", err);
-      const isTimeout =
-        err instanceof DOMException && err.name === "AbortError";
-      setDeepScreeningError(
-        isTimeout
-          ? "The live audit timed out before Gemini could finish. Please retry."
-          : "Could not complete the live audit. Check your connection and retry."
-      );
-      setDeepScreeningShowResults(false);
-      showToast("Deep screening failed. Use retry to run the audit again.");
-    } finally {
-      window.clearTimeout(timeoutId);
-      clearDeepScreeningTimers();
-      setDeepScreeningLoading(false);
-    }
-  };
-
-  const isDrawerOpen = selectedCandidate !== null;
+  const intelligenceDrawerCandidate = selectedCandidate
+    ? applyCachedTalentEducation(
+        (() => {
+          const current = selectedCandidate;
+          const scoredCandidate =
+            scoredCandidates.find(
+              (candidate) =>
+                resolveTalentProfileId(candidate) ===
+                resolveTalentProfileId(current)
+            ) ?? current;
+          return {
+            ...scoredCandidate,
+            ...mergeTalentEducation(
+              candidateEducationFields(scoredCandidate),
+              candidateEducationFields(current)
+            ),
+          };
+        })(),
+        educationByProfileIdRef.current
+      )
+    : null;
 
   // Simulators
   const runEssayAudit = async () => {
@@ -6164,6 +5724,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               focusJobId={focusApplicantsJobId}
               onClearFocusJob={() => setFocusApplicantsJobId(null)}
               onRequestIntro={handleApplicantIntroRequest}
+              requireAuth={requireAuth}
+              onToast={showToast}
+              companyName={employerCompanyNameForMatching}
             />
           )}
 
@@ -6592,496 +6155,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         </>
       )}
 
-        {/* CANDIDATE SLIDE-OVER DRAWER */}
-        <div className={`fixed inset-0 z-50 ${isDrawerOpen ? "" : "pointer-events-none"}`}>
-          <div
-            onClick={() => setSelectedCandidate(null)}
-            className={`absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity duration-300 ${
-              isDrawerOpen ? "opacity-100" : "opacity-0"
-            }`}
-          />
-          <div
-            className={`absolute top-0 right-0 h-full w-full max-w-md bg-[#121212] border-l border-zinc-800 shadow-none overflow-y-auto transition-transform duration-300 ease-out ${
-              isDrawerOpen ? "translate-x-0" : "translate-x-full"
-            }`}
-          >
-            {selectedCandidate && (
-              <div className="p-6 space-y-6">
-                {(() => {
-                  const scoredCandidate =
-                    scoredCandidates.find(
-                      (candidate) =>
-                        resolveTalentProfileId(candidate) ===
-                        resolveTalentProfileId(selectedCandidate)
-                    ) ?? selectedCandidate;
-                  const liveCandidate = applyCachedTalentEducation(
-                    {
-                      ...scoredCandidate,
-                      ...mergeTalentEducation(
-                        candidateEducationFields(scoredCandidate),
-                        candidateEducationFields(selectedCandidate)
-                      ),
-                    },
-                    educationByProfileIdRef.current
-                  );
-                  const introUnlocked = isCandidateUnlocked(liveCandidate);
-                  const publicName = getCandidatePublicName(liveCandidate);
-                  const displayName = publicName;
-                  const displayInitials =
-                    getCandidatePublicInitials(liveCandidate);
-                  const projectLinks =
-                    getCandidateProjectLinks(liveCandidate);
-                  const contactEmail = selectedCandidate.email?.trim() || null;
-                  const contactPhone = selectedCandidate.phone?.trim() || null;
-
-                  return (
-                    <>
-                {/* Header — full dossier revealed after approved intro */}
-                <div className="flex items-start justify-between pb-5 border-b border-zinc-800">
-                  <div className="flex items-center gap-3">
-                    <div className="relative w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 flex items-center justify-center font-bold text-sm shrink-0">
-                      {displayInitials}
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold text-white leading-tight">
-                        {displayName}
-                      </h3>
-                      <p className="text-xs text-indigo-400 font-medium mt-0.5">
-                        {selectedCandidate.role}
-                      </p>
-                      <WorkPreferenceTimezoneBadge
-                        workPreference={selectedCandidate.workPreference}
-                        timezone={selectedCandidate.timezone}
-                        className="mt-2"
-                      />
-                      {!introUnlocked && liveCandidate.verifiedOnProvix && (
-                        <div className="mt-2">
-                          <VerifiedOnProvixPill />
-                        </div>
-                      )}
-                      {introUnlocked && (
-                        <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                          Introduction unlocked
-                        </span>
-                      )}
-                      <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                        {selectedCandidate.experienceLevel}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => openIntroModal(selectedCandidate)}
-                        className="mt-2.5 inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer"
-                      >
-                        Request Introduction
-                      </button>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setSelectedCandidate(null)}
-                    className="text-slate-400 hover:text-white bg-slate-900 w-7 h-7 rounded-lg border border-zinc-800 flex items-center justify-center transition-all cursor-pointer shrink-0"
-                  >
-                    <Icons.XMark />
-                  </button>
-                </div>
-
-                {/* Status + Rating */}
-                <div className="space-y-2 bg-slate-900/60 px-3.5 py-2.5 rounded-xl border border-zinc-800">
-                  <div className="flex items-center justify-between text-xs">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getAvailabilityBadgeClass(
-                        selectedCandidate.availability
-                      )}`}
-                    >
-                      {selectedCandidate.availability}
-                    </span>
-                    <span
-                      className={`font-mono font-bold ${
-                        liveCandidate.matchPending
-                          ? "text-indigo-300 animate-pulse"
-                          : "text-emerald-400"
-                      }`}
-                    >
-                      {formatTalentMatchLabel(
-                        liveCandidate.matchScore,
-                        liveCandidate.matchPending
-                      )}{" "}
-                      AI Match Score
-                    </span>
-                  </div>
-                  {!liveCandidate.matchPending ? (
-                    <ScoreMeter score={liveCandidate.matchScore} />
-                  ) : null}
-                </div>
-
-                {/* Bio */}
-                <p className="text-sm text-slate-300 leading-relaxed">
-                  {getCandidateLockedBio(selectedCandidate)}
-                </p>
-
-                {/* Credentials */}
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
-                    Education & Credentials
-                  </div>
-                  <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-xs text-slate-200 space-y-2">
-                    {liveCandidate.university ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">University</span>
-                        <span className="text-right">{liveCandidate.university}</span>
-                      </div>
-                    ) : null}
-                    {liveCandidate.major ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">Major</span>
-                        <span className="text-right">{liveCandidate.major}</span>
-                      </div>
-                    ) : null}
-                    {liveCandidate.gpa ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">GPA</span>
-                        <span className="text-right font-mono">{liveCandidate.gpa}</span>
-                      </div>
-                    ) : null}
-                    {liveCandidate.graduationYear ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">Graduation</span>
-                        <span className="text-right">{liveCandidate.graduationYear}</span>
-                      </div>
-                    ) : null}
-                    {!liveCandidate.university &&
-                    !liveCandidate.major &&
-                    !liveCandidate.gpa &&
-                    !liveCandidate.graduationYear ? (
-                      <p className="text-slate-500">
-                        Education details not provided.
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                {/* Skills */}
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
-                    Core Skills
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedCandidate.skills.map((skill, sIdx) => (
-                      <span
-                        key={sIdx}
-                        className="px-2 py-1 rounded-md text-[10px] font-bold bg-slate-800/80 text-slate-300 border border-slate-700/50"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Contact + Project Links */}
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
-                    Contact & Proof Links
-                  </div>
-                  {introUnlocked ? (
-                    <div className="space-y-2">
-                      {contactEmail && (
-                        <a
-                          href={`mailto:${contactEmail}`}
-                          className="w-full flex items-center justify-between bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-indigo-500/40 transition-all"
-                        >
-                          <span className="text-indigo-300 font-medium">Email</span>
-                          <span className="text-slate-300 break-all text-right ml-3 font-mono">
-                            {contactEmail}
-                          </span>
-                        </a>
-                      )}
-                      {contactPhone && (
-                        <div className="w-full flex items-center justify-between bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs">
-                          <span className="text-indigo-300 font-medium">Phone</span>
-                          <span className="text-slate-300 font-mono">{contactPhone}</span>
-                        </div>
-                      )}
-                      {projectLinks.length === 0 ? (
-                        <p className="text-xs text-slate-500 italic bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3.5 py-2.5">
-                          No public project links provided.
-                        </p>
-                      ) : (
-                        projectLinks.map((link) => (
-                          <a
-                            key={`${link.label}-${link.url}`}
-                            href={link.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full flex items-center justify-between bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs hover:border-indigo-500/40 transition-all"
-                          >
-                            <span className="text-indigo-300 font-medium">
-                              {link.label}
-                            </span>
-                            <Icons.ExternalLink />
-                          </a>
-                        ))
-                      )}
-                    </div>
-                  ) : (
-                    <LockedContactDossierBadge />
-                  )}
-                </div>
-
-                {/* AI Deep Screening */}
-                <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-4 space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">
-                        Gemini Deep Screening
-                      </div>
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        Run live GitHub artifact audits and integrity scoring for this candidate.
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={runDeepScreening}
-                    disabled={deepScreeningLoading}
-                    className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    {deepScreeningLoading ? (
-                      <>
-                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Running live audit…
-                      </>
-                    ) : deepScreeningShowResults ? (
-                      "Re-run Live Audit"
-                    ) : (
-                      "Generate AI Deep Screening"
-                    )}
-                  </button>
-
-                  {deepScreeningLoading && (
-                    <div className="space-y-2.5 pt-1">
-                      {DEEP_SCREENING_STAGES.map((stageLabel, index) => {
-                        const isComplete = index < deepScreeningStage;
-                        const isActive = index === deepScreeningStage;
-
-                        return (
-                          <div
-                            key={stageLabel}
-                            className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-all duration-300 ${
-                              isComplete
-                                ? "border-emerald-500/25 bg-emerald-500/5"
-                                : isActive
-                                  ? "border-indigo-500/30 bg-indigo-500/10"
-                                  : "border-zinc-800 bg-[#0A0A0A]"
-                            }`}
-                          >
-                            <span
-                              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
-                                isComplete
-                                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
-                                  : isActive
-                                    ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-300"
-                                    : "border-slate-700 text-slate-600"
-                              }`}
-                            >
-                              {isComplete ? (
-                                <Check className="h-3 w-3" aria-hidden />
-                              ) : isActive ? (
-                                <span className="h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />
-                              ) : (
-                                index + 1
-                              )}
-                            </span>
-                            <p
-                              className={`text-xs leading-relaxed ${
-                                isComplete
-                                  ? "text-emerald-200"
-                                  : isActive
-                                    ? "text-indigo-100"
-                                    : "text-slate-500"
-                              }`}
-                            >
-                              {stageLabel}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {deepScreeningError && !deepScreeningLoading && (
-                    <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 space-y-3">
-                      <p className="text-xs text-red-200 leading-relaxed">
-                        {deepScreeningError}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={runDeepScreening}
-                        className="w-full bg-red-500/10 hover:bg-red-500/15 border border-red-500/25 text-red-200 font-semibold py-2 rounded-lg text-xs transition-all cursor-pointer"
-                      >
-                        Retry Live Audit
-                      </button>
-                    </div>
-                  )}
-
-                  {deepScreeningShowResults &&
-                    deepScreeningResult &&
-                    !deepScreeningLoading && (
-                    <div className="space-y-4 pt-1">
-                      <div
-                        className={`rounded-xl border p-4 text-center ${getIntegrityScoreClass(deepScreeningResult.integrity_score)}`}
-                      >
-                        <div className="text-[10px] uppercase font-bold tracking-widest mb-1">
-                          Integrity Score
-                        </div>
-                        <div className="text-4xl font-mono font-extrabold tabular-nums">
-                          {clampScore0to100(deepScreeningResult.integrity_score)}
-                          <span className="text-lg font-semibold opacity-70">
-                            /100
-                          </span>
-                        </div>
-                        <ScoreMeter
-                          score={deepScreeningResult.integrity_score}
-                          className="mt-3 mx-auto max-w-[160px]"
-                        />
-                        {deepScreeningResult.github_audit && (
-                          <p className="text-[11px] mt-2 opacity-80 font-mono">
-                            Live audit: {deepScreeningResult.github_audit.owner}/
-                            {deepScreeningResult.github_audit.repo}
-                            {deepScreeningResult.github_audit.language
-                              ? ` · ${deepScreeningResult.github_audit.language}`
-                              : ""}
-                          </p>
-                        )}
-                      </div>
-
-                      {deepScreeningResult.timeline_flags.length > 0 && (
-                        <div>
-                          <div className="text-[10px] uppercase font-bold text-red-400 tracking-wider mb-2">
-                            Timeline & Repository Flags
-                          </div>
-                          <ul className="space-y-1.5">
-                            {deepScreeningResult.timeline_flags.map(
-                              (flag, index) => (
-                                <li
-                                  key={`flag-${index}`}
-                                  className="text-xs text-red-200 leading-relaxed bg-red-500/5 border border-red-500/20 rounded-lg px-3 py-2"
-                                >
-                                  {flag}
-                                </li>
-                              )
-                            )}
-                          </ul>
-                        </div>
-                      )}
-
-                      <AuditChecksList checks={deepScreeningResult.checks} />
-
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-purple-300 tracking-wider mb-2">
-                          Employer Interview Cheat Sheet
-                        </div>
-                        <div className="space-y-3">
-                          {(deepScreeningResult.interview_questions ?? []).map(
-                            (item, index) => (
-                              <div
-                                key={`interview-question-${index}`}
-                                className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 space-y-2.5"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <span className="inline-flex px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 shrink-0">
-                                    {item.category}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleCopyInterviewQuestion(item.question)
-                                    }
-                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
-                                  >
-                                    <Copy className="w-3 h-3" aria-hidden />
-                                    Copy Question
-                                  </button>
-                                </div>
-                                <p className="text-xs text-white font-medium leading-relaxed">
-                                  {item.question}
-                                </p>
-                                <div className="pt-2 border-t border-zinc-800">
-                                  <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">
-                                    What to listen for
-                                  </p>
-                                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                                    {item.what_to_listen_for}
-                                  </p>
-                                </div>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
-                          Technical Depth Summary
-                        </div>
-                        <p className="text-xs text-slate-300 leading-relaxed bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">
-                          {deepScreeningResult.technical_depth_summary}
-                        </p>
-                      </div>
-
-                      {deepScreeningResult.github_audit?.fetch_warnings &&
-                        deepScreeningResult.github_audit.fetch_warnings.length >
-                          0 && (
-                          <div>
-                            <div className="text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-2">
-                              GitHub Fetch Warnings
-                            </div>
-                            <ul className="space-y-1.5">
-                              {deepScreeningResult.github_audit.fetch_warnings.map(
-                                (warning, index) => (
-                                  <li
-                                    key={`gh-warning-${index}`}
-                                    className="text-xs text-amber-200 leading-relaxed bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2"
-                                  >
-                                    {warning}
-                                  </li>
-                                )
-                              )}
-                            </ul>
-                          </div>
-                        )}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
-                    Audited Proof-of-Work Breakdown
-                  </div>
-                  <ul className="space-y-2">
-                    {selectedCandidate.projects.map((project, pIdx) => (
-                      <li
-                        key={pIdx}
-                        className="text-xs text-slate-300 leading-relaxed bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5"
-                      >
-                        {project}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => openIntroModal(selectedCandidate)}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  Request Introduction
-                </button>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
-        </div>
+        <CandidateIntelligenceDrawer
+          candidate={intelligenceDrawerCandidate}
+          open={selectedCandidate !== null && activeTab === "talent"}
+          isUnlocked={
+            selectedCandidate
+              ? isCandidateUnlocked(selectedCandidate)
+              : false
+          }
+          onClose={() => setSelectedCandidate(null)}
+          onRequestIntro={openIntroModal}
+          screeningJob={primaryMatchingJob}
+          companyName={employerCompanyNameForMatching}
+          requireAuth={requireAuth}
+          onToast={showToast}
+        />
 
         {/* PUBLIC PROFILE MODAL */}
         {showPublicProfile && (
