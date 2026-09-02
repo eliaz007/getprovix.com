@@ -30,6 +30,7 @@ type ApplicationRow = {
   candidate_id: string;
   created_at: string;
   unlocked?: boolean | null;
+  review_status?: string | null;
 };
 
 type JobRow = {
@@ -84,7 +85,7 @@ async function fetchJobApplications(
 ): Promise<{ rows: ApplicationRow[]; error: { message: string } | null }> {
   const first = await client
     .from("job_applications")
-    .select("id, job_id, candidate_id, created_at, unlocked")
+    .select("id, job_id, candidate_id, created_at, unlocked, review_status")
     .in("job_id", jobIds)
     .order("created_at", { ascending: false })
     .limit(MAX_APPLICATIONS);
@@ -92,7 +93,8 @@ async function fetchJobApplications(
   if (
     first.error &&
     isSupabaseSchemaError(first.error) &&
-    schemaErrorMentionsColumn(first.error, "unlocked")
+    (schemaErrorMentionsColumn(first.error, "unlocked") ||
+      schemaErrorMentionsColumn(first.error, "review_status"))
   ) {
     const fallback = await client
       .from("job_applications")
@@ -295,12 +297,112 @@ export async function GET(request: Request) {
         cachedMatch: matchByKey.get(matchKey(row.job_id, row.candidate_id)),
         introRequested:
           introIds.has(profileId) || introIds.has(row.candidate_id),
+        reviewStatus: row.review_status,
       }),
     ];
   });
 
   return NextResponse.json(
     { applicants, jobs: jobSummaries } satisfies EmployerApplicantsPayload,
+    { headers: { "Cache-Control": "no-store" } }
+  );
+}
+
+const APPLICATION_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function PATCH(request: Request) {
+  const access = await requireApiUser(request);
+  if (access instanceof NextResponse) {
+    return access;
+  }
+
+  const reader = createServiceRoleClient() ?? access.supabase;
+  const viewerRow = await fetchProfileForCandidateId(
+    reader,
+    access.user.id,
+    "id, user_id, role"
+  );
+  const viewerRole = resolveAccountRole(
+    typeof viewerRow?.role === "string" ? viewerRow.role : null,
+    access.user
+  );
+
+  if (!isEmployerRole(viewerRole)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const body = (await request.json().catch(() => null)) as {
+    applicationId?: string;
+    status?: string;
+  } | null;
+
+  const applicationId = body?.applicationId?.trim() ?? "";
+  const status = body?.status?.trim().toLowerCase() ?? "";
+
+  if (!APPLICATION_UUID_PATTERN.test(applicationId) || status !== "rejected") {
+    return NextResponse.json({ error: "Invalid status update." }, { status: 400 });
+  }
+
+  const employerIds = employerIdentityIds(access.user.id, viewerRow);
+
+  const { data: application, error: applicationError } = await reader
+    .from("job_applications")
+    .select("id, job_id")
+    .eq("id", applicationId)
+    .maybeSingle();
+
+  if (applicationError) {
+    console.error(
+      "[employer applicants] reject lookup failed:",
+      applicationError.message
+    );
+    return NextResponse.json(
+      { error: "Could not update candidate status." },
+      { status: 500 }
+    );
+  }
+
+  if (!application?.job_id) {
+    return NextResponse.json({ error: "Application not found." }, { status: 404 });
+  }
+
+  const { data: job, error: jobError } = await reader
+    .from("jobs")
+    .select("id, employer_id")
+    .eq("id", application.job_id)
+    .maybeSingle();
+
+  if (jobError) {
+    console.error("[employer applicants] reject job lookup failed:", jobError.message);
+    return NextResponse.json(
+      { error: "Could not update candidate status." },
+      { status: 500 }
+    );
+  }
+
+  if (!job || !employerIds.includes(job.employer_id)) {
+    return NextResponse.json({ error: "Application not found." }, { status: 404 });
+  }
+
+  const { error: updateError } = await reader
+    .from("job_applications")
+    .update({ review_status: "rejected" })
+    .eq("id", applicationId);
+
+  if (updateError) {
+    console.error(
+      "[employer applicants] reject update failed:",
+      updateError.message
+    );
+    return NextResponse.json(
+      { error: "Could not update candidate status." },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json(
+    { ok: true, applicationId, status: "rejected" },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

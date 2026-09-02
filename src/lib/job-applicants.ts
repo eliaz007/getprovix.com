@@ -81,7 +81,16 @@ export type ApplicantProfileRow = {
   role?: string | null;
 };
 
-export type ApplicantReviewStatus = "new" | "intro_requested" | "unlocked";
+export type ApplicantReviewStatus = "new" | "intro_requested" | "rejected";
+
+export const APPLICANT_PIPELINE_STATUSES: Array<{
+  value: ApplicantReviewStatus;
+  label: string;
+}> = [
+  { value: "new", label: "New interest" },
+  { value: "intro_requested", label: "Intro requested" },
+  { value: "rejected", label: "Rejected" },
+];
 
 export type EmployerApplicantView = {
   applicationId: string;
@@ -206,13 +215,14 @@ export function resolveApplicantMatch(
 }
 
 export function applicantReviewStatus(options: {
-  unlocked: boolean;
+  reviewStatus?: string | null;
   introRequested: boolean;
 }): ApplicantReviewStatus {
-  if (options.unlocked) {
-    return "unlocked";
+  const stored = options.reviewStatus?.trim().toLowerCase();
+  if (stored === "rejected") {
+    return "rejected";
   }
-  if (options.introRequested) {
+  if (stored === "intro_requested" || options.introRequested) {
     return "intro_requested";
   }
   return "new";
@@ -220,8 +230,8 @@ export function applicantReviewStatus(options: {
 
 export function applicantStatusLabel(status: ApplicantReviewStatus): string {
   switch (status) {
-    case "unlocked":
-      return "Contact unlocked";
+    case "rejected":
+      return "Rejected";
     case "intro_requested":
       return "Intro requested";
     default:
@@ -231,8 +241,8 @@ export function applicantStatusLabel(status: ApplicantReviewStatus): string {
 
 export function applicantStatusClass(status: ApplicantReviewStatus): string {
   switch (status) {
-    case "unlocked":
-      return "bg-emerald-500/10 text-emerald-300 border-emerald-500/20";
+    case "rejected":
+      return "bg-rose-500/10 text-rose-300 border-rose-500/20";
     case "intro_requested":
       return "bg-indigo-500/10 text-indigo-300 border-indigo-500/20";
     default:
@@ -258,6 +268,7 @@ export function mapEmployerApplicant(input: {
   };
   cachedMatch?: MatchResult | number | null;
   introRequested?: boolean;
+  reviewStatus?: string | null;
 }): EmployerApplicantView {
   const profile = input.profile;
   const profileId =
@@ -315,7 +326,7 @@ export function mapEmployerApplicant(input: {
     appliedAt: input.createdAt,
     appliedAtLabel: formatApplicantAppliedAt(input.createdAt),
     status: applicantReviewStatus({
-      unlocked: isUnlocked,
+      reviewStatus: input.reviewStatus,
       introRequested: Boolean(input.introRequested),
     }),
     unlocked: isUnlocked,

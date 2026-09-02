@@ -6,6 +6,7 @@ import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import {
+  APPLICANT_PIPELINE_STATUSES,
   applicantStatusClass,
   applicantStatusLabel,
   getFitVerdictBadgeClass,
@@ -35,6 +36,8 @@ export default function EmployerApplicantsSection({
   const [jobs, setJobs] = useState<EmployerApplicantsPayload["jobs"]>([]);
   const [jobFilter, setJobFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadApplicants = useCallback(async () => {
     if (!userId) {
@@ -59,6 +62,7 @@ export default function EmployerApplicantsSection({
 
       setApplicants(payload.applicants ?? []);
       setJobs(payload.jobs ?? []);
+      setActionError(null);
     } catch (loadError) {
       console.error("Failed to load employer applicants:", loadError);
       setError("Could not load interested candidates. Please try again.");
@@ -82,6 +86,47 @@ export default function EmployerApplicantsSection({
       void loadApplicants();
     });
   }, [userId, loadApplicants]);
+
+  const rejectApplicant = useCallback(async (applicant: EmployerApplicantView) => {
+    if (applicant.status === "rejected" || rejectingId) {
+      return;
+    }
+
+    setRejectingId(applicant.applicationId);
+    setActionError(null);
+
+    try {
+      const response = await fetchWithAuth("/api/employer/applicants", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          applicationId: applicant.applicationId,
+          status: "rejected",
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+      } | null;
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? "Could not reject this candidate.");
+      }
+
+      setApplicants((current) =>
+        current.map((row) =>
+          row.applicationId === applicant.applicationId
+            ? { ...row, status: "rejected" }
+            : row
+        )
+      );
+    } catch (rejectError) {
+      console.error("Failed to reject applicant:", rejectError);
+      setActionError("Could not reject this candidate. Please try again.");
+    } finally {
+      setRejectingId(null);
+    }
+  }, [rejectingId]);
 
   useEffect(() => {
     if (focusJobId) {
@@ -175,9 +220,11 @@ export default function EmployerApplicantsSection({
           className="sm:w-52 bg-[#111111] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
         >
           <option value="all">All statuses</option>
-          <option value="new">New interest</option>
-          <option value="intro_requested">Intro requested</option>
-          <option value="unlocked">Contact unlocked</option>
+          {APPLICANT_PIPELINE_STATUSES.map((status) => (
+            <option key={status.value} value={status.value}>
+              {status.label}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -204,7 +251,13 @@ export default function EmployerApplicantsSection({
           </p>
         </div>
       ) : (
-        <ul className="space-y-4">
+        <>
+          {actionError ? (
+            <div className="mb-4 rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-3 text-sm text-rose-300">
+              {actionError}
+            </div>
+          ) : null}
+          <ul className="space-y-4">
           {visibleApplicants.map((applicant) => (
             <li
               key={applicant.applicationId}
@@ -241,7 +294,6 @@ export default function EmployerApplicantsSection({
                       <span className="text-slate-200 font-medium">
                         {applicant.jobTitle}
                       </span>
-                      <span className="text-slate-600"> · {applicant.jobStatus}</span>
                       <span className="text-slate-600">
                         {" "}
                         · {applicant.appliedAtLabel}
@@ -357,24 +409,42 @@ export default function EmployerApplicantsSection({
                 </div>
               ) : null}
 
-              <div className="mt-4 flex items-center justify-end">
-                {applicant.unlocked ? (
-                  <span className="text-[11px] font-bold text-emerald-300">
-                    Unlocked
+              <div className="mt-4 flex items-center justify-end gap-2">
+                {applicant.status === "rejected" ? (
+                  <span className="text-[11px] font-bold text-rose-300">
+                    Rejected
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => onRequestIntro(applicant)}
-                    className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer"
-                  >
-                    Request Intro
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onRequestIntro(applicant)}
+                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer"
+                    >
+                      Request Intro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void rejectApplicant(applicant)}
+                      disabled={rejectingId === applicant.applicationId}
+                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-200 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                    >
+                      {rejectingId === applicant.applicationId ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Rejecting
+                        </span>
+                      ) : (
+                        "Reject"
+                      )}
+                    </button>
+                  </>
                 )}
               </div>
             </li>
           ))}
-        </ul>
+          </ul>
+        </>
       )}
     </div>
   );
