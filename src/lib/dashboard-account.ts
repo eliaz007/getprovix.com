@@ -50,13 +50,43 @@ export function dashboardTabHref(tab: DashboardTab): string {
   return `/dashboard?tab=${encodeURIComponent(tab)}`;
 }
 
+const SEARCH_DASHBOARD_TABS = [
+  "intro_requests",
+  "opportunity_radar",
+  "applications",
+  "applicants",
+  "talent",
+  "evaluator",
+  "auditor",
+  "essay-studio",
+  "aid-appeals",
+  "college-fit",
+] as const satisfies readonly DashboardTab[];
+
 export function dashboardTabFromSearchParam(
   tab: string | null | undefined
 ): DashboardTab | null {
-  if (tab === "intro_requests") {
-    return "intro_requests";
+  if (!tab) {
+    return null;
   }
-  return null;
+
+  return SEARCH_DASHBOARD_TABS.find((value) => value === tab) ?? null;
+}
+
+export function resolveDashboardTabFromLocation(
+  pathname: string,
+  tabParam?: string | null
+): DashboardTab | null {
+  if (isOpportunitiesPath(pathname)) {
+    return "opportunities";
+  }
+  if (isAuditorPath(pathname)) {
+    return "auditor";
+  }
+  if (!isDashboardRootPath(pathname)) {
+    return null;
+  }
+  return dashboardTabFromSearchParam(tabParam);
 }
 
 export function isPitchStudioPath(pathname: string): boolean {

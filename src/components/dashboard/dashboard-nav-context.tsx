@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -10,15 +11,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { resolveAccountRole } from "@/lib/account-role";
 import {
   canAccessTalentPool,
-  dashboardTabFromSearchParam,
-  isDashboardRootPath,
   isEmployeeRole,
   isEmployerRole,
+  resolveDashboardTabFromLocation,
   type DashboardTab,
 } from "@/lib/dashboard-account";
 import { createClient } from "@/utils/supabase/client";
@@ -80,9 +80,48 @@ function getUserHeaderIdentity(user: User): {
   return { avatarUrl, initials };
 }
 
+function readClientTabParam(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return new URLSearchParams(window.location.search).get("tab");
+}
+
+function DashboardNavProviderFromSearch({ children }: { children: ReactNode }) {
+  const searchParams = useSearchParams();
+  return (
+    <DashboardNavProviderImpl tabParam={searchParams.get("tab")}>
+      {children}
+    </DashboardNavProviderImpl>
+  );
+}
+
 export function DashboardNavProvider({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <DashboardNavProviderImpl tabParam={readClientTabParam()}>
+          {children}
+        </DashboardNavProviderImpl>
+      }
+    >
+      <DashboardNavProviderFromSearch>{children}</DashboardNavProviderFromSearch>
+    </Suspense>
+  );
+}
+
+function DashboardNavProviderImpl({
+  children,
+  tabParam,
+}: {
+  children: ReactNode;
+  tabParam: string | null;
+}) {
   const pathname = usePathname();
-  const [activeTab, setActiveTabState] = useState<DashboardTab>("my_profile");
+  const locationTab = resolveDashboardTabFromLocation(pathname, tabParam);
+  const locationKey = `${pathname}?${tabParam ?? ""}`;
+  const [userTab, setUserTab] = useState<DashboardTab | null>(null);
+  const [seenLocationKey, setSeenLocationKey] = useState(locationKey);
   const userSelectedTabRef = useRef(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountRole, setAccountRole] = useState<string | null>(null);
@@ -97,6 +136,18 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
     ((jobId: string) => void) | null
   >(null);
 
+  const locationChanged = seenLocationKey !== locationKey;
+  if (locationChanged) {
+    setSeenLocationKey(locationKey);
+    setUserTab(null);
+  }
+
+  if (locationTab) {
+    userSelectedTabRef.current = true;
+  }
+
+  const activeTab = (locationChanged ? null : userTab) ?? locationTab ?? "my_profile";
+
   const setOnOpenJobApplicants = useCallback(
     (handler: ((jobId: string) => void) | null) => {
       // Wrap so React stores the function instead of treating it as a setState updater.
@@ -107,14 +158,14 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
 
   const setActiveTab = useCallback((tab: DashboardTab) => {
     userSelectedTabRef.current = true;
-    setActiveTabState(tab);
+    setUserTab(tab);
   }, []);
 
   const setDefaultTab = useCallback((tab: DashboardTab) => {
     if (userSelectedTabRef.current) {
       return;
     }
-    setActiveTabState(tab);
+    setUserTab(tab);
   }, []);
 
   const requireAuth = useCallback(() => {
@@ -128,22 +179,6 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setMobileNavOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!isDashboardRootPath(pathname)) {
-      return;
-    }
-
-    const tab = dashboardTabFromSearchParam(
-      new URLSearchParams(window.location.search).get("tab")
-    );
-    if (!tab) {
-      return;
-    }
-
-    userSelectedTabRef.current = true;
-    setActiveTabState(tab);
   }, [pathname]);
 
   useEffect(() => {
