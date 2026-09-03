@@ -10,10 +10,8 @@ import {
   Copy,
   FileText,
   Flame,
-  RotateCcw,
   ShieldCheck,
   Target,
-  Trash2,
 } from "lucide-react";
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import type { AuditResult } from "@/app/api/audit/route";
@@ -33,6 +31,7 @@ import {
   getIntegrityScoreClass,
   type TalentPoolCandidate,
 } from "@/lib/talent-pool-candidate";
+import CandidateIntroRequestsPanel from "@/components/dashboard/candidate-intro-requests-panel";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import DashboardSkeleton from "@/components/dashboard/dashboard-skeleton";
 import GuestAuthModal from "@/components/GuestAuthModal";
@@ -90,17 +89,9 @@ import {
 import {
   CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS,
   CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS_FALLBACK,
-  getCandidateIntroStatusBadgeClass,
-  getCandidateIntroStatusLabel,
-  isCandidateIntroDismissed,
   normalizeCandidateIntroStatus,
-  resolveIntroCompanyEmail,
-  resolveIntroCompensationRange,
-  resolveIntroTargetRole,
-  type CandidateIntroInboxFilter,
   type CandidateIntroRequestRow,
 } from "@/lib/candidate-intro-requests";
-import { formatRelativeTime } from "@/lib/format-relative-time";
 import { submitCandidateJobInterest } from "@/lib/job-interest";
 import {
   fetchTalentMatchInsight,
@@ -917,8 +908,6 @@ export default function DashboardPage() {
   const [introRespondLoadingId, setIntroRespondLoadingId] = useState<
     string | null
   >(null);
-  const [candidateIntroInboxFilter, setCandidateIntroInboxFilter] =
-    useState<CandidateIntroInboxFilter>("inbox");
   const [talentMatchScores, setTalentMatchScores] = useState<
     Record<string, MatchResult>
   >({});
@@ -1675,7 +1664,11 @@ export default function DashboardPage() {
     }
 
     const tab = dashboardTabFromSearchParam(params.get("tab"));
-    if (tab === "intro_requests" && !isBusinessAccount && !isEmployeeAccount) {
+    if (
+      (tab === "intro_requests" || activeTab === "intro_requests") &&
+      !isBusinessAccount &&
+      !isEmployeeAccount
+    ) {
       if (!authChecked) {
         return;
       }
@@ -1686,12 +1679,11 @@ export default function DashboardPage() {
           setAuthModalOpen(true);
         }
         setActiveTab("opportunities");
-        return;
       }
-      setActiveTab("intro_requests");
     }
   }, [
     authChecked,
+    activeTab,
     navSetAuthModalOpen,
     setNavIsVerifiedEmployer,
     isBusinessAccount,
@@ -3004,21 +2996,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     }
   };
 
-  const inboxCandidateIntroRequests = candidateIntroRequests.filter(
-    (request) => !isCandidateIntroDismissed(request)
-  );
-  const dismissedCandidateIntroRequests = candidateIntroRequests.filter(
-    (request) => isCandidateIntroDismissed(request)
-  );
-  const visibleCandidateIntroRequests =
-    candidateIntroInboxFilter === "dismissed"
-      ? dismissedCandidateIntroRequests
-      : inboxCandidateIntroRequests;
-
-  const pendingCandidateIntroCount = inboxCandidateIntroRequests.filter(
-    (request) => normalizeCandidateIntroStatus(request.status) === "pending"
-  ).length;
-
   const getCandidatePublicName = (candidate: TalentPoolCandidate) =>
     buildAlliterativeAliasIdentity(candidate.profileId?.trim() || "").alias;
 
@@ -3703,7 +3680,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   : "min-h-screen bg-[#0A0A0A] text-slate-200 p-4 pt-8 sm:p-6 sm:pt-10 md:p-12"
             }
           >
-      {isLoading ? (
+      {!isBusinessAccount && !isEmployeeAccount && activeTab === "intro_requests" ? (
+        <div className="w-full max-w-5xl mx-auto animate-fadeIn">
+          <CandidateIntroRequestsPanel
+            requests={candidateIntroRequests}
+            loading={candidateIntroLoading}
+            error={candidateIntroError}
+            respondingId={introRespondLoadingId}
+            onRetry={() => {
+              if (user?.id) {
+                void fetchCandidateIntroRequests(user.id);
+              }
+            }}
+            onDismiss={handleCandidateIntroDismiss}
+            onRespond={handleCandidateIntroResponse}
+          />
+        </div>
+      ) : isLoading ? (
         <DashboardSkeleton />
       ) : (
         <>
@@ -4512,277 +4505,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               aiMatchError={aiMatchError}
               onRunAiMatch={runAiMatch}
             />
-          )}
-
-          {!isBusinessAccount && !isEmployeeAccount && activeTab === "intro_requests" && (
-            <div>
-              <div className="mb-8">
-                <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
-                  Warm Intros
-                </p>
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">
-                  Intro Requests
-                </h1>
-                <p className="text-zinc-300 text-sm mt-2">
-                  Review employer introduction requests and approve the ones you want to pursue.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
-                    Pending Review
-                  </span>
-                  <span className="text-3xl font-extrabold text-amber-400">
-                    {candidateIntroLoading ? "—" : pendingCandidateIntroCount}
-                  </span>
-                </div>
-                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
-                    Accepted
-                  </span>
-                  <span className="text-3xl font-extrabold text-emerald-400">
-                    {candidateIntroLoading
-                      ? "—"
-                      : inboxCandidateIntroRequests.filter(
-                          (request) =>
-                            normalizeCandidateIntroStatus(request.status) ===
-                            "accepted"
-                        ).length}
-                  </span>
-                </div>
-                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
-                    Total Requests
-                  </span>
-                  <span className="text-3xl font-extrabold text-white">
-                    {candidateIntroLoading
-                      ? "—"
-                      : inboxCandidateIntroRequests.length}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex border-b border-zinc-800 mb-8 space-x-6">
-                <button
-                  type="button"
-                  aria-pressed={candidateIntroInboxFilter === "inbox"}
-                  onClick={() => setCandidateIntroInboxFilter("inbox")}
-                  className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
-                    candidateIntroInboxFilter === "inbox"
-                      ? "text-indigo-400 border-b-2 border-indigo-500"
-                      : "text-slate-500 hover:text-slate-300"
-                  }`}
-                >
-                  Inbox
-                  {!candidateIntroLoading
-                    ? ` (${inboxCandidateIntroRequests.length})`
-                    : ""}
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={candidateIntroInboxFilter === "dismissed"}
-                  onClick={() => setCandidateIntroInboxFilter("dismissed")}
-                  className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
-                    candidateIntroInboxFilter === "dismissed"
-                      ? "text-indigo-400 border-b-2 border-indigo-500"
-                      : "text-slate-500 hover:text-slate-300"
-                  }`}
-                >
-                  Dismissed
-                  {!candidateIntroLoading
-                    ? ` (${dismissedCandidateIntroRequests.length})`
-                    : ""}
-                </button>
-              </div>
-
-              {candidateIntroLoading ? (
-                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-                  <p className="text-sm font-medium text-slate-400">
-                    Loading intro requests...
-                  </p>
-                </div>
-              ) : candidateIntroError ? (
-                <div className="card-edge bg-[#111111] border border-red-500/20 rounded-2xl p-10 text-center">
-                  <p className="text-sm font-medium text-red-200">
-                    {candidateIntroError}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (user?.id) {
-                        void fetchCandidateIntroRequests(user.id);
-                      }
-                    }}
-                    className="mt-4 bg-red-500/10 hover:bg-red-500/15 border border-red-500/25 text-red-200 font-semibold py-2 px-4 rounded-lg text-xs transition-all cursor-pointer"
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : candidateIntroRequests.length === 0 ? (
-                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-                  <p className="text-sm font-medium text-slate-300">
-                    No intro requests yet
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    When employers request a warm introduction, they will appear here for your review.
-                  </p>
-                </div>
-              ) : visibleCandidateIntroRequests.length === 0 ? (
-                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-                  <p className="text-sm font-medium text-slate-300">
-                    {candidateIntroInboxFilter === "dismissed"
-                      ? "No dismissed intro requests"
-                      : "Inbox is empty"}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {candidateIntroInboxFilter === "dismissed"
-                      ? "Requests you trash or dismiss will show up here so you can restore them later."
-                      : "Dismissed requests are hidden here. Switch to Dismissed to review them."}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {visibleCandidateIntroRequests.map((request) => {
-                    const status = isCandidateIntroDismissed(request)
-                      ? "dismissed"
-                      : normalizeCandidateIntroStatus(request.status);
-                    const originalStatus = normalizeCandidateIntroStatus(
-                      request.status
-                    );
-                    const isPending = originalStatus === "pending";
-                    const isDismissed = isCandidateIntroDismissed(request);
-                    const isResponding = introRespondLoadingId === request.id;
-                    const companyName =
-                      request.company_name?.trim() || "Verified employer";
-                    const companyEmail = resolveIntroCompanyEmail(request);
-                    const targetRole = resolveIntroTargetRole(request);
-                    const compensationRange =
-                      resolveIntroCompensationRange(request);
-
-                    return (
-                      <div
-                        key={request.id}
-                        className="card-edge card-lift bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col"
-                      >
-                        <div className="flex items-start justify-between gap-3 mb-4">
-                          <div className="min-w-0">
-                            <h3 className="font-bold text-white text-base truncate">
-                              {companyName}
-                            </h3>
-                            <p className="text-sm text-indigo-400 font-medium mt-0.5 truncate">
-                              {targetRole}
-                            </p>
-                            <p className="text-xs text-slate-500 mt-2">
-                              {formatRelativeTime(request.created_at)}
-                            </p>
-                          </div>
-                          <div className="flex items-start gap-1.5 shrink-0">
-                            <span
-                              className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${getCandidateIntroStatusBadgeClass(status)}`}
-                            >
-                              {getCandidateIntroStatusLabel(status)}
-                            </span>
-                            {!isDismissed ? (
-                              <button
-                                type="button"
-                                aria-label="Dismiss intro request"
-                                title="Dismiss"
-                                onClick={() =>
-                                  void handleCandidateIntroDismiss(
-                                    request.id,
-                                    true
-                                  )
-                                }
-                                disabled={isResponding}
-                                className="p-1.5 rounded-lg border border-zinc-800 text-slate-500 hover:text-red-300 hover:border-red-500/30 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-60"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3 mb-4 space-y-2">
-                          <div className="flex items-start justify-between gap-3 text-xs">
-                            <span className="text-slate-500 uppercase tracking-widest font-bold">
-                              Contact
-                            </span>
-                            <span className="text-slate-300 text-right break-all">
-                              {companyEmail || "Not provided"}
-                            </span>
-                          </div>
-                          <div className="flex items-start justify-between gap-3 text-xs">
-                            <span className="text-slate-500 uppercase tracking-widest font-bold">
-                              Compensation
-                            </span>
-                            <span className="text-emerald-400 font-semibold text-right">
-                              {compensationRange}
-                            </span>
-                          </div>
-                        </div>
-
-                        {isDismissed ? (
-                          <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-4 border-t border-zinc-800">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void handleCandidateIntroDismiss(
-                                  request.id,
-                                  false
-                                )
-                              }
-                              disabled={isResponding}
-                              className="inline-flex items-center gap-1.5 text-[11px] font-bold px-4 py-2 rounded-lg border border-zinc-800 text-slate-300 hover:text-white hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
-                            >
-                              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                              {isResponding ? "Saving..." : "Restore"}
-                            </button>
-                          </div>
-                        ) : isPending ? (
-                          <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-4 border-t border-zinc-800">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void handleCandidateIntroResponse(
-                                  request.id,
-                                  "decline"
-                                )
-                              }
-                              disabled={isResponding}
-                              className="text-[11px] font-bold px-4 py-2 rounded-lg border border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
-                            >
-                              Decline
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void handleCandidateIntroResponse(
-                                  request.id,
-                                  "accept"
-                                )
-                              }
-                              disabled={isResponding}
-                              className="text-[11px] font-bold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer disabled:opacity-60"
-                            >
-                              {isResponding ? "Saving..." : "Accept Intro"}
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="mt-auto pt-4 border-t border-zinc-800">
-                            <p className="text-xs text-slate-500">
-                              {originalStatus === "accepted"
-                                ? "You accepted this intro. Check your inbox for the mutual introduction email."
-                                : "You declined this introduction request."}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
           )}
 
           {/* ADMISSIONS: ESSAY STUDIO */}

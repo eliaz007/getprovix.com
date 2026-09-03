@@ -9,9 +9,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type ReactNode,
 } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { resolveAccountRole } from "@/lib/account-role";
 import {
@@ -89,25 +90,37 @@ function readClientTabParam(): string | null {
   return new URLSearchParams(window.location.search).get("tab");
 }
 
-function DashboardNavProviderFromSearch({ children }: { children: ReactNode }) {
+function DashboardNavProviderFromSearch({
+  children,
+  tabHold,
+}: {
+  children: ReactNode;
+  tabHold: MutableRefObject<DashboardTab | null>;
+}) {
   const searchParams = useSearchParams();
   return (
-    <DashboardNavProviderImpl tabParam={searchParams.get("tab")}>
+    <DashboardNavProviderImpl tabParam={searchParams.get("tab")} tabHold={tabHold}>
       {children}
     </DashboardNavProviderImpl>
   );
 }
 
 export function DashboardNavProvider({ children }: { children: ReactNode }) {
+  const tabHold = useRef<DashboardTab | null>(null);
   return (
     <Suspense
       fallback={
-        <DashboardNavProviderImpl tabParam={readClientTabParam()}>
+        <DashboardNavProviderImpl
+          tabParam={readClientTabParam()}
+          tabHold={tabHold}
+        >
           {children}
         </DashboardNavProviderImpl>
       }
     >
-      <DashboardNavProviderFromSearch>{children}</DashboardNavProviderFromSearch>
+      <DashboardNavProviderFromSearch tabHold={tabHold}>
+        {children}
+      </DashboardNavProviderFromSearch>
     </Suspense>
   );
 }
@@ -115,18 +128,24 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
 function DashboardNavProviderImpl({
   children,
   tabParam,
+  tabHold,
 }: {
   children: ReactNode;
   tabParam: string | null;
+  tabHold: MutableRefObject<DashboardTab | null>;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const urlTab = isDashboardRootPath(pathname)
     ? dashboardTabFromSearchParam(tabParam)
     : null;
   const pathTab = resolveDashboardTabFromLocation(pathname, tabParam);
-  const [userTab, setUserTab] = useState<DashboardTab | null>(null);
+  const [userTab, setUserTab] = useState<DashboardTab | null>(
+    () => urlTab ?? (isDashboardRootPath(pathname) ? tabHold.current : null)
+  );
   const [seenPathname, setSeenPathname] = useState(pathname);
-  const userSelectedTabRef = useRef(false);
+  const userSelectedTabRef = useRef(Boolean(urlTab));
+  const didStripTabQueryRef = useRef(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [isVerifiedEmployer, setIsVerifiedEmployer] = useState(false);
@@ -143,19 +162,22 @@ function DashboardNavProviderImpl({
   const locationChanged = seenPathname !== pathname;
   if (locationChanged) {
     setSeenPathname(pathname);
-    setUserTab(null);
-  }
-
-  if (urlTab) {
-    userSelectedTabRef.current = true;
-    if (userTab !== urlTab) {
-      setUserTab(urlTab);
-    }
+    didStripTabQueryRef.current = false;
+    const nextTab = isDashboardRootPath(pathname)
+      ? dashboardTabFromSearchParam(tabParam)
+      : null;
+    tabHold.current = nextTab;
+    setUserTab(nextTab);
+    userSelectedTabRef.current = Boolean(nextTab);
   }
 
   const activeTab = isDashboardRootPath(pathname)
-    ? (urlTab ?? (locationChanged ? null : userTab) ?? "my_profile")
+    ? (userTab ?? "my_profile")
     : ((locationChanged ? null : userTab) ?? pathTab ?? "my_profile");
+
+  if (isDashboardRootPath(pathname)) {
+    tabHold.current = userTab ?? (activeTab === "my_profile" ? null : activeTab);
+  }
 
   const setOnOpenJobApplicants = useCallback(
     (handler: ((jobId: string) => void) | null) => {
@@ -167,15 +189,17 @@ function DashboardNavProviderImpl({
 
   const setActiveTab = useCallback((tab: DashboardTab) => {
     userSelectedTabRef.current = true;
+    tabHold.current = tab;
     setUserTab(tab);
-  }, []);
+  }, [tabHold]);
 
   const setDefaultTab = useCallback((tab: DashboardTab) => {
     if (userSelectedTabRef.current) {
       return;
     }
+    tabHold.current = tab;
     setUserTab(tab);
-  }, []);
+  }, [tabHold]);
 
   const requireAuth = useCallback(() => {
     if (userId) {
@@ -195,6 +219,14 @@ function DashboardNavProviderImpl({
       return;
     }
 
+    if (didStripTabQueryRef.current) {
+      return;
+    }
+    didStripTabQueryRef.current = true;
+    userSelectedTabRef.current = true;
+    tabHold.current = urlTab;
+    setUserTab(urlTab);
+
     const params = new URLSearchParams(window.location.search);
     if (!params.has("tab")) {
       return;
@@ -202,8 +234,8 @@ function DashboardNavProviderImpl({
 
     params.delete("tab");
     const next = `${pathname}${params.toString() ? `?${params}` : ""}`;
-    window.history.replaceState({}, "", next);
-  }, [pathname, urlTab]);
+    router.replace(next, { scroll: false });
+  }, [pathname, urlTab, router]);
 
   useEffect(() => {
     let active = true;
