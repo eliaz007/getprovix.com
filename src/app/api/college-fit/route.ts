@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { parseGpa4Scale } from "@/lib/gpa";
 import { requireAiApiAccess } from "@/lib/api-auth";
 
 type CollegeFitRequestBody = {
@@ -186,13 +187,7 @@ School selection rules for this tier:
 };
 
 function parseGpa(value: string): number | null {
-  const match = value.match(/\d(?:\.\d+)?/);
-  if (!match) {
-    return null;
-  }
-
-  const numeric = Number.parseFloat(match[0]);
-  return Number.isFinite(numeric) ? numeric : null;
+  return parseGpa4Scale(value);
 }
 
 function parseTestScores(value: string): { sat: number | null; act: number | null } {

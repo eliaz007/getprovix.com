@@ -7,6 +7,7 @@ import { createServiceRoleClient } from "@/lib/admin-access";
 import { createClient } from "@/utils/supabase/server";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { formatGpa } from "@/lib/gpa";
 import {
   educationFromProfileRow,
   hydrateRowsWithEducation,
@@ -143,7 +144,7 @@ function mapRowToPublicProfile(row: PublicProfileRow): PublicCandidateProfile {
     university: education.university || null,
     major: education.major || null,
     school: row.school?.trim() || education.university || null,
-    gpa: education.gpa || null,
+    gpa: formatGpa(education.gpa) || null,
     graduationYear: education.graduationYear || null,
     experienceLevel: row.experience_level?.trim() || null,
     location: getPublicCandidateLocation(identity),
@@ -341,7 +342,7 @@ export async function getPublicProfileBySlug(
     university: viaServiceRole.university || viaRpc.university,
     major: viaServiceRole.major || viaRpc.major,
     school: viaServiceRole.school || viaRpc.school,
-    gpa: viaServiceRole.gpa || viaRpc.gpa,
+    gpa: formatGpa(viaServiceRole.gpa) || formatGpa(viaRpc.gpa) || null,
     graduationYear: viaServiceRole.graduationYear || viaRpc.graduationYear,
   };
 }

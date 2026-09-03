@@ -5,6 +5,7 @@ import { Check, Copy } from "lucide-react";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
 import ScoreMeter from "@/components/ScoreMeter";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { formatGpa } from "@/lib/gpa";
 import { jobDisplayTags, parseJobListInput } from "@/lib/jobs";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
@@ -12,8 +13,10 @@ import {
   coerceDeepScreeningResult,
   DEEP_SCREENING_FETCH_TIMEOUT_MS,
   DEEP_SCREENING_STAGES,
+  describeDeepScreeningFailure,
   getCandidateScreeningKey,
   getIntegrityScoreClass,
+  isAbortOrTimeoutError,
   parseStoredScreeningResult,
   type DeepScreeningResult,
   type ScreeningJobContext,
@@ -48,20 +51,37 @@ export default function GeminiDeepScreening({
   const [showResults, setShowResults] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+  const runIdRef = useRef(0);
+  const resultRef = useRef<DeepScreeningResult | null>(null);
+
+  resultRef.current = result;
 
   const screeningKey = getCandidateScreeningKey(candidate);
 
-  const clearTimers = () => {
+  const clearStageInterval = () => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+  };
+
+  const clearTimeoutHandle = () => {
+    if (timeoutRef.current !== null) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
+
+  const abortInFlight = () => {
     abortRef.current?.abort();
     abortRef.current = null;
+    clearTimeoutHandle();
   };
 
   useEffect(() => {
     let cancelled = false;
+    runIdRef.current += 1;
 
     const applyCachedResult = () => {
       if (typeof window === "undefined") {
@@ -88,56 +108,59 @@ export default function GeminiDeepScreening({
     setError(null);
     setLoading(false);
     setStage(0);
+    clearStageInterval();
 
-    if (applyCachedResult()) {
-      return () => {
-        cancelled = true;
-      };
-    }
+    if (!applyCachedResult()) {
+      setResult(null);
+      setShowResults(false);
 
-    setResult(null);
-    setShowResults(false);
+      void (async () => {
+        try {
+          const supabase = createClient();
+          const { data, error: loadError } = await supabase
+            .from("candidate_screenings")
+            .select("audit_data")
+            .eq("candidate_key", screeningKey)
+            .maybeSingle();
 
-    void (async () => {
-      try {
-        const supabase = createClient();
-        const { data, error: loadError } = await supabase
-          .from("candidate_screenings")
-          .select("audit_data")
-          .eq("candidate_key", screeningKey)
-          .maybeSingle();
-
-        if (cancelled) {
-          return;
-        }
-
-        if (!loadError && data?.audit_data) {
-          const audit = coerceDeepScreeningResult(
-            data.audit_data as DeepScreeningResult
-          );
-          setResult(audit);
-          setShowResults(true);
-          if (typeof window !== "undefined") {
-            localStorage.setItem(
-              `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
-              JSON.stringify(audit)
-            );
+          if (cancelled) {
+            return;
           }
-          return;
-        }
 
-        applyCachedResult();
-      } catch (err) {
-        console.error("Failed to load persisted screening:", err);
-        if (!cancelled) {
+          if (!loadError && data?.audit_data) {
+            const audit = coerceDeepScreeningResult(
+              data.audit_data as DeepScreeningResult
+            );
+            setResult(audit);
+            setShowResults(true);
+            if (typeof window !== "undefined") {
+              try {
+                localStorage.setItem(
+                  `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
+                  JSON.stringify(audit)
+                );
+              } catch (storageError) {
+                console.warn("Could not cache screening result:", storageError);
+              }
+            }
+            return;
+          }
+
           applyCachedResult();
+        } catch (err) {
+          console.error("Failed to load persisted screening:", err);
+          if (!cancelled) {
+            applyCachedResult();
+          }
         }
-      }
-    })();
+      })();
+    }
 
     return () => {
       cancelled = true;
-      clearTimers();
+      runIdRef.current += 1;
+      clearStageInterval();
+      abortInFlight();
     };
   }, [screeningKey]);
 
@@ -164,11 +187,13 @@ export default function GeminiDeepScreening({
       location: "",
     };
 
-    clearTimers();
+    const runId = ++runIdRef.current;
+    abortInFlight();
+    clearStageInterval();
+
     setLoading(true);
     setError(null);
     setShowResults(false);
-    setResult(null);
     setStage(0);
 
     intervalRef.current = setInterval(() => {
@@ -177,77 +202,129 @@ export default function GeminiDeepScreening({
 
     const controller = new AbortController();
     abortRef.current = controller;
-    const timeoutId = window.setTimeout(
-      () => controller.abort(),
-      DEEP_SCREENING_FETCH_TIMEOUT_MS
-    );
+    timeoutRef.current = window.setTimeout(() => {
+      controller.abort();
+    }, DEEP_SCREENING_FETCH_TIMEOUT_MS);
+
+    const isCurrentRun = () => runId === runIdRef.current;
 
     try {
-      const response = await fetchWithAuth("/api/screen", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          candidate: {
-            name: publicName,
-            title: candidate.role,
-            bio: lockedBio,
-            skills: candidate.skills,
-            degree: candidate.major,
-            university: candidate.university,
-            major: candidate.major,
-            gpa: candidate.gpa,
-            graduation_year: candidate.graduationYear,
-            experience: candidate.experienceLevel,
-            projects: candidate.projects,
-            github_url: candidate.github_url ?? candidate.github ?? "",
-            github: candidate.github ?? "",
-          },
-          job: {
-            title: job.title,
-            company: job.company ?? companyName,
-            tags: jobDisplayTags(job),
-            tech_stack: parseJobListInput(job.tech_stack),
-            required_skills: parseJobListInput(job.required_skills),
-            location: job.location ?? "",
-          },
-          candidate_key: screeningKey,
-          profile_id:
-            resolveTalentProfileId(candidate) || candidate.profileId || undefined,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Deep screening failed (${response.status})`);
+      let response: Response;
+      try {
+        response = await fetchWithAuth("/api/screen", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            candidate: {
+              name: publicName,
+              title: candidate.role,
+              bio: lockedBio,
+              skills: candidate.skills,
+              degree: candidate.major,
+              university: candidate.university,
+              major: candidate.major,
+              gpa: formatGpa(candidate.gpa),
+              graduation_year: candidate.graduationYear,
+              experience: candidate.experienceLevel,
+              projects: candidate.projects,
+              github_url: candidate.github_url ?? candidate.github ?? "",
+              github: candidate.github ?? "",
+            },
+            job: {
+              title: job.title,
+              company: job.company ?? companyName,
+              tags: jobDisplayTags(job),
+              tech_stack: parseJobListInput(job.tech_stack),
+              required_skills: parseJobListInput(job.required_skills),
+              location: job.location ?? "",
+            },
+            candidate_key: screeningKey,
+            profile_id:
+              resolveTalentProfileId(candidate) || candidate.profileId || undefined,
+          }),
+        });
+      } catch (networkError) {
+        throw networkError;
       }
 
-      const data = coerceDeepScreeningResult(
-        (await response.json()) as DeepScreeningResult
-      );
-      setStage(DEEP_SCREENING_STAGES.length - 1);
-      await new Promise((resolve) => window.setTimeout(resolve, 450));
-      setResult(data);
-      setShowResults(true);
-      if (typeof window !== "undefined") {
-        localStorage.setItem(
-          `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
-          JSON.stringify(data)
+      if (!isCurrentRun()) {
+        return;
+      }
+
+      let payload: (DeepScreeningResult & { error?: string }) | null = null;
+      try {
+        payload = (await response.json()) as DeepScreeningResult & {
+          error?: string;
+        };
+      } catch (parseError) {
+        throw new Error(
+          response.ok
+            ? "The live audit returned an unreadable response. Please retry."
+            : describeDeepScreeningFailure(parseError, response.status)
         );
       }
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error?.trim() ||
+            describeDeepScreeningFailure(null, response.status)
+        );
+      }
+
+      let data: DeepScreeningResult;
+      try {
+        if (!payload || typeof payload.integrity_score !== "number") {
+          throw new Error("incomplete screening payload");
+        }
+        data = coerceDeepScreeningResult(payload);
+      } catch {
+        throw new Error(
+          "The live audit returned an incomplete result. Please retry."
+        );
+      }
+      setStage(DEEP_SCREENING_STAGES.length - 1);
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
+      if (!isCurrentRun()) {
+        return;
+      }
+
+      setResult(data);
+      setShowResults(true);
+      setError(null);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(
+            `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
+            JSON.stringify(data)
+          );
+        } catch (storageError) {
+          console.warn("Could not cache screening result:", storageError);
+        }
+      }
     } catch (err) {
+      if (!isCurrentRun()) {
+        return;
+      }
+
       console.error("Deep screening request failed:", err);
-      const isTimeout = err instanceof DOMException && err.name === "AbortError";
-      setError(
-        isTimeout
-          ? "The live audit timed out before Gemini could finish. Please retry."
-          : "Could not complete the live audit. Check your connection and retry."
+      const previousResult = resultRef.current;
+      setError(describeDeepScreeningFailure(err));
+      setShowResults(Boolean(previousResult));
+      onToast?.(
+        isAbortOrTimeoutError(err)
+          ? "Live audit timed out. Use retry to run the GitHub sequence again."
+          : "Deep screening dropped. Use retry to run the audit again."
       );
-      setShowResults(false);
-      onToast?.("Deep screening failed. Use retry to run the audit again.");
     } finally {
-      window.clearTimeout(timeoutId);
-      clearTimers();
-      setLoading(false);
+      if (isCurrentRun()) {
+        clearTimeoutHandle();
+        clearStageInterval();
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+        }
+        setLoading(false);
+      }
     }
   };
 
@@ -339,7 +416,8 @@ export default function GeminiDeepScreening({
           <button
             type="button"
             onClick={() => void runDeepScreening()}
-            className="w-full bg-red-500/10 hover:bg-red-500/15 border border-red-500/25 text-red-200 font-semibold py-2 rounded-lg text-xs transition-all cursor-pointer"
+            disabled={loading}
+            className="w-full bg-red-500/10 hover:bg-red-500/15 border border-red-500/25 text-red-200 font-semibold py-2 rounded-lg text-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Retry Live Audit
           </button>

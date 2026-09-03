@@ -155,6 +155,7 @@ import { employerIsVerifiedInDatabase } from "@/lib/persist-employer-verified";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import type { DashboardTab } from "@/lib/dashboard-account";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { formatGpa, isGpaDraft } from "@/lib/gpa";
 import ScoreMeter from "@/components/ScoreMeter";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
@@ -391,7 +392,7 @@ function formatTalentEducationLines(candidate: {
   return [
     candidate.university,
     candidate.major,
-    candidate.gpa ? `GPA ${candidate.gpa}` : "",
+    formatGpa(candidate.gpa) ? `GPA ${formatGpa(candidate.gpa)}` : "",
     candidate.graduationYear ? `Class of ${candidate.graduationYear}` : "",
   ].filter(Boolean);
 }
@@ -1095,7 +1096,7 @@ export default function DashboardPage() {
           bio: loadedBio,
           school: loadedSchool,
           degree: loadedDegree,
-          gpa: education.gpa,
+          gpa: formatGpa(education.gpa),
           gradYear: education.graduationYear || loadedGradYear,
           github: loadedPortfolioUrl,
           demoVideo: loadedYoutubeUrl,
@@ -2051,7 +2052,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           candidateTimezone,
           isVisibleInPool: effectiveVisibleInPool,
           gradYear: profileData.gradYear,
-          gpa: profileData.gpa,
+          gpa: formatGpa(profileData.gpa),
           keyAccomplishments: profileData.projects,
         },
         session.user.id,
@@ -2098,7 +2099,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         candidateTimezone,
         visibleInPool: effectiveVisibleInPool,
         gradYear: profileData.gradYear,
-        gpa: profileData.gpa,
+        gpa: formatGpa(profileData.gpa),
         demoVideo: profileData.demoVideo,
         projects: profileData.projects,
       };
@@ -2110,7 +2111,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         school,
         degree,
         github: normalizedPortfolioUrl,
+        gpa: formatGpa(profileData.gpa),
       });
+      setProfileData((current) => ({
+        ...current,
+        gpa: formatGpa(current.gpa),
+      }));
       setPortfolioUrl(normalizedPortfolioUrl);
       setAvailabilityStatus(normalizedAvailability);
       setIsVisibleInPool(effectiveVisibleInPool);
@@ -3977,11 +3983,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             <span className="text-right">{degree}</span>
                           </div>
                         ) : null}
-                        {profileData.gpa ? (
+                        {formatGpa(profileData.gpa) ? (
                           <div className="flex items-start justify-between gap-3">
                             <span className="text-slate-500 shrink-0">GPA</span>
                             <span className="text-right font-mono">
-                              {profileData.gpa}
+                              {formatGpa(profileData.gpa)}
                             </span>
                           </div>
                         ) : null}
@@ -3995,7 +4001,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         ) : null}
                         {!school &&
                         !degree &&
-                        !profileData.gpa &&
+                        !formatGpa(profileData.gpa) &&
                         !profileData.gradYear ? (
                           <p className="text-slate-500">
                             Education details not provided. Add them in Academics
@@ -4051,15 +4057,30 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         </label>
                         <input
                           type="text"
+                          inputMode="decimal"
+                          placeholder="3.8"
                           value={profileData.gpa}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            if (!isGpaDraft(next)) {
+                              return;
+                            }
                             setProfileData({
                               ...profileData,
-                              gpa: e.target.value,
-                            })
-                          }
+                              gpa: next,
+                            });
+                          }}
+                          onBlur={() => {
+                            setProfileData({
+                              ...profileData,
+                              gpa: formatGpa(profileData.gpa),
+                            });
+                          }}
                           className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
                         />
+                        <p className="mt-1.5 text-[10px] text-slate-500">
+                          4.0 scale only (for example 4.0 or 3.8).
+                        </p>
                       </div>
                       <div>
                         <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">

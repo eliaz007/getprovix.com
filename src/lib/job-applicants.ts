@@ -20,6 +20,7 @@ import {
   resolveCandidateGithubUrl,
   type TalentPoolCandidate,
 } from "@/lib/talent-pool-candidate";
+import { formatGpa } from "@/lib/gpa";
 import { educationFromProfileRow } from "@/lib/talent-pool-profiles";
 import {
   DEFAULT_WORK_PREFERENCE,
@@ -344,7 +345,7 @@ export function mapEmployerApplicant(input: {
     skills,
     university: education.university,
     major: education.major,
-    gpa: education.gpa,
+    gpa: formatGpa(education.gpa),
     graduationYear: education.graduationYear,
     matchScore,
     fitVerdict: scoreToFitVerdict(matchScore),
@@ -445,7 +446,7 @@ export function mapApplicantToTalentCandidate(
     role: applicant.headline,
     university: applicant.university,
     major: applicant.major,
-    gpa: applicant.gpa,
+    gpa: formatGpa(applicant.gpa),
     graduationYear: applicant.graduationYear,
     skills: applicant.skills,
     rating: applicant.aiScoreLabel || `${matchScore}% Match`,

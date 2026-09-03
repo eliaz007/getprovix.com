@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { formatGpa } from "@/lib/gpa";
 import { educationFromProfileRow, hydrateRowsWithEducation } from "@/lib/talent-pool-profiles";
 import {
   findMentionedColumn,
@@ -316,7 +317,7 @@ export function hydrateScreenCandidateFromProfile(
     degree: education.major || candidate.degree || education.university,
     university: education.university || candidate.university || "",
     major: education.major || candidate.major || "",
-    gpa: education.gpa || candidate.gpa || "",
+    gpa: formatGpa(education.gpa) || formatGpa(candidate.gpa),
     graduation_year:
       education.graduationYear || candidate.graduation_year || "",
     experience:

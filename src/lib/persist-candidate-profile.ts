@@ -6,6 +6,7 @@ import {
   normalizeCandidateTimezone,
   normalizeWorkPreference,
 } from "@/lib/work-preference";
+import { formatGpa } from "@/lib/gpa";
 import { normalizeGitHubUrl } from "@/lib/validate-github-url";
 
 export type CandidateProfileSaveInput = {
@@ -86,7 +87,7 @@ export function buildCandidateProfileUpdatePayload(
     is_visible_in_pool: Boolean(input.isVisibleInPool),
     visible_to_employers: Boolean(input.isVisibleInPool),
     graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
-    gpa: nullIfEmpty(input.gpa),
+    gpa: nullIfEmpty(formatGpa(input.gpa)),
     key_accomplishments: nullIfEmpty(input.keyAccomplishments),
   };
 

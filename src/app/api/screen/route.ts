@@ -21,9 +21,10 @@ import {
   normalizeAuditChecks,
   type AuditCheck,
 } from "@/lib/audit-checks";
+import { formatGpa } from "@/lib/gpa";
 import { createClient } from "@/utils/supabase/server";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 type CandidatePayload = {
   name?: string;
@@ -647,7 +648,7 @@ async function generateGeminiScreen(
         degree: candidate.degree ?? "",
         university: candidate.university ?? "",
         major: candidate.major ?? "",
-        gpa: candidate.gpa ?? "",
+        gpa: formatGpa(candidate.gpa),
         graduation_year: candidate.graduation_year ?? "",
         bio: (candidate.bio ?? "").slice(0, 600),
         experience: candidate.experience ?? "",
@@ -775,7 +776,26 @@ export async function POST(request: Request) {
     if (githubUrl) {
       githubAudit = await fetchGitHubAudit(githubUrl);
     }
+  } catch (error) {
+    console.error("[screen] GitHub fetch sequence failed:", error);
+    githubAudit = {
+      repo_url: githubUrl ?? "",
+      owner: "",
+      repo: "",
+      stars: null,
+      forks: null,
+      created_at: null,
+      language: null,
+      commit_count_sampled: 0,
+      commit_dates: [],
+      readme_excerpt: null,
+      fetch_warnings: [
+        "The GitHub fetch sequence timed out or dropped. Retry the live audit to reload repository artifacts.",
+      ],
+    };
+  }
 
+  try {
     const result = await generateGeminiScreen(candidate, job, githubAudit);
     const persisted = await persistScreeningResult(
       candidate_key,
@@ -785,13 +805,14 @@ export async function POST(request: Request) {
     );
     return NextResponse.json({ ...result, persisted });
   } catch (error) {
-    console.error("[screen] GitHub/Gemini execution failed:", error);
+    console.error("[screen] Gemini execution failed:", error);
     return NextResponse.json(
       {
         error:
           "The live GitHub audit could not be completed. Please retry.",
+        retryable: true,
       },
-      { status: 500 }
+      { status: 503 }
     );
   }
 }

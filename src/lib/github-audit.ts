@@ -28,6 +28,11 @@ export type GitHubArtifactAudit = {
   fetch_warnings: string[];
 };
 
+const GITHUB_FETCH_TIMEOUT_MS = 20_000;
+const GITHUB_FETCH_RETRY_COUNT = 2;
+const GITHUB_FETCH_RETRY_DELAY_MS = 500;
+const RETRYABLE_GITHUB_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
 const RESERVED_GITHUB_OWNERS = new Set([
   "orgs",
   "organizations",
@@ -97,6 +102,83 @@ function githubHeaders(): HeadersInit {
   return headers;
 }
 
+function isRetryableGithubError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const name = "name" in error ? String(error.name) : "";
+  if (name === "AbortError" || name === "TimeoutError") {
+    return true;
+  }
+
+  if (error instanceof TypeError) {
+    return true;
+  }
+
+  const message = "message" in error ? String(error.message) : "";
+  return /aborted|timed?\s*out|timeout|failed to fetch|network|econnreset|socket hang up/i.test(
+    message
+  );
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function githubFetch(
+  url: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= GITHUB_FETCH_RETRY_COUNT; attempt++) {
+    try {
+      const headers = new Headers(githubHeaders());
+      const extraHeaders = new Headers(init.headers);
+      extraHeaders.forEach((value, key) => {
+        headers.set(key, value);
+      });
+
+      const response = await fetch(url, {
+        ...init,
+        headers,
+        cache: "no-store",
+        signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS),
+      });
+
+      if (
+        RETRYABLE_GITHUB_STATUSES.has(response.status) &&
+        attempt < GITHUB_FETCH_RETRY_COUNT
+      ) {
+        await delay(GITHUB_FETCH_RETRY_DELAY_MS * (attempt + 1));
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error;
+      console.error(
+        `[github-audit] fetch attempt ${attempt + 1} failed for ${url}:`,
+        error
+      );
+
+      if (
+        !isRetryableGithubError(error) ||
+        attempt === GITHUB_FETCH_RETRY_COUNT
+      ) {
+        throw error;
+      }
+
+      await delay(GITHUB_FETCH_RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("GitHub fetch failed after retries.");
+}
+
 async function fetchRepoAudit(
   owner: string,
   repo: string
@@ -111,10 +193,7 @@ async function fetchRepoAudit(
   let language: string | null = null;
 
   try {
-    const repoResponse = await fetch(base, {
-      headers: githubHeaders(),
-      next: { revalidate: 300 },
-    });
+    const repoResponse = await githubFetch(base);
 
     if (repoResponse.ok) {
       const repoData = (await repoResponse.json()) as {
@@ -134,16 +213,15 @@ async function fetchRepoAudit(
     }
   } catch (error) {
     console.error("[github-audit] GitHub repo fetch failed:", error);
-    warnings.push("Could not fetch GitHub repository metadata.");
+    warnings.push(
+      "Repository metadata timed out or dropped. Retry the live audit to fetch GitHub artifacts."
+    );
   }
 
   const commitSummaries: Array<{ date: string }> = [];
 
   try {
-    const commitsResponse = await fetch(`${base}/commits?per_page=10`, {
-      headers: githubHeaders(),
-      next: { revalidate: 300 },
-    });
+    const commitsResponse = await githubFetch(`${base}/commits?per_page=10`);
 
     if (commitsResponse.ok) {
       const commitsData = (await commitsResponse.json()) as Array<{
@@ -162,18 +240,18 @@ async function fetchRepoAudit(
     }
   } catch (error) {
     console.error("[github-audit] GitHub commits fetch failed:", error);
-    warnings.push("Could not fetch GitHub commit activity.");
+    warnings.push(
+      "Commit history timed out or dropped during the GitHub fetch sequence."
+    );
   }
 
   let readme_excerpt: string | null = null;
 
   try {
-    const readmeResponse = await fetch(`${base}/readme`, {
+    const readmeResponse = await githubFetch(`${base}/readme`, {
       headers: {
-        ...githubHeaders(),
         Accept: "application/vnd.github.raw",
       },
-      next: { revalidate: 300 },
     });
 
     if (readmeResponse.ok) {
@@ -182,7 +260,7 @@ async function fetchRepoAudit(
     }
   } catch (error) {
     console.error("[github-audit] GitHub readme fetch failed:", error);
-    warnings.push("README not available or could not be fetched.");
+    warnings.push("README timed out or could not be fetched.");
   }
 
   return {
@@ -204,10 +282,7 @@ async function fetchGitHubUser(
   username: string
 ): Promise<GitHubProfileContext | null> {
   try {
-    const response = await fetch(`https://api.github.com/users/${username}`, {
-      headers: githubHeaders(),
-      next: { revalidate: 300 },
-    });
+    const response = await githubFetch(`https://api.github.com/users/${username}`);
 
     if (!response.ok) {
       return null;
@@ -241,12 +316,8 @@ async function fetchTopOwnedRepos(
   limit = 3
 ): Promise<Array<{ owner: string; repo: string }>> {
   try {
-    const response = await fetch(
-      `https://api.github.com/users/${username}/repos?sort=updated&per_page=8&type=owner`,
-      {
-        headers: githubHeaders(),
-        next: { revalidate: 300 },
-      }
+    const response = await githubFetch(
+      `https://api.github.com/users/${username}/repos?sort=updated&per_page=8&type=owner`
     );
 
     if (!response.ok) {
@@ -283,43 +354,97 @@ export async function fetchGitHubProfileArtifacts(
     return null;
   }
 
-  const warnings: string[] = [];
-  const profile = await fetchGitHubUser(parsed.owner);
-  if (!profile) {
-    warnings.push(`Could not load GitHub profile for ${parsed.owner}.`);
-  }
+  try {
+    const warnings: string[] = [];
+    const profile = await fetchGitHubUser(parsed.owner);
+    if (!profile) {
+      warnings.push(`Could not load GitHub profile for ${parsed.owner}.`);
+    }
 
-  const targets = parsed.repo
-    ? [{ owner: parsed.owner, repo: parsed.repo }]
-    : await fetchTopOwnedRepos(parsed.owner, 3);
+    const targets = parsed.repo
+      ? [{ owner: parsed.owner, repo: parsed.repo }]
+      : await fetchTopOwnedRepos(parsed.owner, 3);
 
-  if (targets.length === 0) {
-    warnings.push(
-      parsed.repo
-        ? `No GitHub repository artifacts found for ${parsed.owner}/${parsed.repo}.`
-        : `No public owned repositories found for ${parsed.owner}.`
+    if (targets.length === 0) {
+      warnings.push(
+        parsed.repo
+          ? `No GitHub repository artifacts found for ${parsed.owner}/${parsed.repo}.`
+          : `No public owned repositories found for ${parsed.owner}.`
+      );
+    }
+
+    const artifacts = await Promise.all(
+      targets.map((target) => fetchRepoAudit(target.owner, target.repo))
     );
+
+    for (const artifact of artifacts) {
+      warnings.push(...artifact.fetch_warnings);
+    }
+
+    return {
+      source_url: url.trim(),
+      profile,
+      artifacts,
+      fetch_warnings: warnings,
+    };
+  } catch (error) {
+    console.error("[github-audit] GitHub artifact sequence failed:", error);
+    return {
+      source_url: url.trim(),
+      profile: null,
+      artifacts: [],
+      fetch_warnings: [
+        "The GitHub fetch sequence timed out or dropped. Retry the live audit to reload repository artifacts.",
+      ],
+    };
   }
-
-  const artifacts = await Promise.all(
-    targets.map((target) => fetchRepoAudit(target.owner, target.repo))
-  );
-
-  for (const artifact of artifacts) {
-    warnings.push(...artifact.fetch_warnings);
-  }
-
-  return {
-    source_url: url.trim(),
-    profile,
-    artifacts,
-    fetch_warnings: warnings,
-  };
 }
 
 export async function fetchGitHubAudit(
   repoUrl: string
 ): Promise<GitHubAuditContext | null> {
-  const artifacts = await fetchGitHubProfileArtifacts(repoUrl);
-  return artifacts?.artifacts[0] ?? null;
+  try {
+    const artifacts = await fetchGitHubProfileArtifacts(repoUrl);
+    const primary = artifacts?.artifacts[0];
+    if (primary) {
+      return primary;
+    }
+
+    if (artifacts?.fetch_warnings.length) {
+      const parsed = parseGitHubUrl(repoUrl);
+      return {
+        repo_url: repoUrl.trim(),
+        owner: parsed?.owner ?? "",
+        repo: parsed?.repo ?? "",
+        stars: null,
+        forks: null,
+        created_at: null,
+        language: null,
+        commit_count_sampled: 0,
+        commit_dates: [],
+        readme_excerpt: null,
+        fetch_warnings: artifacts.fetch_warnings,
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error("[github-audit] fetchGitHubAudit failed:", error);
+    const parsed = parseGitHubUrl(repoUrl);
+    return {
+      repo_url: repoUrl.trim(),
+      owner: parsed?.owner ?? "",
+      repo: parsed?.repo ?? "",
+      stars: null,
+      forks: null,
+      created_at: null,
+      language: null,
+      commit_count_sampled: 0,
+      commit_dates: [],
+      readme_excerpt: null,
+      fetch_warnings: [
+        "The live GitHub audit timed out or dropped. Retry to fetch repository artifacts.",
+      ],
+    };
+  }
 }

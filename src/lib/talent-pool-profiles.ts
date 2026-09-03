@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { formatGpa } from "@/lib/gpa";
 import { isEmployerRole } from "@/lib/dashboard-account";
 import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
 import {
@@ -105,7 +106,7 @@ export function educationFromProfileRow(
   return {
     university: valueFromRow(row, UNIVERSITY_KEYS),
     major: valueFromRow(row, MAJOR_KEYS),
-    gpa: valueFromRow(row, GPA_KEYS),
+    gpa: formatGpa(valueFromRow(row, GPA_KEYS)),
     graduationYear: valueFromRow(row, GRADUATION_YEAR_KEYS),
   };
 }
@@ -136,7 +137,7 @@ export function candidateEducationFields(
   return {
     university: candidate.university,
     major: candidate.major,
-    gpa: candidate.gpa,
+    gpa: formatGpa(candidate.gpa),
     graduationYear: candidate.graduationYear,
   };
 }
@@ -145,7 +146,7 @@ export function hasTalentEducation(education: TalentPoolEducation): boolean {
   return [
     education.university,
     education.major,
-    education.gpa,
+    formatGpa(education.gpa),
     education.graduationYear,
   ].some(Boolean);
 }
@@ -157,7 +158,7 @@ export function mergeTalentEducation(
   return {
     university: incoming.university || current.university,
     major: incoming.major || current.major,
-    gpa: incoming.gpa || current.gpa,
+    gpa: formatGpa(incoming.gpa) || formatGpa(current.gpa),
     graduationYear: incoming.graduationYear || current.graduationYear,
   };
 }

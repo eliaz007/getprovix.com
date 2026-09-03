@@ -7,6 +7,7 @@ import { getPublicCandidateLocation } from "@/lib/candidate-anonymization";
 import { scoreTalentMatch } from "@/lib/match-heuristic";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { formatGpa } from "@/lib/gpa";
 import {
   educationFromProfileRow,
   hasTalentEducation,
@@ -261,7 +262,7 @@ function mapApplicationToApplicant(
     skills,
     university: education.university,
     major: education.major,
-    gpa: education.gpa,
+    gpa: formatGpa(education.gpa),
     graduationYear: education.graduationYear,
     aiScoreLabel: formatAiScoreLabel(
       matchByCandidateId.get(row.candidate_id),
@@ -556,10 +557,12 @@ export default function JobApplicantsDrawer({
                         <span className="text-right">{applicant.major}</span>
                       </div>
                     ) : null}
-                    {applicant.gpa ? (
+                    {formatGpa(applicant.gpa) ? (
                       <div className="flex items-start justify-between gap-3">
                         <span className="text-slate-500 shrink-0">GPA</span>
-                        <span className="text-right font-mono">{applicant.gpa}</span>
+                        <span className="text-right font-mono">
+                          {formatGpa(applicant.gpa)}
+                        </span>
                       </div>
                     ) : null}
                     {applicant.graduationYear ? (

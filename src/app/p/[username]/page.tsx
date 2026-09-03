@@ -14,6 +14,7 @@ import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadg
 import Card from "@/components/ui/Card";
 import ScoreMeter from "@/components/ScoreMeter";
 import { resolveCandidateScore } from "@/lib/candidate-score";
+import { formatGpa } from "@/lib/gpa";
 import { getPublicProfileBySlug } from "@/lib/public-profile";
 import { buildPublicProfileUrl } from "@/lib/profile-url";
 import type { Metadata } from "next";
@@ -87,7 +88,7 @@ export default async function PublicCandidateProfilePage({
           const academicLine = [
             profile.university,
             profile.major,
-            profile.gpa ? `GPA ${profile.gpa}` : null,
+            formatGpa(profile.gpa) ? `GPA ${formatGpa(profile.gpa)}` : null,
             profile.graduationYear ? `Class of ${profile.graduationYear}` : null,
           ]
             .filter(Boolean)
@@ -229,10 +230,12 @@ export default async function PublicCandidateProfilePage({
                         <span className="text-right">{profile.major}</span>
                       </div>
                     ) : null}
-                    {profile.gpa ? (
+                    {formatGpa(profile.gpa) ? (
                       <div className="flex items-start justify-between gap-3">
                         <span className="text-zinc-500 shrink-0">GPA</span>
-                        <span className="text-right font-mono">{profile.gpa}</span>
+                        <span className="text-right font-mono">
+                          {formatGpa(profile.gpa)}
+                        </span>
                       </div>
                     ) : null}
                     {profile.graduationYear ? (

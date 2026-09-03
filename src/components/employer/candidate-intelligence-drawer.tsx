@@ -12,6 +12,7 @@ import {
   getPublicCandidateInitials,
   redactPersonalNamesFromText,
 } from "@/lib/candidate-anonymization";
+import { formatGpa } from "@/lib/gpa";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import {
   formatTalentMatchLabel,
@@ -287,10 +288,12 @@ export default function CandidateIntelligenceDrawer({
                     <span className="text-right">{liveCandidate.major}</span>
                   </div>
                 ) : null}
-                {liveCandidate.gpa ? (
+                {formatGpa(liveCandidate.gpa) ? (
                   <div className="flex items-start justify-between gap-3">
                     <span className="text-slate-500 shrink-0">GPA</span>
-                    <span className="text-right font-mono">{liveCandidate.gpa}</span>
+                    <span className="text-right font-mono">
+                      {formatGpa(liveCandidate.gpa)}
+                    </span>
                   </div>
                 ) : null}
                 {liveCandidate.graduationYear ? (
@@ -301,7 +304,7 @@ export default function CandidateIntelligenceDrawer({
                 ) : null}
                 {!liveCandidate.university &&
                 !liveCandidate.major &&
-                !liveCandidate.gpa &&
+                !formatGpa(liveCandidate.gpa) &&
                 !liveCandidate.graduationYear ? (
                   <p className="text-slate-500">Education details not provided.</p>
                 ) : null}

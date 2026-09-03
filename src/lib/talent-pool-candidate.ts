@@ -88,7 +88,69 @@ export const DEEP_SCREENING_STAGES = [
   "Synthesizing 0–100 score & founder interview rubrics...",
 ] as const;
 
-export const DEEP_SCREENING_FETCH_TIMEOUT_MS = 90_000;
+export const DEEP_SCREENING_FETCH_TIMEOUT_MS = 180_000;
+
+export function isAbortOrTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const name = "name" in error ? String(error.name) : "";
+  if (name === "AbortError" || name === "TimeoutError") {
+    return true;
+  }
+
+  const message = "message" in error ? String(error.message) : "";
+  return /aborted|timed?\s*out|timeout/i.test(message);
+}
+
+export function isNetworkDropError(error: unknown): boolean {
+  if (isAbortOrTimeoutError(error)) {
+    return true;
+  }
+
+  if (error instanceof TypeError) {
+    return true;
+  }
+
+  const message =
+    error && typeof error === "object" && "message" in error
+      ? String(error.message)
+      : "";
+  return /failed to fetch|networkerror|load failed|err_network|econnreset|econnrefused|socket hang up/i.test(
+    message
+  );
+}
+
+export function describeDeepScreeningFailure(
+  error: unknown,
+  status?: number | null
+): string {
+  if (status === 504 || status === 408 || isAbortOrTimeoutError(error)) {
+    return "The live audit timed out during the GitHub fetch sequence. Please retry.";
+  }
+
+  if (status === 502 || status === 503 || isNetworkDropError(error)) {
+    return "The live audit dropped before it finished. Check your connection and retry.";
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.trim() &&
+    !/^deep screening failed/i.test(error.message)
+  ) {
+    return error.message.trim();
+  }
+
+  return "Could not complete the live audit. Please retry.";
+}
 
 export function getCandidateScreeningKey(candidate: TalentPoolCandidate): string {
   return (

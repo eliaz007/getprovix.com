@@ -15,6 +15,7 @@ import {
   type EmployerApplicantView,
   type EmployerApplicantsPayload,
 } from "@/lib/job-applicants";
+import { formatGpa } from "@/lib/gpa";
 import { hasTalentEducation } from "@/lib/talent-pool-profiles";
 import { subscribeIncomingJobInterest } from "@/lib/job-interest";
 import { createClient } from "@/utils/supabase/client";
@@ -383,10 +384,12 @@ export default function EmployerApplicantsSection({
                         <span className="text-right">{applicant.major}</span>
                       </div>
                     ) : null}
-                    {applicant.gpa ? (
+                    {formatGpa(applicant.gpa) ? (
                       <div className="flex items-start justify-between gap-3">
                         <span className="text-slate-500 shrink-0">GPA</span>
-                        <span className="text-right font-mono">{applicant.gpa}</span>
+                        <span className="text-right font-mono">
+                          {formatGpa(applicant.gpa)}
+                        </span>
                       </div>
                     ) : null}
                     {!hasTalentEducation(applicant) ? (
