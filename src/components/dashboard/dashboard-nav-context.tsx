@@ -16,6 +16,8 @@ import type { User } from "@supabase/supabase-js";
 import { resolveAccountRole } from "@/lib/account-role";
 import {
   canAccessTalentPool,
+  dashboardTabFromSearchParam,
+  isDashboardRootPath,
   isEmployeeRole,
   isEmployerRole,
   resolveDashboardTabFromLocation,
@@ -118,10 +120,12 @@ function DashboardNavProviderImpl({
   tabParam: string | null;
 }) {
   const pathname = usePathname();
-  const locationTab = resolveDashboardTabFromLocation(pathname, tabParam);
-  const locationKey = `${pathname}?${tabParam ?? ""}`;
+  const urlTab = isDashboardRootPath(pathname)
+    ? dashboardTabFromSearchParam(tabParam)
+    : null;
+  const pathTab = resolveDashboardTabFromLocation(pathname, tabParam);
   const [userTab, setUserTab] = useState<DashboardTab | null>(null);
-  const [seenLocationKey, setSeenLocationKey] = useState(locationKey);
+  const [seenPathname, setSeenPathname] = useState(pathname);
   const userSelectedTabRef = useRef(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountRole, setAccountRole] = useState<string | null>(null);
@@ -136,17 +140,22 @@ function DashboardNavProviderImpl({
     ((jobId: string) => void) | null
   >(null);
 
-  const locationChanged = seenLocationKey !== locationKey;
+  const locationChanged = seenPathname !== pathname;
   if (locationChanged) {
-    setSeenLocationKey(locationKey);
+    setSeenPathname(pathname);
     setUserTab(null);
   }
 
-  if (locationTab) {
+  if (urlTab) {
     userSelectedTabRef.current = true;
+    if (userTab !== urlTab) {
+      setUserTab(urlTab);
+    }
   }
 
-  const activeTab = (locationChanged ? null : userTab) ?? locationTab ?? "my_profile";
+  const activeTab = isDashboardRootPath(pathname)
+    ? (urlTab ?? (locationChanged ? null : userTab) ?? "my_profile")
+    : ((locationChanged ? null : userTab) ?? pathTab ?? "my_profile");
 
   const setOnOpenJobApplicants = useCallback(
     (handler: ((jobId: string) => void) | null) => {
@@ -180,6 +189,21 @@ function DashboardNavProviderImpl({
   useEffect(() => {
     setMobileNavOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!isDashboardRootPath(pathname) || !urlTab) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("tab")) {
+      return;
+    }
+
+    params.delete("tab");
+    const next = `${pathname}${params.toString() ? `?${params}` : ""}`;
+    window.history.replaceState({}, "", next);
+  }, [pathname, urlTab]);
 
   useEffect(() => {
     let active = true;

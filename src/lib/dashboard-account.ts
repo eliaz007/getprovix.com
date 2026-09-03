@@ -86,7 +86,8 @@ export function resolveDashboardTabFromLocation(
   if (!isDashboardRootPath(pathname)) {
     return null;
   }
-  return dashboardTabFromSearchParam(tabParam);
+
+  return dashboardTabFromSearchParam(tabParam) ?? null;
 }
 
 export function isPitchStudioPath(pathname: string): boolean {
