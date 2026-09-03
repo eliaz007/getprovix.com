@@ -3622,8 +3622,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const isLoading =
     loadingProfile ||
     ((activeTab === "opportunities" || activeTab === "opportunity_radar") &&
-      jobsLoading) ||
-    (activeTab === "intro_requests" && candidateIntroLoading);
+      jobsLoading);
 
   return (
     <>
@@ -4564,14 +4563,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 </div>
               </div>
 
-              <div className="mb-6 inline-flex rounded-lg border border-zinc-800 bg-[#111111] p-1">
+              <div className="flex border-b border-zinc-800 mb-8 space-x-6">
                 <button
                   type="button"
+                  aria-pressed={candidateIntroInboxFilter === "inbox"}
                   onClick={() => setCandidateIntroInboxFilter("inbox")}
-                  className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-colors cursor-pointer ${
+                  className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
                     candidateIntroInboxFilter === "inbox"
-                      ? "bg-slate-800 text-white"
-                      : "text-zinc-400 hover:text-white"
+                      ? "text-indigo-400 border-b-2 border-indigo-500"
+                      : "text-slate-500 hover:text-slate-300"
                   }`}
                 >
                   Inbox
@@ -4581,11 +4581,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 </button>
                 <button
                   type="button"
+                  aria-pressed={candidateIntroInboxFilter === "dismissed"}
                   onClick={() => setCandidateIntroInboxFilter("dismissed")}
-                  className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-colors cursor-pointer ${
+                  className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
                     candidateIntroInboxFilter === "dismissed"
-                      ? "bg-slate-800 text-white"
-                      : "text-zinc-400 hover:text-white"
+                      ? "text-indigo-400 border-b-2 border-indigo-500"
+                      : "text-slate-500 hover:text-slate-300"
                   }`}
                 >
                   Dismissed
@@ -4676,11 +4677,30 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               {formatRelativeTime(request.created_at)}
                             </p>
                           </div>
-                          <span
-                            className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${getCandidateIntroStatusBadgeClass(status)}`}
-                          >
-                            {getCandidateIntroStatusLabel(status)}
-                          </span>
+                          <div className="flex items-start gap-1.5 shrink-0">
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${getCandidateIntroStatusBadgeClass(status)}`}
+                            >
+                              {getCandidateIntroStatusLabel(status)}
+                            </span>
+                            {!isDismissed ? (
+                              <button
+                                type="button"
+                                aria-label="Dismiss intro request"
+                                title="Dismiss"
+                                onClick={() =>
+                                  void handleCandidateIntroDismiss(
+                                    request.id,
+                                    true
+                                  )
+                                }
+                                disabled={isResponding}
+                                className="p-1.5 rounded-lg border border-zinc-800 text-slate-500 hover:text-red-300 hover:border-red-500/30 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-60"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
 
                         <div className="rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3 mb-4 space-y-2">
@@ -4724,20 +4744,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             <button
                               type="button"
                               onClick={() =>
-                                void handleCandidateIntroDismiss(
-                                  request.id,
-                                  true
-                                )
-                              }
-                              disabled={isResponding}
-                              className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-2 rounded-lg border border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                              Dismiss
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
                                 void handleCandidateIntroResponse(
                                   request.id,
                                   "decline"
@@ -4763,26 +4769,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             </button>
                           </div>
                         ) : (
-                          <div className="mt-auto flex items-center justify-between gap-3 pt-4 border-t border-zinc-800">
+                          <div className="mt-auto pt-4 border-t border-zinc-800">
                             <p className="text-xs text-slate-500">
                               {originalStatus === "accepted"
                                 ? "You accepted this intro. Check your inbox for the mutual introduction email."
                                 : "You declined this introduction request."}
                             </p>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void handleCandidateIntroDismiss(
-                                  request.id,
-                                  true
-                                )
-                              }
-                              disabled={isResponding}
-                              className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-bold px-3 py-2 rounded-lg border border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                              {isResponding ? "Saving..." : "Dismiss"}
-                            </button>
                           </div>
                         )}
                       </div>
