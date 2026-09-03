@@ -40,6 +40,25 @@ export function isDashboardRootPath(pathname: string): boolean {
   return pathname === "/dashboard";
 }
 
+export function dashboardTabHref(tab: DashboardTab): string {
+  if (tab === "opportunities") {
+    return "/opportunities";
+  }
+  if (tab === "my_profile") {
+    return "/dashboard";
+  }
+  return `/dashboard?tab=${encodeURIComponent(tab)}`;
+}
+
+export function dashboardTabFromSearchParam(
+  tab: string | null | undefined
+): DashboardTab | null {
+  if (tab === "intro_requests") {
+    return "intro_requests";
+  }
+  return null;
+}
+
 export function isPitchStudioPath(pathname: string): boolean {
   return pathname === "/dashboard/pitch-studio";
 }

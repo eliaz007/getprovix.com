@@ -15,6 +15,8 @@ import type { User } from "@supabase/supabase-js";
 import { resolveAccountRole } from "@/lib/account-role";
 import {
   canAccessTalentPool,
+  dashboardTabFromSearchParam,
+  isDashboardRootPath,
   isEmployeeRole,
   isEmployerRole,
   type DashboardTab,
@@ -126,6 +128,22 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setMobileNavOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isDashboardRootPath(pathname)) {
+      return;
+    }
+
+    const tab = dashboardTabFromSearchParam(
+      new URLSearchParams(window.location.search).get("tab")
+    );
+    if (!tab) {
+      return;
+    }
+
+    userSelectedTabRef.current = true;
+    setActiveTabState(tab);
   }, [pathname]);
 
   useEffect(() => {

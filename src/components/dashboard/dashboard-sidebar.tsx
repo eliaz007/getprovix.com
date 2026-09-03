@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { PenTool, ShieldCheck, Terminal } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import {
+  dashboardTabHref,
   isAuditorPath,
   isDashboardAuditorPath,
   isDashboardRootPath,
@@ -224,7 +225,7 @@ function DashboardTabLink({
   if (tab === "opportunities") {
     control = (
       <Link
-        href="/opportunities"
+        href={dashboardTabHref(tab)}
         onClick={() => setMobileNavOpen(false)}
         className={navItemClass(isActive, variant)}
       >
@@ -260,7 +261,7 @@ function DashboardTabLink({
   } else {
     control = (
       <Link
-        href="/dashboard"
+        href={dashboardTabHref(tab)}
         onClick={selectTab}
         className={navItemClass(isActive, variant)}
       >

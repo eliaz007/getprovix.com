@@ -153,7 +153,10 @@ import {
 } from "@/lib/persist-employer-profile";
 import { employerIsVerifiedInDatabase } from "@/lib/persist-employer-verified";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
-import type { DashboardTab } from "@/lib/dashboard-account";
+import {
+  dashboardTabFromSearchParam,
+  type DashboardTab,
+} from "@/lib/dashboard-account";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { formatGpa, isGpaDraft } from "@/lib/gpa";
 import ScoreMeter from "@/components/ScoreMeter";
@@ -1645,8 +1648,11 @@ export default function DashboardPage() {
       clearVerificationQuery();
     }
 
-    const tab = params.get("tab");
+    const tab = dashboardTabFromSearchParam(params.get("tab"));
     if (tab === "intro_requests" && !isBusinessAccount && !isEmployeeAccount) {
+      if (!authChecked) {
+        return;
+      }
       if (!user) {
         if (navSetAuthModalOpen) {
           navSetAuthModalOpen(true);
@@ -1659,6 +1665,7 @@ export default function DashboardPage() {
       setActiveTab("intro_requests");
     }
   }, [
+    authChecked,
     navSetAuthModalOpen,
     setNavIsVerifiedEmployer,
     isBusinessAccount,
