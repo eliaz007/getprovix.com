@@ -315,16 +315,18 @@ export default function EmployerApplicantsSection({
                     {applicant.initials}
                   </div>
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
                       <h2 className="font-bold text-white text-sm truncate">
                         {applicant.codenameAlias}
                       </h2>
                       <span
-                        className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${applicantStatusClass(applicant.status)}`}
+                        className={`inline-flex shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${applicantStatusClass(applicant.status)}`}
                       >
                         {applicantStatusLabel(applicant.status)}
                       </span>
-                      {applicant.verifiedOnProvix ? <VerifiedOnProvixPill /> : null}
+                      <VerifiedOnProvixPill
+                        verified={applicant.verifiedOnProvix}
+                      />
                     </div>
                     <p className="text-xs text-indigo-300 font-medium mt-0.5 truncate">
                       {applicant.headline}

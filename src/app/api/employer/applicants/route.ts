@@ -190,7 +190,8 @@ export async function GET(request: Request) {
 
   if (profilesByRef.size === 0 && candidateIds.length > 0) {
     const fallbackColumns = APPLICANT_PROFILE_COLUMNS.filter(
-      (column) => column !== "key_accomplishments"
+      (column) =>
+        column !== "key_accomplishments" && column !== "audit_data"
     );
     profilesByRef = await fetchProfilesForCandidateIds(
       reader,

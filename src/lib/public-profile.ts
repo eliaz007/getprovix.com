@@ -75,7 +75,9 @@ type PublicProfileRow = {
   work_preference?: string | null;
   is_visible_in_pool?: boolean | null;
   integrity_score?: number | null;
+  audit_data?: unknown;
   has_github_repos?: boolean | null;
+  is_verified_on_provix?: boolean | null;
 };
 
 function formatExternalUrl(value: string): string {
@@ -151,7 +153,10 @@ function mapRowToPublicProfile(row: PublicProfileRow): PublicCandidateProfile {
     workPreference: normalizeWorkPreference(row.work_preference),
     timezone: normalizeCandidateTimezone(row.timezone),
     hasProofOfWork: Boolean(portfolioUrl || youtubeUrl),
-    isVerifiedOnProvix: isVerifiedOnProvix(row),
+    isVerifiedOnProvix:
+      typeof row.is_verified_on_provix === "boolean"
+        ? row.is_verified_on_provix
+        : isVerifiedOnProvix(row),
     hasGitHubRepos:
       row.has_github_repos === true || Boolean(portfolioUrl),
     integrityScore:
@@ -195,6 +200,7 @@ const PUBLIC_PROFILE_SELECT_COLUMNS = [
   "work_preference",
   "is_visible_in_pool",
   "integrity_score",
+  "audit_data",
 ] as const;
 
 function isMissingRpcFunctionError(error: {
@@ -344,5 +350,7 @@ export async function getPublicProfileBySlug(
     school: viaServiceRole.school || viaRpc.school,
     gpa: formatGpa(viaServiceRole.gpa) || formatGpa(viaRpc.gpa) || null,
     graduationYear: viaServiceRole.graduationYear || viaRpc.graduationYear,
+    isVerifiedOnProvix:
+      viaServiceRole.isVerifiedOnProvix || viaRpc.isVerifiedOnProvix,
   };
 }

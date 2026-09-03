@@ -210,15 +210,17 @@ export default function CandidateIntelligenceDrawer({
                     timezone={liveCandidate.timezone}
                     className="mt-2"
                   />
-                  {!isUnlocked && liveCandidate.verifiedOnProvix && (
-                    <div className="mt-2">
-                      <VerifiedOnProvixPill />
+                  {(liveCandidate.verifiedOnProvix || isUnlocked) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <VerifiedOnProvixPill
+                        verified={Boolean(liveCandidate.verifiedOnProvix)}
+                      />
+                      {isUnlocked ? (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                          Introduction unlocked
+                        </span>
+                      ) : null}
                     </div>
-                  )}
-                  {isUnlocked && (
-                    <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                      Introduction unlocked
-                    </span>
                   )}
                   <span className="inline-flex mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
                     {liveCandidate.experienceLevel}

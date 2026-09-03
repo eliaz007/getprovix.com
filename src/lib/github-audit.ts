@@ -28,6 +28,34 @@ export type GitHubArtifactAudit = {
   fetch_warnings: string[];
 };
 
+export function githubAuditHasFetchedArtifacts(
+  audit: GitHubAuditContext | null | undefined
+): boolean {
+  if (!audit) {
+    return false;
+  }
+
+  return Boolean(
+    audit.owner?.trim() ||
+      audit.repo?.trim() ||
+      (typeof audit.commit_count_sampled === "number" &&
+        audit.commit_count_sampled > 0) ||
+      audit.readme_excerpt?.trim()
+  );
+}
+
+export function githubArtifactAuditSucceeded(
+  artifacts: GitHubArtifactAudit | null | undefined
+): boolean {
+  if (!artifacts) {
+    return false;
+  }
+
+  return artifacts.artifacts.some((artifact) =>
+    githubAuditHasFetchedArtifacts(artifact)
+  );
+}
+
 const GITHUB_FETCH_TIMEOUT_MS = 20_000;
 const GITHUB_FETCH_RETRY_COUNT = 2;
 const GITHUB_FETCH_RETRY_DELAY_MS = 500;

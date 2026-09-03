@@ -2,7 +2,12 @@ import {
   isEmployeeRole,
   isEmployerRole,
 } from "@/lib/dashboard-account";
+import {
+  githubAuditHasFetchedArtifacts,
+  type GitHubAuditContext,
+} from "@/lib/github-audit";
 import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
+import { clampScore0to100 } from "@/lib/score-scale";
 import { isValidGitHubUrl } from "@/lib/validate-github-url";
 
 export type PublishedCandidateProfileRow = {
@@ -30,6 +35,9 @@ export type PublishedCandidateProfileRow = {
   timezone?: string | null;
   is_visible_in_pool?: boolean | string | number | null;
   visible_to_employers?: boolean | string | number | null;
+  integrity_score?: number | string | null;
+  audit_data?: unknown;
+  github_audit?: unknown;
 };
 
 function isNonEmptyText(value: unknown): boolean {
@@ -89,10 +97,119 @@ export function hasCompleteRequiredProfileFields(
   );
 }
 
+function readNumericScore(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return clampScore0to100(value);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const numeric = Number.parseFloat(value);
+    if (Number.isFinite(numeric)) {
+      return clampScore0to100(numeric);
+    }
+  }
+
+  return null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readGitHubAuditContext(value: unknown): GitHubAuditContext | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  return {
+    repo_url: typeof record.repo_url === "string" ? record.repo_url : "",
+    owner: typeof record.owner === "string" ? record.owner : "",
+    repo: typeof record.repo === "string" ? record.repo : "",
+    stars: typeof record.stars === "number" ? record.stars : null,
+    forks: typeof record.forks === "number" ? record.forks : null,
+    created_at: typeof record.created_at === "string" ? record.created_at : null,
+    language: typeof record.language === "string" ? record.language : null,
+    commit_count_sampled:
+      typeof record.commit_count_sampled === "number"
+        ? record.commit_count_sampled
+        : 0,
+    commit_dates: Array.isArray(record.commit_dates)
+      ? record.commit_dates.filter((date): date is string => typeof date === "string")
+      : [],
+    readme_excerpt:
+      typeof record.readme_excerpt === "string" ? record.readme_excerpt : null,
+    fetch_warnings: Array.isArray(record.fetch_warnings)
+      ? record.fetch_warnings.filter(
+          (warning): warning is string => typeof warning === "string"
+        )
+      : [],
+  };
+}
+
+export function resolveStoredIntegrityScore(
+  row: Pick<
+    PublishedCandidateProfileRow,
+    "integrity_score" | "audit_data"
+  > | null | undefined
+): number | null {
+  if (!row) {
+    return null;
+  }
+
+  const fromColumn = readNumericScore(row.integrity_score);
+  if (fromColumn != null) {
+    return fromColumn;
+  }
+
+  const auditData = asRecord(row.audit_data);
+  return readNumericScore(auditData?.integrity_score);
+}
+
+/**
+ * True when a GitHub integrity audit finished and produced repo artifacts
+ * (or a persisted integrity score from an older audit that predated github_audit).
+ */
+export function hasSuccessfulGitHubIntegrityAudit(
+  row:
+    | Pick<
+        PublishedCandidateProfileRow,
+        "integrity_score" | "audit_data" | "github_audit"
+      >
+    | null
+    | undefined
+): boolean {
+  if (!row) {
+    return false;
+  }
+
+  if (resolveStoredIntegrityScore(row) == null) {
+    return false;
+  }
+
+  const auditData = asRecord(row.audit_data);
+  const githubAudit = readGitHubAuditContext(
+    row.github_audit ?? auditData?.github_audit
+  );
+
+  if (!githubAudit) {
+    return true;
+  }
+
+  return githubAuditHasFetchedArtifacts(githubAudit);
+}
+
 export function isVerifiedOnProvix(
   row: PublishedCandidateProfileRow | null | undefined
 ): boolean {
-  return hasCompleteRequiredProfileFields(row);
+  return (
+    hasCompleteRequiredProfileFields(row) &&
+    hasSuccessfulGitHubIntegrityAudit(row)
+  );
 }
 
 export function hasCandidateGitHubProfile(

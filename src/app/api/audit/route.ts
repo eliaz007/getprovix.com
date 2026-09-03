@@ -14,6 +14,8 @@ import {
 } from "@/lib/daily-scan-limit";
 import {
   fetchGitHubProfileArtifacts,
+  githubArtifactAuditSucceeded,
+  githubAuditHasFetchedArtifacts,
   type GitHubArtifactAudit,
 } from "@/lib/github-audit";
 import {
@@ -431,6 +433,61 @@ async function resolveAuditAccess(): Promise<
   return { ok: true, supabase, user, usage };
 }
 
+async function persistOwnGitHubIntegrityAudit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  score: number,
+  artifacts: GitHubArtifactAudit
+): Promise<void> {
+  const primary = artifacts.artifacts.find((artifact) =>
+    githubAuditHasFetchedArtifacts(artifact)
+  );
+  if (!primary) {
+    return;
+  }
+
+  const { data: existingRows, error: loadError } = await supabase
+    .from("profiles")
+    .select("id, audit_data")
+    .or(`id.eq.${userId},user_id.eq.${userId}`)
+    .limit(1);
+
+  if (loadError) {
+    console.error("[audit] failed to load profile for integrity persist:", loadError);
+    return;
+  }
+
+  const existing = Array.isArray(existingRows) ? existingRows[0] : existingRows;
+
+  const existingAudit =
+    existing?.audit_data &&
+    typeof existing.audit_data === "object" &&
+    !Array.isArray(existing.audit_data)
+      ? (existing.audit_data as Record<string, unknown>)
+      : null;
+
+  if (Array.isArray(existingAudit?.interview_questions)) {
+    return;
+  }
+
+  const integrityScore = Math.max(1, clampScore0to100(score));
+  const { error: updateError } = await supabase
+    .from("profiles")
+    .update({
+      integrity_score: integrityScore,
+      audit_data: {
+        integrity_score: clampScore0to100(score),
+        github_audit: primary,
+        source: "github_integrity_audit",
+      },
+    })
+    .eq("id", existing?.id ?? userId);
+
+  if (updateError) {
+    console.error("[audit] failed to persist GitHub integrity audit:", updateError);
+  }
+}
+
 export async function GET() {
   const access = await resolveAuditAccess();
 
@@ -540,6 +597,19 @@ export async function POST(request: Request) {
         access.usage
       )
     : access.usage;
+
+  if (access.user && githubArtifactAuditSucceeded(githubArtifacts)) {
+    try {
+      await persistOwnGitHubIntegrityAudit(
+        access.supabase,
+        access.user.id,
+        result.score,
+        githubArtifacts as GitHubArtifactAudit
+      );
+    } catch (error) {
+      console.error("[audit] persist GitHub integrity audit threw:", error);
+    }
+  }
 
   return NextResponse.json({ ...result, ...usage });
 }

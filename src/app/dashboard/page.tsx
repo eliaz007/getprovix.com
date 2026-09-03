@@ -356,6 +356,7 @@ type ProfileRecord = {
   work_preference?: string | null;
   role_type?: string | null;
   integrity_score?: number | null;
+  audit_data?: unknown;
   daily_scans?: number | null;
   last_scan_date?: string | null;
 };
@@ -3201,6 +3202,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const publicProfileUrl = appOrigin
     ? `${appOrigin}/p/${profileSlug}`
     : `/p/${profileSlug}`;
+  const candidateVerifiedOnProvix = isVerifiedOnProvix({
+    full_name: profileData.name,
+    name: profileData.name,
+    job_title: title,
+    headline: title,
+    bio,
+    skills,
+    experience_level: experienceLevel,
+    university: school,
+    school,
+    major: degree,
+    degree,
+    availability_status: availabilityStatus,
+    work_preference: workPreference,
+    timezone: candidateTimezone,
+    portfolio_url: portfolioUrl || dbProfile?.portfolio_url,
+    integrity_score: dbProfile?.integrity_score,
+    audit_data: dbProfile?.audit_data,
+  });
 
   // --- DERIVED VALUES FOR THE SHAREABLE BUSINESS PROFILE CARD ---
   const businessInitials =
@@ -3600,13 +3620,20 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             <div className="max-w-3xl">
               <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h1 className="text-3xl font-extrabold tracking-tight text-white">
-                    Profile Studio
-                  </h1>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-3xl font-extrabold tracking-tight text-white">
+                      Profile Studio
+                    </h1>
+                    {!isBusinessAccount ? (
+                      <VerifiedOnProvixPill verified={candidateVerifiedOnProvix} />
+                    ) : null}
+                  </div>
                   <p className="text-zinc-300 text-sm mt-2 max-w-2xl leading-relaxed">
                     {isBusinessAccount
                       ? "Manage your company profile, hiring requirements, and account settings."
-                      : "Manage your credentials, academic status, and proof of work."}
+                      : candidateVerifiedOnProvix
+                        ? "Your profile is complete and a GitHub integrity audit has run successfully."
+                        : "Complete every required field and run a GitHub integrity audit to earn Verified on Provix."}
                   </p>
                 </div>
                 {!isBusinessAccount && (
@@ -3895,7 +3922,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-xl font-bold text-indigo-400">
                             {profileData?.name?.charAt(0) || "?"}
                           </div>
-                          <div className="flex-1">
+                          <div className="flex-1 min-w-0">
                             <input
                               type="text"
                               value={profileData.name}
@@ -3913,6 +3940,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               onChange={(e) => setTitle(e.target.value)}
                               className="w-full bg-transparent text-xs text-indigo-400 font-medium focus:outline-none border-b border-transparent focus:border-indigo-500 pb-1 mt-1"
                               placeholder="Your title or role"
+                            />
+                            <VerifiedOnProvixPill
+                              verified={candidateVerifiedOnProvix}
+                              className="mt-2"
                             />
                           </div>
                         </>
@@ -6020,11 +6051,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 timezone={col.timezone}
                                 className="mt-2"
                               />
-                              {!introUnlocked && col.verifiedOnProvix && (
-                                <div className="mt-2">
-                                  <VerifiedOnProvixPill />
-                                </div>
-                              )}
+                              <div className="mt-2">
+                                <VerifiedOnProvixPill
+                                  verified={Boolean(col.verifiedOnProvix)}
+                                />
+                              </div>
                               <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
                                 {col.experienceLevel}
                               </span>

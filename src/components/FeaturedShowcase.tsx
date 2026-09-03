@@ -40,9 +40,10 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
             <h3 className="truncate text-lg font-bold tracking-tight text-white">
               {builder.fullName}
             </h3>
-            {builder.verifiedOnProvix ? (
-              <VerifiedOnProvixPill className="shrink-0" />
-            ) : null}
+            <VerifiedOnProvixPill
+              verified={builder.verifiedOnProvix}
+              className="shrink-0"
+            />
           </div>
           <p className="mt-1 truncate text-sm font-medium text-zinc-200">
             {builder.roleTitle}

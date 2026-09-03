@@ -60,6 +60,8 @@ export const APPLICANT_PROFILE_COLUMNS = [
   "work_preference",
   "role",
   "key_accomplishments",
+  "integrity_score",
+  "audit_data",
 ] as const;
 
 export type ApplicantProfileRow = {
@@ -95,6 +97,8 @@ export type ApplicantProfileRow = {
   role?: string | null;
   key_accomplishments?: string | null;
   github_url?: string | null;
+  integrity_score?: number | string | null;
+  audit_data?: unknown;
 };
 
 export type ApplicantReviewStatus = "new" | "intro_requested" | "rejected";

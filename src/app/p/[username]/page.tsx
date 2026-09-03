@@ -126,7 +126,7 @@ export default async function PublicCandidateProfilePage({
                   <h1 className="text-3xl font-extrabold tracking-tight text-white">
                     {profile.displayName}
                   </h1>
-                  {profile.isVerifiedOnProvix && <VerifiedOnProvixPill />}
+                  <VerifiedOnProvixPill verified={profile.isVerifiedOnProvix} />
                 </div>
                 <p className="font-mono text-xs font-medium text-zinc-400">
                   /p/{profile.profileSlug}
@@ -307,23 +307,26 @@ export default async function PublicCandidateProfilePage({
               )}
             </section>
 
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-5 py-4">
-              <div className="flex items-start gap-3">
-                <ShieldCheck
-                  className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500"
-                  aria-hidden
-                />
-                <div>
-                  <p className="text-sm font-semibold text-white">
-                    Verified on Provix
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-zinc-300">
-                    Candidates use Provix career tools for free. Employers hire
-                    on a contingency placement model — no upfront subscriptions.
-                  </p>
+            {profile.isVerifiedOnProvix ? (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-5 py-4">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck
+                    className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300"
+                    aria-hidden
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      Verified on Provix
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-zinc-300">
+                      This profile is complete and a GitHub integrity audit has
+                      run successfully. Employers hire on a contingency placement
+                      model — no upfront subscriptions.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : null}
           </div>
         </Card>
       </main>

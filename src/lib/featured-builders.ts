@@ -57,6 +57,7 @@ type FeaturedBuilderRow = {
   timezone?: string | null;
   role?: string | null;
   is_visible_in_pool?: boolean | string | number | null;
+  audit_data?: unknown;
   updated_at?: string | null;
 };
 
@@ -163,7 +164,7 @@ export async function fetchFeaturedBuilders(
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, profile_slug, full_name, name, first_name, last_name, job_title, headline, bio, skills, avatar_url, codename_alias, integrity_score, portfolio_url, youtube_url, experience_level, availability_status, availability, university, school, major, degree, work_preference, timezone, role, is_visible_in_pool, updated_at"
+      "id, profile_slug, full_name, name, first_name, last_name, job_title, headline, bio, skills, avatar_url, codename_alias, integrity_score, audit_data, portfolio_url, youtube_url, experience_level, availability_status, availability, university, school, major, degree, work_preference, timezone, role, is_visible_in_pool, updated_at"
     )
     .eq("is_featured", true)
     .eq("is_visible_in_pool", true)

@@ -51,6 +51,8 @@ type ApplicantProfileRow = {
   availability?: string | null;
   work_preference?: string | null;
   role?: string | null;
+  integrity_score?: number | string | null;
+  audit_data?: unknown;
 };
 
 type JobApplicationRow = {
@@ -184,6 +186,8 @@ const APPLICANT_PROFILE_COLUMNS = [
   "availability",
   "work_preference",
   "role",
+  "integrity_score",
+  "audit_data",
 ] as const;
 
 async function fetchApplicantProfiles(
@@ -514,15 +518,16 @@ export default function JobApplicantsDrawer({
                       <p className="text-[11px] text-slate-500 mt-1">
                         {applicant.location}
                       </p>
-                      {(applicant.unlocked || applicant.verifiedOnProvix) && (
-                        <div className="mt-2">
+                      {(applicant.verifiedOnProvix || applicant.unlocked) && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <VerifiedOnProvixPill
+                            verified={applicant.verifiedOnProvix}
+                          />
                           {applicant.unlocked ? (
                             <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
                               Contact unlocked
                             </span>
-                          ) : (
-                            <VerifiedOnProvixPill />
-                          )}
+                          ) : null}
                         </div>
                       )}
                     </div>
