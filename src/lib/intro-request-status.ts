@@ -44,6 +44,8 @@ const LEGACY_STATUS_MAP: Record<string, IntroPipelineStatus> = {
   passed: "passed",
   rejected: "passed",
   declined: "passed",
+  dismissed: "passed",
+  trashed: "passed",
   completed: "approved_intro_sent",
 };
 

@@ -144,7 +144,9 @@ async function handleIntroResponse(
     const message =
       currentStatus === "accepted"
         ? "This intro request was already accepted."
-        : "This intro request was already declined.";
+        : currentStatus === "dismissed"
+          ? "This intro request was dismissed."
+          : "This intro request was already declined.";
 
     return buildSuccessResponse({
       status: currentStatus,

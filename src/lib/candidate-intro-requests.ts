@@ -1,4 +1,10 @@
-export type CandidateIntroStatus = "pending" | "accepted" | "declined";
+export type CandidateIntroStatus =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "dismissed";
+
+export type CandidateIntroInboxFilter = "inbox" | "dismissed";
 
 export type CandidateIntroRequestRow = {
   id: string;
@@ -15,14 +21,21 @@ export type CandidateIntroRequestRow = {
   tos_accepted_at: string | null;
   terms_agreed_at: string | null;
   created_at: string;
+  candidate_dismissed_at?: string | null;
   response_token?: string | null;
 };
 
-export const CANDIDATE_INTRO_REQUEST_COLUMNS =
-  "id, candidate_id, candidate_name, company_name, company_email, work_email, target_role, role_title, compensation_range, compensation_band, status, tos_accepted_at, terms_agreed_at, created_at, response_token";
+const CANDIDATE_INTRO_REQUEST_BASE_COLUMNS =
+  "id, candidate_id, candidate_name, company_name, company_email, work_email, target_role, role_title, compensation_range, compensation_band, status, tos_accepted_at, terms_agreed_at, created_at";
+
+export const CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS_FALLBACK =
+  CANDIDATE_INTRO_REQUEST_BASE_COLUMNS;
 
 export const CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS =
-  "id, candidate_id, candidate_name, company_name, company_email, work_email, target_role, role_title, compensation_range, compensation_band, status, tos_accepted_at, terms_agreed_at, created_at";
+  `${CANDIDATE_INTRO_REQUEST_BASE_COLUMNS}, candidate_dismissed_at`;
+
+export const CANDIDATE_INTRO_REQUEST_COLUMNS =
+  `${CANDIDATE_INTRO_REQUEST_BASE_COLUMNS}, response_token`;
 
 export const INTRO_REQUEST_LEGACY_SELECT_COLUMNS =
   "id, candidate_id, candidate_name, company_name, work_email, role_title, compensation_band, status, terms_agreed_at, created_at";
@@ -52,6 +65,17 @@ export function resolveIntroCompensationRange(row: {
   );
 }
 
+export function isCandidateIntroDismissed(
+  request: Pick<CandidateIntroRequestRow, "status" | "candidate_dismissed_at">
+): boolean {
+  if (request.candidate_dismissed_at) {
+    return true;
+  }
+
+  const normalized = (request.status ?? "").trim().toLowerCase();
+  return normalized === "dismissed" || normalized === "trashed";
+}
+
 export function normalizeCandidateIntroStatus(
   status: string | null | undefined
 ): CandidateIntroStatus {
@@ -74,6 +98,10 @@ export function normalizeCandidateIntroStatus(
     return "declined";
   }
 
+  if (normalized === "dismissed" || normalized === "trashed") {
+    return "dismissed";
+  }
+
   return "pending";
 }
 
@@ -84,11 +112,15 @@ export function isPendingCandidateIntroStatus(
 }
 
 export function getCandidateIntroStatusUpdates(
-  action: "accept" | "decline"
+  action: "accept" | "decline" | "dismiss"
 ): string[] {
-  return action === "accept"
-    ? ["accepted", "approved_intro_sent", "approved"]
-    : ["declined", "passed", "rejected"];
+  if (action === "accept") {
+    return ["accepted", "approved_intro_sent", "approved"];
+  }
+  if (action === "dismiss") {
+    return ["dismissed", "trashed"];
+  }
+  return ["declined", "passed", "rejected"];
 }
 
 export function toCandidateIntroStatus(
@@ -105,6 +137,8 @@ export function getCandidateIntroStatusLabel(
       return "Accepted";
     case "declined":
       return "Declined";
+    case "dismissed":
+      return "Dismissed";
     default:
       return "Pending";
   }
@@ -118,6 +152,8 @@ export function getCandidateIntroStatusBadgeClass(
       return "bg-emerald-500/10 text-emerald-400 border-emerald-500/25";
     case "declined":
       return "bg-slate-500/10 text-slate-400 border-slate-600/40";
+    case "dismissed":
+      return "bg-zinc-500/10 text-zinc-400 border-zinc-600/40";
     default:
       return "bg-amber-500/10 text-amber-400 border-amber-500/25";
   }

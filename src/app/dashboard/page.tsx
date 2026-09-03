@@ -10,8 +10,10 @@ import {
   Copy,
   FileText,
   Flame,
+  RotateCcw,
   ShieldCheck,
   Target,
+  Trash2,
 } from "lucide-react";
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import type { AuditResult } from "@/app/api/audit/route";
@@ -87,12 +89,15 @@ import {
 } from "@/lib/opportunity-match";
 import {
   CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS,
+  CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS_FALLBACK,
   getCandidateIntroStatusBadgeClass,
   getCandidateIntroStatusLabel,
+  isCandidateIntroDismissed,
   normalizeCandidateIntroStatus,
   resolveIntroCompanyEmail,
   resolveIntroCompensationRange,
   resolveIntroTargetRole,
+  type CandidateIntroInboxFilter,
   type CandidateIntroRequestRow,
 } from "@/lib/candidate-intro-requests";
 import { formatRelativeTime } from "@/lib/format-relative-time";
@@ -153,6 +158,7 @@ import {
 } from "@/lib/persist-employer-profile";
 import { employerIsVerifiedInDatabase } from "@/lib/persist-employer-verified";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
+import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 import {
   dashboardTabFromSearchParam,
   type DashboardTab,
@@ -911,6 +917,8 @@ export default function DashboardPage() {
   const [introRespondLoadingId, setIntroRespondLoadingId] = useState<
     string | null
   >(null);
+  const [candidateIntroInboxFilter, setCandidateIntroInboxFilter] =
+    useState<CandidateIntroInboxFilter>("inbox");
   const [talentMatchScores, setTalentMatchScores] = useState<
     Record<string, MatchResult>
   >({});
@@ -1508,19 +1516,37 @@ export default function DashboardPage() {
     setCandidateIntroError(null);
 
     try {
-      const { data, error } = await supabase
-        .from("intro_requests")
-        .select(CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS)
-        .eq("candidate_id", userId)
-        .order("created_at", { ascending: false });
+      const columnSets = [
+        CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS,
+        CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS_FALLBACK,
+      ] as const;
 
-      if (error) {
-        console.error("Candidate intro request fetch error:", error);
-        setCandidateIntroError("Could not load intro requests. Please try again.");
-        return;
+      let loaded = false;
+      for (const columns of columnSets) {
+        const { data, error } = await supabase
+          .from("intro_requests")
+          .select(columns)
+          .eq("candidate_id", userId)
+          .order("created_at", { ascending: false });
+
+        if (!error) {
+          setCandidateIntroRequests((data ?? []) as CandidateIntroRequestRow[]);
+          loaded = true;
+          break;
+        }
+
+        if (!isSupabaseSchemaError(error)) {
+          console.error("Candidate intro request fetch error:", error);
+          setCandidateIntroError(
+            "Could not load intro requests. Please try again."
+          );
+          return;
+        }
       }
 
-      setCandidateIntroRequests((data ?? []) as CandidateIntroRequestRow[]);
+      if (!loaded) {
+        setCandidateIntroError("Could not load intro requests. Please try again.");
+      }
     } catch (err) {
       console.error("Candidate intro request fetch threw:", err);
       setCandidateIntroError("Could not load intro requests. Please try again.");
@@ -2913,7 +2939,83 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     }
   };
 
-  const pendingCandidateIntroCount = candidateIntroRequests.filter(
+  const handleCandidateIntroDismiss = async (
+    introId: string,
+    dismissed: boolean
+  ) => {
+    const previousRequests = candidateIntroRequests;
+    const dismissedAt = dismissed ? new Date().toISOString() : null;
+
+    setIntroRespondLoadingId(introId);
+    setCandidateIntroRequests((prev) =>
+      prev.map((request) =>
+        request.id === introId
+          ? {
+              ...request,
+              candidate_dismissed_at: dismissedAt,
+              status:
+                dismissed &&
+                normalizeCandidateIntroStatus(request.status) === "pending"
+                  ? "dismissed"
+                  : !dismissed &&
+                      normalizeCandidateIntroStatus(request.status) ===
+                        "dismissed"
+                    ? "pending"
+                    : request.status,
+            }
+          : request
+      )
+    );
+
+    try {
+      const response = await fetch(`/api/intros/${introId}/dismiss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dismissed }),
+      });
+      const payload = (await response.json()) as {
+        success?: boolean;
+        message?: string;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.success) {
+        setCandidateIntroRequests(previousRequests);
+        showToast(payload.error ?? "Could not update intro request.");
+        return;
+      }
+
+      if (user?.id) {
+        void fetchCandidateIntroRequests(user.id);
+      }
+
+      showToast(
+        payload.message ??
+          (dismissed
+            ? "Intro request moved to dismissed."
+            : "Intro request restored to your inbox.")
+      );
+    } catch (error) {
+      console.error("Candidate intro dismiss failed:", error);
+      setCandidateIntroRequests(previousRequests);
+      showToast("Could not update intro request.");
+    } finally {
+      setIntroRespondLoadingId(null);
+    }
+  };
+
+  const inboxCandidateIntroRequests = candidateIntroRequests.filter(
+    (request) => !isCandidateIntroDismissed(request)
+  );
+  const dismissedCandidateIntroRequests = candidateIntroRequests.filter(
+    (request) => isCandidateIntroDismissed(request)
+  );
+  const visibleCandidateIntroRequests =
+    candidateIntroInboxFilter === "dismissed"
+      ? dismissedCandidateIntroRequests
+      : inboxCandidateIntroRequests;
+
+  const pendingCandidateIntroCount = inboxCandidateIntroRequests.filter(
     (request) => normalizeCandidateIntroStatus(request.status) === "pending"
   ).length;
 
@@ -4443,7 +4545,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <span className="text-3xl font-extrabold text-emerald-400">
                     {candidateIntroLoading
                       ? "—"
-                      : candidateIntroRequests.filter(
+                      : inboxCandidateIntroRequests.filter(
                           (request) =>
                             normalizeCandidateIntroStatus(request.status) ===
                             "accepted"
@@ -4455,9 +4557,42 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     Total Requests
                   </span>
                   <span className="text-3xl font-extrabold text-white">
-                    {candidateIntroLoading ? "—" : candidateIntroRequests.length}
+                    {candidateIntroLoading
+                      ? "—"
+                      : inboxCandidateIntroRequests.length}
                   </span>
                 </div>
+              </div>
+
+              <div className="mb-6 inline-flex rounded-lg border border-zinc-800 bg-[#111111] p-1">
+                <button
+                  type="button"
+                  onClick={() => setCandidateIntroInboxFilter("inbox")}
+                  className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-colors cursor-pointer ${
+                    candidateIntroInboxFilter === "inbox"
+                      ? "bg-slate-800 text-white"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Inbox
+                  {!candidateIntroLoading
+                    ? ` (${inboxCandidateIntroRequests.length})`
+                    : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCandidateIntroInboxFilter("dismissed")}
+                  className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-colors cursor-pointer ${
+                    candidateIntroInboxFilter === "dismissed"
+                      ? "bg-slate-800 text-white"
+                      : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Dismissed
+                  {!candidateIntroLoading
+                    ? ` (${dismissedCandidateIntroRequests.length})`
+                    : ""}
+                </button>
               </div>
 
               {candidateIntroLoading ? (
@@ -4492,11 +4627,30 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     When employers request a warm introduction, they will appear here for your review.
                   </p>
                 </div>
+              ) : visibleCandidateIntroRequests.length === 0 ? (
+                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-slate-300">
+                    {candidateIntroInboxFilter === "dismissed"
+                      ? "No dismissed intro requests"
+                      : "Inbox is empty"}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {candidateIntroInboxFilter === "dismissed"
+                      ? "Requests you trash or dismiss will show up here so you can restore them later."
+                      : "Dismissed requests are hidden here. Switch to Dismissed to review them."}
+                  </p>
+                </div>
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {candidateIntroRequests.map((request) => {
-                    const status = normalizeCandidateIntroStatus(request.status);
-                    const isPending = status === "pending";
+                  {visibleCandidateIntroRequests.map((request) => {
+                    const status = isCandidateIntroDismissed(request)
+                      ? "dismissed"
+                      : normalizeCandidateIntroStatus(request.status);
+                    const originalStatus = normalizeCandidateIntroStatus(
+                      request.status
+                    );
+                    const isPending = originalStatus === "pending";
+                    const isDismissed = isCandidateIntroDismissed(request);
                     const isResponding = introRespondLoadingId === request.id;
                     const companyName =
                       request.company_name?.trim() || "Verified employer";
@@ -4523,9 +4677,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             </p>
                           </div>
                           <span
-                            className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${getCandidateIntroStatusBadgeClass(request.status)}`}
+                            className={`shrink-0 px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${getCandidateIntroStatusBadgeClass(status)}`}
                           >
-                            {getCandidateIntroStatusLabel(request.status)}
+                            {getCandidateIntroStatusLabel(status)}
                           </span>
                         </div>
 
@@ -4548,8 +4702,39 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </div>
                         </div>
 
-                        {isPending ? (
-                          <div className="mt-auto flex items-center justify-end gap-2 pt-4 border-t border-zinc-800">
+                        {isDismissed ? (
+                          <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-4 border-t border-zinc-800">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleCandidateIntroDismiss(
+                                  request.id,
+                                  false
+                                )
+                              }
+                              disabled={isResponding}
+                              className="inline-flex items-center gap-1.5 text-[11px] font-bold px-4 py-2 rounded-lg border border-zinc-800 text-slate-300 hover:text-white hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                              {isResponding ? "Saving..." : "Restore"}
+                            </button>
+                          </div>
+                        ) : isPending ? (
+                          <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-4 border-t border-zinc-800">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleCandidateIntroDismiss(
+                                  request.id,
+                                  true
+                                )
+                              }
+                              disabled={isResponding}
+                              className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-2 rounded-lg border border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              Dismiss
+                            </button>
                             <button
                               type="button"
                               onClick={() =>
@@ -4578,12 +4763,26 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             </button>
                           </div>
                         ) : (
-                          <div className="mt-auto pt-4 border-t border-zinc-800">
+                          <div className="mt-auto flex items-center justify-between gap-3 pt-4 border-t border-zinc-800">
                             <p className="text-xs text-slate-500">
-                              {status === "accepted"
+                              {originalStatus === "accepted"
                                 ? "You accepted this intro. Check your inbox for the mutual introduction email."
                                 : "You declined this introduction request."}
                             </p>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleCandidateIntroDismiss(
+                                  request.id,
+                                  true
+                                )
+                              }
+                              disabled={isResponding}
+                              className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-bold px-3 py-2 rounded-lg border border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              {isResponding ? "Saving..." : "Dismiss"}
+                            </button>
                           </div>
                         )}
                       </div>

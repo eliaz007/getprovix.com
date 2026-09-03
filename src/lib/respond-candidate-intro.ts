@@ -2,9 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CANDIDATE_INTRO_REQUEST_COLUMNS,
   CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS,
+  CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS_FALLBACK,
   getCandidateIntroStatusUpdates,
   INTRO_REQUEST_LEGACY_SELECT_COLUMNS,
   isPendingCandidateIntroStatus,
+  normalizeCandidateIntroStatus,
   toCandidateIntroStatus,
   type CandidateIntroRequestRow,
   type CandidateIntroStatus,
@@ -12,7 +14,10 @@ import {
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 
 const INTRO_SELECT_COLUMN_SETS = [
+  `${CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS}, response_token`,
+  CANDIDATE_INTRO_REQUEST_COLUMNS,
   CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS,
+  CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS_FALLBACK,
   INTRO_REQUEST_LEGACY_SELECT_COLUMNS,
 ] as const;
 
@@ -106,6 +111,98 @@ export async function updateCandidateIntroRequestStatus(
         throw error;
       }
     }
+  }
+
+  return null;
+}
+
+async function updateIntroRequestRow(
+  client: SupabaseClient,
+  id: string,
+  payload: Record<string, unknown>
+): Promise<CandidateIntroRequestRow | null> {
+  for (const columns of INTRO_SELECT_COLUMN_SETS) {
+    const { data, error } = await client
+      .from("intro_requests")
+      .update(payload)
+      .eq("id", id)
+      .select(columns)
+      .maybeSingle();
+
+    if (!error && data) {
+      return data as unknown as CandidateIntroRequestRow;
+    }
+
+    if (error && isSupabaseSchemaError(error)) {
+      continue;
+    }
+
+    if (error && isConstraintViolation(error)) {
+      return null;
+    }
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  return null;
+}
+
+export async function updateCandidateIntroDismissed(
+  client: SupabaseClient,
+  row: CandidateIntroRequestRow,
+  dismissed: boolean
+): Promise<CandidateIntroRequestRow | null> {
+  const dismissedAt = dismissed ? new Date().toISOString() : null;
+  const currentStatus = normalizeCandidateIntroStatus(row.status);
+
+  if (dismissed && currentStatus === "pending") {
+    for (const storedStatus of getCandidateIntroStatusUpdates("dismiss")) {
+      const withBoth = await updateIntroRequestRow(client, row.id, {
+        candidate_dismissed_at: dismissedAt,
+        status: storedStatus,
+      });
+      if (withBoth) {
+        return withBoth;
+      }
+    }
+  }
+
+  if (!dismissed && currentStatus === "dismissed") {
+    const restored = await updateIntroRequestRow(client, row.id, {
+      candidate_dismissed_at: null,
+      status: "pending",
+    });
+    if (restored) {
+      return restored;
+    }
+  }
+
+  const timestampOnly = await updateIntroRequestRow(client, row.id, {
+    candidate_dismissed_at: dismissedAt,
+  });
+  if (timestampOnly) {
+    return timestampOnly;
+  }
+
+  if (dismissed && currentStatus === "pending") {
+    for (const storedStatus of getCandidateIntroStatusUpdates("dismiss")) {
+      const statusUpdated = await updateIntroRequestRow(client, row.id, {
+        status: storedStatus,
+      });
+      if (statusUpdated) {
+        return {
+          ...statusUpdated,
+          status: storedStatus,
+          candidate_dismissed_at: dismissedAt,
+        };
+      }
+    }
+  }
+
+  if (!dismissed && currentStatus === "dismissed") {
+    return updateIntroRequestRow(client, row.id, { status: "pending" });
   }
 
   return null;
