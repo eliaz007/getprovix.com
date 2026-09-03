@@ -32,7 +32,7 @@ export const CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS_FALLBACK =
   CANDIDATE_INTRO_REQUEST_BASE_COLUMNS;
 
 export const CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS =
-  `${CANDIDATE_INTRO_REQUEST_BASE_COLUMNS}, candidate_dismissed_at`;
+  "id, candidate_id, candidate_name, company_name, company_email, work_email, target_role, role_title, compensation_range, compensation_band, status, tos_accepted_at, terms_agreed_at, created_at, candidate_dismissed_at";
 
 export const CANDIDATE_INTRO_REQUEST_COLUMNS =
   `${CANDIDATE_INTRO_REQUEST_BASE_COLUMNS}, response_token`;

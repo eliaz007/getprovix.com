@@ -1505,21 +1505,22 @@ export default function DashboardPage() {
     setCandidateIntroError(null);
 
     try {
-      const columnSets = [
+      const columnSets: string[] = [
         CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS,
         CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS_FALLBACK,
-      ] as const;
+      ];
 
       let loaded = false;
       for (const columns of columnSets) {
         const { data, error } = await supabase
           .from("intro_requests")
-          .select(columns)
+          .select(columns as "*")
           .eq("candidate_id", userId)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .returns<CandidateIntroRequestRow[]>();
 
         if (!error) {
-          setCandidateIntroRequests((data ?? []) as CandidateIntroRequestRow[]);
+          setCandidateIntroRequests(data ?? []);
           loaded = true;
           break;
         }
