@@ -135,3 +135,26 @@ export async function fetchDashboardJobs(supabase: SupabaseClient): Promise<{
 
   return { data: (result.data ?? []) as JobRow[], error: null };
 }
+
+export async function deleteOwnedJob(
+  supabase: SupabaseClient,
+  jobId: string,
+  ownerId: string
+): Promise<{ deletedId: string | null; error: { message: string } | null }> {
+  const { data, error } = await supabase
+    .from("jobs")
+    .delete()
+    .eq("id", jobId)
+    .eq("employer_id", ownerId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { deletedId: null, error };
+  }
+
+  const deletedId =
+    data && typeof data.id === "string" && data.id.trim() ? data.id : null;
+
+  return { deletedId, error: null };
+}

@@ -12,6 +12,7 @@ import {
   Flame,
   ShieldCheck,
   Target,
+  Trash2,
 } from "lucide-react";
 import type { CollegeFitResult } from "@/app/api/college-fit/route";
 import type { AuditResult } from "@/app/api/audit/route";
@@ -2231,6 +2232,61 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     }
   };
 
+  const [deletingListingId, setDeletingListingId] = useState<string | null>(
+    null
+  );
+
+  const deleteListing = async (listing: {
+    id: string;
+    title: string;
+  }) => {
+    if (deletingListingId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete "${listing.title}"? This cannot be undone.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const previousListings = businessListings;
+    const previousJobs = jobs;
+    const previousDrawerJob = applicantsDrawerJob;
+
+    setDeletingListingId(listing.id);
+    setBusinessListings((prev) => prev.filter((entry) => entry.id !== listing.id));
+    setJobs((prev) => prev.filter((job) => job.id !== listing.id));
+    if (applicantsDrawerJob?.id === listing.id) {
+      setApplicantsDrawerJob(null);
+    }
+    if (focusApplicantsJobId === listing.id) {
+      setFocusApplicantsJobId(null);
+    }
+
+    try {
+      const response = await fetch(`/api/jobs/${listing.id}`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not delete listing.");
+      }
+
+      showToast("Listing deleted.");
+    } catch (error) {
+      console.error("Job delete failed:", error);
+      setBusinessListings(previousListings);
+      setJobs(previousJobs);
+      setApplicantsDrawerJob(previousDrawerJob);
+      showToast("Could not delete listing. Please try again.");
+    } finally {
+      setDeletingListingId(null);
+    }
+  };
+
   // --- COLLEGE ADMISSIONS STATE ---
   const [essayTargetSchool, setEssayTargetSchool] = useState("");
   const [essayPrompt, setEssayPrompt] = useState("");
@@ -3990,6 +4046,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             Interested ({listing.applicants})
                           </button>
                         </div>
+                        <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
                           onClick={() => toggleListingStatus(listing.id)}
@@ -4002,6 +4059,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         >
                           {listing.status}
                         </button>
+                        <button
+                          type="button"
+                          aria-label={`Delete ${listing.title}`}
+                          title="Delete listing"
+                          onClick={() => void deleteListing(listing)}
+                          disabled={deletingListingId === listing.id}
+                          className="p-1.5 rounded-lg border border-zinc-800 text-slate-400 hover:text-red-300 hover:border-red-500/30 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-60"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                        </div>
                       </div>
                     ))
                     )}

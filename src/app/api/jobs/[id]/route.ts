@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
+import { deleteOwnedJob } from "@/lib/jobs";
 import { createClient } from "@/utils/supabase/server";
 
 type JobStatus = "active" | "paused";
@@ -82,6 +83,58 @@ export async function PATCH(
     console.error("[jobs] PATCH failed:", error);
     return NextResponse.json(
       { error: "Unexpected error updating job." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: jobId } = await context.params;
+
+    if (!isUuid(jobId)) {
+      return NextResponse.json({ error: "Invalid job id." }, { status: 400 });
+    }
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { deletedId, error: deleteError } = await deleteOwnedJob(
+      supabase,
+      jobId,
+      user.id
+    );
+
+    if (deleteError) {
+      console.error("[jobs] delete failed:", deleteError);
+      return NextResponse.json(
+        { error: "Could not delete listing." },
+        { status: 500 }
+      );
+    }
+
+    if (!deletedId) {
+      return NextResponse.json({ error: "Job not found." }, { status: 404 });
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/opportunities");
+
+    return NextResponse.json({ success: true, id: deletedId });
+  } catch (error) {
+    console.error("[jobs] DELETE failed:", error);
+    return NextResponse.json(
+      { error: "Unexpected error deleting job." },
       { status: 500 }
     );
   }
