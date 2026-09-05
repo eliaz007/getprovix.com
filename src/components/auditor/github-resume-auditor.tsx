@@ -13,11 +13,16 @@ import type { AuditResult } from "@/app/api/audit/route";
 import ResumeFileUpload, {
   type StoredResumeMeta,
 } from "@/components/ResumeFileUpload";
+import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import ScoreMeter from "@/components/ScoreMeter";
 import {
   normalizeAuditChecks,
   type AuditCheckId,
 } from "@/lib/audit-checks";
+import {
+  hasUsableExternalProjects,
+  type ExternalProjectRecord,
+} from "@/lib/external-projects";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   DAILY_LIMIT_UI_MESSAGE,
@@ -67,6 +72,10 @@ export default function GitHubResumeAuditor() {
   );
   const [compensationLevel, setCompensationLevel] =
     useState<(typeof COMPENSATION_LEVELS)[number]>("Mid");
+  const [workIsPrivate, setWorkIsPrivate] = useState(false);
+  const [externalProjects, setExternalProjects] = useState<
+    ExternalProjectRecord[]
+  >([]);
   const [loading, setLoading] = useState(false);
   const [stageIndex, setStageIndex] = useState(0);
   const [result, setResult] = useState<AuditResult | null>(null);
@@ -129,7 +138,9 @@ export default function GitHubResumeAuditor() {
     targetRole.trim() ||
       githubUrl.trim() ||
       resumeFile ||
-      storedResume?.hasResume
+      storedResume?.hasResume ||
+      workIsPrivate ||
+      hasUsableExternalProjects(externalProjects)
   );
 
   const startStageProgress = () => {
@@ -169,6 +180,8 @@ export default function GitHubResumeAuditor() {
         formData.append("targetRole", targetRole.trim());
         formData.append("githubUrl", githubUrl.trim());
         formData.append("compensationLevel", compensationLevel);
+        formData.append("workIsPrivate", workIsPrivate ? "true" : "false");
+        formData.append("externalProjects", JSON.stringify(externalProjects));
         formData.append("resumeFile", resumeFile);
         response = await fetch("/api/audit", {
           method: "POST",
@@ -182,6 +195,8 @@ export default function GitHubResumeAuditor() {
             targetRole: targetRole.trim(),
             githubUrl: githubUrl.trim(),
             compensationLevel,
+            workIsPrivate,
+            externalProjects,
           }),
         });
       }
@@ -224,8 +239,8 @@ export default function GitHubResumeAuditor() {
           GitHub & Resume Auditor
         </h1>
         <p className="text-slate-400 text-sm mt-2 max-w-2xl">
-          Deep-audit your GitHub artifacts and resume claims for founder-ready
-          credibility - before recruiters do.
+          Deep-audit your GitHub artifacts, or private/enterprise project
+          write-ups, against resume claims for founder-ready credibility.
         </p>
       </div>
 
@@ -247,14 +262,35 @@ export default function GitHubResumeAuditor() {
           <div>
             <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
               GitHub Profile / Repo URL
+              {workIsPrivate ? (
+                <span className="ml-1 font-medium normal-case tracking-normal text-slate-500">
+                  (optional)
+                </span>
+              ) : null}
             </label>
             <input
               type="text"
               value={githubUrl}
               onChange={(e) => setGithubUrl(e.target.value)}
-              placeholder="https://github.com/your-handle or repo URL"
+              placeholder={
+                workIsPrivate
+                  ? "Optional — leave blank for private/enterprise work"
+                  : "https://github.com/your-handle or repo URL"
+              }
               className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
+            <label className="mt-3 flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={workIsPrivate}
+                onChange={(e) => setWorkIsPrivate(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-zinc-700 bg-[#0A0A0A] text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-xs leading-relaxed text-slate-400">
+                This work is private or enterprise — I do not have a public
+                GitHub repository to audit.
+              </span>
+            </label>
           </div>
 
           <div>
@@ -278,6 +314,16 @@ export default function GitHubResumeAuditor() {
             </select>
           </div>
 
+          <div className="border-t border-zinc-800 pt-4">
+            <ExternalProjectsForm onProjectsChange={setExternalProjects} />
+            {workIsPrivate && !hasUsableExternalProjects(externalProjects) ? (
+              <p className="mt-3 text-xs text-amber-300/90">
+                Save at least one project artifact above so the auditor can
+                review your private or enterprise work instead of a public repo.
+              </p>
+            ) : null}
+          </div>
+
           <div className="border-t border-zinc-800 pt-1">
             <button
               type="button"
@@ -294,7 +340,7 @@ export default function GitHubResumeAuditor() {
                   persistToProfile
                   localFallbackOnAuthError
                   initialFilename={storedResume?.filename ?? null}
-                  helperText="The auditor reads the parsed resume and checks it against GitHub profile and repo artifacts."
+                  helperText="The auditor reads the parsed resume and checks it against GitHub artifacts or your saved project write-ups."
                   onLocalFileChange={setResumeFile}
                   onPersisted={(meta) => {
                     setStoredResume(meta);

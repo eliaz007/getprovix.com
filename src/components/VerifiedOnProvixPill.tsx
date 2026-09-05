@@ -29,7 +29,7 @@ export default function VerifiedOnProvixPill({
 
   return (
     <span
-      title="Complete profile with a successful GitHub integrity audit"
+      title="Complete profile with a successful GitHub or alternative project integrity audit"
       className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-emerald-300 ${className}`}
     >
       <ShieldCheck className="h-3 w-3" aria-hidden />

@@ -39,6 +39,7 @@ import GuestAuthModal from "@/components/GuestAuthModal";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import ResumeFileUpload from "@/components/ResumeFileUpload";
+import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
 import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
@@ -4341,6 +4342,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         )}
                         <p className="mt-2 text-[11px] text-slate-500">
                           Required to save your profile and appear in the employer talent pool.
+                          If your GitHub is private or empty, add project artifacts below so the
+                          AI auditor can still verify your work.
                         </p>
                       </div>
                       <div>
@@ -4353,7 +4356,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           <ResumeFileUpload
                             persistToProfile
                             initialFilename={dbProfile?.resume_filename ?? null}
-                            helperText="Parsed on upload so the GitHub auditor can cross-check claims against your repos."
+                            helperText="Parsed on upload so the GitHub auditor can cross-check claims against your repos or saved project artifacts."
                             onPersisted={(meta) => {
                               setDbProfile((prev) =>
                                 prev
@@ -4374,6 +4377,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         )}
                       </div>
                     </div>
+
+                    <ExternalProjectsForm />
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">

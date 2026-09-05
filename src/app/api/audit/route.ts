@@ -13,11 +13,20 @@ import {
   type DailyScanUsage,
 } from "@/lib/daily-scan-limit";
 import {
+  hasUsableExternalProjects,
+  mergeExternalProjects,
+  normalizeExternalProjects,
+  parseWorkIsPrivate,
+  shouldUseExternalProjectFallback,
+  type ExternalProjectRecord,
+} from "@/lib/external-projects";
+import {
   fetchGitHubProfileArtifacts,
   githubArtifactAuditSucceeded,
   githubAuditHasFetchedArtifacts,
   type GitHubArtifactAudit,
 } from "@/lib/github-audit";
+import { isValidGitHubUrl } from "@/lib/validate-github-url";
 import {
   consumeRateLimit,
   getRequestIp,
@@ -35,6 +44,8 @@ export type AuditRequestBody = {
   githubUrl?: string;
   resumeSummary?: string;
   compensationLevel?: string;
+  workIsPrivate?: boolean;
+  externalProjects?: ExternalProjectRecord[];
 };
 
 export type { AuditCheck };
@@ -47,13 +58,14 @@ export type AuditResult = {
   checks: AuditCheck[];
 };
 
-const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, and resumes to find real flaws. 
+const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws. 
 
 RULES FOR YOUR AUDIT:
 1. NO BUZZWORDS: Never use words like "resiliency," "robust," "seamless," "leverage," "cutting-edge," or "paradigm." Speak in plain, direct, technical English.
-2. CITE SPECIFIC EVIDENCE: You are forbidden from claiming a code flaw or strength unless you can point to a specific file type, directory pattern, or commit history detail you actually observed in the provided artifacts.
+2. CITE SPECIFIC EVIDENCE: You are forbidden from claiming a code flaw or strength unless you can point to a specific file type, directory pattern, commit history detail, live/documentation URL, or technical-breakdown detail you actually observed in the provided artifacts.
 3. HARSH SCORING: Grade out of 100 like a strict employer. Start at 100 and aggressively deduct points for missing production standards (e.g., missing error boundaries, lack of tests, empty READMEs, or shallow tutorial code). A score of 100 requires production-grade architecture.
-4. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo is a basic template, you must penalize the score heavily and state the mismatch explicitly.
+4. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo or external project write-up is a basic template, you must penalize the score heavily and state the mismatch explicitly.
+5. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects instead: project titles, live/documentation URLs, and technical breakdowns are the proof-of-work. Still be skeptical of vague claims with no architecture, APIs, data model, or ownership detail. Never say the audit could not be completed solely because GitHub is private.
 
 Return strict JSON only:
 {
@@ -82,12 +94,12 @@ Return strict JSON only:
 
 JSON field rules:
 - score: integer 0-100. Start at 100 and deduct. 100 is only for production-grade architecture.
-- strengths: 3-5 bullets. Each must cite a file type, directory pattern, or commit-history detail from the provided artifacts. If you cannot cite it, omit it.
-- redFlags: 2-5 bullets. Include resume claims that the GitHub artifacts do not support.
+- strengths: 3-5 bullets. Each must cite a file type, directory pattern, commit-history detail, live/documentation URL, or technical-breakdown detail from the provided artifacts. If you cannot cite it, omit it.
+- redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true.
 - recommendations: exactly 3 specific, actionable fixes.
 - checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown, and must cite observed evidence. If evidence is missing, say so and deduct.
-  - Check 1 artifact_analysis: README quality, commit history, repo age, languages, and whether artifacts support resume claims.
-  - Check 2 architecture_review: folder/module structure and whether the candidate shows real system design, not a template.
+  - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims.
+  - Check 2 architecture_review: folder/module structure or technical-breakdown architecture and whether the candidate shows real system design, not a template.
   - Check 3 api_resiliency: API design, data handling, error handling, tests, and production standards. If evidence is thin, say so.
 - No markdown, no extra keys. Never use the banned buzzwords above.`;
 
@@ -184,13 +196,47 @@ function isValidRequestBody(body: AuditRequestBody): boolean {
   return Boolean(
     body.targetRole?.trim() ||
       body.githubUrl?.trim() ||
-      body.resumeSummary?.trim()
+      body.resumeSummary?.trim() ||
+      body.workIsPrivate ||
+      hasUsableExternalProjects(body.externalProjects)
   );
+}
+
+function hasPublicGitHubLink(githubUrl: string | undefined, workIsPrivate: boolean): boolean {
+  if (workIsPrivate) {
+    return false;
+  }
+
+  const trimmed = githubUrl?.trim() ?? "";
+  return Boolean(trimmed) && isValidGitHubUrl(trimmed);
 }
 
 function formString(form: FormData, key: string): string | undefined {
   const value = form.get(key);
   return typeof value === "string" ? value : undefined;
+}
+
+function parseJsonValue(value: string | undefined): unknown {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeAuditRequestBody(body: AuditRequestBody): AuditRequestBody {
+  return {
+    targetRole: body.targetRole,
+    githubUrl: body.githubUrl,
+    resumeSummary: body.resumeSummary,
+    compensationLevel: body.compensationLevel,
+    workIsPrivate: parseWorkIsPrivate(body.workIsPrivate),
+    externalProjects: normalizeExternalProjects(body.externalProjects),
+  };
 }
 
 async function readAuditRequest(request: Request): Promise<
@@ -210,6 +256,10 @@ async function readAuditRequest(request: Request): Promise<
           githubUrl: formString(form, "githubUrl"),
           resumeSummary: formString(form, "resumeSummary"),
           compensationLevel: formString(form, "compensationLevel"),
+          workIsPrivate: parseWorkIsPrivate(formString(form, "workIsPrivate")),
+          externalProjects: normalizeExternalProjects(
+            parseJsonValue(formString(form, "externalProjects"))
+          ),
         },
         resumeFile:
           resumeValue instanceof File && resumeValue.size > 0
@@ -226,7 +276,7 @@ async function readAuditRequest(request: Request): Promise<
     if (!json || typeof json !== "object") {
       return { ok: false };
     }
-    return { ok: true, body: json, resumeFile: null };
+    return { ok: true, body: normalizeAuditRequestBody(json), resumeFile: null };
   } catch {
     return { ok: false };
   }
@@ -234,10 +284,13 @@ async function readAuditRequest(request: Request): Promise<
 
 function buildFallbackAudit(
   body: AuditRequestBody,
-  githubArtifacts: GitHubArtifactAudit | null
+  githubArtifacts: GitHubArtifactAudit | null,
+  externalProjects: ExternalProjectRecord[],
+  usedExternalFallback: boolean
 ): AuditResult {
   const hasGithub =
     !!body.githubUrl?.trim() || (githubArtifacts?.artifacts.length ?? 0) > 0;
+  const hasExternal = hasUsableExternalProjects(externalProjects);
   const hasResume = !!body.resumeSummary?.trim();
   const role = body.targetRole?.trim() || "your target role";
   const level = body.compensationLevel?.trim() || "Mid";
@@ -256,7 +309,7 @@ function buildFallbackAudit(
     redFlags.push("No resume or experience summary provided for proof-of-work review.");
   }
 
-  if (hasGithub) {
+  if (hasGithub && !usedExternalFallback) {
     score += 40;
     const artifact = githubArtifacts?.artifacts[0];
     strengths.push(
@@ -264,16 +317,28 @@ function buildFallbackAudit(
         ? `GitHub artifacts sampled from ${artifact.owner}/${artifact.repo} (${artifact.language ?? "unknown language"}, ${artifact.commit_count_sampled} recent commits).`
         : `GitHub URL supplied — reviewers can trace repository activity for ${role}.`
     );
+  } else if (hasExternal) {
+    score += 40;
+    const primary = externalProjects.find(
+      (project) => project.project_title.trim() && project.description.trim()
+    ) ?? externalProjects[0];
+    strengths.push(
+      primary
+        ? `External project "${primary.project_title}" was reviewed from its technical breakdown${primary.project_url ? ` and live/docs URL (${primary.project_url})` : ""}.`
+        : "Submitted external project artifacts are available for proof-of-work review."
+    );
   } else {
     redFlags.push(
       "Missing GitHub profile or repository URL limits artifact verification."
     );
   }
 
-  if (hasResume && hasGithub) {
+  if (hasResume && (hasGithub || hasExternal)) {
     score += 10;
     strengths.push(
-      "Resume and GitHub artifacts can be cross-referenced for claim verification."
+      hasExternal && usedExternalFallback
+        ? "Resume claims can be cross-referenced against submitted project write-ups and live/docs links."
+        : "Resume and GitHub artifacts can be cross-referenced for claim verification."
     );
   }
 
@@ -283,9 +348,13 @@ function buildFallbackAudit(
   }
 
   recommendations.push(
-    `Pin 1-2 production repos that map directly to ${level}-level ${role} expectations.`,
+    usedExternalFallback
+      ? `Tie each project write-up to ${level}-level ${role} work: APIs, data model, ownership, and production constraints.`
+      : `Pin 1-2 production repos that map directly to ${level}-level ${role} expectations.`,
     "Rewrite top resume bullets with metrics, stack tags, and links to live demos or PRs.",
-    "Add a concise README per repo covering architecture, your contributions, and setup steps."
+    usedExternalFallback
+      ? "Add architecture notes, error handling, and test strategy to each technical breakdown so reviewers can score production standards."
+      : "Add a concise README per repo covering architecture, your contributions, and setup steps."
   );
 
   if (strengths.length === 0) {
@@ -293,31 +362,40 @@ function buildFallbackAudit(
   }
 
   const artifact = githubArtifacts?.artifacts[0];
+  const primaryProject = externalProjects[0];
   const checks = CANONICAL_AUDIT_CHECKS.map((canonical) => {
     if (canonical.id === "artifact_analysis") {
       return {
         ...canonical,
-        summary: artifact
-          ? `Sampled ${artifact.owner}/${artifact.repo} (${artifact.language ?? "unknown language"}, ${artifact.commit_count_sampled} recent commits). README and commit history ${artifact.readme_excerpt ? "are present" : "are limited"} for claim verification.`
-          : hasGithub
-            ? `A GitHub URL was supplied for ${role}, but repository artifacts were too thin to verify README quality or commit history.`
-            : "No GitHub artifacts were available to verify README quality, commit history, or language signals.",
+        summary:
+          usedExternalFallback && primaryProject
+            ? `Reviewed external project "${primaryProject.project_title}"${primaryProject.project_url ? ` at ${primaryProject.project_url}` : ""}. ${primaryProject.description ? "The technical breakdown was used in place of a public GitHub repository." : "The write-up was thin, so production claims still need more concrete evidence."}`
+            : artifact
+            ? `Sampled ${artifact.owner}/${artifact.repo} (${artifact.language ?? "unknown language"}, ${artifact.commit_count_sampled} recent commits). README and commit history ${artifact.readme_excerpt ? "are present" : "are limited"} for claim verification.`
+            : hasGithub
+              ? `A GitHub URL was supplied for ${role}, but repository artifacts were too thin to verify README quality or commit history.`
+              : "No GitHub artifacts were available to verify README quality, commit history, or language signals.",
       };
     }
 
     if (canonical.id === "architecture_review") {
       return {
         ...canonical,
-        summary: artifact?.readme_excerpt
-          ? `README excerpt from ${artifact.owner}/${artifact.repo} was reviewed for design notes. Folder-level architecture still needs a clearer ownership and module map for ${level}-level ${role} work.`
-          : "Architecture signals were limited. No documented module structure or system-design notes were available from the provided artifacts.",
+        summary:
+          usedExternalFallback && primaryProject?.description
+            ? `Architecture was scored from the technical breakdown for "${primaryProject.project_title}". Module ownership and system boundaries still need to be as explicit as a production README for ${level}-level ${role} work.`
+            : artifact?.readme_excerpt
+            ? `README excerpt from ${artifact.owner}/${artifact.repo} was reviewed for design notes. Folder-level architecture still needs a clearer ownership and module map for ${level}-level ${role} work.`
+            : "Architecture signals were limited. No documented module structure or system-design notes were available from the provided artifacts.",
       };
     }
 
     return {
       ...canonical,
       summary:
-        "API and data-resiliency evidence was not confirmed. Error handling, persistence, and production hardening could not be verified from the sampled artifacts.",
+        usedExternalFallback && primaryProject?.description
+          ? `API and data-handling claims were taken from the submitted technical breakdown for "${primaryProject.project_title}". Error handling, persistence, and tests still need concrete evidence.`
+          : "API and data-resiliency evidence was not confirmed. Error handling, persistence, and production hardening could not be verified from the sampled artifacts.",
     };
   });
 
@@ -332,7 +410,9 @@ function buildFallbackAudit(
 
 async function generateGeminiAudit(
   body: AuditRequestBody,
-  githubArtifacts: GitHubArtifactAudit | null
+  githubArtifacts: GitHubArtifactAudit | null,
+  externalProjects: ExternalProjectRecord[],
+  usedExternalFallback: boolean
 ): Promise<AuditResult> {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -342,25 +422,51 @@ async function generateGeminiAudit(
 
   const ai = new GoogleGenAI({ apiKey });
 
+  const githubUrl = body.githubUrl?.trim() ?? "";
+  const githubUnavailableReason = usedExternalFallback
+    ? body.workIsPrivate
+      ? "private_or_enterprise"
+      : githubUrl
+        ? "ghost_or_unreadable_repository"
+        : "not_provided"
+    : null;
+
   const userPrompt = JSON.stringify({
     targetRole: body.targetRole?.trim() ?? "",
-    githubUrl: body.githubUrl?.trim() ?? "",
+    githubUrl,
     resumeText: (body.resumeSummary ?? "").slice(0, RESUME_TEXT_LIMIT),
     compensationLevel: body.compensationLevel?.trim() ?? "Mid",
-    githubProfile: githubArtifacts?.profile ?? null,
-    githubArtifacts: (githubArtifacts?.artifacts ?? []).map((artifact) => ({
-      repo_url: artifact.repo_url,
-      owner: artifact.owner,
-      repo: artifact.repo,
-      stars: artifact.stars,
-      forks: artifact.forks,
-      created_at: artifact.created_at,
-      language: artifact.language,
-      commit_count_sampled: artifact.commit_count_sampled,
-      commit_dates: artifact.commit_dates,
-      readme_excerpt: artifact.readme_excerpt,
+    workIsPrivate: Boolean(body.workIsPrivate),
+    usedExternalFallback,
+    auditMode: usedExternalFallback
+      ? githubArtifactAuditSucceeded(githubArtifacts)
+        ? "hybrid"
+        : "external_projects"
+      : "github",
+    githubUnavailableReason,
+    githubProfile: usedExternalFallback ? null : githubArtifacts?.profile ?? null,
+    githubArtifacts: usedExternalFallback
+      ? []
+      : (githubArtifacts?.artifacts ?? []).map((artifact) => ({
+          repo_url: artifact.repo_url,
+          owner: artifact.owner,
+          repo: artifact.repo,
+          stars: artifact.stars,
+          forks: artifact.forks,
+          created_at: artifact.created_at,
+          language: artifact.language,
+          commit_count_sampled: artifact.commit_count_sampled,
+          commit_dates: artifact.commit_dates,
+          readme_excerpt: artifact.readme_excerpt,
+        })),
+    githubFetchWarnings: usedExternalFallback
+      ? []
+      : githubArtifacts?.fetch_warnings ?? [],
+    externalProjects: externalProjects.map((project) => ({
+      project_title: project.project_title,
+      project_url: project.project_url,
+      description: project.description.slice(0, 4000),
     })),
-    githubFetchWarnings: githubArtifacts?.fetch_warnings ?? [],
   });
 
   let lastError: unknown;
@@ -435,16 +541,38 @@ async function resolveAuditAccess(): Promise<
   return { ok: true, supabase, user, usage };
 }
 
-async function persistOwnGitHubIntegrityAudit(
+async function loadStoredExternalProjects(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+): Promise<ExternalProjectRecord[]> {
+  const { data, error } = await supabase
+    .from("external_projects")
+    .select("id, project_title, project_url, description, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[audit] failed to load external_projects:", error);
+    return [];
+  }
+
+  return normalizeExternalProjects(data);
+}
+
+async function persistOwnIntegrityAudit(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   score: number,
-  artifacts: GitHubArtifactAudit
+  artifacts: GitHubArtifactAudit | null,
+  externalProjects: ExternalProjectRecord[],
+  usedExternalFallback: boolean
 ): Promise<void> {
-  const primary = artifacts.artifacts.find((artifact) =>
+  const primary = artifacts?.artifacts.find((artifact) =>
     githubAuditHasFetchedArtifacts(artifact)
   );
-  if (!primary) {
+  const hasExternal = hasUsableExternalProjects(externalProjects);
+
+  if (!primary && !(usedExternalFallback && hasExternal)) {
     return;
   }
 
@@ -472,6 +600,12 @@ async function persistOwnGitHubIntegrityAudit(
     return;
   }
 
+  const source = usedExternalFallback
+    ? primary
+      ? "hybrid_artifact_audit"
+      : "external_projects_audit"
+    : "github_integrity_audit";
+
   const integrityScore = Math.max(1, clampScore0to100(score));
   const { error: updateError } = await supabase
     .from("profiles")
@@ -479,14 +613,21 @@ async function persistOwnGitHubIntegrityAudit(
       integrity_score: integrityScore,
       audit_data: {
         integrity_score: clampScore0to100(score),
-        github_audit: primary,
-        source: "github_integrity_audit",
+        github_audit: usedExternalFallback ? primary ?? null : primary,
+        external_projects: hasExternal
+          ? externalProjects.map((project) => ({
+              project_title: project.project_title,
+              project_url: project.project_url,
+              description: project.description,
+            }))
+          : [],
+        source,
       },
     })
     .eq("id", existing?.id ?? userId);
 
   if (updateError) {
-    console.error("[audit] failed to persist GitHub integrity audit:", updateError);
+    console.error("[audit] failed to persist integrity audit:", updateError);
   }
 }
 
@@ -559,23 +700,43 @@ export async function POST(request: Request) {
       payload.resumeSummary = data.resume_text;
     }
 
-    if (!payload.githubUrl?.trim() && data?.portfolio_url?.trim()) {
+    if (
+      !payload.workIsPrivate &&
+      !payload.githubUrl?.trim() &&
+      data?.portfolio_url?.trim()
+    ) {
       payload.githubUrl = data.portfolio_url;
     }
   }
+
+  let storedProjects: ExternalProjectRecord[] = [];
+  if (access.user) {
+    storedProjects = await loadStoredExternalProjects(
+      access.supabase,
+      access.user.id
+    );
+  }
+
+  payload.externalProjects = mergeExternalProjects(
+    storedProjects,
+    payload.externalProjects
+  );
 
   if (!isValidRequestBody(payload)) {
     return NextResponse.json(
       {
         error:
-          "Provide at least a target role, GitHub URL, or resume to audit.",
+          "Provide at least a target role, GitHub URL, resume, or saved project artifacts to audit.",
       },
       { status: 400 }
     );
   }
 
+  const workIsPrivate = Boolean(payload.workIsPrivate);
+  const publicGithub = hasPublicGitHubLink(payload.githubUrl, workIsPrivate);
+
   let githubArtifacts: GitHubArtifactAudit | null = null;
-  if (payload.githubUrl?.trim()) {
+  if (publicGithub && payload.githubUrl?.trim()) {
     try {
       githubArtifacts = await fetchGitHubProfileArtifacts(payload.githubUrl);
     } catch (error) {
@@ -583,13 +744,30 @@ export async function POST(request: Request) {
     }
   }
 
+  const usedExternalFallback = shouldUseExternalProjectFallback({
+    workIsPrivate,
+    githubUrl: publicGithub ? payload.githubUrl?.trim() ?? "" : "",
+    githubAuditSucceeded: githubArtifactAuditSucceeded(githubArtifacts),
+    hasExternalProjects: hasUsableExternalProjects(payload.externalProjects),
+  });
+
   let result: AuditResult;
 
   try {
-    result = await generateGeminiAudit(payload, githubArtifacts);
+    result = await generateGeminiAudit(
+      payload,
+      githubArtifacts,
+      payload.externalProjects ?? [],
+      usedExternalFallback
+    );
   } catch (error) {
     console.error("Gemini audit API failed, using fallback:", error);
-    result = buildFallbackAudit(payload, githubArtifacts);
+    result = buildFallbackAudit(
+      payload,
+      githubArtifacts,
+      payload.externalProjects ?? [],
+      usedExternalFallback
+    );
   }
 
   const usage = access.user
@@ -600,16 +778,23 @@ export async function POST(request: Request) {
       )
     : access.usage;
 
-  if (access.user && githubArtifactAuditSucceeded(githubArtifacts)) {
+  if (
+    access.user &&
+    (githubArtifactAuditSucceeded(githubArtifacts) ||
+      (usedExternalFallback &&
+        hasUsableExternalProjects(payload.externalProjects)))
+  ) {
     try {
-      await persistOwnGitHubIntegrityAudit(
+      await persistOwnIntegrityAudit(
         access.supabase,
         access.user.id,
         result.score,
-        githubArtifacts as GitHubArtifactAudit
+        githubArtifacts,
+        payload.externalProjects ?? [],
+        usedExternalFallback
       );
     } catch (error) {
-      console.error("[audit] persist GitHub integrity audit threw:", error);
+      console.error("[audit] persist integrity audit threw:", error);
     }
   }
 

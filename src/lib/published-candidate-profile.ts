@@ -8,6 +8,10 @@ import {
 } from "@/lib/github-audit";
 import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
 import { clampScore0to100 } from "@/lib/score-scale";
+import {
+  hasUsableExternalProjects,
+  normalizeExternalProjects,
+} from "@/lib/external-projects";
 import { isValidGitHubUrl } from "@/lib/validate-github-url";
 
 export type PublishedCandidateProfileRow = {
@@ -93,7 +97,7 @@ export function hasCompleteRequiredProfileFields(
     hasAnyNonEmptyText(row.availability_status, row.availability) &&
     isNonEmptyText(row.work_preference) &&
     isNonEmptyText(row.timezone) &&
-    hasCandidateGitHubProfile(row)
+    (hasCandidateGitHubProfile(row) || hasSuccessfulExternalProjectsAudit(row))
   );
 }
 
@@ -203,12 +207,40 @@ export function hasSuccessfulGitHubIntegrityAudit(
   return githubAuditHasFetchedArtifacts(githubAudit);
 }
 
+export function hasSuccessfulExternalProjectsAudit(
+  row:
+    | Pick<PublishedCandidateProfileRow, "integrity_score" | "audit_data">
+    | null
+    | undefined
+): boolean {
+  if (!row || resolveStoredIntegrityScore(row) == null) {
+    return false;
+  }
+
+  const auditData = asRecord(row.audit_data);
+  const source =
+    typeof auditData?.source === "string" ? auditData.source.trim().toLowerCase() : "";
+
+  if (
+    source === "external_projects_audit" ||
+    source === "external_projects" ||
+    source === "hybrid_artifact_audit"
+  ) {
+    return true;
+  }
+
+  return hasUsableExternalProjects(
+    normalizeExternalProjects(auditData?.external_projects)
+  );
+}
+
 export function isVerifiedOnProvix(
   row: PublishedCandidateProfileRow | null | undefined
 ): boolean {
   return (
     hasCompleteRequiredProfileFields(row) &&
-    hasSuccessfulGitHubIntegrityAudit(row)
+    (hasSuccessfulGitHubIntegrityAudit(row) ||
+      hasSuccessfulExternalProjectsAudit(row))
   );
 }
 

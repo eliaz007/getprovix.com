@@ -3,7 +3,13 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireAiApiUser, rejectUnlessVerifiedEmployer } from "@/lib/api-auth";
 import {
+  hasUsableExternalProjects,
+  normalizeExternalProjects,
+  type ExternalProjectRecord,
+} from "@/lib/external-projects";
+import {
   fetchGitHubAudit,
+  githubAuditHasFetchedArtifacts,
   type GitHubAuditContext,
 } from "@/lib/github-audit";
 import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
@@ -80,14 +86,16 @@ You receive:
 - Candidate profile claims (codename, skills, bio, degree, experience level, projects)
 - Target job requirements
 - Optional live GitHub repository audit data (stars, forks, creation date, language, recent commits, README excerpt)
+- Optional external_projects artifacts (project titles, live/documentation URLs, and technical breakdowns) when GitHub is private, enterprise-only, or a ghost/empty public profile
 
 Perform three artifact checks plus a chronological timeline conflict check:
-- Check 1 artifact_analysis: README quality, commit history, repo age, languages, and whether artifacts support claimed skills.
+- Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support claimed skills.
 - Check 2 architecture_review: system design signals, folder/module structure, and whether the candidate demonstrates architectural thinking.
 - Check 3 api_resiliency: API design, data handling, error handling, and production resiliency signals. If evidence is thin, say so explicitly.
 - timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history).
-- Be skeptical but fair; cite concrete evidence from the provided repo metadata when available.
+- Be skeptical but fair; cite concrete evidence from the provided repo metadata or external project write-ups when available.
 - Do not treat GitHub handle, GitHub login, or GitHub profile name vs Provix display name/codename as a red flag, identity issue, or scoring penalty. Never add a timeline_flag or lower integrity_score because those strings do not match.
+- If github_audit is missing or empty and external_projects are present, evaluate those write-ups and live/docs URLs instead of failing the screen for a missing public repository.
 
 Return strict JSON only in this exact structure:
 {
@@ -627,7 +635,8 @@ async function persistScreeningResult(
 async function generateGeminiScreen(
   candidate: CandidatePayload,
   job: JobPayload,
-  githubAudit: GitHubAuditContext | null
+  githubAudit: GitHubAuditContext | null,
+  externalProjects: ExternalProjectRecord[]
 ): Promise<ScreenResult> {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -667,7 +676,12 @@ async function generateGeminiScreen(
         location: job.location ?? "",
         description: (job.description ?? "").slice(0, 400),
       },
-      github_audit: githubAudit,
+      github_audit: githubAuditHasFetchedArtifacts(githubAudit) ? githubAudit : null,
+      external_projects: externalProjects.map((project) => ({
+        project_title: project.project_title,
+        project_url: project.project_url,
+        description: project.description.slice(0, 4000),
+      })),
     },
     null,
     2
@@ -795,8 +809,34 @@ export async function POST(request: Request) {
     };
   }
 
+  let externalProjects: ExternalProjectRecord[] = [];
+  const projectOwnerId = lookupId;
+  if (
+    projectOwnerId &&
+    (!githubUrl || !githubAuditHasFetchedArtifacts(githubAudit))
+  ) {
+    const admin = createServiceRoleClient();
+    const reader = admin ?? access.supabase;
+    const { data, error } = await reader
+      .from("external_projects")
+      .select("project_title, project_url, description, created_at")
+      .eq("user_id", projectOwnerId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("[screen] failed to load external_projects:", error);
+    } else {
+      externalProjects = normalizeExternalProjects(data);
+    }
+  }
+
   try {
-    const result = await generateGeminiScreen(candidate, job, githubAudit);
+    const result = await generateGeminiScreen(
+      candidate,
+      job,
+      githubAudit,
+      hasUsableExternalProjects(externalProjects) ? externalProjects : []
+    );
     const persisted = await persistScreeningResult(
       candidate_key,
       profile_id,
