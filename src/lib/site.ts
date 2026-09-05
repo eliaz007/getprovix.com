@@ -15,7 +15,7 @@ export const SITE_KEYWORDS = [
   "Provix",
   "verified candidate intelligence",
   "proof-of-work screening",
-  "GitHub auditor",
+  "Code & Resume Auditor",
   "developer hiring",
   "technical recruiting",
   "repository integrity analysis",

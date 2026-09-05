@@ -83,7 +83,7 @@ const CAREER_ACCELERATOR_NAV = [
   {
     key: "github-auditor",
     href: "/audits",
-    label: "GitHub Auditor",
+    label: "Code & Resume Auditor",
     kind: "public" as const,
   },
   {
@@ -140,7 +140,7 @@ const EMPLOYER_CONSOLE_NAV = [
   {
     key: "auditor",
     tab: "auditor" as const,
-    label: "GitHub Auditor",
+    label: "Code & Resume Auditor",
     icon: "Shield" as const,
   },
 ] as const;

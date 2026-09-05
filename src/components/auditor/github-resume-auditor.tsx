@@ -23,7 +23,10 @@ import {
   hasUsableExternalProjects,
   type ExternalProjectRecord,
 } from "@/lib/external-projects";
-import { hasUsableGitHubAuditTarget } from "@/lib/validate-github-url";
+import {
+  getGitHubUrlValidationMessage,
+  hasUsableGitHubAuditTarget,
+} from "@/lib/validate-github-url";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   DAILY_LIMIT_UI_MESSAGE,
@@ -139,6 +142,10 @@ export default function GitHubResumeAuditor() {
   const hasPrivateArtifacts =
     isPrivateWork && hasUsableExternalProjects(externalProjects);
   const canSubmit = hasValidGithubInput || hasPrivateArtifacts;
+  const githubValidationMessage =
+    githubUrl.trim() && !hasValidGithubInput
+      ? getGitHubUrlValidationMessage(githubUrl)
+      : null;
 
   const startStageProgress = () => {
     setStageIndex(0);
@@ -233,7 +240,7 @@ export default function GitHubResumeAuditor() {
           Career Accelerator
         </div>
         <h1 className="text-3xl font-extrabold tracking-tight text-white">
-          GitHub & Resume Auditor
+          Code & Resume Auditor
         </h1>
         <p className="text-slate-400 text-sm mt-2 max-w-2xl">
           Deep-audit your GitHub artifacts, or private/enterprise project
@@ -266,7 +273,10 @@ export default function GitHubResumeAuditor() {
               ) : null}
             </label>
             <input
-              type="text"
+              type="url"
+              inputMode="url"
+              autoComplete="url"
+              spellCheck={false}
               value={githubUrl}
               onChange={(e) => setGithubUrl(e.target.value)}
               placeholder={
@@ -274,8 +284,25 @@ export default function GitHubResumeAuditor() {
                   ? "Optional — leave blank for private/enterprise work"
                   : "https://github.com/your-handle or repo URL"
               }
-              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              aria-invalid={Boolean(githubValidationMessage)}
+              aria-describedby={
+                githubValidationMessage ? "github-url-validation" : undefined
+              }
+              className={`w-full bg-[#0A0A0A] rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-slate-600 focus:outline-none ${
+                githubValidationMessage
+                  ? "border border-red-500/60 focus:border-red-400"
+                  : "border border-zinc-800 focus:border-indigo-500"
+              }`}
             />
+            {githubValidationMessage ? (
+              <p
+                id="github-url-validation"
+                role="alert"
+                className="mt-2 text-xs text-red-300"
+              >
+                {githubValidationMessage}
+              </p>
+            ) : null}
             <label className="mt-3 flex items-start gap-2.5 cursor-pointer">
               <input
                 type="checkbox"

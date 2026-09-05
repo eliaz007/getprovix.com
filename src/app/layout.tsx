@@ -132,7 +132,7 @@ const jsonLd = {
           "Free during beta for profile browsing and AI screening. 12% success fee on full-time placements.",
       },
       featureList:
-        "Verified candidate profiles with proof-of-work signals, AI GitHub and resume auditor, repository integrity analysis, candidate scoring and talent matching, Pitch Studio outreach generation, warm employer introductions",
+        "Verified candidate profiles with proof-of-work signals, AI Code & Resume Auditor, repository integrity analysis, candidate scoring and talent matching, Pitch Studio outreach generation, warm employer introductions",
       publisher: { "@id": `${SITE_URL}/#organization` },
       provider: { "@id": `${SITE_URL}/#organization` },
     },

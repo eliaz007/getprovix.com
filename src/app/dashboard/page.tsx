@@ -3635,7 +3635,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               className={guestNavClass(false)}
             >
               <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
-              GitHub Auditor
+              Code & Resume Auditor
             </Link>
           </li>
           <li className="order-none w-full shrink-0">
@@ -4356,7 +4356,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           <ResumeFileUpload
                             persistToProfile
                             initialFilename={dbProfile?.resume_filename ?? null}
-                            helperText="Parsed on upload so the GitHub auditor can cross-check claims against your repos or saved project artifacts."
+                            helperText="Parsed on upload so the Code & Resume Auditor can cross-check claims against your repos or saved project artifacts."
                             onPersisted={(meta) => {
                               setDbProfile((prev) =>
                                 prev
