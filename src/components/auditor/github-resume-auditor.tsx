@@ -72,7 +72,7 @@ export default function GitHubResumeAuditor() {
   );
   const [compensationLevel, setCompensationLevel] =
     useState<(typeof COMPENSATION_LEVELS)[number]>("Mid");
-  const [workIsPrivate, setWorkIsPrivate] = useState(false);
+  const [isPrivateWork, setIsPrivateWork] = useState(false);
   const [externalProjects, setExternalProjects] = useState<
     ExternalProjectRecord[]
   >([]);
@@ -139,7 +139,7 @@ export default function GitHubResumeAuditor() {
       githubUrl.trim() ||
       resumeFile ||
       storedResume?.hasResume ||
-      workIsPrivate ||
+      isPrivateWork ||
       hasUsableExternalProjects(externalProjects)
   );
 
@@ -180,7 +180,7 @@ export default function GitHubResumeAuditor() {
         formData.append("targetRole", targetRole.trim());
         formData.append("githubUrl", githubUrl.trim());
         formData.append("compensationLevel", compensationLevel);
-        formData.append("workIsPrivate", workIsPrivate ? "true" : "false");
+        formData.append("workIsPrivate", isPrivateWork ? "true" : "false");
         formData.append("externalProjects", JSON.stringify(externalProjects));
         formData.append("resumeFile", resumeFile);
         response = await fetch("/api/audit", {
@@ -195,7 +195,7 @@ export default function GitHubResumeAuditor() {
             targetRole: targetRole.trim(),
             githubUrl: githubUrl.trim(),
             compensationLevel,
-            workIsPrivate,
+            workIsPrivate: isPrivateWork,
             externalProjects,
           }),
         });
@@ -262,7 +262,7 @@ export default function GitHubResumeAuditor() {
           <div>
             <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
               GitHub Profile / Repo URL
-              {workIsPrivate ? (
+              {isPrivateWork ? (
                 <span className="ml-1 font-medium normal-case tracking-normal text-slate-500">
                   (optional)
                 </span>
@@ -273,7 +273,7 @@ export default function GitHubResumeAuditor() {
               value={githubUrl}
               onChange={(e) => setGithubUrl(e.target.value)}
               placeholder={
-                workIsPrivate
+                isPrivateWork
                   ? "Optional — leave blank for private/enterprise work"
                   : "https://github.com/your-handle or repo URL"
               }
@@ -282,8 +282,8 @@ export default function GitHubResumeAuditor() {
             <label className="mt-3 flex items-start gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
-                checked={workIsPrivate}
-                onChange={(e) => setWorkIsPrivate(e.target.checked)}
+                checked={isPrivateWork}
+                onChange={(e) => setIsPrivateWork(e.target.checked)}
                 className="mt-0.5 h-4 w-4 rounded border-zinc-700 bg-[#0A0A0A] text-indigo-600 focus:ring-indigo-500"
               />
               <span className="text-xs leading-relaxed text-slate-400">
@@ -314,15 +314,17 @@ export default function GitHubResumeAuditor() {
             </select>
           </div>
 
-          <div className="border-t border-zinc-800 pt-4">
-            <ExternalProjectsForm onProjectsChange={setExternalProjects} />
-            {workIsPrivate && !hasUsableExternalProjects(externalProjects) ? (
-              <p className="mt-3 text-xs text-amber-300/90">
-                Save at least one project artifact above so the auditor can
-                review your private or enterprise work instead of a public repo.
-              </p>
-            ) : null}
-          </div>
+          {isPrivateWork && (
+            <div className="border-t border-zinc-800 pt-4">
+              <ExternalProjectsForm onProjectsChange={setExternalProjects} />
+              {!hasUsableExternalProjects(externalProjects) ? (
+                <p className="mt-3 text-xs text-amber-300/90">
+                  Save at least one project artifact above so the auditor can
+                  review your private or enterprise work instead of a public repo.
+                </p>
+              ) : null}
+            </div>
+          )}
 
           <div className="border-t border-zinc-800 pt-1">
             <button
