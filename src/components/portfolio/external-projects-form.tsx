@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, FolderKanban, Loader2, Plus, Trash2 } from "lucide-react";
+import {
+  ExternalLink,
+  FolderKanban,
+  Loader2,
+  Plus,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 import type { ExternalProjectRecord } from "@/lib/external-projects";
 import {
   hasUsableExternalProjects,
@@ -15,6 +22,25 @@ const inputClass =
 
 const labelClass =
   "block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide";
+
+function AlternativeArtifactsTrustNotice({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={`rounded-xl border border-zinc-800 bg-[#0A0A0A] px-3.5 py-3 ${className}`}
+      role="note"
+    >
+      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+        <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
+        Security & Privacy
+      </div>
+      <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed text-slate-500">
+        <li>Technical breakdowns are ephemeral.</li>
+        <li>Never stored permanently for third-party access.</li>
+        <li>Never used to train public AI models.</li>
+      </ul>
+    </div>
+  );
+}
 
 type ExternalProjectsFormProps = {
   onProjectsChange?: (projects: ExternalProjectRecord[]) => void;
@@ -211,6 +237,7 @@ export default function ExternalProjectsForm({
               private or enterprise work. The AI auditor will use these when a
               public GitHub repository is not available.
             </p>
+            <AlternativeArtifactsTrustNotice className="mt-3" />
             <Link
               href="/login"
               className="mt-3 inline-flex text-xs font-semibold text-indigo-300 hover:text-indigo-200"
@@ -235,6 +262,7 @@ export default function ExternalProjectsForm({
           documentation URL plus a technical breakdown. The auditor uses these
           instead of failing on a missing public GitHub repo.
         </p>
+        <AlternativeArtifactsTrustNotice className="mt-3" />
       </div>
 
       <form onSubmit={(event) => void handleSubmit(event)} className="space-y-4">
