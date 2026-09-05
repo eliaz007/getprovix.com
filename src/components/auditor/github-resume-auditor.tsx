@@ -23,6 +23,7 @@ import {
   hasUsableExternalProjects,
   type ExternalProjectRecord,
 } from "@/lib/external-projects";
+import { hasUsableGitHubAuditTarget } from "@/lib/validate-github-url";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   DAILY_LIMIT_UI_MESSAGE,
@@ -134,14 +135,10 @@ export default function GitHubResumeAuditor() {
     };
   }, []);
 
-  const canSubmit = Boolean(
-    targetRole.trim() ||
-      githubUrl.trim() ||
-      resumeFile ||
-      storedResume?.hasResume ||
-      isPrivateWork ||
-      hasUsableExternalProjects(externalProjects)
-  );
+  const hasValidGithubInput = hasUsableGitHubAuditTarget(githubUrl);
+  const hasPrivateArtifacts =
+    isPrivateWork && hasUsableExternalProjects(externalProjects);
+  const canSubmit = hasValidGithubInput || hasPrivateArtifacts;
 
   const startStageProgress = () => {
     setStageIndex(0);

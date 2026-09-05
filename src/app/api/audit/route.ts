@@ -26,7 +26,12 @@ import {
   githubAuditHasFetchedArtifacts,
   type GitHubArtifactAudit,
 } from "@/lib/github-audit";
-import { isValidGitHubUrl } from "@/lib/validate-github-url";
+import {
+  AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE,
+  hasUsableGitHubAuditTarget,
+  isGitHubPlaceholderInput,
+  normalizeGitHubAuditTarget,
+} from "@/lib/validate-github-url";
 import {
   consumeRateLimit,
   getRequestIp,
@@ -193,12 +198,9 @@ function normalizeAuditResult(raw: unknown): AuditResult {
 }
 
 function isValidRequestBody(body: AuditRequestBody): boolean {
-  return Boolean(
-    body.targetRole?.trim() ||
-      body.githubUrl?.trim() ||
-      body.resumeSummary?.trim() ||
-      body.workIsPrivate ||
-      hasUsableExternalProjects(body.externalProjects)
+  return (
+    hasUsableGitHubAuditTarget(body.githubUrl) ||
+    hasUsableExternalProjects(body.externalProjects)
   );
 }
 
@@ -207,8 +209,7 @@ function hasPublicGitHubLink(githubUrl: string | undefined, workIsPrivate: boole
     return false;
   }
 
-  const trimmed = githubUrl?.trim() ?? "";
-  return Boolean(trimmed) && isValidGitHubUrl(trimmed);
+  return hasUsableGitHubAuditTarget(githubUrl);
 }
 
 function formString(form: FormData, key: string): string | undefined {
@@ -673,6 +674,32 @@ export async function POST(request: Request) {
 
   const payload: AuditRequestBody = { ...parsed.body };
 
+  let storedProjects: ExternalProjectRecord[] = [];
+  if (access.user) {
+    storedProjects = await loadStoredExternalProjects(
+      access.supabase,
+      access.user.id
+    );
+  }
+
+  payload.externalProjects = mergeExternalProjects(
+    storedProjects,
+    payload.externalProjects
+  );
+
+  const githubField = payload.githubUrl?.trim() ?? "";
+  const githubMissing =
+    !githubField ||
+    isGitHubPlaceholderInput(githubField) ||
+    !hasUsableGitHubAuditTarget(githubField);
+
+  if (githubMissing && !hasUsableExternalProjects(payload.externalProjects)) {
+    return NextResponse.json(
+      { error: AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE },
+      { status: 400 }
+    );
+  }
+
   if (parsed.resumeFile) {
     try {
       payload.resumeSummary = await extractResumeTextFromFile(parsed.resumeFile);
@@ -702,43 +729,30 @@ export async function POST(request: Request) {
 
     if (
       !payload.workIsPrivate &&
-      !payload.githubUrl?.trim() &&
+      !hasUsableGitHubAuditTarget(payload.githubUrl) &&
       data?.portfolio_url?.trim()
     ) {
       payload.githubUrl = data.portfolio_url;
     }
   }
 
-  let storedProjects: ExternalProjectRecord[] = [];
-  if (access.user) {
-    storedProjects = await loadStoredExternalProjects(
-      access.supabase,
-      access.user.id
-    );
-  }
-
-  payload.externalProjects = mergeExternalProjects(
-    storedProjects,
-    payload.externalProjects
-  );
-
   if (!isValidRequestBody(payload)) {
     return NextResponse.json(
-      {
-        error:
-          "Provide at least a target role, GitHub URL, resume, or saved project artifacts to audit.",
-      },
+      { error: AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE },
       { status: 400 }
     );
   }
 
   const workIsPrivate = Boolean(payload.workIsPrivate);
   const publicGithub = hasPublicGitHubLink(payload.githubUrl, workIsPrivate);
+  const githubFetchUrl = publicGithub
+    ? normalizeGitHubAuditTarget(payload.githubUrl)
+    : "";
 
   let githubArtifacts: GitHubArtifactAudit | null = null;
-  if (publicGithub && payload.githubUrl?.trim()) {
+  if (githubFetchUrl) {
     try {
-      githubArtifacts = await fetchGitHubProfileArtifacts(payload.githubUrl);
+      githubArtifacts = await fetchGitHubProfileArtifacts(githubFetchUrl);
     } catch (error) {
       console.error("[audit] GitHub artifact fetch failed:", error);
     }
