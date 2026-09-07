@@ -274,10 +274,6 @@ export default function OpportunitiesJobFeed({
           <p className="text-sm font-medium text-zinc-100">
             No active openings right now
           </p>
-          <p className="text-xs text-zinc-400 mt-1">
-            New roles are posted as employers join Provix. Sign in to be first in
-            line.
-          </p>
         </div>
       ) : filteredJobFeed.length === 0 ? (
         <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
