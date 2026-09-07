@@ -106,6 +106,18 @@ export default function OpportunitiesJobFeed({
 
   return (
     <div>
+      <div className="mb-8 rounded-2xl border border-zinc-800 bg-gradient-to-br from-[#141414] via-[#111111] to-[#0A0A0A] p-6 sm:p-8">
+        <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-snug">
+          Hire developers based on what they&apos;ve actually built, not what
+          they claim.
+        </h2>
+        <p className="text-zinc-300 text-sm sm:text-base mt-3 leading-relaxed max-w-3xl">
+          Provix audits candidates&apos; real GitHub work and proof-of-work
+          signals — so employers hire with confidence, and candidates get credit
+          for what they&apos;ve genuinely done.
+        </p>
+      </div>
+
       <div className="mb-8">
         <p className="text-xs font-bold uppercase tracking-widest text-indigo-300 mb-2">
           Job Feed
@@ -165,6 +177,12 @@ export default function OpportunitiesJobFeed({
           <span className="text-3xl font-extrabold text-white">
             {jobsLoading ? "—" : activeOpeningsCount}
           </span>
+          {!jobsLoading && activeOpeningsCount === 0 ? (
+            <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+              New roles are posted as employers join Provix. Sign in to be first
+              in line.
+            </p>
+          ) : null}
         </div>
         {isGuest ? (
           <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
@@ -172,7 +190,7 @@ export default function OpportunitiesJobFeed({
               Apply
             </span>
             <span className="text-sm font-extrabold text-indigo-400">
-              Sign in to express interest
+              Sign in to get matched
             </span>
           </div>
         ) : (
@@ -255,9 +273,6 @@ export default function OpportunitiesJobFeed({
         <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
           <p className="text-sm font-medium text-zinc-100">
             No active openings right now
-          </p>
-          <p className="text-xs text-zinc-400 mt-1">
-            Check back soon — new roles are posted as employers join Provix.
           </p>
         </div>
       ) : filteredJobFeed.length === 0 ? (
