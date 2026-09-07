@@ -177,6 +177,12 @@ export default function OpportunitiesJobFeed({
           <span className="text-3xl font-extrabold text-white">
             {jobsLoading ? "—" : activeOpeningsCount}
           </span>
+          {!jobsLoading && activeOpeningsCount === 0 ? (
+            <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+              New roles are posted as employers join Provix. Sign in to be first
+              in line.
+            </p>
+          ) : null}
         </div>
         {isGuest ? (
           <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
