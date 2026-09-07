@@ -3,6 +3,11 @@ import {
   type AuditCheck,
 } from "@/lib/audit-checks";
 import type { GitHubAuditContext } from "@/lib/github-audit";
+import {
+  parseRepoFilesystemEvidence,
+  resolveScoreCapAudit,
+  type ScoreCapAudit,
+} from "@/lib/repo-filesystem";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { resolveTalentProfileId } from "@/lib/talent-pool-profiles";
 
@@ -58,6 +63,7 @@ export type DeepScreeningResult = {
   interview_questions: InterviewCheatSheetQuestion[];
   checks: AuditCheck[];
   github_audit?: GitHubAuditContext | null;
+  scoreCap?: ScoreCapAudit | null;
 };
 
 export type ScreeningJobContext = {
@@ -152,9 +158,14 @@ export function getCandidateScreeningKey(candidate: TalentPoolCandidate): string
 export function coerceDeepScreeningResult(
   result: DeepScreeningResult
 ): DeepScreeningResult {
+  const integrity_score = clampScore0to100(result.integrity_score);
+  const filesystem = result.github_audit?.filesystem
+    ? parseRepoFilesystemEvidence(result.github_audit.filesystem)
+    : null;
+
   return {
     ...result,
-    integrity_score: clampScore0to100(result.integrity_score),
+    integrity_score,
     checks: normalizeAuditChecks(
       Array.isArray(result.checks) && result.checks.length > 0
         ? result.checks
@@ -165,6 +176,11 @@ export function coerceDeepScreeningResult(
               summary: result.artifact_analysis,
             },
           ]
+    ),
+    scoreCap: resolveScoreCapAudit(
+      integrity_score,
+      result.scoreCap,
+      filesystem
     ),
   };
 }

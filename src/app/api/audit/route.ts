@@ -44,9 +44,12 @@ import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
+  emptyScoreCapAudit,
   MISSING_CORE_ARTIFACT_SCORE_CAP,
+  parseScoreCapAudit,
   strongestFilesystemEvidence,
   UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
+  type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import { createClient } from "@/utils/supabase/server";
 
@@ -63,12 +66,15 @@ export type AuditRequestBody = {
 
 export type { AuditCheck };
 
+export type { ScoreCapAudit };
+
 export type AuditResult = {
   score: number;
   strengths: string[];
   redFlags: string[];
   recommendations: string[];
   checks: AuditCheck[];
+  scoreCap: ScoreCapAudit;
 };
 
 const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws.
@@ -195,8 +201,10 @@ function normalizeAuditResult(raw: unknown): AuditResult {
 
   const recommendations = normalizeStringArray(record.recommendations, 3);
 
+  const score = clampScore(record.score);
+
   return {
-    score: clampScore(record.score),
+    score,
     strengths: normalizeStringArray(record.strengths, 5),
     redFlags: normalizeStringArray(record.redFlags, 5),
     recommendations:
@@ -209,6 +217,8 @@ function normalizeAuditResult(raw: unknown): AuditResult {
             "Align project stack keywords with the target role in your headline and bio.",
           ].slice(0, 3),
     checks: normalizeAuditChecks(record.checks),
+    scoreCap:
+      parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(score),
   };
 }
 
@@ -593,7 +603,8 @@ async function persistOwnIntegrityAudit(
   score: number,
   artifacts: GitHubArtifactAudit | null,
   externalProjects: ExternalProjectRecord[],
-  usedExternalFallback: boolean
+  usedExternalFallback: boolean,
+  scoreCap?: ScoreCapAudit | null
 ): Promise<void> {
   const primary = artifacts?.artifacts.find((artifact) =>
     githubAuditHasFetchedArtifacts(artifact)
@@ -641,6 +652,7 @@ async function persistOwnIntegrityAudit(
       integrity_score: integrityScore,
       audit_data: {
         integrity_score: clampScore0to100(score),
+        scoreCap: scoreCap ?? emptyScoreCapAudit(score),
         github_audit: usedExternalFallback ? primary ?? null : primary,
         external_projects: hasExternal
           ? externalProjects.map((project) => ({
@@ -837,7 +849,8 @@ export async function POST(request: Request) {
         result.score,
         githubArtifacts,
         payload.externalProjects ?? [],
-        usedExternalFallback
+        usedExternalFallback,
+        result.scoreCap
       );
     } catch (error) {
       console.error("[audit] persist integrity audit threw:", error);

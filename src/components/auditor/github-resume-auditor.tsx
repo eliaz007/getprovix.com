@@ -15,6 +15,7 @@ import ResumeFileUpload, {
 } from "@/components/ResumeFileUpload";
 import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import ScoreMeter from "@/components/ScoreMeter";
+import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
 import {
   normalizeAuditChecks,
   type AuditCheckId,
@@ -28,6 +29,7 @@ import {
   hasUsableGitHubAuditTarget,
 } from "@/lib/validate-github-url";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
 import {
   DAILY_LIMIT_UI_MESSAGE,
   type DailyScanUsage,
@@ -493,6 +495,7 @@ export default function GitHubResumeAuditor() {
                 </div>
               </div>
               <ScoreMeter score={result.score} />
+              <ScoreCapBreakdown scoreCap={result.scoreCap} score={result.score} />
 
               <div className="space-y-3">
                 {auditChecks.map((check, index) => {
@@ -536,12 +539,22 @@ export default function GitHubResumeAuditor() {
                 </ul>
               </div>
 
+              {result.redFlags.filter(
+                (item) =>
+                  !result.scoreCap?.applied || !isFilesystemCapRedFlag(item)
+              ).length > 0 && (
               <div>
                 <div className="text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-3">
                   Detected Red Flags / Missing Proof-of-Work
                 </div>
                 <ul className="space-y-2">
-                  {result.redFlags.map((item) => (
+                  {result.redFlags
+                    .filter(
+                      (item) =>
+                        !result.scoreCap?.applied ||
+                        !isFilesystemCapRedFlag(item)
+                    )
+                    .map((item) => (
                     <li
                       key={item}
                       className="flex items-start gap-2 text-sm text-slate-300 leading-relaxed"
@@ -555,6 +568,7 @@ export default function GitHubResumeAuditor() {
                   ))}
                 </ul>
               </div>
+              )}
 
               <div>
                 <div className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider mb-3">

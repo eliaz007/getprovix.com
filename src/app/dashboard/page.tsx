@@ -157,9 +157,11 @@ import {
   type DashboardTab,
 } from "@/lib/dashboard-account";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
 import { formatGpa, isGpaDraft } from "@/lib/gpa";
 import ScoreMeter from "@/components/ScoreMeter";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
+import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
@@ -6142,6 +6144,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         className="mt-3"
                       />
 
+                      <ScoreCapBreakdown
+                        scoreCap={employerAuditResult.scoreCap}
+                        score={employerAuditResult.score}
+                      />
+
                       <AuditChecksList checks={employerAuditResult.checks} />
 
                       {employerAuditResult.strengths.length > 0 && (
@@ -6157,13 +6164,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         </div>
                       )}
 
-                      {employerAuditResult.redFlags.length > 0 && (
+                      {employerAuditResult.redFlags.filter(
+                        (item) =>
+                          !employerAuditResult.scoreCap?.applied ||
+                          !isFilesystemCapRedFlag(item)
+                      ).length > 0 && (
                         <div>
                           <span className="font-bold text-white block mb-2 text-sm">
                             Red Flags
                           </span>
                           <ul className="space-y-1.5 text-sm text-amber-200/90 leading-relaxed">
-                            {employerAuditResult.redFlags.map((item) => (
+                            {employerAuditResult.redFlags
+                              .filter(
+                                (item) =>
+                                  !employerAuditResult.scoreCap?.applied ||
+                                  !isFilesystemCapRedFlag(item)
+                              )
+                              .map((item) => (
                               <li key={item}>• {item}</li>
                             ))}
                           </ul>

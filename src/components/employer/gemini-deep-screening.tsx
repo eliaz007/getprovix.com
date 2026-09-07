@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
+import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
 import ScoreMeter from "@/components/ScoreMeter";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { formatGpa } from "@/lib/gpa";
 import { jobDisplayTags, parseJobListInput } from "@/lib/jobs";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
 import {
   AUDIT_STORAGE_PREFIX,
   coerceDeepScreeningResult,
@@ -450,13 +452,26 @@ export default function GeminiDeepScreening({
             )}
           </div>
 
-          {result.timeline_flags.length > 0 && (
+          <ScoreCapBreakdown
+            scoreCap={result.scoreCap}
+            score={result.integrity_score}
+            filesystem={result.github_audit?.filesystem}
+          />
+
+          {result.timeline_flags.filter(
+            (flag) => !result.scoreCap?.applied || !isFilesystemCapRedFlag(flag)
+          ).length > 0 && (
             <div>
               <div className="text-[10px] uppercase font-bold text-red-400 tracking-wider mb-2">
                 Timeline & Repository Flags
               </div>
               <ul className="space-y-1.5">
-                {result.timeline_flags.map((flag, index) => (
+                {result.timeline_flags
+                  .filter(
+                    (flag) =>
+                      !result.scoreCap?.applied || !isFilesystemCapRedFlag(flag)
+                  )
+                  .map((flag, index) => (
                   <li
                     key={`flag-${index}`}
                     className="text-xs text-red-200 leading-relaxed bg-red-500/5 border border-red-500/20 rounded-lg px-3 py-2"

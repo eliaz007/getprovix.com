@@ -26,8 +26,11 @@ import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
+  emptyScoreCapAudit,
   MISSING_CORE_ARTIFACT_SCORE_CAP,
+  parseScoreCapAudit,
   UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
+  type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import {
   CANONICAL_AUDIT_CHECKS,
@@ -76,6 +79,8 @@ export type InterviewQuestion = {
   what_to_listen_for: string;
 };
 
+export type { ScoreCapAudit };
+
 export type ScreenResult = {
   integrity_score: number;
   timeline_flags: string[];
@@ -84,6 +89,7 @@ export type ScreenResult = {
   interview_questions: InterviewQuestion[];
   checks: AuditCheck[];
   github_audit?: GitHubAuditContext | null;
+  scoreCap: ScoreCapAudit;
 };
 
 const SYSTEM_PROMPT = `You are a rigorous Technical & Academic Auditor for Provix employer screening.
@@ -318,6 +324,7 @@ function applyScreenFilesystemCap(
     ...result,
     integrity_score: capped.score,
     timeline_flags: capped.redFlags,
+    scoreCap: capped.scoreCap,
   };
 }
 
@@ -458,6 +465,8 @@ function normalizeScreenResult(
     technical_depth_summary,
     interview_questions: interview_questions.slice(0, 3),
     checks,
+    scoreCap:
+      parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(restoredScore),
   };
 }
 
@@ -562,6 +571,7 @@ function buildFallbackScreen(
         },
       ]),
       github_audit: githubAudit,
+      scoreCap: emptyScoreCapAudit(clampIntegrityScore(integrity_score)),
     },
     githubAudit
   );
