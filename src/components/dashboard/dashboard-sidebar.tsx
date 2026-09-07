@@ -466,7 +466,9 @@ export default function DashboardSidebar() {
           }}
           className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
         >
-          Sign In
+          {isOpportunitiesPath(pathname)
+            ? "Sign in to get matched"
+            : "Sign In"}
         </button>
       )}
     </div>
