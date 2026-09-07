@@ -6,6 +6,7 @@ import {
   githubAuditHasFetchedArtifacts,
   type GitHubAuditContext,
 } from "@/lib/github-audit";
+import { parseRepoFilesystemEvidence } from "@/lib/repo-filesystem";
 import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
@@ -152,6 +153,7 @@ function readGitHubAuditContext(value: unknown): GitHubAuditContext | null {
           (warning): warning is string => typeof warning === "string"
         )
       : [],
+    filesystem: parseRepoFilesystemEvidence(record.filesystem),
   };
 }
 

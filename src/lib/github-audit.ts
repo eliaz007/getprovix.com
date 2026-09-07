@@ -1,3 +1,9 @@
+import {
+  classifyRepoFilesystem,
+  emptyRepoFilesystemEvidence,
+  type RepoFilesystemEvidence,
+} from "@/lib/repo-filesystem";
+
 export type GitHubAuditContext = {
   repo_url: string;
   owner: string;
@@ -10,7 +16,27 @@ export type GitHubAuditContext = {
   commit_dates: string[];
   readme_excerpt: string | null;
   fetch_warnings: string[];
+  filesystem: RepoFilesystemEvidence;
 };
+
+export function emptyGitHubAuditContext(
+  overrides: Partial<GitHubAuditContext> & Pick<GitHubAuditContext, "repo_url">
+): GitHubAuditContext {
+  return {
+    owner: "",
+    repo: "",
+    stars: null,
+    forks: null,
+    created_at: null,
+    language: null,
+    commit_count_sampled: 0,
+    commit_dates: [],
+    readme_excerpt: null,
+    fetch_warnings: [],
+    filesystem: emptyRepoFilesystemEvidence(),
+    ...overrides,
+  };
+}
 
 export type GitHubProfileContext = {
   username: string;
@@ -40,7 +66,8 @@ export function githubAuditHasFetchedArtifacts(
       audit.repo?.trim() ||
       (typeof audit.commit_count_sampled === "number" &&
         audit.commit_count_sampled > 0) ||
-      audit.readme_excerpt?.trim()
+      audit.readme_excerpt?.trim() ||
+      audit.filesystem?.inspected
   );
 }
 
@@ -207,6 +234,132 @@ async function githubFetch(
     : new Error("GitHub fetch failed after retries.");
 }
 
+async function listGithubContents(
+  owner: string,
+  repo: string,
+  path: string
+): Promise<string[]> {
+  const encoded = path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const response = await githubFetch(
+    `https://api.github.com/repos/${owner}/${repo}/contents/${encoded}`
+  );
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const payload = (await response.json()) as
+    | { path?: string; name?: string; type?: string }
+    | Array<{ path?: string; name?: string; type?: string }>;
+
+  const entries = Array.isArray(payload) ? payload : [payload];
+  return entries
+    .map((entry) => {
+      if (typeof entry.path === "string" && entry.path.trim()) {
+        return entry.path.trim();
+      }
+      if (typeof entry.name === "string" && entry.name.trim()) {
+        return path ? `${path}/${entry.name.trim()}` : entry.name.trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
+
+async function fetchRepoFilesystem(
+  owner: string,
+  repo: string,
+  defaultBranch: string | null,
+  warnings: string[]
+): Promise<RepoFilesystemEvidence> {
+  const branches = Array.from(
+    new Set(
+      [defaultBranch, "main", "master"].filter(
+        (branch): branch is string => Boolean(branch?.trim())
+      )
+    )
+  );
+
+  for (const branch of branches) {
+    try {
+      const response = await githubFetch(
+        `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`
+      );
+
+      if (response.status === 404) {
+        continue;
+      }
+
+      if (!response.ok) {
+        warnings.push(
+          `File-tree request failed (${response.status}) for ${owner}/${repo}@${branch}.`
+        );
+        continue;
+      }
+
+      const payload = (await response.json()) as {
+        truncated?: boolean;
+        tree?: Array<{ path?: string; type?: string }>;
+      };
+      const paths = (payload.tree ?? [])
+        .filter((entry) => entry.type === "blob" && typeof entry.path === "string")
+        .map((entry) => entry.path as string);
+
+      const evidence = classifyRepoFilesystem(paths, {
+        inspected: true,
+        truncated: Boolean(payload.truncated),
+      });
+
+      if (payload.truncated) {
+        warnings.push(
+          `File-tree listing for ${owner}/${repo} was truncated; core artifacts were scored only from the returned paths.`
+        );
+
+        const extraPaths: string[] = [];
+        for (const dir of [
+          ".github/workflows",
+          "tests",
+          "test",
+          "__tests__",
+          "spec",
+          "e2e",
+        ]) {
+          try {
+            extraPaths.push(...(await listGithubContents(owner, repo, dir)));
+          } catch (error) {
+            console.error(
+              `[github-audit] targeted contents fetch failed for ${owner}/${repo}/${dir}:`,
+              error
+            );
+          }
+        }
+
+        if (extraPaths.length > 0) {
+          return classifyRepoFilesystem([...paths, ...extraPaths], {
+            inspected: true,
+            truncated: true,
+          });
+        }
+      }
+
+      return evidence;
+    } catch (error) {
+      console.error(
+        `[github-audit] GitHub file-tree fetch failed for ${owner}/${repo}@${branch}:`,
+        error
+      );
+    }
+  }
+
+  warnings.push(
+    "Repository file tree could not be inspected. README and write-ups will not count as substitutes for missing files."
+  );
+  return emptyRepoFilesystemEvidence();
+}
+
 async function fetchRepoAudit(
   owner: string,
   repo: string
@@ -219,6 +372,7 @@ async function fetchRepoAudit(
   let forks: number | null = null;
   let created_at: string | null = null;
   let language: string | null = null;
+  let defaultBranch: string | null = null;
 
   try {
     const repoResponse = await githubFetch(base);
@@ -229,11 +383,13 @@ async function fetchRepoAudit(
         forks_count?: number;
         created_at?: string;
         language?: string | null;
+        default_branch?: string | null;
       };
       stars = repoData.stargazers_count ?? null;
       forks = repoData.forks_count ?? null;
       created_at = repoData.created_at ?? null;
       language = repoData.language ?? null;
+      defaultBranch = repoData.default_branch?.trim() || null;
     } else {
       warnings.push(
         `Repo metadata request failed (${repoResponse.status}) for ${owner}/${repo}.`
@@ -291,6 +447,13 @@ async function fetchRepoAudit(
     warnings.push("README timed out or could not be fetched.");
   }
 
+  const filesystem = await fetchRepoFilesystem(
+    owner,
+    repo,
+    defaultBranch,
+    warnings
+  );
+
   return {
     repo_url: repoUrl,
     owner,
@@ -303,6 +466,7 @@ async function fetchRepoAudit(
     commit_dates: commitSummaries.map((commit) => commit.date),
     readme_excerpt,
     fetch_warnings: warnings,
+    filesystem,
   };
 }
 
@@ -440,39 +604,25 @@ export async function fetchGitHubAudit(
 
     if (artifacts?.fetch_warnings.length) {
       const parsed = parseGitHubUrl(repoUrl);
-      return {
+      return emptyGitHubAuditContext({
         repo_url: repoUrl.trim(),
         owner: parsed?.owner ?? "",
         repo: parsed?.repo ?? "",
-        stars: null,
-        forks: null,
-        created_at: null,
-        language: null,
-        commit_count_sampled: 0,
-        commit_dates: [],
-        readme_excerpt: null,
         fetch_warnings: artifacts.fetch_warnings,
-      };
+      });
     }
 
     return null;
   } catch (error) {
     console.error("[github-audit] fetchGitHubAudit failed:", error);
     const parsed = parseGitHubUrl(repoUrl);
-    return {
+    return emptyGitHubAuditContext({
       repo_url: repoUrl.trim(),
       owner: parsed?.owner ?? "",
       repo: parsed?.repo ?? "",
-      stars: null,
-      forks: null,
-      created_at: null,
-      language: null,
-      commit_count_sampled: 0,
-      commit_dates: [],
-      readme_excerpt: null,
       fetch_warnings: [
         "The live GitHub audit timed out or dropped. Retry to fetch repository artifacts.",
       ],
-    };
+    });
   }
 }

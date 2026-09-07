@@ -40,6 +40,14 @@ import {
 import { extractResumeTextFromFile } from "@/lib/parse-resume";
 import { RESUME_TEXT_LIMIT } from "@/lib/resume-file";
 import { clampScore0to100 } from "@/lib/score-scale";
+import {
+  applyFilesystemScoreCap,
+  buildFilesystemScorePolicy,
+  compactFilesystemForPrompt,
+  MISSING_CORE_ARTIFACT_SCORE_CAP,
+  strongestFilesystemEvidence,
+  UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
+} from "@/lib/repo-filesystem";
 import { createClient } from "@/utils/supabase/server";
 
 export const runtime = "nodejs";
@@ -63,19 +71,25 @@ export type AuditResult = {
   checks: AuditCheck[];
 };
 
-const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws. 
+const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws.
 
 RULES FOR YOUR AUDIT:
 1. NO BUZZWORDS: Never use words like "resiliency," "robust," "seamless," "leverage," "cutting-edge," or "paradigm." Speak in plain, direct, technical English.
-2. CITE SPECIFIC EVIDENCE: You are forbidden from claiming a code flaw or strength unless you can point to a specific file type, directory pattern, commit history detail, live/documentation URL, or technical-breakdown detail you actually observed in the provided artifacts.
-3. HARSH SCORING: Grade out of 100 like a strict employer. Start at 100 and aggressively deduct points for missing production standards (e.g., missing error boundaries, lack of tests, empty READMEs, or shallow tutorial code). A score of 100 requires production-grade architecture.
+2. CITE SPECIFIC EVIDENCE: You are forbidden from claiming a code flaw or strength unless you can point to a specific file path from filesystem inspection, file type, directory pattern, commit history detail, live/documentation URL, or technical-breakdown detail you actually observed in the provided artifacts.
+3. HARSH SCORING: Grade out of 100 like a strict employer. Start at 100 and aggressively deduct points for missing production standards (e.g., missing error boundaries, lack of tests, empty READMEs, or shallow tutorial code). A score of 100 requires production-grade architecture AND file-system proof of tests, CI, and error handling.
 4. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo or external project write-up is a basic template, you must penalize the score heavily and state the mismatch explicitly.
-5. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects instead: project titles, live/documentation URLs, and technical breakdowns are the proof-of-work. Still be skeptical of vague claims with no architecture, APIs, data model, or ownership detail. Never say the audit could not be completed solely because GitHub is private.
+5. FILE-SYSTEM EVIDENCE VS PROSE: README text, resume bullets, commit messages, and external project write-ups are claims, not proof. They must never override missing code artifacts. If filesystem.test_paths, filesystem.ci_workflow_paths, or filesystem.error_handling_paths is empty, that artifact is missing — even if a README or write-up describes tests, CI, or error handling. Do not invent files that are not listed.
+6. HARD SCORE CAPS:
+   - If any core technical requirement is missing from repo inspection (test suite, CI workflow, or explicit error-handling files), the score MUST be at most ${MISSING_CORE_ARTIFACT_SCORE_CAP}.
+   - If two or more core requirements are missing, or filesystem.inspected is false, the score MUST be at most ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
+   - Scores above 80 are forbidden unless filesystem.inspected is true AND test_paths, ci_workflow_paths, and error_handling_paths are all non-empty. Cite those paths as proof.
+   - Honor scorePolicy.appliedMaxScore. Never exceed it. Never raise the score because the prose sounded production-grade.
+7. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts and cannot raise the score above the caps in rule 6. Never say the audit could not be completed solely because GitHub is private.
 
 Return strict JSON only:
 {
-  "score": number (integer 0-100 after deductions from 100),
-  "strengths": ["strength cited with a file type, directory pattern, or commit-history detail", "..."],
+  "score": number (integer 0-100 after deductions from 100, already capped per rule 6),
+  "strengths": ["strength cited with a file path, file type, directory pattern, or commit-history detail", "..."],
   "redFlags": ["flaw or resume/repo mismatch cited with evidence", "..."],
   "recommendations": ["specific fix", "...", "..."],
   "checks": [
@@ -98,14 +112,14 @@ Return strict JSON only:
 }
 
 JSON field rules:
-- score: integer 0-100. Start at 100 and deduct. 100 is only for production-grade architecture.
-- strengths: 3-5 bullets. Each must cite a file type, directory pattern, commit-history detail, live/documentation URL, or technical-breakdown detail from the provided artifacts. If you cannot cite it, omit it.
-- redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true.
+- score: integer 0-100. Start at 100 and deduct. Apply the hard caps in rule 6 before returning. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling.
+- strengths: 3-5 bullets. Each must cite a file path, file type, directory pattern, commit-history detail, live/documentation URL, or technical-breakdown detail from the provided artifacts. If you cannot cite it, omit it. Do not cite README claims as proof of tests, CI, or error handling.
+- redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. If core files are missing from the file tree, say so. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true.
 - recommendations: exactly 3 specific, actionable fixes.
 - checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown, and must cite observed evidence. If evidence is missing, say so and deduct.
-  - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims.
-  - Check 2 architecture_review: folder/module structure or technical-breakdown architecture and whether the candidate shows real system design, not a template.
-  - Check 3 api_resiliency: API design, data handling, error handling, tests, and production standards. If evidence is thin, say so.
+  - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims. Treat README as a claim sheet, not as a substitute for files.
+  - Check 2 architecture_review: folder/module structure from the file tree or technical-breakdown architecture and whether the candidate shows real system design, not a template.
+  - Check 3 api_resiliency: API design, data handling, error handling, tests, and production standards. Pass/fail tests, CI, and error handling only from filesystem paths. If those path lists are empty, say they are missing.
 - No markdown, no extra keys. Never use the banned buzzwords above.`;
 
 const AUDIT_CHECK_SCHEMA = {
@@ -127,7 +141,8 @@ const AUDIT_RESPONSE_SCHEMA = {
   properties: {
     score: {
       type: Type.INTEGER,
-      description: "Overall hiring readiness score from 0 to 100.",
+      description:
+        "Overall hiring readiness score from 0 to 100. Must already apply file-system caps: max 60 if any core artifact is missing, max 50 if two or more are missing or the file tree was not inspected, and above 80 only with file-system proof of tests, CI, and error handling.",
     },
     strengths: {
       type: Type.ARRAY,
@@ -363,6 +378,7 @@ function buildFallbackAudit(
   }
 
   const artifact = githubArtifacts?.artifacts[0];
+  const filesystem = strongestFilesystemEvidence(githubArtifacts?.artifacts ?? []);
   const primaryProject = externalProjects[0];
   const checks = CANONICAL_AUDIT_CHECKS.map((canonical) => {
     if (canonical.id === "artifact_analysis") {
@@ -370,11 +386,11 @@ function buildFallbackAudit(
         ...canonical,
         summary:
           usedExternalFallback && primaryProject
-            ? `Reviewed external project "${primaryProject.project_title}"${primaryProject.project_url ? ` at ${primaryProject.project_url}` : ""}. ${primaryProject.description ? "The technical breakdown was used in place of a public GitHub repository." : "The write-up was thin, so production claims still need more concrete evidence."}`
+            ? `Reviewed external project "${primaryProject.project_title}"${primaryProject.project_url ? ` at ${primaryProject.project_url}` : ""}. ${primaryProject.description ? "The technical breakdown is a write-up, not a file tree, so tests, CI, and error handling were not verified as code artifacts." : "The write-up was thin, so production claims still need more concrete evidence."}`
             : artifact
-            ? `Sampled ${artifact.owner}/${artifact.repo} (${artifact.language ?? "unknown language"}, ${artifact.commit_count_sampled} recent commits). README and commit history ${artifact.readme_excerpt ? "are present" : "are limited"} for claim verification.`
+            ? `Sampled ${artifact.owner}/${artifact.repo} (${artifact.language ?? "unknown language"}, ${artifact.commit_count_sampled} recent commits, ${filesystem?.file_count ?? 0} inspected files). README and commit history ${artifact.readme_excerpt ? "are present" : "are limited"}; file-tree proof of tests/CI/error handling is ${filesystem?.inspected ? "what the score is based on" : "missing"}.`
             : hasGithub
-              ? `A GitHub URL was supplied for ${role}, but repository artifacts were too thin to verify README quality or commit history.`
+              ? `A GitHub URL was supplied for ${role}, but repository artifacts were too thin to verify README quality, commit history, or a file tree.`
               : "No GitHub artifacts were available to verify README quality, commit history, or language signals.",
       };
     }
@@ -384,9 +400,11 @@ function buildFallbackAudit(
         ...canonical,
         summary:
           usedExternalFallback && primaryProject?.description
-            ? `Architecture was scored from the technical breakdown for "${primaryProject.project_title}". Module ownership and system boundaries still need to be as explicit as a production README for ${level}-level ${role} work.`
+            ? `Architecture was scored from the technical breakdown for "${primaryProject.project_title}". Module ownership and system boundaries still need file-system proof for ${level}-level ${role} work.`
+            : filesystem?.sample_paths.length
+            ? `File tree from ${artifact?.owner}/${artifact?.repo} includes ${filesystem.sample_paths.slice(0, 4).join(", ")}. Folder-level architecture still needs a clearer ownership and module map for ${level}-level ${role} work.`
             : artifact?.readme_excerpt
-            ? `README excerpt from ${artifact.owner}/${artifact.repo} was reviewed for design notes. Folder-level architecture still needs a clearer ownership and module map for ${level}-level ${role} work.`
+            ? `README excerpt from ${artifact.owner}/${artifact.repo} was reviewed as a claim sheet only. No file-tree architecture proof was available for ${level}-level ${role} work.`
             : "Architecture signals were limited. No documented module structure or system-design notes were available from the provided artifacts.",
       };
     }
@@ -395,8 +413,10 @@ function buildFallbackAudit(
       ...canonical,
       summary:
         usedExternalFallback && primaryProject?.description
-          ? `API and data-handling claims were taken from the submitted technical breakdown for "${primaryProject.project_title}". Error handling, persistence, and tests still need concrete evidence.`
-          : "API and data-resiliency evidence was not confirmed. Error handling, persistence, and production hardening could not be verified from the sampled artifacts.",
+          ? `API and data-handling claims were taken from the submitted technical breakdown for "${primaryProject.project_title}". Error handling, persistence, and tests still need file-system proof and cannot be credited from prose.`
+          : filesystem?.inspected
+          ? `File-tree inspection found tests=${filesystem.test_paths.length > 0}, CI=${filesystem.ci_workflow_paths.length > 0}, error handling=${filesystem.error_handling_paths.length > 0}. Missing core files are not waived by README language.`
+          : "API and data-resiliency evidence was not confirmed. Error handling, tests, and CI could not be verified from a repository file tree.",
     };
   });
 
@@ -432,6 +452,11 @@ async function generateGeminiAudit(
         : "not_provided"
     : null;
 
+  const filesystemEvidence = usedExternalFallback
+    ? null
+    : strongestFilesystemEvidence(githubArtifacts?.artifacts ?? []);
+  const scorePolicy = buildFilesystemScorePolicy(filesystemEvidence);
+
   const userPrompt = JSON.stringify({
     targetRole: body.targetRole?.trim() ?? "",
     githubUrl,
@@ -445,6 +470,7 @@ async function generateGeminiAudit(
         : "external_projects"
       : "github",
     githubUnavailableReason,
+    scorePolicy,
     githubProfile: usedExternalFallback ? null : githubArtifacts?.profile ?? null,
     githubArtifacts: usedExternalFallback
       ? []
@@ -459,6 +485,7 @@ async function generateGeminiAudit(
           commit_count_sampled: artifact.commit_count_sampled,
           commit_dates: artifact.commit_dates,
           readme_excerpt: artifact.readme_excerpt,
+          filesystem: compactFilesystemForPrompt(artifact.filesystem),
         })),
     githubFetchWarnings: usedExternalFallback
       ? []
@@ -783,6 +810,11 @@ export async function POST(request: Request) {
       usedExternalFallback
     );
   }
+
+  result = applyFilesystemScoreCap(
+    result,
+    strongestFilesystemEvidence(githubArtifacts?.artifacts ?? [])
+  );
 
   const usage = access.user
     ? await incrementDailyScanUsage(

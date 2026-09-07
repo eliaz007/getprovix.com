@@ -2,6 +2,7 @@ import {
   normalizeAuditChecks,
   type AuditCheck,
 } from "@/lib/audit-checks";
+import type { GitHubAuditContext } from "@/lib/github-audit";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { resolveTalentProfileId } from "@/lib/talent-pool-profiles";
 
@@ -56,19 +57,7 @@ export type DeepScreeningResult = {
   technical_depth_summary: string;
   interview_questions: InterviewCheatSheetQuestion[];
   checks: AuditCheck[];
-  github_audit?: {
-    repo_url: string;
-    owner: string;
-    repo: string;
-    stars: number | null;
-    forks: number | null;
-    created_at: string | null;
-    language: string | null;
-    commit_count_sampled: number;
-    commit_dates: string[];
-    readme_excerpt: string | null;
-    fetch_warnings: string[];
-  } | null;
+  github_audit?: GitHubAuditContext | null;
 };
 
 export type ScreeningJobContext = {

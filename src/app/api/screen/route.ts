@@ -8,6 +8,7 @@ import {
   type ExternalProjectRecord,
 } from "@/lib/external-projects";
 import {
+  emptyGitHubAuditContext,
   fetchGitHubAudit,
   githubAuditHasFetchedArtifacts,
   type GitHubAuditContext,
@@ -21,6 +22,13 @@ import {
   resolvedProfileId,
 } from "@/lib/resolve-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
+import {
+  applyFilesystemScoreCap,
+  buildFilesystemScorePolicy,
+  compactFilesystemForPrompt,
+  MISSING_CORE_ARTIFACT_SCORE_CAP,
+  UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
+} from "@/lib/repo-filesystem";
 import {
   CANONICAL_AUDIT_CHECKS,
   defaultAuditCheckSummary,
@@ -85,21 +93,30 @@ Provix is an anonymized talent platform. The candidate's display name is a gener
 You receive:
 - Candidate profile claims (codename, skills, bio, degree, experience level, projects)
 - Target job requirements
-- Optional live GitHub repository audit data (stars, forks, creation date, language, recent commits, README excerpt)
+- Optional live GitHub repository audit data (stars, forks, creation date, language, recent commits, README excerpt, and filesystem file-tree inspection)
 - Optional external_projects artifacts (project titles, live/documentation URLs, and technical breakdowns) when GitHub is private, enterprise-only, or a ghost/empty public profile
+- scorePolicy: hard numeric caps computed from the file tree. You must obey appliedMaxScore.
 
 Perform three artifact checks plus a chronological timeline conflict check:
-- Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support claimed skills.
-- Check 2 architecture_review: system design signals, folder/module structure, and whether the candidate demonstrates architectural thinking.
-- Check 3 api_resiliency: API design, data handling, error handling, and production resiliency signals. If evidence is thin, say so explicitly.
+- Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support claimed skills. README is a claim sheet, not file-system proof.
+- Check 2 architecture_review: system design signals, folder/module structure from the file tree, and whether the candidate demonstrates architectural thinking.
+- Check 3 api_resiliency: API design, data handling, error handling, and production resiliency signals. Tests, CI workflows, and error handling pass only if filesystem.test_paths, filesystem.ci_workflow_paths, and filesystem.error_handling_paths contain real paths. If evidence is thin, say so explicitly.
 - timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history).
-- Be skeptical but fair; cite concrete evidence from the provided repo metadata or external project write-ups when available.
+- Be skeptical but fair; cite concrete file paths from filesystem inspection when available. Repo metadata and external project write-ups are secondary.
 - Do not treat GitHub handle, GitHub login, or GitHub profile name vs Provix display name/codename as a red flag, identity issue, or scoring penalty. Never add a timeline_flag or lower integrity_score because those strings do not match.
-- If github_audit is missing or empty and external_projects are present, evaluate those write-ups and live/docs URLs instead of failing the screen for a missing public repository.
+- If github_audit is missing or empty and external_projects are present, evaluate those write-ups and live/docs URLs for qualitative notes instead of failing the screen for a missing public repository. Write-ups still cannot raise the score above the file-system caps.
+
+FILE-SYSTEM EVIDENCE VS PROSE:
+- Prose descriptions, README summaries, resume bullets, and external project write-ups can never override missing code artifacts.
+- If a README says the repo has tests, CI, or error handling but the matching filesystem path list is empty, treat that artifact as missing.
+- If any core technical requirement is missing from repo inspection (test suite, CI workflow, or explicit error-handling files), integrity_score MUST be at most ${MISSING_CORE_ARTIFACT_SCORE_CAP}.
+- If two or more core requirements are missing, or filesystem.inspected is false, integrity_score MUST be at most ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
+- Scores above 80 require concrete file-system proof: inspected file tree plus non-empty test_paths, ci_workflow_paths, and error_handling_paths. Cite those paths.
+- Never exceed scorePolicy.appliedMaxScore.
 
 Return strict JSON only in this exact structure:
 {
-  "integrity_score": number (integer 0-100),
+  "integrity_score": number (integer 0-100, already capped per file-system rules),
   "timeline_flags": ["flag1", "flag2"],
   "artifact_analysis": "Concise paragraph on repository/proof-of-work authenticity (same content as Check 1).",
   "technical_depth_summary": "Concise paragraph on demonstrated technical depth vs role requirements.",
@@ -134,8 +151,8 @@ Also generate an Employer Interview Cheat Sheet:
 - Each question must include a category badge label and a concise what_to_listen_for tip for hiring managers.
 
 Rules:
-- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with artifacts. Do not deduct points for GitHub handle / display-name mismatch.
-- timeline_flags: array of specific red-flag strings; empty array if none. Never include flags about GitHub handle, username, or login not matching the candidate display name or codename.
+- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with file-system artifacts. Apply the hard caps above. Do not deduct points for GitHub handle / display-name mismatch.
+- timeline_flags: array of specific red-flag strings; empty array if none. Never include flags about GitHub handle, username, or login not matching the candidate display name or codename. Include missing tests/CI/error-handling files when those path lists are empty.
 - checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown. Do not mention handle-vs-name mismatch.
 - artifact_analysis should match Check 1. technical_depth_summary remains a separate overall depth paragraph.
 - interview_questions: exactly 3 objects; categories should vary (e.g., Architecture / Process, Metric Verification, Technical Depth).
@@ -160,7 +177,8 @@ const SCREEN_RESPONSE_SCHEMA = {
   properties: {
     integrity_score: {
       type: Type.INTEGER,
-      description: "Integrity score from 0 to 100.",
+      description:
+        "Integrity score from 0 to 100. Max 60 if any core file-system artifact is missing, max 50 if two or more are missing or the file tree was not inspected, and above 80 only with file-system proof of tests, CI, and error handling.",
     },
     timeline_flags: {
       type: Type.ARRAY,
@@ -281,6 +299,26 @@ function normalizeStringArray(value: unknown, maxItems: number): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, maxItems);
+}
+
+function applyScreenFilesystemCap(
+  result: ScreenResult,
+  githubAudit: GitHubAuditContext | null
+): ScreenResult {
+  const capped = applyFilesystemScoreCap(
+    {
+      score: result.integrity_score,
+      redFlags: result.timeline_flags,
+    },
+    githubAudit?.filesystem,
+    8
+  );
+
+  return {
+    ...result,
+    integrity_score: capped.score,
+    timeline_flags: capped.redFlags,
+  };
 }
 
 function clampIntegrityScore(value: unknown): number {
@@ -493,33 +531,40 @@ function buildFallbackScreen(
     ? `Fallback audit of ${githubAudit.owner}/${githubAudit.repo}: ${githubAudit.commit_count_sampled} recent commits sampled, primary language ${githubAudit.language ?? "unknown"}.`
     : "Fallback screening could not verify proof-of-work artifacts against a public GitHub repository.";
 
-  return {
-    integrity_score: clampIntegrityScore(integrity_score),
-    timeline_flags,
-    artifact_analysis,
-    technical_depth_summary: `Skill overlap with ${roleLabel}: ${overlap.join(", ") || skills.slice(0, 2).join(", ") || "limited explicit matches"}.`,
-    interview_questions: buildDefaultInterviewQuestions(candidate, job),
-    checks: normalizeAuditChecks([
-      {
-        id: "artifact_analysis",
-        title: CANONICAL_AUDIT_CHECKS[0].title,
-        summary: artifact_analysis,
-      },
-      {
-        id: "architecture_review",
-        title: CANONICAL_AUDIT_CHECKS[1].title,
-        summary: githubAudit?.readme_excerpt
-          ? `README excerpt from ${githubAudit.owner}/${githubAudit.repo} was reviewed for design notes. Module-level architecture still needs a clearer ownership map.`
-          : defaultAuditCheckSummary("architecture_review"),
-      },
-      {
-        id: "api_resiliency",
-        title: CANONICAL_AUDIT_CHECKS[2].title,
-        summary: defaultAuditCheckSummary("api_resiliency"),
-      },
-    ]),
-    github_audit: githubAudit,
-  };
+  return applyScreenFilesystemCap(
+    {
+      integrity_score: clampIntegrityScore(integrity_score),
+      timeline_flags,
+      artifact_analysis,
+      technical_depth_summary: `Skill overlap with ${roleLabel}: ${overlap.join(", ") || skills.slice(0, 2).join(", ") || "limited explicit matches"}.`,
+      interview_questions: buildDefaultInterviewQuestions(candidate, job),
+      checks: normalizeAuditChecks([
+        {
+          id: "artifact_analysis",
+          title: CANONICAL_AUDIT_CHECKS[0].title,
+          summary: artifact_analysis,
+        },
+        {
+          id: "architecture_review",
+          title: CANONICAL_AUDIT_CHECKS[1].title,
+          summary: githubAudit?.filesystem?.sample_paths.length
+            ? `File tree from ${githubAudit.owner}/${githubAudit.repo} includes ${githubAudit.filesystem.sample_paths.slice(0, 4).join(", ")}. Module-level architecture still needs a clearer ownership map.`
+            : githubAudit?.readme_excerpt
+            ? `README excerpt from ${githubAudit.owner}/${githubAudit.repo} was reviewed as a claim sheet only. No file-tree architecture proof was available.`
+            : defaultAuditCheckSummary("architecture_review"),
+        },
+        {
+          id: "api_resiliency",
+          title: CANONICAL_AUDIT_CHECKS[2].title,
+          summary: githubAudit?.filesystem?.inspected
+            ? `File-tree inspection found tests=${githubAudit.filesystem.test_paths.length > 0}, CI=${githubAudit.filesystem.ci_workflow_paths.length > 0}, error handling=${githubAudit.filesystem.error_handling_paths.length > 0}. README claims do not substitute for missing files.`
+            : defaultAuditCheckSummary("api_resiliency"),
+        },
+      ]),
+      github_audit: githubAudit,
+    },
+    githubAudit
+  );
 }
 
 function isValidRequestBody(
@@ -676,7 +721,13 @@ async function generateGeminiScreen(
         location: job.location ?? "",
         description: (job.description ?? "").slice(0, 400),
       },
-      github_audit: githubAuditHasFetchedArtifacts(githubAudit) ? githubAudit : null,
+      scorePolicy: buildFilesystemScorePolicy(githubAudit?.filesystem),
+      github_audit: githubAuditHasFetchedArtifacts(githubAudit) && githubAudit
+        ? {
+            ...githubAudit,
+            filesystem: compactFilesystemForPrompt(githubAudit.filesystem),
+          }
+        : null,
       external_projects: externalProjects.map((project) => ({
         project_title: project.project_title,
         project_url: project.project_url,
@@ -709,10 +760,13 @@ async function generateGeminiScreen(
       }
 
       const normalized = normalizeScreenResult(JSON.parse(text), candidate, job);
-      return {
-        ...normalized,
-        github_audit: githubAudit,
-      };
+      return applyScreenFilesystemCap(
+        {
+          ...normalized,
+          github_audit: githubAudit,
+        },
+        githubAudit
+      );
     } catch (error) {
       lastError = error;
       console.error(`Gemini screen failed for model ${model}:`, error);
@@ -792,21 +846,12 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     console.error("[screen] GitHub fetch sequence failed:", error);
-    githubAudit = {
+    githubAudit = emptyGitHubAuditContext({
       repo_url: githubUrl ?? "",
-      owner: "",
-      repo: "",
-      stars: null,
-      forks: null,
-      created_at: null,
-      language: null,
-      commit_count_sampled: 0,
-      commit_dates: [],
-      readme_excerpt: null,
       fetch_warnings: [
         "The GitHub fetch sequence timed out or dropped. Retry the live audit to reload repository artifacts.",
       ],
-    };
+    });
   }
 
   let externalProjects: ExternalProjectRecord[] = [];
