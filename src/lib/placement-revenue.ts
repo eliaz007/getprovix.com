@@ -1,6 +1,7 @@
 export const FLAT_FEE_THRESHOLD = 25_000;
 export const FLAT_FEE_AMOUNT = 2_500;
 export const CONTINGENCY_RATE = 0.1;
+export const REPLACEMENT_GUARANTEE_DAYS = 90;
 export const DEFAULT_CANDIDATE_BONUS = 750;
 export const CANDIDATE_BONUS_RANGE_LABEL = "$750";
 

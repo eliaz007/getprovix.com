@@ -14,6 +14,7 @@ import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadg
 import Card from "@/components/ui/Card";
 import ScoreMeter from "@/components/ScoreMeter";
 import { resolveCandidateScore } from "@/lib/candidate-score";
+import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 import { formatGpa } from "@/lib/gpa";
 import { getPublicProfileBySlug } from "@/lib/public-profile";
 import { buildPublicProfileUrl } from "@/lib/profile-url";
@@ -321,7 +322,8 @@ export default async function PublicCandidateProfilePage({
                     <p className="mt-1 text-xs leading-relaxed text-zinc-300">
                       This profile is complete and a GitHub integrity audit has
                       run successfully. Employers hire on a contingency placement
-                      model — no upfront subscriptions.
+                      model with no upfront subscriptions.{" "}
+                      {PUBLIC_PLACEMENT_TERMS_SUMMARY}
                     </p>
                   </div>
                 </div>

@@ -7,6 +7,7 @@ import { getPublicCandidateLocation } from "@/lib/candidate-anonymization";
 import { scoreTalentMatch } from "@/lib/match-heuristic";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 import { formatGpa } from "@/lib/gpa";
 import {
   educationFromProfileRow,
@@ -468,7 +469,7 @@ export default function JobApplicantsDrawer({
             <h2 className="text-xl font-extrabold text-white mt-1">{jobTitle}</h2>
             <p className="text-sm text-slate-400 mt-1">
               Anonymized proof-of-work profiles — request an intro with no
-              upfront fees under Provix contingency placement terms.
+              upfront fees. {PUBLIC_PLACEMENT_TERMS_SUMMARY}
             </p>
           </div>
           <button

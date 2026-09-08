@@ -12,6 +12,7 @@ import {
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
+import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 
 type FeatureHighlight = {
   title: string;
@@ -35,7 +36,7 @@ const employerHighlights: FeatureHighlight[] = [
   {
     title: "Full-Time Placements",
     description:
-      "12% success fee only when you officially hire, backed by a 60-day replacement guarantee.",
+      PUBLIC_PLACEMENT_TERMS_SUMMARY,
     icon: ShieldCheck,
   },
 ];

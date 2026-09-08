@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { buildPageMetadata } from "@/lib/site";
+import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
+import { REPLACEMENT_GUARANTEE_DAYS } from "@/lib/placement-revenue";
 
 export const metadata = buildPageMetadata(
   "Terms of Service",
-  "Terms governing use of the Provix candidate auditing and matchmaking platform.",
+  `Terms governing use of Provix, including a ${PUBLIC_PLACEMENT_TERMS_SUMMARY}`,
   "/terms"
 );
 
@@ -21,7 +23,7 @@ const sections = [
     paragraphs: [
       "Provix is a candidate auditing and matchmaking platform that helps employers evaluate proof-of-work signals and helps candidates discover relevant opportunities.",
       "The service includes automated repository and profile screening, integrity and match scoring, talent pool discovery, interview enablement features, and AI-assisted analysis delivered through the Provix dashboard and related APIs.",
-      "Provix provides informational and workflow tools to support hiring decisions. We do not guarantee employment outcomes, candidate availability, or the accuracy of third-party data sources.",
+      `Provix provides informational and workflow tools to support hiring decisions. Except for the ${REPLACEMENT_GUARANTEE_DAYS}-day replacement guarantee on successful placements described below, we do not guarantee employment outcomes, candidate availability, or the accuracy of third-party data sources.`,
     ],
   },
   {
@@ -31,6 +33,13 @@ const sections = [
       "You agree to provide accurate, current, and complete profile information and to update it as needed. You must not impersonate another person or misrepresent your qualifications, experience, or affiliations.",
       "Candidates must submit authentic repository, portfolio, and proof-of-work materials. You may not upload fraudulent data, manipulate audit signals, scrape the platform in unauthorized ways, or attempt to circumvent access controls, billing, or visibility settings.",
       "Employers agree to use candidate information lawfully and only for legitimate recruiting, evaluation, and hiring purposes permitted by applicable law and the candidate's visibility settings.",
+    ],
+  },
+  {
+    title: "Fees & Placement Terms",
+    paragraphs: [
+      `Provix is a contingency placement service. Employers pay no upfront subscription to browse profiles or run AI screening. When an employer hires a candidate through Provix, the fee is a ${PUBLIC_PLACEMENT_TERMS_SUMMARY}`,
+      "These placement terms apply to full-time hires made through the platform. Independent contractor or hourly engagements may be billed separately as disclosed at the time of engagement.",
     ],
   },
   {

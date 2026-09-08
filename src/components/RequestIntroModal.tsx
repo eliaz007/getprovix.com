@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
+import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 
 export const COMP_BAND_OPTIONS = [
   "$60k–$80k",
@@ -153,8 +154,8 @@ export default function RequestIntroModal({
             Request Warm Introduction to {candidate.name}
           </h3>
           <p className="text-sm text-slate-400 mt-1">
-            No upfront fees. Provix only earns when you hire through our
-            contingency placement model.
+            No upfront fees. Provix only earns when you hire:{" "}
+            {PUBLIC_PLACEMENT_TERMS_SUMMARY}
           </p>
         </div>
 
@@ -240,9 +241,8 @@ export default function RequestIntroModal({
               >
                 Provix Placement Terms
               </Link>
-              : 10% of first-year salary upon hire, or a $2,500 flat fee for
-              roles under $25,000. Employers remain responsible for independent
-              pre-hire verification.
+              : {PUBLIC_PLACEMENT_TERMS_SUMMARY} Employers remain responsible
+              for independent pre-hire verification.
             </span>
           </label>
 
