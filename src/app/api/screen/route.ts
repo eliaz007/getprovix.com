@@ -110,6 +110,7 @@ Perform three artifact checks plus a chronological timeline conflict check:
 - timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history).
 - Be skeptical but fair; cite concrete file paths from filesystem inspection when available. Repo metadata and external project write-ups are secondary.
 - Do not treat GitHub handle, GitHub login, or GitHub profile name vs Provix display name/codename as a red flag, identity issue, or scoring penalty. Never add a timeline_flag or lower integrity_score because those strings do not match.
+- CODE-FIRST: A missing resume, CV, or experience summary must not lower integrity_score and must not appear in timeline_flags. Score from GitHub file-tree artifacts, commits, and project write-ups. If a resume is present, use it only to check claim-vs-code mismatches.
 - If github_audit is missing or empty and external_projects are present, evaluate those write-ups and live/docs URLs for qualitative notes instead of failing the screen for a missing public repository. Write-ups still cannot raise the score above the file-system caps.
 
 FILE-SYSTEM EVIDENCE VS PROSE:
@@ -157,8 +158,8 @@ Also generate an Employer Interview Cheat Sheet:
 - Each question must include a category badge label and a concise what_to_listen_for tip for hiring managers.
 
 Rules:
-- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with file-system artifacts. Apply the hard caps above. Do not deduct points for GitHub handle / display-name mismatch.
-- timeline_flags: array of specific red-flag strings; empty array if none. Never include flags about GitHub handle, username, or login not matching the candidate display name or codename. Include missing tests/CI/error-handling files when those path lists are empty.
+- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with file-system artifacts. Apply the hard caps above. Do not deduct points for GitHub handle / display-name mismatch. Do not deduct points for a missing resume.
+- timeline_flags: array of specific red-flag strings; empty array if none. Never include flags about GitHub handle, username, or login not matching the candidate display name or codename. Never include a missing resume, CV, or experience summary. Include missing tests/CI/error-handling files when those path lists are empty.
 - checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown. Do not mention handle-vs-name mismatch.
 - artifact_analysis should match Check 1. technical_depth_summary remains a separate overall depth paragraph.
 - interview_questions: exactly 3 objects; categories should vary (e.g., Architecture / Process, Metric Verification, Technical Depth).
@@ -184,13 +185,13 @@ const SCREEN_RESPONSE_SCHEMA = {
     integrity_score: {
       type: Type.INTEGER,
       description:
-        "Integrity score from 0 to 100. Max 60 if any core file-system artifact is missing, max 50 if two or more are missing or the file tree was not inspected, and above 80 only with file-system proof of tests, CI, and error handling.",
+        "Integrity score from 0 to 100 based on code artifacts. Do not lower the score for a missing resume. Max 60 if any core file-system artifact is missing, max 50 if two or more are missing or the file tree was not inspected, and above 80 only with file-system proof of tests, CI, and error handling.",
     },
     timeline_flags: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
       description:
-        "Red flags from artifact or timeline review. Do not include GitHub handle vs display-name/codename mismatch.",
+        "Red flags from artifact or timeline review. Do not include GitHub handle vs display-name/codename mismatch. Do not include a missing resume.",
     },
     artifact_analysis: {
       type: Type.STRING,
@@ -258,11 +259,30 @@ function isGithubHandleDisplayNameFlag(flag: string): boolean {
   );
 }
 
+function isMissingResumeFlag(flag: string): boolean {
+  const value = flag.trim();
+  if (!value) {
+    return false;
+  }
+
+  return (
+    /no resume|missing resume|without (a )?resume|lack of (a )?resume/i.test(
+      value
+    ) ||
+    /(resume|cv|experience summary).{0,24}(not (provided|uploaded|included|submitted|attached)|is missing|was missing)/i.test(
+      value
+    ) ||
+    /resume or experience summary/i.test(value)
+  );
+}
+
 function stripGithubHandleDisplayNameFlags(flags: string[]): {
   flags: string[];
   stripped: number;
 } {
-  const kept = flags.filter((flag) => !isGithubHandleDisplayNameFlag(flag));
+  const kept = flags.filter(
+    (flag) => !isGithubHandleDisplayNameFlag(flag) && !isMissingResumeFlag(flag)
+  );
   return { flags: kept, stripped: flags.length - kept.length };
 }
 
@@ -732,6 +752,8 @@ async function generateGeminiScreen(
         description: (job.description ?? "").slice(0, 400),
       },
       scorePolicy: buildFilesystemScorePolicy(githubAudit?.filesystem),
+      codeFirst: true,
+      resumeOptional: true,
       github_audit: githubAuditHasFetchedArtifacts(githubAudit) && githubAudit
         ? {
             ...githubAudit,

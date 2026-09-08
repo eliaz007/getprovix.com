@@ -83,18 +83,19 @@ RULES FOR YOUR AUDIT:
 1. NO BUZZWORDS: Never use words like "resiliency," "robust," "seamless," "leverage," "cutting-edge," or "paradigm." Speak in plain, direct, technical English.
 2. CITE SPECIFIC EVIDENCE: You are forbidden from claiming a code flaw or strength unless you can point to a specific file path from filesystem inspection, file type, directory pattern, commit history detail, live/documentation URL, or technical-breakdown detail you actually observed in the provided artifacts.
 3. HARSH SCORING: Grade out of 100 like a strict employer. Start at 100 and aggressively deduct points for missing production standards (e.g., missing error boundaries, lack of tests, empty READMEs, or shallow tutorial code). A score of 100 requires production-grade architecture AND file-system proof of tests, CI, and error handling.
-4. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo or external project write-up is a basic template, you must penalize the score heavily and state the mismatch explicitly.
-5. FILE-SYSTEM EVIDENCE VS PROSE: README text, resume bullets, commit messages, and external project write-ups are claims, not proof. They must never override missing code artifacts. If filesystem.test_paths, filesystem.ci_workflow_paths, or filesystem.error_handling_paths is empty, that artifact is missing — even if a README or write-up describes tests, CI, or error handling. Do not invent files that are not listed.
-6. HARD SCORE CAPS:
+4. CODE-FIRST: Provix scores repositories and file-system artifacts, not paperwork. A missing resume or experience summary must not lower the score and must not appear in redFlags. If resumeText is empty, ignore that absence. If a resume is present, use it only to check claim-vs-code mismatches.
+5. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo or external project write-up is a basic template, you must penalize the score heavily and state the mismatch explicitly.
+6. FILE-SYSTEM EVIDENCE VS PROSE: README text, resume bullets, commit messages, and external project write-ups are claims, not proof. They must never override missing code artifacts. If filesystem.test_paths, filesystem.ci_workflow_paths, or filesystem.error_handling_paths is empty, that artifact is missing — even if a README or write-up describes tests, CI, or error handling. Do not invent files that are not listed.
+7. HARD SCORE CAPS:
    - If any core technical requirement is missing from repo inspection (test suite, CI workflow, or explicit error-handling files), the score MUST be at most ${MISSING_CORE_ARTIFACT_SCORE_CAP}.
    - If two or more core requirements are missing, or filesystem.inspected is false, the score MUST be at most ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
    - Scores above 80 are forbidden unless filesystem.inspected is true AND test_paths, ci_workflow_paths, and error_handling_paths are all non-empty. Cite those paths as proof.
    - Honor scorePolicy.appliedMaxScore. Never exceed it. Never raise the score because the prose sounded production-grade.
-7. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts and cannot raise the score above the caps in rule 6. Never say the audit could not be completed solely because GitHub is private.
+8. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts and cannot raise the score above the caps in rule 7. Never say the audit could not be completed solely because GitHub is private.
 
 Return strict JSON only:
 {
-  "score": number (integer 0-100 after deductions from 100, already capped per rule 6),
+  "score": number (integer 0-100 after deductions from 100, already capped per rule 7),
   "strengths": ["strength cited with a file path, file type, directory pattern, or commit-history detail", "..."],
   "redFlags": ["flaw or resume/repo mismatch cited with evidence", "..."],
   "recommendations": ["specific fix", "...", "..."],
@@ -118,9 +119,9 @@ Return strict JSON only:
 }
 
 JSON field rules:
-- score: integer 0-100. Start at 100 and deduct. Apply the hard caps in rule 6 before returning. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling.
+- score: integer 0-100. Start at 100 and deduct. Apply the hard caps in rule 7 before returning. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling. Do not deduct for a missing resume.
 - strengths: 3-5 bullets. Each must cite a file path, file type, directory pattern, commit-history detail, live/documentation URL, or technical-breakdown detail from the provided artifacts. If you cannot cite it, omit it. Do not cite README claims as proof of tests, CI, or error handling.
-- redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. If core files are missing from the file tree, say so. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true.
+- redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. If core files are missing from the file tree, say so. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true. Never list a missing resume, CV, or experience summary as a red flag.
 - recommendations: exactly 3 specific, actionable fixes.
 - checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown, and must cite observed evidence. If evidence is missing, say so and deduct.
   - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims. Treat README as a claim sheet, not as a substitute for files.
@@ -148,7 +149,7 @@ const AUDIT_RESPONSE_SCHEMA = {
     score: {
       type: Type.INTEGER,
       description:
-        "Overall hiring readiness score from 0 to 100. Must already apply file-system caps: max 60 if any core artifact is missing, max 50 if two or more are missing or the file tree was not inspected, and above 80 only with file-system proof of tests, CI, and error handling.",
+        "Overall hiring readiness score from 0 to 100 based on code artifacts. Do not lower the score for a missing resume. Must already apply file-system caps: max 60 if any core artifact is missing, max 50 if two or more are missing or the file tree was not inspected, and above 80 only with file-system proof of tests, CI, and error handling.",
     },
     strengths: {
       type: Type.ARRAY,
@@ -157,6 +158,8 @@ const AUDIT_RESPONSE_SCHEMA = {
     redFlags: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
+      description:
+        "Code and artifact flaws only. Do not include a missing resume as a red flag.",
     },
     recommendations: {
       type: Type.ARRAY,
@@ -195,25 +198,49 @@ function normalizeStringArray(value: unknown, maxItems = 6): string[] {
     .slice(0, maxItems);
 }
 
+function isMissingResumeFlag(text: string): boolean {
+  const value = text.trim();
+  if (!value) {
+    return false;
+  }
+
+  return (
+    /no resume|missing resume|without (a )?resume|lack of (a )?resume/i.test(
+      value
+    ) ||
+    /(resume|cv|experience summary).{0,24}(not (provided|uploaded|included|submitted|attached)|is missing|was missing)/i.test(
+      value
+    ) ||
+    /resume or experience summary/i.test(value)
+  );
+}
+
 function normalizeAuditResult(raw: unknown): AuditResult {
   const record =
     raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
   const recommendations = normalizeStringArray(record.recommendations, 3);
-
-  const score = clampScore(record.score);
+  const redFlagsRaw = normalizeStringArray(record.redFlags, 5);
+  const redFlags = redFlagsRaw.filter((flag) => !isMissingResumeFlag(flag));
+  const strippedResumeFlags = redFlagsRaw.length - redFlags.length;
+  const score =
+    strippedResumeFlags > 0
+      ? clampScore(
+          clampScore(record.score) + Math.min(12, strippedResumeFlags * 6)
+        )
+      : clampScore(record.score);
 
   return {
     score,
     strengths: normalizeStringArray(record.strengths, 5),
-    redFlags: normalizeStringArray(record.redFlags, 5),
+    redFlags,
     recommendations:
       recommendations.length >= 3
         ? recommendations.slice(0, 3)
         : [
             ...recommendations,
             "Add a public GitHub repo with README, architecture notes, and recent commits.",
-            "Quantify resume bullets with metrics, scope, and verifiable links.",
+            "Add file-system proof of tests, CI workflows, and error handling.",
             "Align project stack keywords with the target role in your headline and bio.",
           ].slice(0, 3),
     checks: normalizeAuditChecks(record.checks),
@@ -326,17 +353,8 @@ function buildFallbackAudit(
   const redFlags: string[] = [];
   const recommendations: string[] = [];
 
-  if (hasResume) {
-    score += 35;
-    strengths.push(
-      "Resume text was parsed and is available to evaluate claimed experience and scope."
-    );
-  } else {
-    redFlags.push("No resume or experience summary provided for proof-of-work review.");
-  }
-
   if (hasGithub && !usedExternalFallback) {
-    score += 40;
+    score += 75;
     const artifact = githubArtifacts?.artifacts[0];
     strengths.push(
       artifact
@@ -344,7 +362,7 @@ function buildFallbackAudit(
         : `GitHub URL supplied — reviewers can trace repository activity for ${role}.`
     );
   } else if (hasExternal) {
-    score += 40;
+    score += 75;
     const primary = externalProjects.find(
       (project) => project.project_title.trim() && project.description.trim()
     ) ?? externalProjects[0];
@@ -359,12 +377,22 @@ function buildFallbackAudit(
     );
   }
 
-  if (hasResume && (hasGithub || hasExternal)) {
+  if (hasGithub || hasExternal) {
     score += 10;
     strengths.push(
-      hasExternal && usedExternalFallback
-        ? "Resume claims can be cross-referenced against submitted project write-ups and live/docs links."
-        : "Resume and GitHub artifacts can be cross-referenced for claim verification."
+      hasResume
+        ? hasExternal && usedExternalFallback
+          ? "Resume claims can be cross-referenced against submitted project write-ups and live/docs links."
+          : "Resume and GitHub artifacts can be cross-referenced for claim verification."
+        : hasExternal && usedExternalFallback
+          ? "Project write-ups and live/docs links are available for proof-of-work review."
+          : "Repository file-tree and commit artifacts are the basis of this score."
+    );
+  }
+
+  if (hasResume) {
+    strengths.push(
+      "Resume text was parsed and can be checked against repository claims."
     );
   }
 
@@ -377,7 +405,9 @@ function buildFallbackAudit(
     usedExternalFallback
       ? `Tie each project write-up to ${level}-level ${role} work: APIs, data model, ownership, and production constraints.`
       : `Pin 1-2 production repos that map directly to ${level}-level ${role} expectations.`,
-    "Rewrite top resume bullets with metrics, stack tags, and links to live demos or PRs.",
+    hasResume
+      ? "Rewrite top resume bullets with metrics, stack tags, and links to live demos or PRs."
+      : "Add tests, CI workflows, and explicit error-handling files so the file tree can support a higher score.",
     usedExternalFallback
       ? "Add architecture notes, error handling, and test strategy to each technical breakdown so reviewers can score production standards."
       : "Add a concise README per repo covering architecture, your contributions, and setup steps."
@@ -481,6 +511,8 @@ async function generateGeminiAudit(
       : "github",
     githubUnavailableReason,
     scorePolicy,
+    codeFirst: true,
+    resumeOptional: true,
     githubProfile: usedExternalFallback ? null : githubArtifacts?.profile ?? null,
     githubArtifacts: usedExternalFallback
       ? []
