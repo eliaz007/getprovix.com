@@ -112,6 +112,14 @@ export function isNoisePath(path: string): boolean {
   return NOISE_PATH.test(path);
 }
 
+export function isTestConfigPath(path: string): boolean {
+  return TEST_CONFIG.test(path);
+}
+
+export function isSmokeOrE2eTestPath(path: string): boolean {
+  return /(^|\/)(e2e|smoke)(\/|$)|smoke|playwright|cypress/i.test(path);
+}
+
 export function isTestPath(path: string): boolean {
   if (isNoisePath(path)) {
     return false;

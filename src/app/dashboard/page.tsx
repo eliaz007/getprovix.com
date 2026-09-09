@@ -29,7 +29,6 @@ import {
 import {
   formatExternalUrl,
   formatTalentMatchLabel,
-  getIntegrityScoreClass,
   type TalentPoolCandidate,
 } from "@/lib/talent-pool-candidate";
 import CandidateIntroRequestsPanel from "@/components/dashboard/candidate-intro-requests-panel";
@@ -157,11 +156,9 @@ import {
   type DashboardTab,
 } from "@/lib/dashboard-account";
 import { clampScore0to100 } from "@/lib/score-scale";
-import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
 import { formatGpa, isGpaDraft } from "@/lib/gpa";
 import ScoreMeter from "@/components/ScoreMeter";
-import AuditChecksList from "@/components/auditor/audit-checks-list";
-import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
+import AuditResultsPanel from "@/components/auditor/audit-results-panel";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
@@ -6128,78 +6125,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       {employerAuditError}
                     </div>
                   ) : employerAuditResult ? (
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center pb-4 border-b border-zinc-800">
-                        <div className="text-2xl font-extrabold text-white">
-                          Audit Score
-                        </div>
-                        <div
-                          className={`text-xl font-mono font-bold px-3 py-1 rounded-lg border ${getIntegrityScoreClass(employerAuditResult.score)}`}
-                        >
-                          {clampScore0to100(employerAuditResult.score)}/100
-                        </div>
-                      </div>
-                      <ScoreMeter
-                        score={employerAuditResult.score}
-                        className="mt-3"
-                      />
-
-                      <ScoreCapBreakdown
-                        scoreCap={employerAuditResult.scoreCap}
-                        score={employerAuditResult.score}
-                      />
-
-                      <AuditChecksList checks={employerAuditResult.checks} />
-
-                      {employerAuditResult.strengths.length > 0 && (
-                        <div>
-                          <span className="font-bold text-white block mb-2 text-sm">
-                            Strengths
-                          </span>
-                          <ul className="space-y-1.5 text-sm text-slate-300 leading-relaxed">
-                            {employerAuditResult.strengths.map((item) => (
-                              <li key={item}>• {item}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {employerAuditResult.redFlags.filter(
-                        (item) =>
-                          !employerAuditResult.scoreCap?.applied ||
-                          !isFilesystemCapRedFlag(item)
-                      ).length > 0 && (
-                        <div>
-                          <span className="font-bold text-white block mb-2 text-sm">
-                            Red Flags
-                          </span>
-                          <ul className="space-y-1.5 text-sm text-amber-200/90 leading-relaxed">
-                            {employerAuditResult.redFlags
-                              .filter(
-                                (item) =>
-                                  !employerAuditResult.scoreCap?.applied ||
-                                  !isFilesystemCapRedFlag(item)
-                              )
-                              .map((item) => (
-                              <li key={item}>• {item}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {employerAuditResult.recommendations.length > 0 && (
-                        <div>
-                          <span className="font-bold text-white block mb-2 text-sm">
-                            Recommendations
-                          </span>
-                          <ul className="space-y-1.5 text-sm text-slate-400 leading-relaxed">
-                            {employerAuditResult.recommendations.map((item) => (
-                              <li key={item}>• {item}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
+                    <AuditResultsPanel result={employerAuditResult} />
                   ) : (
                     <div className="text-slate-500 text-center mt-28 text-sm">
                       Awaiting candidate data...

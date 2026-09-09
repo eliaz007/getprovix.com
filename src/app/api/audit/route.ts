@@ -40,15 +40,18 @@ import {
 import { extractResumeTextFromFile } from "@/lib/parse-resume";
 import { RESUME_TEXT_LIMIT } from "@/lib/resume-file";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { normalizeCommitDates } from "@/lib/audit-readiness";
 import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
   emptyScoreCapAudit,
   MISSING_CORE_ARTIFACT_SCORE_CAP,
+  parseRepoFilesystemEvidence,
   parseScoreCapAudit,
   strongestFilesystemEvidence,
   UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
+  type RepoFilesystemEvidence,
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import { createClient } from "@/utils/supabase/server";
@@ -75,6 +78,8 @@ export type AuditResult = {
   recommendations: string[];
   checks: AuditCheck[];
   scoreCap: ScoreCapAudit;
+  filesystem: RepoFilesystemEvidence | null;
+  commitDates: string[];
 };
 
 const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws.
@@ -215,6 +220,38 @@ function isMissingResumeFlag(text: string): boolean {
   );
 }
 
+function optionalFilesystem(value: unknown): RepoFilesystemEvidence | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return parseRepoFilesystemEvidence(value);
+}
+
+function attachAuditEvidence(
+  result: AuditResult,
+  filesystem: RepoFilesystemEvidence | null,
+  commitDates: string[]
+): AuditResult {
+  return {
+    ...result,
+    filesystem,
+    commitDates: normalizeCommitDates(commitDates),
+  };
+}
+
+function commitDatesFromArtifacts(
+  githubArtifacts: GitHubArtifactAudit | null
+): string[] {
+  const artifacts = githubArtifacts?.artifacts ?? [];
+  const filesystem = strongestFilesystemEvidence(artifacts);
+  const primary =
+    artifacts.find((artifact) => artifact.filesystem === filesystem) ??
+    artifacts[0];
+
+  return normalizeCommitDates(primary?.commit_dates);
+}
+
 function normalizeAuditResult(raw: unknown): AuditResult {
   const record =
     raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -246,6 +283,8 @@ function normalizeAuditResult(raw: unknown): AuditResult {
     checks: normalizeAuditChecks(record.checks),
     scoreCap:
       parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(score),
+    filesystem: optionalFilesystem(record.filesystem),
+    commitDates: normalizeCommitDates(record.commitDates ?? record.commit_dates),
   };
 }
 
@@ -855,9 +894,13 @@ export async function POST(request: Request) {
     );
   }
 
-  result = applyFilesystemScoreCap(
-    result,
-    strongestFilesystemEvidence(githubArtifacts?.artifacts ?? [])
+  const filesystem = strongestFilesystemEvidence(
+    githubArtifacts?.artifacts ?? []
+  );
+  result = attachAuditEvidence(
+    applyFilesystemScoreCap(result, filesystem),
+    filesystem,
+    commitDatesFromArtifacts(githubArtifacts)
   );
 
   const usage = access.user
