@@ -3910,29 +3910,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         key={activeTab}
         className="w-full max-w-5xl mx-auto space-y-10 animate-fadeIn"
       >
-          {!isBusinessAccount &&
-          (!isEmployeeAccount ||
-            activeTab === "my_profile" ||
-            activeTab === "auditor") ? (
-            <VerifiedCodeQualityScorecard
-              record={candidateProductionAudit}
-              onVisibilityChange={(nextVisible) => {
-                setDbProfile((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        is_publicly_visible: nextVisible,
-                        ...(nextVisible ? { is_visible_in_pool: true } : {}),
-                      }
-                    : prev
-                );
-                if (nextVisible) {
-                  setIsVisibleInPool(true);
-                }
-              }}
-            />
-          ) : null}
-
           {/* MY PROFILE TAB WITH NESTED MENU OPTIONS */}
           {activeTab === "my_profile" && (
             <div className="max-w-3xl">
@@ -4681,6 +4658,38 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               }}
                             />
                           </button>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div>
+                            <span className="font-bold text-xs text-textMain block">
+                              Production Scorecard
+                            </span>
+                            <span className="text-[11px] text-textMuted">
+                              Computed from your latest GitHub integrity audit
+                              file tree (CI, tests, error boundaries).
+                            </span>
+                          </div>
+                          <VerifiedCodeQualityScorecard
+                            compact
+                            record={candidateProductionAudit}
+                            onVisibilityChange={(nextVisible) => {
+                              setDbProfile((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      is_publicly_visible: nextVisible,
+                                      ...(nextVisible
+                                        ? { is_visible_in_pool: true }
+                                        : {}),
+                                    }
+                                  : prev
+                              );
+                              if (nextVisible) {
+                                setIsVisibleInPool(true);
+                              }
+                            }}
+                          />
                         </div>
 
                         {renderProfileFormActions()}

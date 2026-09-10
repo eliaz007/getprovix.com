@@ -2,14 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { isEmployerRole } from "@/lib/dashboard-account";
 import { parseGitHubUrl } from "@/lib/validate-github-url";
-import {
-  classifyTestSuites,
-  type ChecklistTone,
-} from "@/lib/audit-readiness";
 import type {
   RepoFilesystemEvidence,
   ScoreCapAudit,
 } from "@/lib/repo-filesystem";
+import { computeProductionAuditMetrics } from "@/lib/production-audit-metrics";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   findMentionedColumn,
@@ -79,48 +76,33 @@ export function employerVisibleProductionAudit(
   return record;
 }
 
-const TONE_SCORE: Record<ChecklistTone, number> = {
-  fail: 0,
-  warn: 45,
-  pass: 92,
-};
-
-function toneFromPresent(present: boolean): ChecklistTone {
-  return present ? "pass" : "fail";
-}
-
-function scoreFromTone(tone: ChecklistTone): number {
-  return TONE_SCORE[tone];
-}
-
 export function buildProductionAuditBreakdown(input: {
   githubUrl: string;
   filesystem?: RepoFilesystemEvidence | null;
   scoreCap?: ScoreCapAudit | null;
   auditedAt?: string;
 }): ProductionAuditBreakdown {
-  const filesystem = input.filesystem ?? null;
-  const testsPresent = Boolean(
-    filesystem
-      ? filesystem.test_paths.length > 0
-      : input.scoreCap?.coreArtifacts.tests
-  );
-  const ciPresent = Boolean(
-    filesystem
-      ? filesystem.ci_workflow_paths.length > 0
-      : input.scoreCap?.coreArtifacts.ci
-  );
-  const errorPresent = Boolean(
-    filesystem
-      ? filesystem.error_handling_paths.length > 0
-      : input.scoreCap?.coreArtifacts.error_handling
-  );
-  const tests = classifyTestSuites(testsPresent, filesystem);
+  const metrics = computeProductionAuditMetrics(input.filesystem);
+
+  if (metrics.evidence.inspected) {
+    return {
+      ci_cd_score: metrics.ciCdHealth,
+      test_density: metrics.testAssertionDensity,
+      error_handling: metrics.errorBoundaries,
+      audited_repo_url: input.githubUrl.trim(),
+      audited_at: input.auditedAt ?? new Date().toISOString(),
+    };
+  }
+
+  // No inspected tree: scoreCap is only a boolean presence signal.
+  const testsPresent = Boolean(input.scoreCap?.coreArtifacts.tests);
+  const ciPresent = Boolean(input.scoreCap?.coreArtifacts.ci);
+  const errorPresent = Boolean(input.scoreCap?.coreArtifacts.error_handling);
 
   return {
-    ci_cd_score: scoreFromTone(toneFromPresent(ciPresent)),
-    test_density: scoreFromTone(tests.tone),
-    error_handling: scoreFromTone(toneFromPresent(errorPresent)),
+    ci_cd_score: ciPresent ? 55 : 0,
+    test_density: testsPresent ? 40 : 0,
+    error_handling: errorPresent ? 55 : 0,
     audited_repo_url: input.githubUrl.trim(),
     audited_at: input.auditedAt ?? new Date().toISOString(),
   };

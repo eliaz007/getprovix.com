@@ -22,6 +22,7 @@ import {
   type ProductionAuditRecord,
 } from "@/lib/production-audit";
 import { isPrivateOrNotFoundAuditResponse } from "@/lib/inaccessible-public-audit";
+import { emptyProductionAuditMetrics } from "@/lib/production-audit-metrics";
 import { emptyScoreCapAudit } from "@/lib/repo-filesystem";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -233,6 +234,7 @@ export default function GitHubResumeAuditor({
           recommendations: [],
           checks: [],
           scoreCap: emptyScoreCapAudit(0),
+          metrics: emptyProductionAuditMetrics(),
           filesystem: null,
           commitDates: [],
           inaccessibleRepo: true,

@@ -6,8 +6,12 @@ import {
 } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
+import ProductionScorecard from "@/components/auditor/production-scorecard";
 import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
 import ScoreMeter from "@/components/ScoreMeter";
+import {
+  resolveProductionAuditMetrics,
+} from "@/lib/production-audit-metrics";
 import {
   buildExecutiveChecklist,
   getReadinessBadge,
@@ -87,6 +91,10 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
     (item) => !result.scoreCap?.applied || !isFilesystemCapRedFlag(item)
   );
   const filesystem = result.filesystem;
+  const metrics = resolveProductionAuditMetrics({
+    metrics: result.metrics,
+    filesystem,
+  });
 
   return (
     <div className="space-y-5">
@@ -111,6 +119,8 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
         </div>
 
         <ScoreMeter score={score} className={badge.meterClassName} />
+
+        <ProductionScorecard metrics={metrics} compact />
 
         <div>
           <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-3">

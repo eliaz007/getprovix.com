@@ -55,6 +55,11 @@ import {
   type RepoFilesystemEvidence,
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
+import {
+  computeProductionAuditMetrics,
+  emptyProductionAuditMetrics,
+  type ProductionAuditMetrics,
+} from "@/lib/production-audit-metrics";
 import { createClient } from "@/utils/supabase/server";
 import {
   buildProductionAuditClaim,
@@ -77,6 +82,8 @@ export type { AuditCheck };
 
 export type { ScoreCapAudit };
 
+export type { ProductionAuditMetrics };
+
 export type AuditResult = {
   score: number;
   strengths: string[];
@@ -84,6 +91,8 @@ export type AuditResult = {
   recommendations: string[];
   checks: AuditCheck[];
   scoreCap: ScoreCapAudit;
+  /** File-tree-derived scorecard: CI/CD, tests, error boundaries, weighted total. */
+  metrics: ProductionAuditMetrics;
   filesystem: RepoFilesystemEvidence | null;
   commitDates: string[];
   inaccessibleRepo?: boolean;
@@ -290,6 +299,7 @@ function normalizeAuditResult(raw: unknown): AuditResult {
     checks: normalizeAuditChecks(record.checks),
     scoreCap:
       parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(score),
+    metrics: emptyProductionAuditMetrics(),
     filesystem: optionalFilesystem(record.filesystem),
     commitDates: normalizeCommitDates(record.commitDates ?? record.commit_dates),
   };
@@ -681,7 +691,8 @@ async function persistOwnIntegrityAudit(
   artifacts: GitHubArtifactAudit | null,
   externalProjects: ExternalProjectRecord[],
   usedExternalFallback: boolean,
-  scoreCap?: ScoreCapAudit | null
+  scoreCap?: ScoreCapAudit | null,
+  metrics?: ProductionAuditMetrics | null
 ): Promise<void> {
   const primary = artifacts?.artifacts.find((artifact) =>
     githubAuditHasFetchedArtifacts(artifact)
@@ -730,6 +741,7 @@ async function persistOwnIntegrityAudit(
       audit_data: {
         integrity_score: clampScore0to100(score),
         scoreCap: scoreCap ?? emptyScoreCapAudit(score),
+        metrics: metrics ?? emptyProductionAuditMetrics(),
         github_audit: usedExternalFallback ? primary ?? null : primary,
         external_projects: hasExternal
           ? externalProjects.map((project) => ({
@@ -925,11 +937,29 @@ export async function POST(request: Request) {
   const filesystem = strongestFilesystemEvidence(
     githubArtifacts?.artifacts ?? []
   );
+  const metrics = computeProductionAuditMetrics(
+    usedExternalFallback ? null : filesystem
+  );
   result = attachAuditEvidence(
     applyFilesystemScoreCap(result, filesystem),
     filesystem,
     commitDatesFromArtifacts(githubArtifacts)
   );
+  result = { ...result, metrics };
+
+  // When the file tree was inspected, blend the qualitative score with the
+  // deterministic production scorecard so CI/tests/error-boundary findings
+  // move the headline number — not only the cap.
+  if (metrics.evidence.inspected) {
+    const blended = clampScore0to100(
+      Math.round(result.score * 0.45 + metrics.productionScore * 0.55)
+    );
+    result = applyFilesystemScoreCap(
+      { ...result, score: blended },
+      filesystem
+    );
+    result = { ...result, metrics };
+  }
 
   const usage = access.user
     ? await incrementDailyScanUsage(
@@ -953,7 +983,8 @@ export async function POST(request: Request) {
         githubArtifacts,
         payload.externalProjects ?? [],
         usedExternalFallback,
-        result.scoreCap
+        result.scoreCap,
+        result.metrics
       );
     } catch (error) {
       console.error("[audit] persist integrity audit threw:", error);

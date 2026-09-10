@@ -18,7 +18,7 @@ import {
 
 function MetricChip({ label, score }: { label: string; score: number }) {
   return (
-    <div className="rounded-lg border border-border bg-background px-2.5 py-2 text-center">
+    <div className="rounded-md border border-border bg-background px-2 py-1.5 text-center">
       <p className="font-mono text-sm font-bold tabular-nums text-textMain">
         {score}
       </p>
@@ -38,7 +38,7 @@ function AuditHistoryList({
 }) {
   if (loading) {
     return (
-      <p className="mt-4 text-xs text-textMuted">Loading audit history…</p>
+      <p className="mt-3 text-[11px] text-textMuted">Loading audit history…</p>
     );
   }
 
@@ -47,21 +47,21 @@ function AuditHistoryList({
   }
 
   return (
-    <div className="mt-4 border-t border-border pt-3">
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-textMuted">
-        Audit history
-      </p>
-      <ul className="max-h-48 space-y-1.5 overflow-y-auto">
+    <details className="mt-3 border-t border-border pt-2 group">
+      <summary className="cursor-pointer list-none text-[10px] font-bold uppercase tracking-wider text-textMuted [&::-webkit-details-marker]:hidden">
+        Audit history ({entries.length})
+      </summary>
+      <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto">
         {entries.map((entry) => {
           const repo = formatAuditedRepoLabel(entry.auditedRepoUrl);
           const when = formatAuditedAt(entry.auditedAt || entry.createdAt);
           return (
             <li
               key={entry.id}
-              className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-2.5 py-2"
+              className="flex items-start justify-between gap-3 rounded-md border border-border/70 bg-background/60 px-2 py-1.5"
             >
               <div className="min-w-0">
-                <p className="truncate text-xs font-medium text-textMain">
+                <p className="truncate text-[11px] font-medium text-textMain">
                   {repo}
                 </p>
                 <p className="mt-0.5 text-[10px] text-textMuted">
@@ -69,23 +69,25 @@ function AuditHistoryList({
                   {entry.testDensity} · Errors {entry.errorHandling}
                 </p>
               </div>
-              <p className="shrink-0 font-mono text-sm font-bold tabular-nums text-textMain">
+              <p className="shrink-0 font-mono text-xs font-bold tabular-nums text-textMain">
                 {entry.productionScore}
               </p>
             </li>
           );
         })}
       </ul>
-    </div>
+    </details>
   );
 }
 
 export default function VerifiedCodeQualityScorecard({
   record,
   onVisibilityChange,
+  compact = true,
 }: {
   record: ProductionAuditRecord | null;
   onVisibilityChange?: (visible: boolean) => void;
+  compact?: boolean;
 }) {
   const hasScore = Boolean(record?.isAuditVerified);
   const score = record?.productionScore ?? 0;
@@ -97,11 +99,23 @@ export default function VerifiedCodeQualityScorecard({
   const auditedAt = record?.breakdown.audited_at
     ? formatAuditedAt(record.breakdown.audited_at)
     : "";
-  const [visible, setVisible] = useState(Boolean(record?.isPubliclyVisible));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<ProductionAuditHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [visibilityOverride, setVisibilityOverride] = useState<boolean | null>(
+    null
+  );
+  const recordVisibility = Boolean(record?.isPubliclyVisible);
+  const visible = visibilityOverride ?? recordVisibility;
+  const visibilitySourceKey = `${record?.productionScore ?? "none"}:${recordVisibility}:${record?.breakdown.audited_at ?? ""}`;
+  const [syncedVisibilityKey, setSyncedVisibilityKey] =
+    useState(visibilitySourceKey);
+
+  if (syncedVisibilityKey !== visibilitySourceKey) {
+    setSyncedVisibilityKey(visibilitySourceKey);
+    setVisibilityOverride(null);
+  }
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -125,10 +139,6 @@ export default function VerifiedCodeQualityScorecard({
       setHistoryLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    setVisible(Boolean(record?.isPubliclyVisible));
-  }, [record?.isPubliclyVisible]);
 
   useEffect(() => {
     void loadHistory();
@@ -155,7 +165,7 @@ export default function VerifiedCodeQualityScorecard({
         throw new Error(payload.error ?? "Could not update visibility.");
       }
 
-      setVisible(nextVisible);
+      setVisibilityOverride(nextVisible);
       onVisibilityChange?.(nextVisible);
     } catch (err) {
       setError(
@@ -167,7 +177,11 @@ export default function VerifiedCodeQualityScorecard({
   };
 
   return (
-    <section className="rounded-xl border border-border bg-panel p-4">
+    <section
+      className={`rounded-xl border border-border bg-panel ${
+        compact ? "p-3" : "p-4"
+      }`}
+    >
       <div className="flex items-center justify-between gap-3">
         <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
           <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
@@ -184,14 +198,14 @@ export default function VerifiedCodeQualityScorecard({
 
       {hasScore && record ? (
         <>
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <p className="font-mono text-3xl font-extrabold tabular-nums text-textMain">
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <p className="font-mono text-2xl font-extrabold tabular-nums text-textMain">
               {score}
-              <span className="ml-1 text-xs font-semibold text-textMuted">
+              <span className="ml-1 text-[10px] font-semibold text-textMuted">
                 /100
               </span>
             </p>
-            <div className="min-w-0 pb-0.5 text-xs text-textMuted">
+            <div className="min-w-0 pb-0.5 text-[11px] text-textMuted">
               {repo ? (
                 isPrivateAuditedRepoLabel(record.breakdown.audited_repo_url) ? (
                   <p className="font-medium text-textMain">{repo}</p>
@@ -210,7 +224,7 @@ export default function VerifiedCodeQualityScorecard({
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-2 grid grid-cols-3 gap-1.5">
             <MetricChip label="CI/CD" score={record.breakdown.ci_cd_score} />
             <MetricChip label="Tests" score={record.breakdown.test_density} />
             <MetricChip
@@ -219,9 +233,9 @@ export default function VerifiedCodeQualityScorecard({
             />
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+          <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-2.5 py-2">
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-textMain">
+              <p className="text-[11px] font-semibold text-textMain">
                 Show to employers
               </p>
               <p className="mt-0.5 text-[10px] leading-relaxed text-textMuted">
@@ -264,7 +278,7 @@ export default function VerifiedCodeQualityScorecard({
         </>
       ) : (
         <>
-          <p className="mt-3 text-xs leading-relaxed text-textMuted">
+          <p className="mt-2 text-[11px] leading-relaxed text-textMuted">
             Run a public repository audit to attach a verified production score
             to your profile.
           </p>
@@ -274,7 +288,7 @@ export default function VerifiedCodeQualityScorecard({
 
       <Link
         href="/audit"
-        className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-border bg-brand px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-brandHover"
+        className="mt-2 inline-flex w-full items-center justify-center rounded-md border border-border bg-brand px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-brandHover"
       >
         {hasScore ? "Audit another repo" : "Run a production audit"}
       </Link>
