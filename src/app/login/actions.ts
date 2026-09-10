@@ -8,7 +8,7 @@ import {
   signupMetadataForKind,
   syncEmployerProfileAfterSignup,
 } from "@/lib/account-role";
-import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
+import { getStandardEmailValidationMessage } from "@/lib/validate-email";
 import { createClient } from "@/utils/supabase/server";
 
 function authFailure(error?: unknown, err?: unknown): { error: string } {
@@ -64,12 +64,9 @@ export async function signUpWithEmail(
     last_name: string;
   }
 ) {
-  const corporateEmailError =
-    rawData.role === "business"
-      ? getCorporateWorkEmailValidationMessage(email)
-      : null;
-  if (corporateEmailError) {
-    return { error: corporateEmailError };
+  const emailError = getStandardEmailValidationMessage(email);
+  if (emailError) {
+    return { error: emailError };
   }
 
   let authError: { error: string } | undefined;

@@ -11,8 +11,8 @@ export default function EmployerPage() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-      <p className="text-sm text-zinc-500">Loading employer console...</p>
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <p className="text-sm text-textMuted">Loading employer console...</p>
     </div>
   );
 }

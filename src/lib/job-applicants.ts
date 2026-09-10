@@ -12,6 +12,7 @@ import {
 } from "@/lib/opportunity-match";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { resolvedProfileId } from "@/lib/resolve-candidate-profile";
+import { employerVisibleProductionAudit, parseProductionAuditFromProfileRow } from "@/lib/production-audit";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { normalizeAvailabilityStatus } from "@/lib/availability-status";
 import { DEFAULT_EXPERIENCE_LEVEL } from "@/lib/experience-level";
@@ -62,6 +63,10 @@ export const APPLICANT_PROFILE_COLUMNS = [
   "key_accomplishments",
   "integrity_score",
   "audit_data",
+  "production_score",
+  "audit_breakdown",
+  "is_audit_verified",
+  "is_publicly_visible",
 ] as const;
 
 export type ApplicantProfileRow = {
@@ -99,6 +104,10 @@ export type ApplicantProfileRow = {
   github_url?: string | null;
   integrity_score?: number | string | null;
   audit_data?: unknown;
+  production_score?: number | string | null;
+  audit_breakdown?: unknown;
+  is_audit_verified?: boolean | null;
+  is_publicly_visible?: boolean | null;
 };
 
 export type ApplicantReviewStatus = "new" | "intro_requested" | "rejected";
@@ -148,6 +157,9 @@ export type EmployerApplicantView = {
   status: ApplicantReviewStatus;
   unlocked: boolean;
   verifiedOnProvix: boolean;
+  productionScore?: number | null;
+  auditBreakdown?: unknown;
+  isAuditVerified?: boolean;
   email?: string | null;
   phone?: string | null;
   linkedinUrl?: string | null;
@@ -330,6 +342,9 @@ export function mapEmployerApplicant(input: {
     github_url: profile?.github_url,
     portfolio_url: profile?.portfolio_url,
   });
+  const productionAudit = employerVisibleProductionAudit(
+    parseProductionAuditFromProfileRow(profile)
+  );
 
   return {
     applicationId: input.applicationId,
@@ -375,6 +390,9 @@ export function mapEmployerApplicant(input: {
     }),
     unlocked: isUnlocked,
     verifiedOnProvix: isVerifiedOnProvix(profile),
+    productionScore: productionAudit?.productionScore ?? null,
+    auditBreakdown: productionAudit?.breakdown ?? null,
+    isAuditVerified: productionAudit?.isAuditVerified ?? false,
     email: isUnlocked ? resolveApplicantContactEmail(profile) : null,
     phone: isUnlocked ? profile?.phone?.trim() || null : null,
     linkedinUrl: isUnlocked ? profile?.linkedin_url?.trim() || null : null,
@@ -392,6 +410,9 @@ export type ApplicantIntelligenceSource = {
   gpa: string;
   graduationYear: string;
   verifiedOnProvix: boolean;
+  productionScore?: number | null;
+  auditBreakdown?: unknown;
+  isAuditVerified?: boolean;
   email?: string | null;
   phone?: string | null;
   linkedinUrl?: string | null;
@@ -465,5 +486,13 @@ export function mapApplicantToTalentCandidate(
     demoVideo: applicant.demoVideo || "",
     projects: applicant.projects ?? [],
     verifiedOnProvix: applicant.verifiedOnProvix,
+    productionScore: applicant.productionScore ?? null,
+    auditBreakdown:
+      parseProductionAuditFromProfileRow({
+        production_score: applicant.productionScore,
+        audit_breakdown: applicant.auditBreakdown,
+        is_audit_verified: applicant.isAuditVerified,
+      })?.breakdown ?? null,
+    isAuditVerified: Boolean(applicant.isAuditVerified),
   };
 }

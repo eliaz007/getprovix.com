@@ -143,17 +143,17 @@ export default function RequestIntroModal({
           type="button"
           onClick={onClose}
           disabled={submitting}
-          className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+          className="absolute top-4 right-4 text-textMuted hover:text-textMain transition-colors cursor-pointer disabled:opacity-50"
           aria-label="Close"
         >
           <X className="w-5 h-5" />
         </button>
 
         <div className="mb-5 pr-8">
-          <h3 className="text-lg font-bold text-white">
+          <h3 className="text-lg font-bold text-textMain">
             Request Warm Introduction to {candidate.name}
           </h3>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-sm text-textMuted mt-1">
             No upfront fees. Provix only earns when you hire:{" "}
             {PUBLIC_PLACEMENT_TERMS_SUMMARY}
           </p>
@@ -161,7 +161,7 @@ export default function RequestIntroModal({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
               Company Name
             </label>
             <input
@@ -169,12 +169,12 @@ export default function RequestIntroModal({
               value={companyName}
               onChange={(event) => setCompanyName(event.target.value)}
               required
-              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
               Work Email
             </label>
             <input
@@ -182,12 +182,12 @@ export default function RequestIntroModal({
               value={workEmail}
               onChange={(event) => setWorkEmail(event.target.value)}
               required
-              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
               Role Title
             </label>
             <input
@@ -196,19 +196,19 @@ export default function RequestIntroModal({
               onChange={(event) => setRoleTitle(event.target.value)}
               placeholder="e.g. Full-Stack Engineer"
               required
-              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
               Target Compensation Band
             </label>
             <select
               value={compBand}
               onChange={(event) => setCompBand(event.target.value as CompBand)}
               required
-              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
             >
               <option value="" disabled>
                 Select compensation band
@@ -221,15 +221,15 @@ export default function RequestIntroModal({
             </select>
           </div>
 
-          <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-[#0A0A0A] p-3 cursor-pointer">
+          <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-3 cursor-pointer">
             <input
               type="checkbox"
               checked={termsAccepted}
               onChange={(event) => setTermsAccepted(event.target.checked)}
               required
-              className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+              className="mt-0.5 h-4 w-4 rounded border-border bg-background text-brand focus:ring-brand"
             />
-            <span className="text-xs text-slate-300 leading-relaxed">
+            <span className="text-xs text-textMuted leading-relaxed">
               I agree to the{" "}
               <Link
                 href="/terms"
@@ -237,7 +237,7 @@ export default function RequestIntroModal({
                 rel="noopener noreferrer"
                 onClick={(event) => event.stopPropagation()}
                 onMouseDown={(event) => event.stopPropagation()}
-                className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
+                className="text-brand hover:text-brand underline underline-offset-2"
               >
                 Provix Placement Terms
               </Link>

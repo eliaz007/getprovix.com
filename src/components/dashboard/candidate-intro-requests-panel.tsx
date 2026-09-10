@@ -60,40 +60,40 @@ export default function CandidateIntroRequestsPanel({
   return (
     <div>
       <div className="mb-8">
-        <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+        <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">
           Warm Intros
         </p>
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">
+        <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
           Intro Requests
         </h1>
-        <p className="text-zinc-300 text-sm mt-2">
+        <p className="text-textMuted text-sm mt-2">
           Review employer introduction requests and approve the ones you want to
           pursue.
         </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+        <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+          <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
             Pending Review
           </span>
           <span className="text-3xl font-extrabold text-amber-400">
             {loading ? "—" : pendingCount}
           </span>
         </div>
-        <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+        <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+          <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
             Accepted
           </span>
           <span className="text-3xl font-extrabold text-emerald-400">
             {loading ? "—" : acceptedCount}
           </span>
         </div>
-        <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+        <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+          <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
             Total Requests
           </span>
-          <span className="text-3xl font-extrabold text-white">
+          <span className="text-3xl font-extrabold text-textMain">
             {loading ? "—" : inboxRequests.length}
           </span>
         </div>
@@ -102,7 +102,7 @@ export default function CandidateIntroRequestsPanel({
       <div
         role="tablist"
         aria-label="Intro request folders"
-        className="mb-8 inline-flex w-full sm:w-auto rounded-xl border border-zinc-700 bg-[#111111] p-1"
+        className="mb-8 inline-flex w-full sm:w-auto rounded-xl border border-border bg-panel p-1"
       >
         <button
           type="button"
@@ -110,10 +110,10 @@ export default function CandidateIntroRequestsPanel({
           aria-selected={inboxFilter === "inbox"}
           onClick={() => setInboxFilter("inbox")}
           className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-            inboxFilter === "inbox"
-              ? "bg-indigo-600 text-white"
-              : "text-slate-400 hover:text-white"
-          }`}
+ inboxFilter === "inbox"
+ ? "bg-brand text-white"
+ : "text-textMuted hover:text-textMain"
+ }`}
         >
           Inbox
           {!loading ? ` (${inboxRequests.length})` : ""}
@@ -124,10 +124,10 @@ export default function CandidateIntroRequestsPanel({
           aria-selected={inboxFilter === "dismissed"}
           onClick={() => setInboxFilter("dismissed")}
           className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-            inboxFilter === "dismissed"
-              ? "bg-indigo-600 text-white"
-              : "text-slate-400 hover:text-white"
-          }`}
+ inboxFilter === "dismissed"
+ ? "bg-brand text-white"
+ : "text-textMuted hover:text-textMain"
+ }`}
         >
           Dismissed
           {!loading ? ` (${dismissedRequests.length})` : ""}
@@ -135,13 +135,13 @@ export default function CandidateIntroRequestsPanel({
       </div>
 
       {loading ? (
-        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-          <p className="text-sm font-medium text-slate-400">
+        <div className="card-edge bg-panel border border-border rounded-2xl p-10 text-center">
+          <p className="text-sm font-medium text-textMuted">
             Loading intro requests...
           </p>
         </div>
       ) : error ? (
-        <div className="card-edge bg-[#111111] border border-red-500/20 rounded-2xl p-10 text-center">
+        <div className="card-edge bg-panel border border-red-500/20 rounded-2xl p-10 text-center">
           <p className="text-sm font-medium text-red-200">{error}</p>
           <button
             type="button"
@@ -152,23 +152,23 @@ export default function CandidateIntroRequestsPanel({
           </button>
         </div>
       ) : requests.length === 0 ? (
-        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-          <p className="text-sm font-medium text-slate-300">
+        <div className="card-edge bg-panel border border-border rounded-2xl p-10 text-center">
+          <p className="text-sm font-medium text-textMuted">
             No intro requests yet
           </p>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-textMuted mt-1">
             When employers request a warm introduction, they will appear here
             for your review.
           </p>
         </div>
       ) : visibleRequests.length === 0 ? (
-        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-          <p className="text-sm font-medium text-slate-300">
+        <div className="card-edge bg-panel border border-border rounded-2xl p-10 text-center">
+          <p className="text-sm font-medium text-textMuted">
             {inboxFilter === "dismissed"
               ? "No dismissed intro requests"
               : "Inbox is empty"}
           </p>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-textMuted mt-1">
             {inboxFilter === "dismissed"
               ? "Requests you trash or dismiss will show up here so you can restore them later."
               : "Dismissed requests are hidden here. Switch to Dismissed to review them."}
@@ -191,17 +191,17 @@ export default function CandidateIntroRequestsPanel({
             return (
               <div
                 key={request.id}
-                className="card-edge card-lift bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col"
+                className="card-edge card-lift bg-panel border border-border rounded-2xl p-5 flex flex-col"
               >
                 <div className="flex items-start justify-between gap-3 mb-4">
                   <div className="min-w-0">
-                    <h3 className="font-bold text-white text-base truncate">
+                    <h3 className="font-bold text-textMain text-base truncate">
                       {companyName}
                     </h3>
-                    <p className="text-sm text-indigo-400 font-medium mt-0.5 truncate">
+                    <p className="text-sm text-brand font-medium mt-0.5 truncate">
                       {targetRole}
                     </p>
-                    <p className="text-xs text-slate-500 mt-2">
+                    <p className="text-xs text-textMuted mt-2">
                       {formatRelativeTime(request.created_at)}
                     </p>
                   </div>
@@ -212,17 +212,17 @@ export default function CandidateIntroRequestsPanel({
                   </span>
                 </div>
 
-                <div className="rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3 mb-4 space-y-2">
+                <div className="rounded-xl bg-background border border-border p-3 mb-4 space-y-2">
                   <div className="flex items-start justify-between gap-3 text-xs">
-                    <span className="text-slate-500 uppercase tracking-widest font-bold">
+                    <span className="text-textMuted uppercase tracking-widest font-bold">
                       Contact
                     </span>
-                    <span className="text-slate-300 text-right break-all">
+                    <span className="text-textMuted text-right break-all">
                       {companyEmail || "Not provided"}
                     </span>
                   </div>
                   <div className="flex items-start justify-between gap-3 text-xs">
-                    <span className="text-slate-500 uppercase tracking-widest font-bold">
+                    <span className="text-textMuted uppercase tracking-widest font-bold">
                       Compensation
                     </span>
                     <span className="text-emerald-400 font-semibold text-right">
@@ -231,13 +231,13 @@ export default function CandidateIntroRequestsPanel({
                   </div>
                 </div>
 
-                <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-4 border-t border-zinc-800">
+                <div className="mt-auto flex flex-wrap items-center justify-end gap-2 pt-4 border-t border-border">
                   {isDismissed ? (
                     <button
                       type="button"
                       onClick={() => void onDismiss(request.id, false)}
                       disabled={isResponding}
-                      className="inline-flex items-center gap-1.5 text-[11px] font-bold px-4 py-2 rounded-lg border border-zinc-700 text-slate-200 hover:text-white hover:border-slate-500 transition-all cursor-pointer disabled:opacity-60"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold px-4 py-2 rounded-lg border border-border text-textMain hover:text-textMain hover:border-border transition-all cursor-pointer disabled:opacity-60"
                     >
                       <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                       {isResponding ? "Saving..." : "Restore"}
@@ -249,7 +249,7 @@ export default function CandidateIntroRequestsPanel({
                         aria-label="Dismiss intro request"
                         onClick={() => void onDismiss(request.id, true)}
                         disabled={isResponding}
-                        className="inline-flex items-center gap-1.5 text-[11px] font-bold px-4 py-2 rounded-lg border border-zinc-700 text-slate-300 hover:text-red-200 hover:border-red-500/40 hover:bg-red-500/10 transition-all cursor-pointer disabled:opacity-60"
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold px-4 py-2 rounded-lg border border-border text-textMuted hover:text-red-200 hover:border-red-500/40 hover:bg-red-500/10 transition-all cursor-pointer disabled:opacity-60"
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                         {isResponding ? "Saving..." : "Dismiss"}
@@ -260,7 +260,7 @@ export default function CandidateIntroRequestsPanel({
                             type="button"
                             onClick={() => void onRespond(request.id, "decline")}
                             disabled={isResponding}
-                            className="text-[11px] font-bold px-4 py-2 rounded-lg border border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer disabled:opacity-60"
+                            className="text-[11px] font-bold px-4 py-2 rounded-lg border border-border text-textMuted hover:text-textMain hover:border-border transition-all cursor-pointer disabled:opacity-60"
                           >
                             Decline
                           </button>
@@ -268,13 +268,13 @@ export default function CandidateIntroRequestsPanel({
                             type="button"
                             onClick={() => void onRespond(request.id, "accept")}
                             disabled={isResponding}
-                            className="text-[11px] font-bold px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer disabled:opacity-60"
+                            className="text-[11px] font-bold px-4 py-2 rounded-lg bg-brand hover:bg-brandHover text-white transition-all cursor-pointer disabled:opacity-60"
                           >
                             {isResponding ? "Saving..." : "Accept Intro"}
                           </button>
                         </>
                       ) : (
-                        <p className="w-full sm:w-auto text-xs text-slate-500 sm:mr-auto sm:order-first">
+                        <p className="w-full sm:w-auto text-xs text-textMuted sm:mr-auto sm:order-first">
                           {originalStatus === "accepted"
                             ? "You accepted this intro. Check your inbox for the mutual introduction email."
                             : "You declined this introduction request."}

@@ -129,36 +129,36 @@ export default function EmployerNotificationBell({
             ? `${unreadCount} unread notifications`
             : "Notifications"
         }
-        className="relative p-2 rounded-lg text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors cursor-pointer"
+        className="relative p-2 rounded-lg text-textMuted hover:bg-panel hover:text-textMain transition-colors cursor-pointer"
       >
         <Bell className="w-5 h-5" aria-hidden />
         {unreadCount > 0 && (
           <span
-            className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-[#111111]"
+            className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-brand ring-2 ring-panel"
             aria-hidden
           />
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[min(100vw-2rem,22rem)] rounded-2xl border border-zinc-800 bg-[#111111] shadow-2xl overflow-hidden z-50">
-          <div className="px-4 py-3 border-b border-zinc-800">
-            <p className="text-sm font-bold text-white">Notifications</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+        <div className="absolute right-0 mt-2 w-[min(100vw-2rem,22rem)] rounded-2xl border border-border bg-panel overflow-hidden z-50">
+          <div className="px-4 py-3 border-b border-border">
+            <p className="text-sm font-bold text-textMain">Notifications</p>
+            <p className="text-[11px] text-textMuted mt-0.5">
               Candidate interest on your job listings
             </p>
           </div>
 
           {loading ? (
-            <div className="px-4 py-8 text-center text-sm text-slate-500">
+            <div className="px-4 py-8 text-center text-sm text-textMuted">
               Loading...
             </div>
           ) : notifications.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-slate-500">
+            <div className="px-4 py-8 text-center text-sm text-textMuted">
               No notifications yet
             </div>
           ) : (
-            <ul className="max-h-80 overflow-y-auto divide-y divide-slate-800/80">
+            <ul className="max-h-80 overflow-y-auto divide-y divide-border">
               {notifications.map((notification) => (
                 <li key={notification.id}>
                   <button
@@ -166,18 +166,18 @@ export default function EmployerNotificationBell({
                     onClick={() => void handleNotificationClick(notification)}
                     className={`w-full text-left px-4 py-3 transition-colors cursor-pointer ${
                       notification.isRead
-                        ? "hover:bg-slate-900/40"
-                        : "bg-indigo-500/5 hover:bg-indigo-500/10"
+                        ? "hover:bg-background/40"
+                        : "bg-brandGlow hover:bg-brandGlow"
                     }`}
                   >
                     <p
                       className={`text-sm leading-snug ${
-                        notification.isRead ? "text-slate-300" : "text-white"
+                        notification.isRead ? "text-textMuted" : "text-textMain"
                       }`}
                     >
                       {notification.message}
                     </p>
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className="text-[11px] text-textMuted mt-1">
                       {formatRelativeTime(notification.createdAt)}
                     </p>
                   </button>

@@ -111,8 +111,13 @@ export function isDashboardAuditorPath(pathname: string): boolean {
   );
 }
 
+export function isStandalonePublicAuditPath(pathname: string): boolean {
+  return pathname === "/audit" || pathname.startsWith("/audit/");
+}
+
 export function isPublicAuditorPath(pathname: string): boolean {
   return (
+    isStandalonePublicAuditPath(pathname) ||
     pathname === "/audits" ||
     pathname.startsWith("/audits/") ||
     isDashboardAuditorPath(pathname)
@@ -120,7 +125,11 @@ export function isPublicAuditorPath(pathname: string): boolean {
 }
 
 export function isAuditorPath(pathname: string): boolean {
-  return isPublicAuditorPath(pathname);
+  return (
+    pathname === "/audits" ||
+    pathname.startsWith("/audits/") ||
+    isDashboardAuditorPath(pathname)
+  );
 }
 
 export function isOpportunitiesPath(pathname: string): boolean {

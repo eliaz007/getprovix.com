@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import CandidateIntelligenceDrawer from "@/components/employer/candidate-intelligence-drawer";
+import ProductionScoreBadge from "@/components/employer/production-score-badge";
 import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
@@ -185,13 +186,13 @@ export default function EmployerApplicantsSection({
   return (
     <div>
       <div className="mb-8">
-        <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+        <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">
           Hiring Pipeline
         </p>
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">
+        <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
           Interested Candidates
         </h1>
-        <p className="text-zinc-300 text-sm mt-2 max-w-2xl">
+        <p className="text-textMuted text-sm mt-2 max-w-2xl">
           Candidates who expressed interest in your listings. Open a profile to
           review AI match analysis, run Gemini Deep Screening, and request an
           intro when you want to talk.
@@ -199,27 +200,27 @@ export default function EmployerApplicantsSection({
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+        <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+          <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
             Total interest
           </span>
-          <span className="text-3xl font-mono font-extrabold tabular-nums text-white">
+          <span className="text-3xl font-mono font-extrabold tabular-nums text-textMain">
             {applicants.length}
           </span>
         </div>
-        <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+        <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+          <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
             New to review
           </span>
           <span className="text-3xl font-mono font-extrabold tabular-nums text-amber-300">
             {newCount}
           </span>
         </div>
-        <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 col-span-2 lg:col-span-1">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+        <div className="card-edge bg-panel p-5 rounded-2xl border border-border col-span-2 lg:col-span-1">
+          <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
             Roles with interest
           </span>
-          <span className="text-3xl font-mono font-extrabold tabular-nums text-indigo-300">
+          <span className="text-3xl font-mono font-extrabold tabular-nums text-brand">
             {new Set(applicants.map((row) => row.jobId)).size}
           </span>
         </div>
@@ -238,7 +239,7 @@ export default function EmployerApplicantsSection({
               onClearFocusJob?.();
             }
           }}
-          className="flex-1 bg-[#111111] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+          className="flex-1 bg-panel border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
         >
           <option value="all">All listings</option>
           {jobs.map((job) => (
@@ -254,7 +255,7 @@ export default function EmployerApplicantsSection({
           id="applicant-status-filter"
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value)}
-          className="sm:w-52 bg-[#111111] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+          className="sm:w-52 bg-panel border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
         >
           <option value="all">All statuses</option>
           {APPLICANT_PIPELINE_STATUSES.map((status) => (
@@ -266,8 +267,8 @@ export default function EmployerApplicantsSection({
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center gap-3 py-20 text-sm text-slate-400">
-          <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+        <div className="flex items-center justify-center gap-3 py-20 text-sm text-textMuted">
+          <Loader2 className="w-5 h-5 animate-spin text-brand" />
           Loading interested candidates...
         </div>
       ) : error ? (
@@ -275,13 +276,13 @@ export default function EmployerApplicantsSection({
           {error}
         </div>
       ) : visibleApplicants.length === 0 ? (
-        <div className="rounded-2xl border border-zinc-800 bg-[#111111] px-6 py-14 text-center">
-          <p className="text-sm text-slate-300 font-medium">
+        <div className="rounded-2xl border border-border bg-panel px-6 py-14 text-center">
+          <p className="text-sm text-textMuted font-medium">
             {applicants.length === 0
               ? "No candidates have expressed interest yet."
               : "No candidates match these filters."}
           </p>
-          <p className="text-xs text-slate-500 mt-2">
+          <p className="text-xs text-textMuted mt-2">
             {applicants.length === 0
               ? "When someone taps Express Interest on one of your listings, they will appear here."
               : "Try another listing or status to keep reviewing your pipeline."}
@@ -307,18 +308,22 @@ export default function EmployerApplicantsSection({
                     openApplicantIntelligence(applicant);
                   }
                 }}
-                className="card-edge rounded-2xl border border-zinc-800 bg-[#111111] p-5 cursor-pointer hover:border-indigo-500/40 transition-colors"
+                className="card-edge rounded-2xl border border-border bg-panel p-5 cursor-pointer hover:border-brand/40 transition-colors"
               >
               <div className="flex flex-col lg:flex-row lg:items-start gap-5">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
-                  <div className="w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-xs font-bold text-indigo-300 shrink-0">
+                  <div className="w-11 h-11 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-xs font-bold text-brand shrink-0">
                     {applicant.initials}
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2 min-w-0">
-                      <h2 className="font-bold text-white text-sm truncate">
+                      <h2 className="font-bold text-textMain text-sm truncate">
                         {applicant.codenameAlias}
                       </h2>
+                      <ProductionScoreBadge
+                        score={applicant.productionScore}
+                        verified={Boolean(applicant.isAuditVerified)}
+                      />
                       <span
                         className={`inline-flex shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${applicantStatusClass(applicant.status)}`}
                       >
@@ -328,21 +333,21 @@ export default function EmployerApplicantsSection({
                         verified={applicant.verifiedOnProvix}
                       />
                     </div>
-                    <p className="text-xs text-indigo-300 font-medium mt-0.5 truncate">
+                    <p className="text-xs text-brand font-medium mt-0.5 truncate">
                       {applicant.headline}
                     </p>
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className="text-[11px] text-textMuted mt-1">
                       {applicant.location}
                       {applicant.experienceLevel
                         ? ` · ${applicant.experienceLevel}`
                         : ""}
                     </p>
-                    <p className="text-[11px] text-slate-400 mt-2">
+                    <p className="text-[11px] text-textMuted mt-2">
                       Interested in{" "}
-                      <span className="text-slate-200 font-medium">
+                      <span className="text-textMain font-medium">
                         {applicant.jobTitle}
                       </span>
-                      <span className="text-slate-600">
+                      <span className="text-textMuted">
                         {" "}
                         · {applicant.appliedAtLabel}
                       </span>
@@ -350,9 +355,9 @@ export default function EmployerApplicantsSection({
                   </div>
                 </div>
 
-                <div className="shrink-0 rounded-xl border border-zinc-800 bg-[#0A0A0A] px-4 py-3 lg:w-52">
+                <div className="shrink-0 rounded-xl border border-border bg-background px-4 py-3 lg:w-52">
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-textMuted">
                       AI Match
                     </span>
                     <span
@@ -361,7 +366,7 @@ export default function EmployerApplicantsSection({
                       {applicant.fitVerdict}
                     </span>
                   </div>
-                  <p className="font-mono text-lg font-extrabold tabular-nums text-white">
+                  <p className="font-mono text-lg font-extrabold tabular-nums text-textMain">
                     {applicant.matchScore}%
                   </p>
                   <ScoreMeter score={applicant.matchScore} className="mt-2" />
@@ -370,43 +375,43 @@ export default function EmployerApplicantsSection({
 
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                  <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                     Education
                   </span>
-                  <div className="rounded-xl border border-zinc-800 bg-[#0A0A0A] p-3.5 text-xs text-slate-200 space-y-2">
+                  <div className="rounded-xl border border-border bg-background p-3.5 text-xs text-textMain space-y-2">
                     {applicant.university ? (
                       <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">University</span>
+                        <span className="text-textMuted shrink-0">University</span>
                         <span className="text-right">{applicant.university}</span>
                       </div>
                     ) : null}
                     {applicant.major ? (
                       <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">Major</span>
+                        <span className="text-textMuted shrink-0">Major</span>
                         <span className="text-right">{applicant.major}</span>
                       </div>
                     ) : null}
                     {formatGpa(applicant.gpa) ? (
                       <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">GPA</span>
+                        <span className="text-textMuted shrink-0">GPA</span>
                         <span className="text-right font-mono">
                           {formatGpa(applicant.gpa)}
                         </span>
                       </div>
                     ) : null}
                     {!hasTalentEducation(applicant) ? (
-                      <p className="text-slate-500">Education details not provided.</p>
+                      <p className="text-textMuted">Education details not provided.</p>
                     ) : null}
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                  <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                     AI Match Analysis
                   </span>
-                  <div className="rounded-xl border border-zinc-800 bg-[#0A0A0A] p-3.5 text-xs text-slate-200 space-y-2">
+                  <div className="rounded-xl border border-border bg-background p-3.5 text-xs text-textMain space-y-2">
                     {applicant.matchReasoning ? (
-                      <p className="text-slate-300 leading-relaxed">
+                      <p className="text-textMuted leading-relaxed">
                         {applicant.matchReasoning}
                       </p>
                     ) : null}
@@ -427,7 +432,7 @@ export default function EmployerApplicantsSection({
                         {applicant.skills.slice(0, 6).map((skill) => (
                           <span
                             key={skill}
-                            className="px-2 py-1 rounded-md text-[10px] font-bold bg-slate-800/80 text-slate-300 border border-slate-700/50"
+                            className="px-2 py-1 rounded-md text-[10px] font-bold bg-panel/80 text-textMuted border border-border/50"
                           >
                             {skill}
                           </span>
@@ -447,15 +452,15 @@ export default function EmployerApplicantsSection({
                     <a
                       href={`mailto:${applicant.email}`}
                       onClick={(event) => event.stopPropagation()}
-                      className="block text-xs text-slate-200 hover:text-white break-all"
+                      className="block text-xs text-textMain hover:text-textMain break-all"
                     >
                       {applicant.email}
                     </a>
                   ) : (
-                    <p className="text-xs text-slate-400">No email on file.</p>
+                    <p className="text-xs text-textMuted">No email on file.</p>
                   )}
                   {applicant.phone ? (
-                    <p className="text-xs text-slate-200">{applicant.phone}</p>
+                    <p className="text-xs text-textMain">{applicant.phone}</p>
                   ) : null}
                 </div>
               ) : null}
@@ -473,7 +478,7 @@ export default function EmployerApplicantsSection({
                         event.stopPropagation();
                         onRequestIntro(applicant);
                       }}
-                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer"
+                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-brand hover:bg-brandHover text-white transition-all cursor-pointer"
                     >
                       Request Intro
                     </button>

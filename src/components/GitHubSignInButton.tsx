@@ -18,7 +18,7 @@ function GitHubLogo({ className = "h-[18px] w-[18px]" }: { className?: string })
 }
 
 const DEFAULT_CLASSES =
-  "inline-flex w-full items-center justify-center gap-3 rounded-md bg-[#161b22] px-8 py-2.5 text-sm font-semibold tracking-tight text-white border border-black shadow-[4px_4px_0px_#000] transition-[background-color,border-color,box-shadow] duration-200 ease-out hover:bg-[#21262d] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+  "inline-flex w-full items-center justify-center gap-3 rounded-md bg-panel px-8 py-2.5 text-sm font-medium tracking-tight text-white border border-border transition-colors duration-200 ease-out hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 
 export function GitHubSignInButton({
   className,

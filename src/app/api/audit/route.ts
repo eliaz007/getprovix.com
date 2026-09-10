@@ -24,6 +24,7 @@ import {
   fetchGitHubProfileArtifacts,
   githubArtifactAuditSucceeded,
   githubAuditHasFetchedArtifacts,
+  githubAuditLooksInaccessible,
   type GitHubArtifactAudit,
 } from "@/lib/github-audit";
 import {
@@ -55,6 +56,11 @@ import {
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import { createClient } from "@/utils/supabase/server";
+import {
+  buildProductionAuditClaim,
+  persistProfileProductionAudit,
+  PRIVATE_AUDITED_REPO_LABEL,
+} from "@/lib/production-audit";
 
 export const runtime = "nodejs";
 
@@ -80,6 +86,7 @@ export type AuditResult = {
   scoreCap: ScoreCapAudit;
   filesystem: RepoFilesystemEvidence | null;
   commitDates: string[];
+  inaccessibleRepo?: boolean;
 };
 
 const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws.
@@ -380,8 +387,7 @@ function buildFallbackAudit(
   externalProjects: ExternalProjectRecord[],
   usedExternalFallback: boolean
 ): AuditResult {
-  const hasGithub =
-    !!body.githubUrl?.trim() || (githubArtifacts?.artifacts.length ?? 0) > 0;
+  const hasGithub = githubArtifactAuditSucceeded(githubArtifacts);
   const hasExternal = hasUsableExternalProjects(externalProjects);
   const hasResume = !!body.resumeSummary?.trim();
   const role = body.targetRole?.trim() || "your target role";
@@ -868,6 +874,28 @@ export async function POST(request: Request) {
     }
   }
 
+  const inaccessibleRepo =
+    !workIsPrivate &&
+    Boolean(githubFetchUrl) &&
+    (githubArtifacts === null || githubAuditLooksInaccessible(githubArtifacts));
+
+  if (inaccessibleRepo) {
+    const usage = access.user
+      ? await incrementDailyScanUsage(
+          access.supabase,
+          access.user.id,
+          access.usage
+        )
+      : access.usage;
+
+    return NextResponse.json({
+      isPrivateOrNotFound: true,
+      repoUrl: githubFetchUrl,
+      inaccessibleRepo: true,
+      ...usage,
+    });
+  }
+
   const usedExternalFallback = shouldUseExternalProjectFallback({
     workIsPrivate,
     githubUrl: publicGithub ? payload.githubUrl?.trim() ?? "" : "",
@@ -929,6 +957,29 @@ export async function POST(request: Request) {
       );
     } catch (error) {
       console.error("[audit] persist integrity audit threw:", error);
+    }
+
+    try {
+      const claim = buildProductionAuditClaim({
+        score: result.score,
+        githubUrl: workIsPrivate
+          ? PRIVATE_AUDITED_REPO_LABEL
+          : payload.githubUrl?.trim() ||
+            githubArtifacts?.source_url ||
+            githubArtifacts?.artifacts[0]?.repo_url ||
+            PRIVATE_AUDITED_REPO_LABEL,
+        filesystem,
+        scoreCap: result.scoreCap,
+        isPubliclyVisible: workIsPrivate ? false : undefined,
+      });
+      await persistProfileProductionAudit(
+        access.supabase,
+        access.user.id,
+        claim,
+        workIsPrivate ? { isPubliclyVisible: false } : undefined
+      );
+    } catch (error) {
+      console.error("[audit] persist production audit threw:", error);
     }
   }
 

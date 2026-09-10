@@ -17,7 +17,7 @@ export const config = {
      *
      * /api/intros is included so employer intro requests refresh the session.
      *
-     * Public pages: /audits, /opportunities
+     * Public pages: /, /audit, /audits, /opportunities
      * Protected: /dashboard, /pitch-studio, /simulator,
      * /profile-studio, /intro-requests, /employer
      */

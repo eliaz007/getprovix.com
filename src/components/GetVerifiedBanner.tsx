@@ -127,7 +127,7 @@ export default function GetVerifiedBanner({
                 }
               }}
               placeholder="you@company.com"
-              className="w-full sm:flex-1 bg-[#0A0A0A] border border-amber-500/20 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-400/70"
+              className="w-full sm:flex-1 bg-background border border-amber-500/20 rounded-lg px-3 py-2 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:ring-2 focus:ring-amber-400/70"
             />
             <Button type="submit" disabled={sending} className="sm:w-auto w-full">
               {sending ? "Sending..." : "Send confirmation link"}

@@ -1,7 +1,7 @@
 function Pulse({ className }: { className: string }) {
   return (
     <div
-      className={`bg-slate-800 animate-pulse motion-reduce:animate-none ${className}`}
+      className={`bg-panel animate-pulse motion-reduce:animate-none ${className}`}
       aria-hidden="true"
     />
   );
@@ -9,7 +9,7 @@ function Pulse({ className }: { className: string }) {
 
 function MetricCard() {
   return (
-    <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
+    <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
       <Pulse className="h-3 w-24 rounded mb-3" />
       <Pulse className="h-8 w-16 rounded" />
       <Pulse className="h-3 w-20 rounded mt-2" />
@@ -19,7 +19,7 @@ function MetricCard() {
 
 function ContentCard() {
   return (
-    <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg min-h-[180px]">
+    <div className="card-edge bg-panel border border-border rounded-2xl p-5 min-h-[180px]">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-start gap-3 min-w-0">
           <Pulse className="w-11 h-11 rounded-lg shrink-0" />
@@ -64,7 +64,7 @@ export default function DashboardSkeleton() {
         </div>
       </div>
 
-      <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-4 shadow-lg">
+      <div className="card-edge bg-panel border border-border rounded-2xl p-4">
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
           <Pulse className="h-10 w-full rounded-xl" />
           <Pulse className="h-10 w-full lg:w-28 rounded-xl shrink-0" />

@@ -3,11 +3,8 @@
 import { GitHubSignInButton } from "@/components/GitHubSignInButton";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
-const HERO_GOOGLE_CLASSES =
-  "inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-md bg-white px-8 py-3.5 text-sm font-semibold tracking-tight text-zinc-950 border border-black shadow-[4px_4px_0px_#000] transition-[background-color] duration-200 ease-out hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
-
-const HERO_GITHUB_CLASSES =
-  "inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-md bg-[#161b22] px-8 py-3.5 text-sm font-semibold tracking-tight text-white border border-black shadow-[4px_4px_0px_#000] transition-[background-color,border-color] duration-200 ease-out hover:bg-[#21262d] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+const HERO_OAUTH_CLASSES =
+  "inline-flex w-full sm:w-auto min-w-[240px] items-center justify-center gap-3 rounded-md bg-panel px-8 py-3.5 text-sm font-medium tracking-tight text-white border border-border transition-colors duration-200 ease-out hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 
 export function OAuthSignInButtons({
   onError,
@@ -26,11 +23,11 @@ export function OAuthSignInButtons({
   return (
     <div className={layoutClass}>
       <GoogleSignInButton
-        className={size === "hero" ? HERO_GOOGLE_CLASSES : undefined}
+        className={size === "hero" ? HERO_OAUTH_CLASSES : undefined}
         onError={onError}
       />
       <GitHubSignInButton
-        className={size === "hero" ? HERO_GITHUB_CLASSES : undefined}
+        className={size === "hero" ? HERO_OAUTH_CLASSES : undefined}
         onError={onError}
       />
     </div>

@@ -61,9 +61,9 @@ export function githubAuditHasFetchedArtifacts(
     return false;
   }
 
+  // owner/repo alone are the request target, not proof the repo was readable.
   return Boolean(
-    audit.owner?.trim() ||
-      audit.repo?.trim() ||
+    (typeof audit.stars === "number" && Number.isFinite(audit.stars)) ||
       (typeof audit.commit_count_sampled === "number" &&
         audit.commit_count_sampled > 0) ||
       audit.readme_excerpt?.trim() ||
@@ -81,6 +81,56 @@ export function githubArtifactAuditSucceeded(
   return artifacts.artifacts.some((artifact) =>
     githubAuditHasFetchedArtifacts(artifact)
   );
+}
+
+const ACCESS_DENIED_STATUS = /\((404|403)\)/;
+
+export function githubAuditLooksInaccessible(
+  artifacts: GitHubArtifactAudit | null | undefined
+): boolean {
+  if (!artifacts) {
+    return true;
+  }
+
+  if (githubArtifactAuditSucceeded(artifacts)) {
+    return false;
+  }
+
+  const warnings = [
+    ...artifacts.fetch_warnings,
+    ...artifacts.artifacts.flatMap((artifact) => artifact.fetch_warnings),
+  ];
+
+  if (warnings.some((warning) => ACCESS_DENIED_STATUS.test(warning))) {
+    return true;
+  }
+
+  if (artifacts.artifacts.length === 0) {
+    return warnings.some((warning) =>
+      /No public owned repositories found|No GitHub repository artifacts found|Could not load GitHub profile|timed out or dropped/i.test(
+        warning
+      )
+    );
+  }
+
+  // Empty / unreadable tree with no public metadata — treat as private or missing.
+  if (
+    artifacts.artifacts.every(
+      (artifact) =>
+        !artifact.filesystem?.inspected &&
+        artifact.commit_count_sampled === 0 &&
+        !artifact.readme_excerpt?.trim() &&
+        artifact.stars == null
+    )
+  ) {
+    return warnings.some((warning) =>
+      /file tree could not be inspected|Repo metadata request failed|No GitHub repository artifacts found|No public owned repositories found/i.test(
+        warning
+      )
+    );
+  }
+
+  return false;
 }
 
 const GITHUB_FETCH_TIMEOUT_MS = 20_000;

@@ -53,6 +53,19 @@ export function resolveAccountRole(
   return fromMeta;
 }
 
+export function isEmployerAuthIntent(search: string): boolean {
+  const params = new URLSearchParams(
+    search.startsWith("?") ? search.slice(1) : search
+  );
+  const role = params.get("role")?.trim().toLowerCase() ?? "";
+  if (role === "employer" || role === "business") {
+    return true;
+  }
+
+  const nextPath = (params.get("next")?.trim() ?? "").split("?")[0] ?? "";
+  return nextPath === "/employer" || nextPath.startsWith("/employer/");
+}
+
 export function isEmployerSignup(user: User | null | undefined): boolean {
   return (
     normalizeAccountKind(

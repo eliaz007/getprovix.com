@@ -8,7 +8,22 @@ import ResumeFileUpload, {
 } from "@/components/ResumeFileUpload";
 import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
+import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
+import PrivateRepositoryBanner from "@/components/auditor/private-repository-banner";
 import { normalizeAuditChecks } from "@/lib/audit-checks";
+import {
+  buildProductionAuditClaim,
+  cachePendingProductionAudit,
+  clearPendingProductionAudit,
+  notifyProductionAuditUpdated,
+  PRIVATE_AUDITED_REPO_LABEL,
+  PRIVATE_AUDIT_INTENT,
+  productionAuditRecordFromClaim,
+  type ProductionAuditRecord,
+} from "@/lib/production-audit";
+import { isPrivateOrNotFoundAuditResponse } from "@/lib/inaccessible-public-audit";
+import { emptyScoreCapAudit } from "@/lib/repo-filesystem";
+import { createClient } from "@/utils/supabase/client";
 import {
   hasUsableExternalProjects,
   type ExternalProjectRecord,
@@ -30,9 +45,17 @@ const AUDIT_STAGES = [
   "API & Data Resiliency Check (Check 3)...",
 ] as const;
 
-export default function GitHubResumeAuditor() {
+export default function GitHubResumeAuditor({
+  initialGithubUrl = "",
+  initialPrivateWork = false,
+  onAuditPersisted,
+}: {
+  initialGithubUrl?: string;
+  initialPrivateWork?: boolean;
+  onAuditPersisted?: (record: ProductionAuditRecord) => void;
+}) {
   const [targetRole, setTargetRole] = useState("");
-  const [githubUrl, setGithubUrl] = useState("");
+  const [githubUrl, setGithubUrl] = useState(initialGithubUrl);
   const [resumeOpen, setResumeOpen] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [storedResume, setStoredResume] = useState<StoredResumeMeta | null>(
@@ -40,13 +63,16 @@ export default function GitHubResumeAuditor() {
   );
   const [compensationLevel, setCompensationLevel] =
     useState<(typeof COMPENSATION_LEVELS)[number]>("Mid");
-  const [isPrivateWork, setIsPrivateWork] = useState(false);
+  const [isPrivateWork, setIsPrivateWork] = useState(initialPrivateWork);
   const [externalProjects, setExternalProjects] = useState<
     ExternalProjectRecord[]
   >([]);
   const [loading, setLoading] = useState(false);
   const [stageIndex, setStageIndex] = useState(0);
   const [result, setResult] = useState<AuditResult | null>(null);
+  const [claim, setClaim] = useState<ReturnType<typeof buildProductionAuditClaim> | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
   const [limitReached, setLimitReached] = useState(false);
   const stageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -102,6 +128,19 @@ export default function GitHubResumeAuditor() {
     };
   }, []);
 
+  useEffect(() => {
+    if (initialPrivateWork) {
+      setIsPrivateWork(true);
+    }
+  }, [initialPrivateWork]);
+
+  useEffect(() => {
+    const intent = new URLSearchParams(window.location.search).get("intent");
+    if (intent === PRIVATE_AUDIT_INTENT) {
+      setIsPrivateWork(true);
+    }
+  }, []);
+
   const hasValidGithubInput = hasUsableGitHubAuditTarget(githubUrl);
   const hasPrivateArtifacts =
     isPrivateWork && hasUsableExternalProjects(externalProjects);
@@ -138,6 +177,7 @@ export default function GitHubResumeAuditor() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setClaim(null);
     startStageProgress();
 
     try {
@@ -170,7 +210,11 @@ export default function GitHubResumeAuditor() {
       }
 
       const data = (await response.json()) as AuditResult &
-        DailyScanUsage & { error?: string };
+        DailyScanUsage & {
+          error?: string;
+          isPrivateOrNotFound?: boolean;
+          inaccessibleRepo?: boolean;
+        };
 
       if (!response.ok) {
         if (response.status === 429 || data.limit_reached) {
@@ -180,12 +224,66 @@ export default function GitHubResumeAuditor() {
       }
 
       setLimitReached(Boolean(data.limit_reached));
-      setResult({
+
+      if (isPrivateOrNotFoundAuditResponse(data)) {
+        setResult({
+          score: 0,
+          strengths: [],
+          redFlags: [],
+          recommendations: [],
+          checks: [],
+          scoreCap: emptyScoreCapAudit(0),
+          filesystem: null,
+          commitDates: [],
+          inaccessibleRepo: true,
+        });
+        setClaim(null);
+        return;
+      }
+
+      const nextResult = {
         ...data,
         checks: normalizeAuditChecks(data.checks),
         filesystem: data.filesystem ?? null,
         commitDates: data.commitDates ?? [],
+        inaccessibleRepo: Boolean(data.inaccessibleRepo),
+      };
+      setResult(nextResult);
+
+      if (nextResult.inaccessibleRepo) {
+        setClaim(null);
+        return;
+      }
+
+      const nextClaim = buildProductionAuditClaim({
+        score: nextResult.score,
+        githubUrl: isPrivateWork
+          ? PRIVATE_AUDITED_REPO_LABEL
+          : githubUrl.trim() || PRIVATE_AUDITED_REPO_LABEL,
+        filesystem: nextResult.filesystem,
+        scoreCap: nextResult.scoreCap,
+        isPubliclyVisible: isPrivateWork ? false : undefined,
       });
+      setClaim(nextClaim);
+      try {
+        const supabase = createClient();
+        const { data: sessionData } = await supabase.auth.getUser();
+        if (sessionData.user) {
+          clearPendingProductionAudit();
+          const record = productionAuditRecordFromClaim({
+            ...nextClaim,
+            is_publicly_visible: isPrivateWork
+              ? false
+              : nextClaim.is_publicly_visible,
+          });
+          notifyProductionAuditUpdated(record);
+          onAuditPersisted?.(record);
+        } else {
+          cachePendingProductionAudit(nextClaim);
+        }
+      } catch {
+        cachePendingProductionAudit(nextClaim);
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Could not complete audit.";
@@ -199,23 +297,23 @@ export default function GitHubResumeAuditor() {
   return (
     <div className="w-full max-w-5xl mx-auto space-y-10">
       <div className="mb-8">
-        <div className="inline-flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-widest mb-2">
+        <div className="inline-flex items-center gap-2 text-brand text-xs font-bold uppercase tracking-widest mb-2">
           <ShieldCheck className="w-4 h-4" aria-hidden="true" />
           Career Accelerator
         </div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">
+        <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
           Code & Resume Auditor
         </h1>
-        <p className="text-slate-400 text-sm mt-2 max-w-2xl">
+        <p className="text-textMuted text-sm mt-2 max-w-2xl">
           Deep-audit your GitHub artifacts, or private/enterprise project
           write-ups, against resume claims for founder-ready credibility.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-7 space-y-5 shadow-2xl">
+        <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-7 space-y-5">
           <div>
-            <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
+            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide">
               Target Role / Tech Stack
             </label>
             <input
@@ -223,15 +321,15 @@ export default function GitHubResumeAuditor() {
               value={targetRole}
               onChange={(e) => setTargetRole(e.target.value)}
               placeholder="Full-Stack Next.js Developer"
-              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
+            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide">
               GitHub Profile / Repo URL
               {isPrivateWork ? (
-                <span className="ml-1 font-medium normal-case tracking-normal text-slate-500">
+                <span className="ml-1 font-medium normal-case tracking-normal text-textMuted">
                   (optional)
                 </span>
               ) : null}
@@ -252,11 +350,11 @@ export default function GitHubResumeAuditor() {
               aria-describedby={
                 githubValidationMessage ? "github-url-validation" : undefined
               }
-              className={`w-full bg-[#0A0A0A] rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-slate-600 focus:outline-none ${
-                githubValidationMessage
-                  ? "border border-red-500/60 focus:border-red-400"
-                  : "border border-zinc-800 focus:border-indigo-500"
-              }`}
+              className={`w-full bg-background rounded-xl px-4 py-2.5 text-sm text-textMain font-mono placeholder:text-textMuted focus:outline-none ${
+ githubValidationMessage
+ ? "border border-red-500/60 focus:border-red-400"
+ : "border border-border focus:border-brand"
+ }`}
             />
             {githubValidationMessage ? (
               <p
@@ -272,9 +370,9 @@ export default function GitHubResumeAuditor() {
                 type="checkbox"
                 checked={isPrivateWork}
                 onChange={(e) => setIsPrivateWork(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-zinc-700 bg-[#0A0A0A] text-indigo-600 focus:ring-indigo-500"
+                className="mt-0.5 h-4 w-4 rounded border-border bg-background text-brand focus:ring-brand"
               />
-              <span className="text-xs leading-relaxed text-slate-400">
+              <span className="text-xs leading-relaxed text-textMuted">
                 This work is private or enterprise — I do not have a public
                 GitHub repository to audit.
               </span>
@@ -282,7 +380,7 @@ export default function GitHubResumeAuditor() {
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide">
+            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide">
               Target Compensation & Level
             </label>
             <select
@@ -292,7 +390,7 @@ export default function GitHubResumeAuditor() {
                   e.target.value as (typeof COMPENSATION_LEVELS)[number]
                 )
               }
-              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+              className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
             >
               {COMPENSATION_LEVELS.map((level) => (
                 <option key={level} value={level}>
@@ -303,7 +401,7 @@ export default function GitHubResumeAuditor() {
           </div>
 
           {isPrivateWork && (
-            <div className="border-t border-zinc-800 pt-4">
+            <div className="border-t border-border pt-4">
               <ExternalProjectsForm onProjectsChange={setExternalProjects} />
               {!hasUsableExternalProjects(externalProjects) ? (
                 <p className="mt-3 text-xs text-amber-300/90">
@@ -314,12 +412,12 @@ export default function GitHubResumeAuditor() {
             </div>
           )}
 
-          <div className="border-t border-zinc-800 pt-1">
+          <div className="border-t border-border pt-1">
             <button
               type="button"
               onClick={() => setResumeOpen((open) => !open)}
               aria-expanded={resumeOpen}
-              className="w-full text-left text-[13px] text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer py-2"
+              className="w-full text-left text-[13px] text-textMuted hover:text-textMuted transition-colors cursor-pointer py-2"
             >
               {resumeOpen ? "–" : "+"} Add resume for claim cross-verification
               <span className="text-zinc-600"> (Optional)</span>
@@ -356,7 +454,7 @@ export default function GitHubResumeAuditor() {
             type="button"
             onClick={() => void runAudit()}
             disabled={loading || !canSubmit || limitReached}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-md text-xs tracking-tight transition-colors duration-200 ease-out flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full bg-brand hover:bg-brandHover disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-md text-xs tracking-tight transition-colors duration-200 ease-out flex items-center justify-center gap-2 cursor-pointer"
           >
             {loading ? (
               <>
@@ -372,13 +470,13 @@ export default function GitHubResumeAuditor() {
           </button>
         </div>
 
-        <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-4 sm:p-6 min-h-[320px] lg:min-h-[480px] lg:max-h-[calc(100vh-6rem)] overflow-visible lg:overflow-y-auto shadow-2xl">
+        <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-4 sm:p-6 min-h-[320px] lg:min-h-[480px] lg:max-h-[calc(100vh-6rem)] overflow-visible lg:overflow-y-auto">
           {loading && (
             <div className="space-y-4">
-              <div className="text-sm font-bold text-white mb-1">
+              <div className="text-sm font-bold text-textMain mb-1">
                 Running credibility audit
               </div>
-              <p className="text-xs text-slate-500 mb-4">
+              <p className="text-xs text-textMuted mb-4">
                 Provix AI is cross-checking your artifacts against your stated
                 role and level.
               </p>
@@ -391,21 +489,21 @@ export default function GitHubResumeAuditor() {
                     <li
                       key={stage}
                       className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-all ${
-                        isComplete
-                          ? "border-emerald-500/25 bg-emerald-500/5"
-                          : isActive
-                            ? "border-indigo-500/30 bg-indigo-500/10"
-                            : "border-zinc-800 bg-[#0A0A0A]"
-                      }`}
+ isComplete
+ ? "border-emerald-500/25 bg-emerald-500/5"
+ : isActive
+ ? "border-brand/30 bg-brandGlow"
+ : "border-border bg-background"
+ }`}
                     >
                       <span
                         className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
-                          isComplete
-                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
-                            : isActive
-                              ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-300"
-                              : "border-slate-700 text-slate-600"
-                        }`}
+ isComplete
+ ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+ : isActive
+ ? "border-brand/40 bg-brandGlow text-brand"
+ : "border-border text-textMuted"
+ }`}
                       >
                         {isComplete ? (
                           <Check className="h-3 w-3" aria-hidden />
@@ -417,12 +515,12 @@ export default function GitHubResumeAuditor() {
                       </span>
                       <p
                         className={`text-xs leading-relaxed ${
-                          isComplete
-                            ? "text-emerald-200"
-                            : isActive
-                              ? "text-indigo-100"
-                              : "text-slate-500"
-                        }`}
+ isComplete
+ ? "text-emerald-200"
+ : isActive
+ ? "text-indigo-100"
+ : "text-textMuted"
+ }`}
                       >
                         {stage}
                       </p>
@@ -439,17 +537,47 @@ export default function GitHubResumeAuditor() {
             </div>
           )}
 
-          {!loading && result && <AuditResultsPanel result={result} />}
+          {!loading && result && (
+            <div className="space-y-4">
+              {result.inaccessibleRepo ? (
+                <>
+                  <PrivateRepositoryBanner variant="dashboard" />
+                  <div className="rounded-2xl border border-border bg-background p-4 space-y-3">
+                    <p className="text-sm text-textMuted leading-relaxed">
+                      Enable{" "}
+                      <span className="font-semibold text-textMain">
+                        private or enterprise work
+                      </span>{" "}
+                      below and add project write-ups to audit without requiring a
+                      public repository URL.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setIsPrivateWork(true)}
+                      className="inline-flex items-center justify-center rounded-md border border-border bg-brand text-white px-4 py-2.5 text-sm font-medium transition-colors hover:bg-brandHover cursor-pointer"
+                    >
+                      Switch to Private Auditor
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <AuditResultsPanel result={result} />
+                  {claim ? <ScorecardPublicationCallout claim={claim} /> : null}
+                </>
+              )}
+            </div>
+          )}
 
           {!loading && !result && !error && (
             <div className="flex flex-col items-center justify-center text-center min-h-[360px] px-4">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-600/15 border border-indigo-500/25 flex items-center justify-center mb-4">
-                <ShieldCheck className="w-7 h-7 text-indigo-400" aria-hidden="true" />
+              <div className="w-14 h-14 rounded-2xl bg-brand/15 border border-brand/25 flex items-center justify-center mb-4 text-textMain">
+                <ShieldCheck className="w-7 h-7 text-brand" aria-hidden="true" />
               </div>
-              <h2 className="text-base font-bold text-white mb-2">
+              <h2 className="text-base font-bold text-textMain mb-2">
                 Audit results will appear here
               </h2>
-              <p className="text-sm text-slate-500 leading-relaxed max-w-sm">
+              <p className="text-sm text-textMuted leading-relaxed max-w-sm">
                 Provix runs Artifact Analysis, Architecture Review, and an API
                 & Data Resiliency Check, then produces a founder-ready
                 credibility score.

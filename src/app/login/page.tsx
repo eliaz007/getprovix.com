@@ -7,20 +7,22 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { OAuthSignInButtons } from "@/components/OAuthSignInButtons";
 import { ProvixLogo } from "@/components/ProvixLogo";
-import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import { getPostLoginPath } from "@/lib/admin-access";
 import {
+  isEmployerAuthIntent,
   isEmployerSignup,
   signupMetadataForKind,
   syncEmployerProfileAfterSignup,
 } from "@/lib/account-role";
 import {
+  CLAIM_AUDIT_INTENT,
+  claimPendingProductionAudit,
+} from "@/lib/production-audit";
+import {
   buildPasswordResetRedirectUrl,
   getStandardEmailValidationMessage,
   normalizeEmail,
 } from "@/lib/validate-email";
-import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
@@ -28,11 +30,25 @@ const supabase = createClient();
 type AuthMode = "sign-in" | "sign-up";
 type SignUpType = "candidate" | "business";
 
+const AUTH_INPUT_CLASS =
+  "w-full bg-background border border-border rounded-md px-4 py-2.5 text-textMain placeholder:text-textMuted placeholder:opacity-100 caret-white focus:outline-none focus:border-border transition-colors";
+
+const AUTH_PRIMARY_BUTTON_CLASS =
+  "inline-flex w-full items-center justify-center rounded-md bg-brand text-white px-4 py-2.5 text-sm font-medium transition-colors hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+
+function tabButtonClass(isActive: boolean) {
+  return `py-2 rounded-md text-sm font-medium tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
+    isActive
+      ? "bg-white/10 text-white border border-border"
+      : "border border-transparent text-textMuted hover:text-textMain hover:bg-white/5"
+  }`;
+}
+
 function BackToHomeLink({ className = "" }: { className?: string }) {
   return (
     <Link
       href="/"
-      className={`inline-flex items-center gap-1 text-sm text-zinc-300 hover:text-white transition-colors duration-200 ease-out ${className}`}
+      className={`inline-flex items-center gap-1 text-sm text-textMuted hover:text-textMain transition-colors duration-200 ease-out ${className}`}
     >
       ← Back to Home
     </Link>
@@ -91,6 +107,33 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [showResetPassword, setShowResetPassword] = useState(false);
+  const [isClaimAudit, setIsClaimAudit] = useState(false);
+
+  useEffect(() => {
+    const search = window.location.search;
+    const params = new URLSearchParams(search);
+    if (params.get("intent")?.trim() === CLAIM_AUDIT_INTENT) {
+      setSignUpType("candidate");
+      setMode("sign-up");
+      setIsClaimAudit(true);
+    } else if (isEmployerAuthIntent(search)) {
+      setSignUpType("business");
+      setMode("sign-up");
+    }
+    const authError = params.get("error")?.trim();
+    if (!authError) {
+      return;
+    }
+
+    setError(authError);
+    params.delete("error");
+    const remaining = params.toString();
+    window.history.replaceState(
+      {},
+      "",
+      `${window.location.pathname}${remaining ? `?${remaining}` : ""}`
+    );
+  }, []);
 
   useEffect(() => {
     const handleSession = (session: Session | null, event?: string) => {
@@ -134,21 +177,8 @@ export default function LoginPage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const authError = params.get("error")?.trim();
-
-    if (!authError) {
-      return;
-    }
-
-    setError(authError);
-    window.history.replaceState({}, "", window.location.pathname);
-  }, []);
-
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode);
-    setSignUpType("candidate");
     setShowResetPassword(false);
     setError(null);
     setMessage(null);
@@ -190,6 +220,9 @@ export default function LoginPage() {
 
   const redirectAfterAuth = async (user: User | null | undefined) => {
     await supabase.auth.getSession();
+    if (user && !isEmployerSignup(user)) {
+      await claimPendingProductionAudit();
+    }
     const destination = user
       ? safePostAuthPath(user, window.location.search)
       : getPostLoginPath(user);
@@ -201,11 +234,30 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setMessage(null);
+
+    if (mode === "sign-up" && (!firstName.trim() || !lastName.trim())) {
+      setError("Enter your first and last name.");
+      return;
+    }
+
+    const trimmedEmail = normalizeEmail(email);
+    setEmail(trimmedEmail);
+    const emailError = getStandardEmailValidationMessage(trimmedEmail);
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+
     setLoading(true);
 
     if (mode === "sign-in") {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
+        email: trimmedEmail,
         password,
       });
 
@@ -225,21 +277,8 @@ export default function LoginPage() {
       return;
     }
 
-    const trimmedEmail = normalizeEmail(email);
-    setEmail(trimmedEmail);
-
-    if (signUpType === "business") {
-      const corporateEmailError =
-        getCorporateWorkEmailValidationMessage(trimmedEmail);
-      if (corporateEmailError) {
-        setError(corporateEmailError);
-        setLoading(false);
-        return;
-      }
-    }
-
     const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
+      email: trimmedEmail,
       password,
       options: {
         data: signupMetadataForKind(signUpType, {
@@ -281,31 +320,43 @@ export default function LoginPage() {
 
   if (checkingSession) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <p className="text-sm text-zinc-400">Loading...</p>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-sm text-textMuted">Loading...</p>
       </div>
     );
   }
 
+  const isBusinessSignUp = mode === "sign-up" && signUpType === "business";
+
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+    <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="w-full max-w-md px-6">
         <BackToHomeLink className="mb-4" />
-        <Card interactive={false} className="p-8">
+        <div className="rounded-md border border-border bg-panel p-8">
           <div className="flex justify-center mb-6">
             <Link href="/" className="hover:opacity-90 transition-opacity">
               <ProvixLogo />
             </Link>
           </div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight text-center">
-            {showResetPassword ? "Reset Password" : "Welcome to Provix"}
+          <h1 className="text-2xl font-extrabold text-textMain tracking-tight text-center">
+            {showResetPassword
+              ? "Reset Password"
+              : isClaimAudit
+                ? "Claim your verified scorecard"
+                : isBusinessSignUp
+                  ? "Create your founder account"
+                  : "Welcome to Provix"}
           </h1>
-          <p className="text-sm text-zinc-300 text-center mb-8">
+          <p className="text-sm text-textMuted text-center mb-8">
             {showResetPassword
               ? "Enter your email to receive a password reset link"
-              : mode === "sign-in"
-              ? "Sign in to access your account"
-              : "Create an account to get started"}
+              : isClaimAudit
+                ? "Sign in or create an account to attach this production score to your anonymous developer profile. GitHub is the fastest way."
+                : mode === "sign-in"
+                  ? "Sign in to access your account"
+                  : isBusinessSignUp
+                    ? "Use any email — personal Gmail is welcome."
+                    : "Create an account to get started"}
           </p>
 
           {error && (
@@ -319,8 +370,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          {!showResetPassword &&
-            !(mode === "sign-up" && signUpType === "business") && (
+          {!showResetPassword && (
             <>
               <OAuthSignInButtons
                 onError={(message) => {
@@ -329,65 +379,30 @@ export default function LoginPage() {
                 }}
               />
               <div className="my-6 flex items-center gap-3">
-                <div className="h-px flex-1 bg-zinc-800" />
-                <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-xs font-semibold uppercase tracking-wide text-textMuted">
                   or
                 </span>
-                <div className="h-px flex-1 bg-zinc-800" />
+                <div className="h-px flex-1 bg-white/10" />
               </div>
             </>
           )}
 
           {!showResetPassword && (
-          <div className="grid grid-cols-2 gap-1 bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-6">
-            <button
-              type="button"
-              onClick={() => switchMode("sign-in")}
-              className={`py-2 rounded-md text-sm font-semibold tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
-                mode === "sign-in"
-                  ? "bg-indigo-600 text-white"
-                  : "text-zinc-300 hover:text-white hover:bg-zinc-900"
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => switchMode("sign-up")}
-              className={`py-2 rounded-md text-sm font-semibold tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
-                mode === "sign-up"
-                  ? "bg-indigo-600 text-white"
-                  : "text-zinc-300 hover:text-white hover:bg-zinc-900"
-              }`}
-            >
-              Sign Up
-            </button>
-          </div>
-          )}
-
-          {!showResetPassword && mode === "sign-up" && (
-            <div className="grid grid-cols-2 gap-1 bg-zinc-950 border border-zinc-800 rounded-lg p-1 mb-6">
+            <div className="grid grid-cols-2 gap-1 rounded-md border border-border p-1 mb-6">
               <button
                 type="button"
-                onClick={() => setSignUpType("candidate")}
-                className={`py-1.5 rounded-md text-xs font-semibold tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
-                  signUpType === "candidate"
-                    ? "bg-zinc-800 text-white"
-                    : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-                }`}
+                onClick={() => switchMode("sign-in")}
+                className={tabButtonClass(mode === "sign-in")}
               >
-                Candidate Sign Up
+                Sign In
               </button>
               <button
                 type="button"
-                onClick={() => setSignUpType("business")}
-                className={`py-1.5 rounded-md text-xs font-semibold tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
-                  signUpType === "business"
-                    ? "bg-zinc-800 text-white"
-                    : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-                }`}
+                onClick={() => switchMode("sign-up")}
+                className={tabButtonClass(mode === "sign-up")}
               >
-                Business Sign Up
+                Sign Up
               </button>
             </div>
           )}
@@ -399,7 +414,7 @@ export default function LoginPage() {
               noValidate
             >
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="resetEmail" className="text-sm font-semibold text-zinc-200">
+                <label htmlFor="resetEmail" className="text-sm font-semibold text-textMain">
                   Email
                 </label>
                 <input
@@ -417,18 +432,22 @@ export default function LoginPage() {
                     }
                   }}
                   aria-invalid={Boolean(resetEmailError)}
-                  className={`bg-zinc-950 border rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all ${
-                    resetEmailError ? "border-red-500/50" : "border-zinc-800"
-                  }`}
+                  className={`${AUTH_INPUT_CLASS} ${
+ resetEmailError ? "border-red-500/50" : ""
+ }`}
                 />
                 {resetEmailError && (
                   <p className="text-sm text-red-400">{resetEmailError}</p>
                 )}
               </div>
 
-              <Button type="submit" disabled={loading} className="w-full mt-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className={`${AUTH_PRIMARY_BUTTON_CLASS} mt-2`}
+              >
                 {loading ? "Sending..." : "Send Reset Link"}
-              </Button>
+              </button>
 
               <button
                 type="button"
@@ -438,182 +457,179 @@ export default function LoginPage() {
                   setError(null);
                   setMessage(null);
                 }}
-                className="text-sm text-indigo-300 hover:text-indigo-200 font-medium transition-colors duration-200 ease-out cursor-pointer text-center"
+                className="text-sm text-textMuted hover:text-textMain font-medium transition-colors duration-200 ease-out cursor-pointer text-center"
               >
                 ← Back to Sign In
               </button>
             </form>
           ) : (
-          <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-            {mode === "sign-up" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="firstName" className="text-sm font-semibold text-zinc-200">
-                    First Name
-                  </label>
-                  <input
-                    id="firstName"
-                    type="text"
-                    name="firstName"
-                    placeholder="Jordan"
-                    required
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                  />
+            <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
+              {mode === "sign-up" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="firstName" className="text-sm font-semibold text-textMain">
+                      First Name
+                    </label>
+                    <input
+                      id="firstName"
+                      type="text"
+                      name="firstName"
+                      autoComplete="given-name"
+                      placeholder="Jordan"
+                      required
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      className={AUTH_INPUT_CLASS}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="lastName" className="text-sm font-semibold text-textMain">
+                      Last Name
+                    </label>
+                    <input
+                      id="lastName"
+                      type="text"
+                      name="lastName"
+                      autoComplete="family-name"
+                      placeholder="Lee"
+                      required
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      className={AUTH_INPUT_CLASS}
+                    />
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="lastName" className="text-sm font-semibold text-zinc-200">
-                    Last Name
-                  </label>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="email" className="text-sm font-semibold text-textMain">
+                  {isBusinessSignUp ? "Work Email" : "Email"}
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  placeholder="name@example.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={AUTH_INPUT_CLASS}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="password" className="text-sm font-semibold text-textMain">
+                  Password
+                </label>
+                <div className="relative">
                   <input
-                    id="lastName"
-                    type="text"
-                    name="lastName"
-                    placeholder="Lee"
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+                    placeholder="••••••••"
                     required
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className={`${AUTH_INPUT_CLASS} pr-11`}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((current) => !current)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-textMuted hover:text-textMain transition-colors duration-200 ease-out cursor-pointer"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" aria-hidden />
+                    ) : (
+                      <Eye className="w-4 h-4" aria-hidden />
+                    )}
+                  </button>
                 </div>
               </div>
-            )}
 
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="email" className="text-sm font-semibold text-zinc-200">
-                {mode === "sign-up" && signUpType === "business" ? "Work Email" : "Email"}
-              </label>
-              <input
-                id="email"
-                type="email"
-                name="email"
-                placeholder={
-                  mode === "sign-up" && signUpType === "business"
-                    ? "you@company.com"
-                    : "name@example.com"
-                }
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-              />
-              {mode === "sign-up" && signUpType === "business" && (
-                <p className="text-xs text-zinc-400">
-                  Corporate work email required. Gmail, Yahoo, Hotmail, Outlook, and iCloud are not accepted.
+              {mode === "sign-in" && (
+                <div className="flex justify-end -mt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetEmail(normalizeEmail(email));
+                      setResetEmailError(null);
+                      setShowResetPassword(true);
+                      setError(null);
+                      setMessage(null);
+                    }}
+                    className="text-xs font-medium text-textMuted hover:text-textMain transition-colors duration-200 ease-out cursor-pointer"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className={`${AUTH_PRIMARY_BUTTON_CLASS} mt-2`}
+              >
+                {loading
+                  ? "Please wait..."
+                  : mode === "sign-in"
+                    ? "Sign In"
+                    : "Create Account"}
+              </button>
+
+              {mode === "sign-up" && (
+                <p className="text-xs text-textMuted text-center mt-3 leading-relaxed">
+                  By creating an account, you agree to our{" "}
+                  <a
+                    href="/terms"
+                    className="underline text-textMain hover:text-textMain transition-colors duration-200"
+                  >
+                    Terms of Service
+                  </a>{" "}
+                  and{" "}
+                  <a
+                    href="/privacy"
+                    className="underline text-textMain hover:text-textMain transition-colors duration-200"
+                  >
+                    Privacy Policy
+                  </a>
+                  .
                 </p>
               )}
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="password" className="text-sm font-semibold text-zinc-200">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-4 pr-11 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((current) => !current)}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-zinc-400 hover:text-zinc-100 transition-colors duration-200 ease-out cursor-pointer"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" aria-hidden />
-                  ) : (
-                    <Eye className="w-4 h-4" aria-hidden />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {mode === "sign-in" && (
-              <div className="flex justify-end -mt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setResetEmail(normalizeEmail(email));
-                    setResetEmailError(null);
-                    setShowResetPassword(true);
-                    setError(null);
-                    setMessage(null);
-                  }}
-                  className="text-xs font-medium text-zinc-400 hover:text-zinc-100 transition-colors duration-200 ease-out cursor-pointer"
-                >
-                  Forgot password?
-                </button>
-              </div>
-            )}
-
-            <Button type="submit" disabled={loading} className="w-full mt-2">
-              {loading
-                ? "Please wait..."
-                : mode === "sign-in"
-                ? "Sign In"
-                : signUpType === "business"
-                ? "Create Business Account"
-                : "Create Account"}
-            </Button>
-
-            {mode === "sign-up" && (
-              <p className="text-xs text-zinc-300 text-center mt-3 leading-relaxed">
-                By creating an account, you agree to our{" "}
-                <a
-                  href="/terms"
-                  className="underline text-zinc-100 hover:text-white transition-colors duration-200"
-                >
-                  Terms of Service
-                </a>{" "}
-                and{" "}
-                <a
-                  href="/privacy"
-                  className="underline text-zinc-100 hover:text-white transition-colors duration-200"
-                >
-                  Privacy Policy
-                </a>
-                .
-              </p>
-            )}
-          </form>
+            </form>
           )}
 
           {!showResetPassword && (
-          <p className="mt-6 pt-6 border-t border-zinc-800 text-center text-sm text-zinc-300">
-            {mode === "sign-in" ? (
-              <>
-                No account?{" "}
-                <button
-                  type="button"
-                  onClick={() => switchMode("sign-up")}
-                  className="text-indigo-300 hover:text-indigo-200 font-semibold transition-colors duration-200 ease-out cursor-pointer"
-                >
-                  Sign up here
-                </button>
-              </>
-            ) : (
-              <>
-                Already have an account?{" "}
-                <button
-                  type="button"
-                  onClick={() => switchMode("sign-in")}
-                  className="text-indigo-300 hover:text-indigo-200 font-semibold transition-colors duration-200 ease-out cursor-pointer"
-                >
-                  Sign in here
-                </button>
-              </>
-            )}
-          </p>
+            <p className="mt-6 pt-6 border-t border-border text-center text-sm text-textMuted">
+              {mode === "sign-in" ? (
+                <>
+                  No account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => switchMode("sign-up")}
+                    className="text-textMain hover:text-textMuted font-semibold transition-colors duration-200 ease-out cursor-pointer"
+                  >
+                    Sign up here
+                  </button>
+                </>
+              ) : (
+                <>
+                  Already have an account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => switchMode("sign-in")}
+                    className="text-textMain hover:text-textMuted font-semibold transition-colors duration-200 ease-out cursor-pointer"
+                  >
+                    Sign in here
+                  </button>
+                </>
+              )}
+            </p>
           )}
-        </Card>
+        </div>
       </div>
     </div>
   );

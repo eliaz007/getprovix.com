@@ -53,7 +53,7 @@ function ProofPathList({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-2">
+      <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-2">
         {title}
       </div>
       {paths.length > 0 ? (
@@ -61,14 +61,14 @@ function ProofPathList({
           {paths.map((path) => (
             <li
               key={path}
-              className="font-mono text-[11px] text-slate-400 leading-relaxed break-all"
+              className="font-mono text-[11px] text-textMuted leading-relaxed break-all"
             >
               {path}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-[11px] text-slate-500">None recorded.</p>
+        <p className="text-[11px] text-textMuted">None recorded.</p>
       )}
     </div>
   );
@@ -90,17 +90,17 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-zinc-800 bg-[#0A0A0A] p-4 sm:p-5 space-y-4">
+      <section className="rounded-2xl border border-border bg-background p-4 sm:p-5 space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">
+            <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-1">
               Overall Readiness Score
             </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl sm:text-4xl font-mono font-extrabold tabular-nums text-white">
+              <span className="text-3xl sm:text-4xl font-mono font-extrabold tabular-nums text-textMain">
                 {score}
               </span>
-              <span className="text-sm font-semibold text-slate-500">/100</span>
+              <span className="text-sm font-semibold text-textMuted">/100</span>
             </div>
           </div>
           <span
@@ -113,7 +113,7 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
         <ScoreMeter score={score} className={badge.meterClassName} />
 
         <div>
-          <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-3">
+          <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-3">
             Executive Checklist
           </div>
           <ul className="space-y-2">
@@ -122,7 +122,7 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
               return (
                 <li
                   key={item.id}
-                  className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-[#111111] px-3 py-2.5"
+                  className="flex items-center gap-3 rounded-xl border border-border bg-panel px-3 py-2.5"
                 >
                   <span
                     className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${tone.iconWrap}`}
@@ -130,7 +130,7 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
                   >
                     <ChecklistIcon tone={item.tone} />
                   </span>
-                  <span className="min-w-0 flex-1 text-sm font-semibold text-white leading-snug">
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-textMain leading-snug">
                     {item.label}
                   </span>
                   <span
@@ -146,19 +146,19 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
       </section>
 
       <section>
-        <div className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider mb-3">
+        <div className="text-[10px] uppercase font-bold text-brand tracking-wider mb-3">
           Actionable Fixes
         </div>
         <ol className="space-y-2">
           {recommendations.map((item, index) => (
             <li
               key={item}
-              className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-[#0A0A0A] px-3 py-2.5"
+              className="flex items-start gap-3 rounded-xl border border-border bg-background px-3 py-2.5"
             >
-              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-indigo-500/25 bg-indigo-500/10 text-[11px] font-bold text-indigo-300">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-brand/25 bg-brandGlow text-[11px] font-bold text-brand">
                 {index + 1}
               </span>
-              <span className="text-sm text-slate-300 leading-relaxed">
+              <span className="text-sm text-textMuted leading-relaxed">
                 {item}
               </span>
             </li>
@@ -166,15 +166,15 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
         </ol>
       </section>
 
-      <details className="group rounded-2xl border border-zinc-800 bg-[#0A0A0A]">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-200 [&::-webkit-details-marker]:hidden">
+      <details className="group rounded-2xl border border-border bg-background">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-textMain [&::-webkit-details-marker]:hidden">
           <span>View Technical File Proof & AST Logs</span>
           <ChevronDown
-            className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180"
+            className="h-4 w-4 shrink-0 text-textMuted transition-transform group-open:rotate-180"
             aria-hidden
           />
         </summary>
-        <div className="space-y-5 border-t border-zinc-800 px-4 py-4">
+        <div className="space-y-5 border-t border-border px-4 py-4">
           <ScoreCapBreakdown
             scoreCap={result.scoreCap}
             score={result.score}
@@ -183,7 +183,7 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
 
           <AuditChecksList checks={result.checks} />
 
-          <div className="space-y-4 rounded-xl border border-zinc-800 bg-[#111111] p-3">
+          <div className="space-y-4 rounded-xl border border-border bg-panel p-3">
             <div className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">
               Filesystem paths & AST evidence
             </div>
@@ -205,14 +205,14 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
             />
             {result.commitDates.length > 0 ? (
               <div>
-                <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-2">
+                <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-2">
                   Sampled commit timestamps
                 </div>
                 <ul className="space-y-1">
                   {result.commitDates.map((date) => (
                     <li
                       key={date}
-                      className="font-mono text-[11px] text-slate-400"
+                      className="font-mono text-[11px] text-textMuted"
                     >
                       {date}
                     </li>
@@ -231,7 +231,7 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
                 {result.strengths.map((item) => (
                   <li
                     key={item}
-                    className="flex items-start gap-2 text-sm text-slate-300 leading-relaxed"
+                    className="flex items-start gap-2 text-sm text-textMuted leading-relaxed"
                   >
                     <Check
                       className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"
@@ -253,7 +253,7 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
                 {visibleRedFlags.map((item) => (
                   <li
                     key={item}
-                    className="flex items-start gap-2 text-sm text-slate-300 leading-relaxed"
+                    className="flex items-start gap-2 text-sm text-textMuted leading-relaxed"
                   >
                     <AlertTriangle
                       className="w-4 h-4 text-amber-400 shrink-0 mt-0.5"

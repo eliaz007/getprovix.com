@@ -27,13 +27,13 @@ function navButtonClass(
 ) {
   if (variant === "employer") {
     return isActive
-      ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
-      : "text-zinc-400 border-transparent hover:bg-zinc-800/50 hover:text-white";
+      ? "bg-brandGlow text-brand border-brand/20"
+      : "text-textMuted border-transparent hover:bg-panel hover:text-textMain";
   }
 
   return isActive
-    ? "bg-slate-800/60 text-white border-transparent"
-    : "text-zinc-400 border-transparent hover:bg-zinc-800/50 hover:text-white";
+    ? "bg-panel text-white border-transparent"
+    : "text-textMuted border-transparent hover:bg-panel hover:text-textMain";
 }
 
 function navItemClass(
@@ -43,7 +43,7 @@ function navItemClass(
   return `w-full text-left px-3 py-2 rounded-lg border font-medium transition-colors duration-200 ease-out flex items-center gap-3 text-[13px] cursor-pointer ${navButtonClass(isActive, variant)}`;
 }
 
-const secondaryNavSectionClass = "mt-8 pt-8 border-t border-zinc-800";
+const secondaryNavSectionClass = "mt-8 pt-8 border-t border-border";
 
 type NavVisibility = {
   isBusinessAccount: boolean;
@@ -357,7 +357,7 @@ export default function DashboardSidebar() {
               : undefined
           }
         >
-          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
+          <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
             {isBusinessAccount
               ? "Company Hub"
               : isEmployeeAccount
@@ -378,7 +378,7 @@ export default function DashboardSidebar() {
 
         {showCandidateAccelerator && (
           <div className={secondaryNavSectionClass}>
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
+            <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
               Career Accelerator
             </span>
             <ul className={navListClass}>
@@ -420,7 +420,7 @@ export default function DashboardSidebar() {
 
         {isEmployeeAccount && (
           <div className={secondaryNavSectionClass}>
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
+            <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
               Opportunity Hub
             </span>
             <ul className={navListClass}>
@@ -439,7 +439,7 @@ export default function DashboardSidebar() {
 
         {showTalentPoolNav && (
           <div className={secondaryNavSectionClass}>
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
+            <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
               Employer Console (B2B)
             </span>
             <ul className={navListClass}>
@@ -464,7 +464,7 @@ export default function DashboardSidebar() {
             setMobileNavOpen(false);
             requireAuth();
           }}
-          className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
+          className="mt-8 w-full bg-brand hover:bg-brandHover text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
         >
           {isOpportunitiesPath(pathname)
             ? "Sign in to get matched"

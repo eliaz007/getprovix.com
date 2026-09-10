@@ -47,7 +47,7 @@ const INDUSTRIES = [
 const COMPANY_SIZES = ["1–10", "11–50", "51–200", "201–1,000", "1,000+"];
 
 const inputClass =
-  "bg-zinc-950 border border-zinc-800 text-white rounded-lg px-4 py-3 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all";
+  "bg-background border border-border text-textMain rounded-lg px-4 py-3 placeholder:text-textMuted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all";
 
 function resolveAccountRole(
   profileRole: string | null | undefined,
@@ -59,18 +59,18 @@ function resolveAccountRole(
 
 function OnboardingSkeleton() {
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card interactive={false} className="p-8 max-w-md w-full">
         <div className="flex flex-col items-center gap-4 mb-8">
-          <div className="h-8 w-8 rounded-full border-2 border-zinc-700 border-t-indigo-500 animate-spin" />
-          <p className="text-sm text-zinc-400">Loading your onboarding...</p>
+          <div className="h-8 w-8 rounded-full border-2 border-border border-t-indigo-500 animate-spin" />
+          <p className="text-sm text-textMuted">Loading your onboarding...</p>
         </div>
         <div className="space-y-3">
-          <div className="h-6 w-48 mx-auto rounded bg-zinc-800 animate-pulse" />
-          <div className="h-4 w-64 mx-auto rounded bg-zinc-800 animate-pulse" />
-          <div className="h-12 rounded-lg bg-zinc-800 animate-pulse" />
-          <div className="h-12 rounded-lg bg-zinc-800 animate-pulse" />
-          <div className="h-12 rounded-lg bg-zinc-800 animate-pulse" />
+          <div className="h-6 w-48 mx-auto rounded bg-panel animate-pulse" />
+          <div className="h-4 w-64 mx-auto rounded bg-panel animate-pulse" />
+          <div className="h-12 rounded-lg bg-panel animate-pulse" />
+          <div className="h-12 rounded-lg bg-panel animate-pulse" />
+          <div className="h-12 rounded-lg bg-panel animate-pulse" />
         </div>
       </Card>
     </div>
@@ -223,12 +223,12 @@ export default function OnboardingPage() {
   const isEmployer = accountRole === "business";
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card interactive={false} className="p-8 max-w-md w-full">
-        <h1 className="text-2xl font-extrabold text-white tracking-tight text-center">
+        <h1 className="text-2xl font-extrabold text-textMain tracking-tight text-center">
           {isEmployer ? "Set up your company" : "Complete Your Profile"}
         </h1>
-        <p className="text-sm text-zinc-300 text-center mb-8">
+        <p className="text-sm text-textMuted text-center mb-8">
           {isEmployer
             ? "Tell us about your team so we can match you with vetted talent."
             : "A few quick details before you get to the dashboard."}
@@ -243,7 +243,7 @@ export default function OnboardingPage() {
         {isEmployer ? (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="companyName" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="companyName" className="text-sm font-medium text-textMuted">
                 Company Name
               </label>
               <input
@@ -258,7 +258,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="industry" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="industry" className="text-sm font-medium text-textMuted">
                 Industry
               </label>
               <select
@@ -275,7 +275,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="companySize" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="companySize" className="text-sm font-medium text-textMuted">
                 Company Size
               </label>
               <select
@@ -292,7 +292,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="hiringPreferences" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="hiringPreferences" className="text-sm font-medium text-textMuted">
                 Hiring Preferences
               </label>
               <textarea
@@ -321,7 +321,7 @@ export default function OnboardingPage() {
         ) : (
           <form className="flex flex-col gap-4" onSubmit={handleCandidateSubmit}>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="fullName" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="fullName" className="text-sm font-medium text-textMuted">
                 Full Name
               </label>
               <input
@@ -337,7 +337,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="graduationYear" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="graduationYear" className="text-sm font-medium text-textMuted">
                 Graduation Year
               </label>
               <input
@@ -355,7 +355,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="jobTitle" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="jobTitle" className="text-sm font-medium text-textMuted">
                 Role
               </label>
               <input
@@ -371,7 +371,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="experienceLevel" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="experienceLevel" className="text-sm font-medium text-textMuted">
                 Experience Level
               </label>
               <select
@@ -396,7 +396,7 @@ export default function OnboardingPage() {
               <div className="flex flex-col gap-1.5">
                 <label
                   htmlFor="workPreference"
-                  className="text-sm font-medium text-zinc-300"
+                  className="text-sm font-medium text-textMuted"
                 >
                   Work Preference
                 </label>
@@ -421,7 +421,7 @@ export default function OnboardingPage() {
               <div className="flex flex-col gap-1.5">
                 <label
                   htmlFor="candidateTimezone"
-                  className="text-sm font-medium text-zinc-300"
+                  className="text-sm font-medium text-textMuted"
                 >
                   Timezone
                 </label>
@@ -445,7 +445,7 @@ export default function OnboardingPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="githubUrl" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="githubUrl" className="text-sm font-medium text-textMuted">
                 GitHub Profile URL <span className="text-rose-400">*</span>
               </label>
               <input
@@ -458,7 +458,7 @@ export default function OnboardingPage() {
                 onChange={(e) => setGithubUrl(e.target.value)}
                 className={inputClass}
               />
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-[11px] text-textMuted">
                 Required. Must include github.com (e.g. https://github.com/your-handle).
               </p>
             </div>

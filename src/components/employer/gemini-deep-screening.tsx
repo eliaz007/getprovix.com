@@ -331,13 +331,13 @@ export default function GeminiDeepScreening({
   };
 
   return (
-    <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-4 space-y-4">
+    <div className="bg-background border border-border rounded-xl p-4 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">
+          <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-1">
             Gemini Deep Screening
           </div>
-          <p className="text-xs text-slate-400 leading-relaxed">
+          <p className="text-xs text-textMuted leading-relaxed">
             Run live GitHub artifact audits and integrity scoring for this candidate.
           </p>
         </div>
@@ -347,7 +347,7 @@ export default function GeminiDeepScreening({
         type="button"
         onClick={() => void runDeepScreening()}
         disabled={loading}
-        className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+        className="w-full bg-brand hover:bg-brandHover disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
       >
         {loading ? (
           <>
@@ -371,38 +371,38 @@ export default function GeminiDeepScreening({
               <div
                 key={stageLabel}
                 className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-all duration-300 ${
-                  isComplete
-                    ? "border-emerald-500/25 bg-emerald-500/5"
-                    : isActive
-                      ? "border-indigo-500/30 bg-indigo-500/10"
-                      : "border-zinc-800 bg-[#0A0A0A]"
-                }`}
+ isComplete
+ ? "border-emerald-500/25 bg-emerald-500/5"
+ : isActive
+ ? "border-brand/30 bg-brandGlow"
+ : "border-border bg-background"
+ }`}
               >
                 <span
                   className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
-                    isComplete
-                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
-                      : isActive
-                        ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-300"
-                        : "border-slate-700 text-slate-600"
-                  }`}
+ isComplete
+ ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+ : isActive
+ ? "border-brand/40 bg-brandGlow text-brand"
+ : "border-border text-textMuted"
+ }`}
                 >
                   {isComplete ? (
                     <Check className="h-3 w-3" aria-hidden />
                   ) : isActive ? (
-                    <span className="h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />
+                    <span className="h-2 w-2 rounded-full bg-brand animate-pulse" />
                   ) : (
                     index + 1
                   )}
                 </span>
                 <p
                   className={`text-xs leading-relaxed ${
-                    isComplete
-                      ? "text-emerald-200"
-                      : isActive
-                        ? "text-indigo-100"
-                        : "text-slate-500"
-                  }`}
+ isComplete
+ ? "text-emerald-200"
+ : isActive
+ ? "text-indigo-100"
+ : "text-textMuted"
+ }`}
                 >
                   {stageLabel}
                 </p>
@@ -493,29 +493,29 @@ export default function GeminiDeepScreening({
               {(result.interview_questions ?? []).map((item, index) => (
                 <div
                   key={`interview-question-${index}`}
-                  className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 space-y-2.5"
+                  className="bg-background border border-border rounded-xl p-3.5 space-y-2.5"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <span className="inline-flex px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 shrink-0">
+                    <span className="inline-flex px-2 py-1 rounded-md text-[10px] font-bold bg-brandGlow text-brand border border-brand/20 shrink-0">
                       {item.category}
                     </span>
                     <button
                       type="button"
                       onClick={() => void handleCopyInterviewQuestion(item.question)}
-                      className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-textMuted hover:text-textMain transition-colors cursor-pointer shrink-0"
                     >
                       <Copy className="w-3 h-3" aria-hidden />
                       Copy Question
                     </button>
                   </div>
-                  <p className="text-xs text-white font-medium leading-relaxed">
+                  <p className="text-xs text-textMain font-medium leading-relaxed">
                     {item.question}
                   </p>
-                  <div className="pt-2 border-t border-zinc-800">
-                    <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">
+                  <div className="pt-2 border-t border-border">
+                    <p className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-1">
                       What to listen for
                     </p>
-                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                    <p className="text-[11px] text-textMuted leading-relaxed">
                       {item.what_to_listen_for}
                     </p>
                   </div>
@@ -528,7 +528,7 @@ export default function GeminiDeepScreening({
             <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
               Technical Depth Summary
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">
+            <p className="text-xs text-textMuted leading-relaxed bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">
               {result.technical_depth_summary}
             </p>
           </div>

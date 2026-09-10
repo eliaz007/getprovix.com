@@ -18,13 +18,13 @@ function BuilderAvatar({ builder }: { builder: FeaturedBuilder }) {
       <img
         src={builder.avatarUrl}
         alt=""
-        className="h-14 w-14 rounded-lg border border-zinc-800 object-cover"
+        className="h-14 w-14 rounded-lg border border-border object-cover"
       />
     );
   }
 
   return (
-    <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-base font-mono font-bold text-zinc-300">
+    <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-border bg-background text-base font-mono font-bold text-textMuted">
       {builder.initials}
     </div>
   );
@@ -37,7 +37,7 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
         <BuilderAvatar builder={builder} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate text-lg font-bold tracking-tight text-white">
+            <h3 className="truncate text-lg font-bold tracking-tight text-textMain">
               {builder.fullName}
             </h3>
             <VerifiedOnProvixPill
@@ -45,7 +45,7 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
               className="shrink-0"
             />
           </div>
-          <p className="mt-1 truncate text-sm font-medium text-zinc-200">
+          <p className="mt-1 truncate text-sm font-medium text-textMain">
             {builder.roleTitle}
           </p>
           <WorkPreferenceTimezoneBadge
@@ -56,7 +56,7 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
         </div>
       </div>
 
-      <p className="mt-4 line-clamp-3 text-sm leading-relaxed text-zinc-300">
+      <p className="mt-4 line-clamp-3 text-sm leading-relaxed text-textMuted">
         {builder.bioSnippet}
       </p>
 
@@ -65,7 +65,7 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
           {builder.skills.map((skill) => (
             <span
               key={skill}
-              className="rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[10px] font-semibold text-zinc-200"
+              className="rounded-md border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-textMain"
             >
               {skill}
             </span>
@@ -79,12 +79,12 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
 
       <div
         className={`mt-5 flex items-center gap-3 ${
-          builder.proofScore !== null ? "justify-between" : "justify-end"
-        }`}
+ builder.proofScore !== null ? "justify-between" : "justify-end"
+ }`}
       >
         {builder.proofScore !== null && (
           <div className="flex min-w-0 flex-col gap-1.5">
-            <span className="font-mono text-sm font-semibold tabular-nums text-zinc-100">
+            <span className="font-mono text-sm font-semibold tabular-nums text-textMain">
               {builder.proofScore}/100
             </span>
             <ScoreMeter score={builder.proofScore} className="w-20" />
@@ -93,7 +93,7 @@ function BuilderCard({ builder }: { builder: FeaturedBuilder }) {
 
         <Link
           href={`/p/${builder.profileSlug}`}
-          className="inline-flex items-center gap-1 font-mono text-xs font-medium text-zinc-300 transition-colors duration-200 ease-out hover:text-white"
+          className="inline-flex items-center gap-1 font-mono text-xs font-medium text-textMuted transition-colors duration-200 ease-out hover:text-textMain"
         >
           /p/{builder.profileSlug}
           <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -133,13 +133,13 @@ export default function FeaturedShowcase({
       }
     >
       <div className="mb-10 text-center">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-textMuted">
           Featured Builders
         </p>
-        <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+        <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-textMain">
           Builders with verified proof-of-work
         </h2>
-        <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-zinc-300">
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-textMuted">
           Real profiles from the Provix talent pool — screened for GitHub depth,
           integrity, and technical signal before they reach your inbox.
         </p>

@@ -10,9 +10,9 @@ export default function LockedContactDossierBadge({
 }: LockedContactDossierBadgeProps) {
   return (
     <div
-      className={`flex items-start gap-2 rounded-xl border border-zinc-800 bg-[#0A0A0A] px-3.5 py-3 text-xs text-zinc-400 ${className}`}
+      className={`flex items-start gap-2 rounded-xl border border-border bg-background px-3.5 py-3 text-xs text-textMuted ${className}`}
     >
-      <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
+      <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-textMuted" aria-hidden />
       <span>{CONTACT_DOSSIER_LOCK_MESSAGE}</span>
     </div>
   );

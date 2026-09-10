@@ -155,9 +155,9 @@ export default function ResumeFileUpload({
       />
 
       {filename ? (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-[#0A0A0A] px-3 py-3">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background px-3 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-brand/30 bg-brandGlow text-brand">
               {uploading ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : (
@@ -165,8 +165,8 @@ export default function ResumeFileUpload({
               )}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-white">{filename}</p>
-              <p className="text-[11px] text-zinc-500">
+              <p className="truncate text-sm font-medium text-textMain">{filename}</p>
+              <p className="text-[11px] text-textMuted">
                 {uploading ? "Parsing resume…" : "Ready for AI audits"}
               </p>
             </div>
@@ -176,7 +176,7 @@ export default function ResumeFileUpload({
             onClick={() => void handleClear()}
             disabled={disabled || uploading}
             aria-label="Remove resume"
-            className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-white transition-colors duration-200 ease-out cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg p-2 text-textMuted hover:bg-panel hover:text-textMain transition-colors duration-200 ease-out cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
@@ -204,29 +204,29 @@ export default function ResumeFileUpload({
             void handleFile(event.dataTransfer.files?.[0]);
           }}
           className={`w-full rounded-xl border border-dashed px-4 py-6 text-center transition-colors duration-200 ease-out cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-            dragActive
-              ? "border-indigo-500 bg-indigo-500/10"
-              : "border-zinc-700 bg-[#0A0A0A] hover:border-indigo-500/50 hover:bg-indigo-500/5"
-          }`}
+ dragActive
+ ? "border-brand bg-brandGlow"
+ : "border-border bg-background hover:border-brand/50 hover:bg-brandHover/5"
+ }`}
         >
-          <span className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300">
+          <span className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-textMuted">
             {uploading ? (
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
             ) : (
               <Upload className="h-4 w-4" aria-hidden />
             )}
           </span>
-          <span className="block text-sm font-medium text-white">
+          <span className="block text-sm font-medium text-textMain">
             {uploading ? "Parsing resume…" : "Upload resume"}
           </span>
-          <span className="mt-1 block text-[11px] text-zinc-500">
+          <span className="mt-1 block text-[11px] text-textMuted">
             PDF or text file, up to 5 MB
           </span>
         </button>
       )}
 
       {helperText && !error && (
-        <p className="mt-2 text-[11px] text-slate-500">{helperText}</p>
+        <p className="mt-2 text-[11px] text-textMuted">{helperText}</p>
       )}
       {error && <p className="mt-2 text-[11px] text-rose-400">{error}</p>}
     </div>

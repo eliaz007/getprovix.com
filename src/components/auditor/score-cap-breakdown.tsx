@@ -47,14 +47,14 @@ export default function ScoreCapBreakdown({
             Score cap audit trail
           </div>
           {audit.clipped ? (
-            <p className="text-sm text-white font-semibold tabular-nums">
+            <p className="text-sm text-textMain font-semibold tabular-nums">
               {audit.uncappedScore}
-              <span className="text-slate-500 font-medium"> → </span>
+              <span className="text-textMuted font-medium"> → </span>
               {audit.cappedScore}
               <span className="text-amber-200"> (−{audit.pointsDeducted})</span>
             </p>
           ) : (
-            <p className="text-sm text-white font-semibold tabular-nums">
+            <p className="text-sm text-textMain font-semibold tabular-nums">
               Max allowed {audit.ceiling}/100
             </p>
           )}
@@ -77,10 +77,10 @@ export default function ScoreCapBreakdown({
             <span
               key={chip.key}
               className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold ${
-                present
-                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-                  : "border-red-500/25 bg-red-500/10 text-red-300"
-              }`}
+ present
+ ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+ : "border-red-500/25 bg-red-500/10 text-red-300"
+ }`}
             >
               {present ? (
                 <Check className="w-3 h-3" aria-hidden />
@@ -97,17 +97,17 @@ export default function ScoreCapBreakdown({
         {audit.deductions.map((deduction) => (
           <li
             key={deduction.code}
-            className="rounded-lg border border-zinc-800 bg-[#0A0A0A] px-3 py-2.5"
+            className="rounded-lg border border-border bg-background px-3 py-2.5"
           >
             <div className="flex items-start justify-between gap-3">
-              <p className="text-xs font-semibold text-white leading-snug">
+              <p className="text-xs font-semibold text-textMain leading-snug">
                 {deduction.label}
               </p>
               <span className="shrink-0 text-xs font-mono font-bold tabular-nums text-amber-300">
                 −{deduction.points}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed mt-1">
+            <p className="text-[11px] text-textMuted leading-relaxed mt-1">
               {deduction.detail}
             </p>
           </li>

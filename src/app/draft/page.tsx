@@ -15,8 +15,8 @@ export default function DraftRedirectPage() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
-      <p className="text-sm text-slate-500">Redirecting...</p>
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <p className="text-sm text-textMuted">Redirecting...</p>
     </div>
   );
 }

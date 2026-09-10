@@ -59,8 +59,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   } = useDashboardNav();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0A0A0A] text-zinc-100 font-sans antialiased selection:bg-indigo-500/30">
-      <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-[#111111] border-r border-zinc-800 z-20 overflow-y-auto">
+    <div className="flex h-screen overflow-hidden bg-background text-textMain font-sans antialiased selection:bg-brand/30">
+      <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-panel border-r border-border z-20 overflow-y-auto">
         <DashboardSidebar />
       </aside>
 
@@ -90,27 +90,27 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             tabIndex={mobileNavOpen ? 0 : -1}
             onClick={() => setMobileNavOpen(false)}
             className={`fixed inset-0 z-40 cursor-pointer bg-black/60 transition-opacity duration-300 ease-in-out motion-reduce:transition-none ${
-              mobileNavOpen
-                ? "opacity-100"
-                : "pointer-events-none opacity-0"
-            }`}
+ mobileNavOpen
+ ? "opacity-100"
+ : "pointer-events-none opacity-0"
+ }`}
           />
           <aside
             aria-hidden={!mobileNavOpen}
             inert={!mobileNavOpen}
-            className={`fixed inset-y-0 left-0 z-50 flex w-64 max-w-[85vw] flex-col overflow-y-auto border-r border-zinc-800 bg-[#111111] shadow-none transition-transform duration-300 ease-in-out motion-reduce:transition-none ${
-              mobileNavOpen
-                ? "translate-x-0"
-                : "pointer-events-none -translate-x-full"
-            }`}
+            className={`fixed inset-y-0 left-0 z-50 flex w-64 max-w-[85vw] flex-col overflow-y-auto border-r border-border bg-panel transition-transform duration-300 ease-in-out motion-reduce:transition-none ${
+ mobileNavOpen
+ ? "translate-x-0"
+ : "pointer-events-none -translate-x-full"
+ }`}
           >
-            <div className="flex items-center justify-end p-3 border-b border-zinc-800 shrink-0">
+            <div className="flex items-center justify-end p-3 border-b border-border shrink-0">
               <button
                 type="button"
                 onClick={() => setMobileNavOpen(false)}
                 aria-label="Close menu"
                 tabIndex={mobileNavOpen ? 0 : -1}
-                className="p-2 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors duration-200 ease-out cursor-pointer"
+                className="p-2 rounded-lg text-textMuted hover:bg-panel hover:text-textMain transition-colors duration-200 ease-out cursor-pointer"
               >
                 <DashboardIcons.XMark />
               </button>
@@ -119,7 +119,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           </aside>
         </div>
 
-        <main className="relative min-h-0 w-full flex-1 flex flex-col overflow-hidden bg-[#0A0A0A]">
+        <main className="relative min-h-0 w-full flex-1 flex flex-col overflow-hidden bg-background">
           {!isGuest && isBusinessAccount && (
             <div className="hidden md:flex shrink-0 items-center justify-end px-6 md:px-12 pt-4">
               <EmployerNotificationBell

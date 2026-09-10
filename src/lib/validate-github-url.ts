@@ -195,3 +195,20 @@ export function normalizeGitHubAuditTarget(
   const candidate = toGitHubUrlCandidate(trimmed);
   return candidate ? normalizeGitHubUrl(candidate) : "";
 }
+
+export function githubUrlFromSearchParam(
+  value: string | string[] | undefined
+): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return (raw ?? "").trim();
+}
+
+export function githubUrlFromAuditQuery(params: {
+  repo?: string | string[];
+  github?: string | string[];
+}): string {
+  return (
+    githubUrlFromSearchParam(params.repo) ||
+    githubUrlFromSearchParam(params.github)
+  );
+}

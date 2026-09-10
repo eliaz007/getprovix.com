@@ -116,7 +116,7 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // /audits (and legacy auditor URLs) stay public so guests can run GitHub audits.
+  // /audit and /audits (and legacy auditor URLs) stay public so guests can run GitHub audits.
   if (isPublicAuditor) {
     if (!user && isDashboardAuditorPath(pathname)) {
       return redirectWithSessionCookies(request, supabaseResponse, "/audits");
@@ -141,6 +141,9 @@ export async function updateSession(request: NextRequest) {
     }
     if (verifyError) {
       loginSearch.set("verify_error", verifyError);
+    }
+    if (isEmployer) {
+      loginSearch.set("role", "employer");
     }
 
     return redirectWithSessionCookies(

@@ -10,6 +10,11 @@ import {
 } from "@/lib/repo-filesystem";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { resolveTalentProfileId } from "@/lib/talent-pool-profiles";
+import type { ProductionAuditBreakdown } from "@/lib/production-audit";
+import {
+  employerVisibleProductionAudit,
+  parseProductionAuditFromProfileRow,
+} from "@/lib/production-audit";
 
 export type TalentPoolCandidate = {
   id: string;
@@ -47,7 +52,25 @@ export type TalentPoolCandidate = {
   matchScore: number;
   matchPending?: boolean;
   verifiedOnProvix?: boolean;
+  productionScore?: number | null;
+  auditBreakdown?: ProductionAuditBreakdown | null;
+  isAuditVerified?: boolean;
 };
+
+export function productionAuditRecordFromCandidate(
+  candidate: Pick<
+    TalentPoolCandidate,
+    "productionScore" | "auditBreakdown" | "isAuditVerified"
+  >
+) {
+  return employerVisibleProductionAudit(
+    parseProductionAuditFromProfileRow({
+      production_score: candidate.productionScore,
+      audit_breakdown: candidate.auditBreakdown,
+      is_audit_verified: candidate.isAuditVerified,
+    })
+  );
+}
 
 export type InterviewCheatSheetQuestion = {
   question: string;

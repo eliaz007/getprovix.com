@@ -40,7 +40,7 @@ export function ProvixLogo({
       </div>
 
       {showText && (
-        <span className="text-xl font-bold tracking-wider text-white">PROVIX</span>
+        <span className="text-xl font-bold tracking-wider text-textMain">PROVIX</span>
       )}
     </div>
   );

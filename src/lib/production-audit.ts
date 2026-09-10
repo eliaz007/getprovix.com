@@ -1,0 +1,559 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { isEmployerRole } from "@/lib/dashboard-account";
+import { parseGitHubUrl } from "@/lib/validate-github-url";
+import {
+  classifyTestSuites,
+  type ChecklistTone,
+} from "@/lib/audit-readiness";
+import type {
+  RepoFilesystemEvidence,
+  ScoreCapAudit,
+} from "@/lib/repo-filesystem";
+import { clampScore0to100 } from "@/lib/score-scale";
+import {
+  findMentionedColumn,
+  isSupabaseSchemaError,
+} from "@/lib/supabase-schema-errors";
+
+export const PENDING_PRODUCTION_AUDIT_KEY = "provix_pending_production_audit";
+export const CLAIM_AUDIT_INTENT = "claim_audit";
+export const PRIVATE_AUDIT_INTENT = "private_audit";
+export const PUBLIC_SCORECARD_THRESHOLD = 75;
+export const PRIVATE_AUDITED_REPO_LABEL = "Private repository";
+export const PRODUCTION_AUDIT_UPDATED_EVENT = "provix:production-audit-updated";
+
+export type ProductionAuditBreakdown = {
+  ci_cd_score: number;
+  test_density: number;
+  error_handling: number;
+  audited_repo_url: string;
+  audited_at: string;
+};
+
+export type ProductionAuditClaim = {
+  production_score: number;
+  audit_breakdown: ProductionAuditBreakdown;
+  is_audit_verified: true;
+  is_publicly_visible: boolean;
+};
+
+export type ProductionAuditRecord = {
+  productionScore: number;
+  breakdown: ProductionAuditBreakdown;
+  isAuditVerified: boolean;
+  isPubliclyVisible: boolean;
+};
+
+export function canPublishProductionScore(score: number): boolean {
+  return clampScore0to100(score) >= PUBLIC_SCORECARD_THRESHOLD;
+}
+
+export function resolvePublicScorecardVisibility(
+  score: number,
+  requestedVisible: boolean
+): boolean {
+  return requestedVisible && canPublishProductionScore(score);
+}
+
+export function employerVisibleProductionAudit(
+  record: ProductionAuditRecord | null | undefined
+): ProductionAuditRecord | null {
+  if (!record?.isAuditVerified || !record.isPubliclyVisible) {
+    return null;
+  }
+  if (!canPublishProductionScore(record.productionScore)) {
+    return null;
+  }
+  return record;
+}
+
+const TONE_SCORE: Record<ChecklistTone, number> = {
+  fail: 0,
+  warn: 45,
+  pass: 92,
+};
+
+function toneFromPresent(present: boolean): ChecklistTone {
+  return present ? "pass" : "fail";
+}
+
+function scoreFromTone(tone: ChecklistTone): number {
+  return TONE_SCORE[tone];
+}
+
+export function buildProductionAuditBreakdown(input: {
+  githubUrl: string;
+  filesystem?: RepoFilesystemEvidence | null;
+  scoreCap?: ScoreCapAudit | null;
+  auditedAt?: string;
+}): ProductionAuditBreakdown {
+  const filesystem = input.filesystem ?? null;
+  const testsPresent = Boolean(
+    filesystem
+      ? filesystem.test_paths.length > 0
+      : input.scoreCap?.coreArtifacts.tests
+  );
+  const ciPresent = Boolean(
+    filesystem
+      ? filesystem.ci_workflow_paths.length > 0
+      : input.scoreCap?.coreArtifacts.ci
+  );
+  const errorPresent = Boolean(
+    filesystem
+      ? filesystem.error_handling_paths.length > 0
+      : input.scoreCap?.coreArtifacts.error_handling
+  );
+  const tests = classifyTestSuites(testsPresent, filesystem);
+
+  return {
+    ci_cd_score: scoreFromTone(toneFromPresent(ciPresent)),
+    test_density: scoreFromTone(tests.tone),
+    error_handling: scoreFromTone(toneFromPresent(errorPresent)),
+    audited_repo_url: input.githubUrl.trim(),
+    audited_at: input.auditedAt ?? new Date().toISOString(),
+  };
+}
+
+export function buildProductionAuditClaim(input: {
+  score: number;
+  githubUrl: string;
+  filesystem?: RepoFilesystemEvidence | null;
+  scoreCap?: ScoreCapAudit | null;
+  isPubliclyVisible?: boolean;
+}): ProductionAuditClaim {
+  const production_score = clampScore0to100(input.score);
+  return {
+    production_score,
+    audit_breakdown: buildProductionAuditBreakdown(input),
+    is_audit_verified: true,
+    is_publicly_visible: resolvePublicScorecardVisibility(
+      production_score,
+      Boolean(input.isPubliclyVisible)
+    ),
+  };
+}
+
+export function parseProductionAuditBreakdown(
+  value: unknown
+): ProductionAuditBreakdown | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const repo =
+    typeof record.audited_repo_url === "string"
+      ? record.audited_repo_url.trim()
+      : "";
+  const auditedAt =
+    typeof record.audited_at === "string" ? record.audited_at.trim() : "";
+
+  if (!repo) {
+    return null;
+  }
+
+  return {
+    ci_cd_score: clampScore0to100(record.ci_cd_score),
+    test_density: clampScore0to100(record.test_density),
+    error_handling: clampScore0to100(record.error_handling),
+    audited_repo_url: repo,
+    audited_at: auditedAt || new Date().toISOString(),
+  };
+}
+
+export function parseProductionAuditFromProfileRow(
+  row:
+    | {
+        production_score?: number | string | null;
+        audit_breakdown?: unknown;
+        is_audit_verified?: boolean | null;
+        is_publicly_visible?: boolean | null;
+      }
+    | null
+    | undefined
+): ProductionAuditRecord | null {
+  if (!row) {
+    return null;
+  }
+
+  const breakdown = parseProductionAuditBreakdown(row.audit_breakdown);
+  const scoreRaw = row.production_score;
+  const hasScore =
+    typeof scoreRaw === "number" ||
+    (typeof scoreRaw === "string" && scoreRaw.trim() !== "");
+
+  if (!breakdown && !hasScore) {
+    return null;
+  }
+
+  const productionScore = clampScore0to100(scoreRaw);
+
+  return {
+    productionScore,
+    breakdown: breakdown ?? {
+      ci_cd_score: 0,
+      test_density: 0,
+      error_handling: 0,
+      audited_repo_url: "",
+      audited_at: "",
+    },
+    isAuditVerified: row.is_audit_verified === true,
+    isPubliclyVisible: resolvePublicScorecardVisibility(
+      productionScore,
+      row.is_publicly_visible === true
+    ),
+  };
+}
+
+export function getProductionScoreBadge(score: number): {
+  label: string;
+  className: string;
+} {
+  const clamped = clampScore0to100(score);
+  if (clamped >= 80) {
+    return {
+      label: "80+ Production-Ready",
+      className:
+        "text-emerald-300 bg-emerald-500/10 border-emerald-500/30",
+    };
+  }
+
+  return {
+    label: "Needs production hardening",
+    className: "text-zinc-300 bg-white/5 border-white/10",
+  };
+}
+
+export function productionScoreBadgeClass(score: number): string {
+  return clampScore0to100(score) >= 80
+    ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/30"
+    : "text-zinc-300 bg-white/5 border-white/10";
+}
+
+export function formatAuditedRepoLabel(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed || trimmed === PRIVATE_AUDITED_REPO_LABEL) {
+    return PRIVATE_AUDITED_REPO_LABEL;
+  }
+
+  const parsed = parseGitHubUrl(trimmed);
+  if (!parsed) {
+    return trimmed || "Public repository";
+  }
+
+  return parsed.repo ? `${parsed.owner}/${parsed.repo}` : parsed.owner;
+}
+
+export function formatAuditedAt(value: string): string {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return "";
+  }
+
+  return new Date(parsed).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function readPendingProductionAudit(): ProductionAuditClaim | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(PENDING_PRODUCTION_AUDIT_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as ProductionAuditClaim;
+    if (
+      typeof parsed?.production_score !== "number" ||
+      !parsed.audit_breakdown ||
+      parsed.is_audit_verified !== true
+    ) {
+      return null;
+    }
+
+    const breakdown = parseProductionAuditBreakdown(parsed.audit_breakdown);
+    if (!breakdown) {
+      return null;
+    }
+
+    const production_score = clampScore0to100(parsed.production_score);
+
+    return {
+      production_score,
+      audit_breakdown: breakdown,
+      is_audit_verified: true,
+      is_publicly_visible: resolvePublicScorecardVisibility(
+        production_score,
+        parsed.is_publicly_visible === true
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function cachePendingProductionAudit(claim: ProductionAuditClaim): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      PENDING_PRODUCTION_AUDIT_KEY,
+      JSON.stringify(claim)
+    );
+  } catch (error) {
+    console.error("Could not cache production audit claim:", error);
+  }
+}
+
+export function clearPendingProductionAudit(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(PENDING_PRODUCTION_AUDIT_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+export function claimAuditLoginHref(): string {
+  return `/login?intent=${CLAIM_AUDIT_INTENT}&next=${encodeURIComponent("/dashboard")}`;
+}
+
+export function privateAuditLoginHref(): string {
+  return `/login?next=${encodeURIComponent(`/dashboard?intent=${PRIVATE_AUDIT_INTENT}`)}`;
+}
+
+export function redactPrivateAuditedRepoUrl(url: string | null | undefined): string {
+  const trimmed = url?.trim() ?? "";
+  if (!trimmed) {
+    return PRIVATE_AUDITED_REPO_LABEL;
+  }
+  return trimmed;
+}
+
+export function isPrivateAuditedRepoLabel(url: string | null | undefined): boolean {
+  const trimmed = url?.trim() ?? "";
+  return !trimmed || trimmed === PRIVATE_AUDITED_REPO_LABEL;
+}
+
+export function productionAuditRecordFromClaim(
+  claim: ProductionAuditClaim
+): ProductionAuditRecord {
+  return {
+    productionScore: claim.production_score,
+    breakdown: claim.audit_breakdown,
+    isAuditVerified: true,
+    isPubliclyVisible: claim.is_publicly_visible,
+  };
+}
+
+export function notifyProductionAuditUpdated(record: ProductionAuditRecord): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(PRODUCTION_AUDIT_UPDATED_EVENT, { detail: record })
+  );
+}
+
+export async function persistProfileProductionAudit(
+  supabase: SupabaseClient,
+  userId: string,
+  claim: ProductionAuditClaim,
+  options?: { isPubliclyVisible?: boolean }
+): Promise<{ error: string | null }> {
+  const { data: roleRow } = await supabase
+    .from("profiles")
+    .select("id, role")
+    .or(`id.eq.${userId},user_id.eq.${userId}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (isEmployerRole(typeof roleRow?.role === "string" ? roleRow.role : null)) {
+    return { error: null };
+  }
+
+  const productionScore = clampScore0to100(claim.production_score);
+  let payload: Record<string, unknown> = {
+    production_score: productionScore,
+    audit_breakdown: claim.audit_breakdown,
+    is_audit_verified: true,
+  };
+
+  const publishRequested = options?.isPubliclyVisible === true;
+  const hideRequested = options?.isPubliclyVisible === false;
+  const canPublish = canPublishProductionScore(productionScore);
+
+  if (publishRequested && canPublish) {
+    payload.is_publicly_visible = true;
+    payload.is_visible_in_pool = true;
+    payload.visible_to_employers = true;
+  } else if (hideRequested || !canPublish) {
+    payload.is_publicly_visible = false;
+  }
+
+  const profileId = typeof roleRow?.id === "string" ? roleRow.id : userId;
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const { error } = await supabase
+      .from("profiles")
+      .update(payload)
+      .eq("id", profileId);
+
+    if (!error) {
+      return { error: null };
+    }
+
+    if (!isSupabaseSchemaError(error)) {
+      console.error("Failed to persist production audit:", error);
+      return { error: error.message ?? "Could not save production audit." };
+    }
+
+    const mentioned = findMentionedColumn(error, Object.keys(payload));
+    if (mentioned && mentioned in payload) {
+      const { [mentioned]: _dropped, ...rest } = payload;
+      payload = rest;
+      continue;
+    }
+
+    return { error: error.message ?? "Could not save production audit." };
+  }
+
+  return { error: "Could not save production audit." };
+}
+
+export async function persistScorecardVisibility(
+  supabase: SupabaseClient,
+  userId: string,
+  isPubliclyVisible: boolean
+): Promise<{ error: string | null; record: ProductionAuditRecord | null }> {
+  const { data: roleRow } = await supabase
+    .from("profiles")
+    .select("id, role, production_score, audit_breakdown, is_audit_verified")
+    .or(`id.eq.${userId},user_id.eq.${userId}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (isEmployerRole(typeof roleRow?.role === "string" ? roleRow.role : null)) {
+    return { error: "Employer accounts cannot publish a talent scorecard.", record: null };
+  }
+
+  const current = parseProductionAuditFromProfileRow(roleRow);
+  if (!current?.isAuditVerified) {
+    return {
+      error: "Run a production audit before changing scorecard visibility.",
+      record: null,
+    };
+  }
+
+  const nextVisible = resolvePublicScorecardVisibility(
+    current.productionScore,
+    isPubliclyVisible
+  );
+
+  if (isPubliclyVisible && !nextVisible) {
+    return {
+      error: `Profiles in the employer pool require a ${PUBLIC_SCORECARD_THRESHOLD}+ score.`,
+      record: current,
+    };
+  }
+
+  let payload: Record<string, unknown> = {
+    is_publicly_visible: nextVisible,
+  };
+
+  if (nextVisible) {
+    payload.is_visible_in_pool = true;
+    payload.visible_to_employers = true;
+  }
+
+  const profileId = typeof roleRow?.id === "string" ? roleRow.id : userId;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const { error } = await supabase
+      .from("profiles")
+      .update(payload)
+      .eq("id", profileId);
+
+    if (!error) {
+      return {
+        error: null,
+        record: {
+          ...current,
+          isPubliclyVisible: nextVisible,
+        },
+      };
+    }
+
+    if (!isSupabaseSchemaError(error)) {
+      console.error("Failed to update scorecard visibility:", error);
+      return {
+        error: error.message ?? "Could not update scorecard visibility.",
+        record: current,
+      };
+    }
+
+    const mentioned = findMentionedColumn(error, Object.keys(payload));
+    if (mentioned === "is_publicly_visible") {
+      return {
+        error:
+          "Apply the latest database migration to enable scorecard visibility.",
+        record: current,
+      };
+    }
+    if (mentioned && mentioned in payload) {
+      const { [mentioned]: _dropped, ...rest } = payload;
+      payload = rest;
+      continue;
+    }
+
+    return {
+      error: error.message ?? "Could not update scorecard visibility.",
+      record: current,
+    };
+  }
+
+  return { error: "Could not update scorecard visibility.", record: current };
+}
+
+export async function claimPendingProductionAudit(): Promise<ProductionAuditRecord | null> {
+  const pending = readPendingProductionAudit();
+  if (!pending) {
+    return null;
+  }
+
+  try {
+    const response = await fetchWithAuth("/api/profile/production-audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(pending),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    clearPendingProductionAudit();
+    return {
+      productionScore: pending.production_score,
+      breakdown: pending.audit_breakdown,
+      isAuditVerified: true,
+      isPubliclyVisible: pending.is_publicly_visible,
+    };
+  } catch (error) {
+    console.error("Claim production audit failed:", error);
+    return null;
+  }
+}

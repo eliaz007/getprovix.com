@@ -77,7 +77,7 @@ function coreArtifactFlags(
   };
 }
 
-function classifyTestSuites(
+export function classifyTestSuites(
   testsPresent: boolean,
   filesystem?: RepoFilesystemEvidence | null
 ): { status: string; tone: ChecklistTone } {
