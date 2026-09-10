@@ -47,9 +47,9 @@ export default function Home() {
             execution so founders can source builders from verified work — not
             resume claims.
           </p>
-
-          <LandingAuditForm />
         </section>
+
+        <LandingAuditForm />
 
         <section className="mt-20 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
           <article className="flex h-full flex-col rounded-2xl border border-border bg-panel p-8">

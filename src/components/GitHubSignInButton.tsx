@@ -23,9 +23,11 @@ const DEFAULT_CLASSES =
 export function GitHubSignInButton({
   className,
   onError,
+  nextPath,
 }: {
   className?: string;
   onError?: (message: string) => void;
+  nextPath?: string;
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -34,7 +36,7 @@ export function GitHubSignInButton({
     onError?.("");
 
     try {
-      const { error } = await handleGitHubSignIn();
+      const { error } = await handleGitHubSignIn(nextPath);
       if (error) {
         onError?.(error.message);
       }

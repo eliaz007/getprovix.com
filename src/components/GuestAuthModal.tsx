@@ -12,17 +12,27 @@ export default function GuestAuthModal({
   error,
   onClose,
   onError,
+  description,
+  loginHref: loginHrefProp,
+  nextPath,
 }: {
   open: boolean;
   error: string | null;
   onClose: () => void;
   onError: (message: string | null) => void;
+  description?: string;
+  loginHref?: string;
+  nextPath?: string;
 }) {
   const pathname = usePathname();
+  const resolvedNext =
+    nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")
+      ? nextPath
+      : pathname && pathname.startsWith("/") && !pathname.startsWith("//")
+        ? pathname
+        : "/dashboard";
   const loginHref =
-    pathname && pathname.startsWith("/") && !pathname.startsWith("//")
-      ? `/login?next=${encodeURIComponent(pathname)}`
-      : "/login";
+    loginHrefProp ?? `/login?next=${encodeURIComponent(resolvedNext)}`;
 
   if (!open) {
     return null;
@@ -58,12 +68,18 @@ export default function GuestAuthModal({
           Sign in or create an account
         </h2>
         <p className="text-sm text-textMuted mt-2 leading-relaxed">
-          You can browse roles freely. Sign in to express interest, apply, and
-          use career accelerator tools.
+          {description ??
+            "You can browse roles freely. Sign in to express interest, apply, and use career accelerator tools."}
         </p>
         <div className="mt-6 flex w-full flex-col gap-3">
-          <GitHubSignInButton onError={(message) => onError(message || null)} />
-          <GoogleSignInButton onError={(message) => onError(message || null)} />
+          <GitHubSignInButton
+            nextPath={resolvedNext}
+            onError={(message) => onError(message || null)}
+          />
+          <GoogleSignInButton
+            nextPath={resolvedNext}
+            onError={(message) => onError(message || null)}
+          />
         </div>
         {error ? (
           <p className="text-xs text-red-400 mt-3">{error}</p>

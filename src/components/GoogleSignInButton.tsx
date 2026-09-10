@@ -37,9 +37,11 @@ const DEFAULT_CLASSES =
 export function GoogleSignInButton({
   className,
   onError,
+  nextPath,
 }: {
   className?: string;
   onError?: (message: string) => void;
+  nextPath?: string;
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -48,7 +50,7 @@ export function GoogleSignInButton({
     onError?.("");
 
     try {
-      const { error } = await handleGoogleSignIn();
+      const { error } = await handleGoogleSignIn(nextPath);
       if (error) {
         onError?.(error.message);
       }

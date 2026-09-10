@@ -19,14 +19,16 @@ import { DAILY_LIMIT_UI_MESSAGE, type DailyScanUsage } from "@/lib/daily-scan-li
 import {
   buildProductionAuditClaim,
   cachePendingProductionAudit,
-  claimAuditLoginHref,
+  CLAIM_AUDIT_INTENT,
   clearPendingProductionAudit,
   formatAuditedRepoLabel,
   getProductionScoreBadge,
+  PRIVATE_AUDIT_INTENT,
   type ProductionAuditClaim,
 } from "@/lib/production-audit";
 import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
 import PrivateRepositoryBanner from "@/components/auditor/private-repository-banner";
+import GuestAuthModal from "@/components/GuestAuthModal";
 import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
 import {
   isInaccessiblePublicAudit,
@@ -111,8 +113,13 @@ function FindingList({
 
 export default function PublicProductionAudit({
   initialRepoUrl = "",
+  embedded = false,
+  showEmptyState = true,
 }: {
   initialRepoUrl?: string;
+  /** Keep results on this page instead of navigating to `/audit`. */
+  embedded?: boolean;
+  showEmptyState?: boolean;
 }) {
   const router = useRouter();
   const [repoUrl, setRepoUrl] = useState(initialRepoUrl);
@@ -125,9 +132,28 @@ export default function PublicProductionAudit({
   const [inaccessibleRepo, setInaccessibleRepo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [limitReached, setLimitReached] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalError, setAuthModalError] = useState<string | null>(null);
+  const [authModalDescription, setAuthModalDescription] = useState(
+    "Sign in or create an account to continue."
+  );
+  const [authNextPath, setAuthNextPath] = useState("/dashboard");
+  const [authIntent, setAuthIntent] = useState(CLAIM_AUDIT_INTENT);
   const stageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStartedRef = useRef("");
   const inFlightRef = useRef(false);
+
+  const openAuthModal = (options: {
+    description: string;
+    nextPath: string;
+    intent?: string;
+  }) => {
+    setAuthModalError(null);
+    setAuthModalDescription(options.description);
+    setAuthNextPath(options.nextPath);
+    setAuthIntent(options.intent ?? CLAIM_AUDIT_INTENT);
+    setAuthModalOpen(true);
+  };
 
   const hasValidGithubInput = hasUsableGitHubAuditTarget(repoUrl);
   const githubValidationMessage =
@@ -194,6 +220,12 @@ export default function PublicProductionAudit({
           setInaccessibleRepo(true);
           setResult(null);
           setClaim(null);
+          openAuthModal({
+            description:
+              "This repository looks private or enterprise-protected. Sign in or create an account to continue with a private architecture write-up.",
+            nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
+            intent: PRIVATE_AUDIT_INTENT,
+          });
           return;
         }
         throw new Error("Audit request failed.");
@@ -207,6 +239,25 @@ export default function PublicProductionAudit({
         setInaccessibleRepo(true);
         setResult(null);
         setClaim(null);
+        try {
+          const supabase = createClient();
+          const { data: sessionData } = await supabase.auth.getUser();
+          if (!sessionData.user) {
+            openAuthModal({
+              description:
+                "This repository looks private or enterprise-protected. Sign in or create an account to continue with a private architecture write-up.",
+              nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
+              intent: PRIVATE_AUDIT_INTENT,
+            });
+          }
+        } catch {
+          openAuthModal({
+            description:
+              "This repository looks private or enterprise-protected. Sign in or create an account to continue with a private architecture write-up.",
+            nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
+            intent: PRIVATE_AUDIT_INTENT,
+          });
+        }
         return;
       }
 
@@ -305,11 +356,12 @@ export default function PublicProductionAudit({
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = repoUrl.trim();
-    if (trimmed === initialRepoUrl.trim()) {
-      void runAudit(trimmed);
-      return;
+    void runAudit(trimmed);
+    if (!embedded && trimmed) {
+      router.replace(`/audit?repo=${encodeURIComponent(trimmed)}`, {
+        scroll: false,
+      });
     }
-    router.push(`/audit?repo=${encodeURIComponent(trimmed)}`);
   };
 
   const resetForAnotherRepo = () => {
@@ -320,11 +372,31 @@ export default function PublicProductionAudit({
     setError(null);
     autoStartedRef.current = "";
     inFlightRef.current = false;
-    if (initialRepoUrl.trim()) {
+    if (!embedded && initialRepoUrl.trim()) {
       router.replace("/audit");
     }
     window.requestAnimationFrame(() => {
       document.getElementById("public-audit-repo")?.focus();
+    });
+  };
+
+  const requireAuthForPrivateRepo = () => {
+    openAuthModal({
+      description:
+        "Private and enterprise repositories need an account so you can submit an architecture write-up from the candidate dashboard.",
+      nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
+      intent: PRIVATE_AUDIT_INTENT,
+    });
+  };
+
+  const requireAuthForClaim = (nextClaim: ProductionAuditClaim) => {
+    cachePendingProductionAudit(nextClaim);
+    openAuthModal({
+      description: nextClaim.is_publicly_visible
+        ? "Sign in or create an account to save this score to your profile and show it to employers."
+        : "Sign in or create an account to save this private diagnostic to your candidate profile.",
+      nextPath: `/dashboard?intent=${CLAIM_AUDIT_INTENT}`,
+      intent: CLAIM_AUDIT_INTENT,
     });
   };
 
@@ -452,11 +524,12 @@ export default function PublicProductionAudit({
         <PrivateRepositoryBanner
           variant="public"
           onTryAnotherRepo={resetForAnotherRepo}
+          onRequireAuth={requireAuthForPrivateRepo}
         />
       ) : null}
 
       {!loading && result && claim && breakdown && !inaccessibleRepo ? (
-        <div className="space-y-6">
+        <div className="space-y-6 text-left">
           <section className="rounded-2xl border border-border bg-panel p-6">
             <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -509,7 +582,10 @@ export default function PublicProductionAudit({
             </div>
           </section>
 
-          <ScorecardPublicationCallout claim={claim} />
+          <ScorecardPublicationCallout
+            claim={claim}
+            onRequireAuth={requireAuthForClaim}
+          />
 
           <section className="rounded-2xl border border-border bg-panel p-6">
             <h3 className="text-lg font-bold tracking-tight text-textMain">
@@ -549,13 +625,18 @@ export default function PublicProductionAudit({
                 Attach this production score to an anonymous candidate profile
                 so hiring founders can see verified work, not resume claims.
               </p>
-              <Link
-                href={claimAuditLoginHref()}
+              <button
+                type="button"
+                onClick={() => {
+                  if (claim) {
+                    requireAuthForClaim(claim);
+                  }
+                }}
                 className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-brand text-white px-4 py-3 text-sm font-bold tracking-tight transition-colors duration-200 hover:bg-brandHover cursor-pointer"
               >
-                Create Candidate Account
+                Save Score to Profile / Show to Employers
                 <ArrowRight className="h-4 w-4" aria-hidden />
-              </Link>
+              </button>
             </article>
 
             <article className="flex h-full flex-col rounded-2xl border border-border bg-panel p-6">
@@ -584,7 +665,11 @@ export default function PublicProductionAudit({
         </div>
       ) : null}
 
-      {!loading && !result && !error && !inaccessibleRepo ? (
+      {showEmptyState &&
+      !loading &&
+      !result &&
+      !error &&
+      !inaccessibleRepo ? (
         <section className="rounded-2xl border border-border bg-panel px-6 py-12 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-background text-brand">
             <ShieldCheck className="h-7 w-7" aria-hidden />
@@ -598,6 +683,16 @@ export default function PublicProductionAudit({
           </p>
         </section>
       ) : null}
+
+      <GuestAuthModal
+        open={authModalOpen}
+        error={authModalError}
+        onClose={() => setAuthModalOpen(false)}
+        onError={setAuthModalError}
+        description={authModalDescription}
+        nextPath={authNextPath}
+        loginHref={`/login?intent=${encodeURIComponent(authIntent)}&next=${encodeURIComponent(authNextPath)}`}
+      />
     </div>
   );
 }

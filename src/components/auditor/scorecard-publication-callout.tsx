@@ -2,20 +2,20 @@
 
 import { useState } from "react";
 import { ArrowRight, Lock, Loader2, ShieldCheck } from "lucide-react";
-import { handleGitHubSignIn } from "@/lib/github-auth";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import {
   cachePendingProductionAudit,
   canPublishProductionScore,
-  claimAuditLoginHref,
   type ProductionAuditClaim,
 } from "@/lib/production-audit";
 import { createClient } from "@/utils/supabase/client";
 
 export default function ScorecardPublicationCallout({
   claim,
+  onRequireAuth,
 }: {
   claim: ProductionAuditClaim;
+  onRequireAuth?: (claim: ProductionAuditClaim) => void;
 }) {
   const canPublish = canPublishProductionScore(claim.production_score);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
@@ -38,11 +38,8 @@ export default function ScorecardPublicationCallout({
       const { data } = await supabase.auth.getUser();
 
       if (!data.user) {
-        const { error } = await handleGitHubSignIn("/dashboard");
-        if (error) {
-          window.location.href = claimAuditLoginHref();
-          return;
-        }
+        setStatus("idle");
+        onRequireAuth?.(nextClaim);
         return;
       }
 
@@ -97,17 +94,16 @@ export default function ScorecardPublicationCallout({
           ) : (
             <ArrowRight className="h-4 w-4" aria-hidden />
           )}
-          Publish Scorecard to Talent Roster
+          Save Score to Profile / Show to Employers
         </button>
         <p className="mt-3 text-xs text-textMuted">
-          Unauthenticated authors continue with GitHub to create a candidate
-          account.
+          Sign in or create an account to attach this scorecard to your profile.
         </p>
         {message ? (
           <p
             className={`mt-3 text-sm ${
- status === "error" ? "text-red-300" : "text-emerald-300"
- }`}
+              status === "error" ? "text-red-300" : "text-emerald-300"
+            }`}
           >
             {message}
           </p>
@@ -123,12 +119,12 @@ export default function ScorecardPublicationCallout({
         Private diagnostic
       </p>
       <h3 className="mt-3 text-xl font-bold tracking-tight text-textMain">
-        Private Diagnostic Saved
+        Private Diagnostic
       </h3>
       <p className="mt-3 text-sm leading-relaxed text-textMuted">
         Profiles in the employer pool require a 75+ score. Address the test
         density or CI/CD flags above and re-run your repo to earn a verified
-        talent badge.
+        talent badge. You can still save this diagnostic to your profile.
       </p>
       <button
         type="button"
@@ -141,13 +137,13 @@ export default function ScorecardPublicationCallout({
         ) : (
           <ArrowRight className="h-4 w-4" aria-hidden />
         )}
-        Save Private Audit
+        Save Score to Profile
       </button>
       {message ? (
         <p
           className={`mt-3 text-sm ${
- status === "error" ? "text-red-300" : "text-textMuted"
- }`}
+            status === "error" ? "text-red-300" : "text-textMuted"
+          }`}
         >
           {message}
         </p>

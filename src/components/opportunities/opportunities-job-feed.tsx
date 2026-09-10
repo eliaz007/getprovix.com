@@ -106,18 +106,6 @@ export default function OpportunitiesJobFeed({
 
   return (
     <div>
-      <div className="mb-8 rounded-2xl border border-border bg-gradient-to-br from-[#141414] via-[#111111] to-[#0A0A0A] p-6 sm:p-8">
-        <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-textMain leading-snug">
-          Hire developers based on what they&apos;ve actually built, not what
-          they claim.
-        </h2>
-        <p className="text-textMuted text-sm sm:text-base mt-3 leading-relaxed max-w-3xl">
-          Provix audits candidates&apos; real GitHub work and proof-of-work
-          signals — so employers hire with confidence, and candidates get credit
-          for what they&apos;ve genuinely done.
-        </p>
-      </div>
-
       <div className="mb-8">
         <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">
           Job Feed
