@@ -688,25 +688,64 @@ async function persistScreeningResult(
 
     const candidateProfileId = resolvedProfileId(profileRow, lookupId);
 
-    const { error: screeningError } = await supabase
-      .from("candidate_screenings")
-      .upsert(
-        {
-          candidate_key: key,
-          profile_id: candidateProfileId,
-          integrity_score: result.integrity_score,
-          audit_data: payload,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "candidate_key" }
-      );
+    const screeningPayload = {
+      candidate_key: key,
+      created_by: userId,
+      profile_id: candidateProfileId,
+      integrity_score: result.integrity_score,
+      audit_data: payload,
+      updated_at: new Date().toISOString(),
+    };
 
-    if (screeningError) {
-      console.error("[screen] candidate_screenings upsert failed:", screeningError);
+    const { data: existingScreening, error: existingScreeningError } =
+      await supabase
+        .from("candidate_screenings")
+        .select("id")
+        .eq("created_by", userId)
+        .eq("candidate_key", key)
+        .maybeSingle();
+
+    let screeningPersisted = false;
+    const screeningUnavailable =
+      existingScreeningError &&
+      (existingScreeningError.code === "42P01" ||
+        existingScreeningError.code === "42703" ||
+        existingScreeningError.code === "PGRST205" ||
+        existingScreeningError.code === "PGRST204");
+
+    if (screeningUnavailable) {
+      console.warn(
+        "[screen] candidate_screenings unavailable; skipping cache persist:",
+        existingScreeningError.message
+      );
+    } else if (existingScreeningError) {
+      console.error(
+        "[screen] candidate_screenings lookup failed:",
+        existingScreeningError
+      );
+    }
+
+    if (!screeningUnavailable) {
+      const { error: screeningError } = existingScreening?.id
+        ? await supabase
+            .from("candidate_screenings")
+            .update(screeningPayload)
+            .eq("id", existingScreening.id)
+            .eq("created_by", userId)
+        : await supabase.from("candidate_screenings").insert(screeningPayload);
+
+      if (screeningError) {
+        console.error(
+          "[screen] candidate_screenings upsert failed:",
+          screeningError
+        );
+      } else {
+        screeningPersisted = true;
+      }
     }
 
     if (!candidateProfileId) {
-      return !screeningError;
+      return screeningPersisted || Boolean(screeningUnavailable);
     }
 
     const canWriteOwnProfile = candidateProfileId === userId;
@@ -736,7 +775,7 @@ async function persistScreeningResult(
       }
     }
 
-    return !screeningError;
+    return screeningPersisted || Boolean(screeningUnavailable);
   } catch (error) {
     console.error("[screen] persistScreeningResult threw:", error);
     return false;
