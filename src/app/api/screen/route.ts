@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireAiApiUser, rejectUnlessVerifiedEmployer } from "@/lib/api-auth";
 import {
@@ -44,6 +44,14 @@ import {
   type AuditCheck,
 } from "@/lib/audit-checks";
 import { formatGpa } from "@/lib/gpa";
+import {
+  completeScreeningRun,
+  enqueuePendingScreening,
+  failScreeningRun,
+  markScreeningProcessing,
+  readQueuedRunId,
+  type ScreeningJobInput,
+} from "@/lib/screening-queue";
 import { createClient } from "@/utils/supabase/server";
 
 export const maxDuration = 120;
@@ -662,7 +670,8 @@ async function persistScreeningResult(
   candidateKey: string | undefined,
   profileId: string | undefined,
   result: ScreenResult,
-  userId: string
+  userId: string,
+  queue?: { screeningId: string; runId: string }
 ): Promise<boolean> {
   if (!candidateKey?.trim()) {
     return false;
@@ -671,6 +680,7 @@ async function persistScreeningResult(
   try {
     const supabase = await createClient();
     const admin = createServiceRoleClient();
+    const writer = admin ?? supabase;
     const key = candidateKey.trim();
     const payload = result as unknown as Record<string, unknown>;
     const requestedId = profileId?.trim() || null;
@@ -693,12 +703,13 @@ async function persistScreeningResult(
       created_by: userId,
       profile_id: candidateProfileId,
       integrity_score: result.integrity_score,
+      status: "completed",
       audit_data: payload,
       updated_at: new Date().toISOString(),
     };
 
     const { data: existingScreening, error: existingScreeningError } =
-      await supabase
+      await writer
         .from("candidate_screenings")
         .select("id")
         .eq("created_by", userId)
@@ -726,21 +737,55 @@ async function persistScreeningResult(
     }
 
     if (!screeningUnavailable) {
-      const { error: screeningError } = existingScreening?.id
-        ? await supabase
+      const baseUpdate = existingScreening?.id
+        ? writer
             .from("candidate_screenings")
             .update(screeningPayload)
             .eq("id", existingScreening.id)
             .eq("created_by", userId)
-        : await supabase.from("candidate_screenings").insert(screeningPayload);
+        : null;
+
+      const guardedUpdate =
+        baseUpdate && queue?.runId
+          ? baseUpdate.filter("audit_data->>run_id", "eq", queue.runId)
+          : baseUpdate;
+
+      const firstWrite = guardedUpdate
+        ? await guardedUpdate.select("id")
+        : await writer
+            .from("candidate_screenings")
+            .insert(screeningPayload)
+            .select("id");
+
+      let screeningError = firstWrite.error;
+      let wroteRow = Boolean(firstWrite.data?.length);
+
+      if (screeningError?.code === "42703") {
+        const { status: _status, ...withoutStatus } = screeningPayload;
+        const retry = existingScreening?.id
+          ? await writer
+              .from("candidate_screenings")
+              .update(withoutStatus)
+              .eq("id", existingScreening.id)
+              .eq("created_by", userId)
+              .select("id")
+          : await writer
+              .from("candidate_screenings")
+              .insert(withoutStatus)
+              .select("id");
+        screeningError = retry.error;
+        wroteRow = Boolean(retry.data?.length);
+      }
 
       if (screeningError) {
         console.error(
           "[screen] candidate_screenings upsert failed:",
           screeningError
         );
-      } else {
+      } else if (wroteRow) {
         screeningPersisted = true;
+      } else {
+        console.warn("[screen] screening write skipped; a newer run owns the row");
       }
     }
 
@@ -944,67 +989,189 @@ export async function POST(request: Request) {
     }
   }
 
-  const githubUrl = resolveCandidateGitHubUrl(candidate);
-  let githubAudit: GitHubAuditContext | null = null;
-
-  try {
-    if (githubUrl) {
-      githubAudit = await fetchGitHubAudit(githubUrl);
-    }
-  } catch (error) {
-    console.error("[screen] GitHub fetch sequence failed:", error);
-    githubAudit = emptyGitHubAuditContext({
-      repo_url: githubUrl ?? "",
-      fetch_warnings: [
-        "The GitHub fetch sequence timed out or dropped. Retry the live audit to reload repository artifacts.",
-      ],
-    });
+  const candidateKey = candidate_key?.trim();
+  if (!candidateKey) {
+    return NextResponse.json(
+      { error: "candidate_key is required to queue a screening." },
+      { status: 400 }
+    );
   }
 
-  let externalProjects: ExternalProjectRecord[] = [];
-  const projectOwnerId = lookupId;
-  if (
-    projectOwnerId &&
-    (!githubUrl || !githubAuditHasFetchedArtifacts(githubAudit))
-  ) {
-    const admin = createServiceRoleClient();
-    const reader = admin ?? access.supabase;
-    const { data, error } = await reader
-      .from("external_projects")
-      .select("project_title, project_url, description, created_at")
-      .eq("user_id", projectOwnerId)
-      .order("created_at", { ascending: false });
+  const jobInput: ScreeningJobInput = {
+    candidate: candidate as unknown as Record<string, unknown>,
+    job: job as unknown as Record<string, unknown>,
+    profileId: profile_id?.trim() || lookupId,
+  };
 
-    if (error) {
-      console.error("[screen] failed to load external_projects:", error);
-    } else {
-      externalProjects = normalizeExternalProjects(data);
-    }
+  const queued = await enqueuePendingScreening(access.supabase, {
+    userId: access.user.id,
+    candidateKey,
+    profileId: lookupId,
+    input: jobInput,
+  });
+
+  if (!queued.ok) {
+    return NextResponse.json(
+      {
+        error: queued.unavailable
+          ? "Screening storage is not ready yet. Apply the latest database migration and retry."
+          : "Could not queue the live audit. Please retry.",
+        retryable: true,
+      },
+      { status: queued.unavailable ? 503 : 500 }
+    );
+  }
+
+  const snapshot = {
+    userId: access.user.id,
+    screeningId: queued.row.id,
+    runId: queued.row.runId,
+    candidate,
+    job,
+    candidateKey,
+    profileId: profile_id,
+    lookupId,
+  };
+
+  after(() => {
+    void runQueuedScreening(snapshot);
+  });
+
+  return NextResponse.json(
+    {
+      accepted: true,
+      status: "pending",
+      screening_id: queued.row.id,
+      candidate_key: queued.row.candidateKey,
+      run_id: queued.row.runId,
+    },
+    { status: 202 }
+  );
+}
+
+async function runQueuedScreening(snapshot: {
+  userId: string;
+  screeningId: string;
+  runId: string;
+  candidate: CandidatePayload;
+  job: JobPayload;
+  candidateKey: string;
+  profileId?: string;
+  lookupId: string | null;
+}): Promise<void> {
+  const writer = createServiceRoleClient() ?? (await createClient());
+  const input: ScreeningJobInput = {
+    candidate: snapshot.candidate as unknown as Record<string, unknown>,
+    job: snapshot.job as unknown as Record<string, unknown>,
+    profileId: snapshot.profileId?.trim() || snapshot.lookupId,
+  };
+
+  const claimed = await markScreeningProcessing(writer, {
+    screeningId: snapshot.screeningId,
+    userId: snapshot.userId,
+    runId: snapshot.runId,
+    input,
+  });
+
+  if (!claimed) {
+    return;
   }
 
   try {
+    const githubUrl = resolveCandidateGitHubUrl(snapshot.candidate);
+    let githubAudit: GitHubAuditContext | null = null;
+
+    try {
+      if (githubUrl) {
+        githubAudit = await fetchGitHubAudit(githubUrl);
+      }
+    } catch (error) {
+      console.error("[screen] GitHub fetch sequence failed:", error);
+      githubAudit = emptyGitHubAuditContext({
+        repo_url: githubUrl ?? "",
+        fetch_warnings: [
+          "The GitHub fetch sequence timed out or dropped. Retry the live audit to reload repository artifacts.",
+        ],
+      });
+    }
+
+    let externalProjects: ExternalProjectRecord[] = [];
+    if (
+      snapshot.lookupId &&
+      (!githubUrl || !githubAuditHasFetchedArtifacts(githubAudit))
+    ) {
+      const { data, error } = await writer
+        .from("external_projects")
+        .select("project_title, project_url, description, created_at")
+        .eq("user_id", snapshot.lookupId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("[screen] failed to load external_projects:", error);
+      } else {
+        externalProjects = normalizeExternalProjects(data);
+      }
+    }
+
+    const currentRunId = await readQueuedRunId(
+      writer,
+      snapshot.screeningId,
+      snapshot.userId
+    );
+    if (currentRunId && currentRunId !== snapshot.runId) {
+      return;
+    }
+
     const result = await generateGeminiScreen(
-      candidate,
-      job,
+      snapshot.candidate,
+      snapshot.job,
       githubAudit,
       hasUsableExternalProjects(externalProjects) ? externalProjects : []
     );
+
+    const latestRunId = await readQueuedRunId(
+      writer,
+      snapshot.screeningId,
+      snapshot.userId
+    );
+    if (latestRunId && latestRunId !== snapshot.runId) {
+      return;
+    }
+
     const persisted = await persistScreeningResult(
-      candidate_key,
-      profile_id,
+      snapshot.candidateKey,
+      snapshot.profileId,
       result,
-      access.user.id
+      snapshot.userId,
+      { screeningId: snapshot.screeningId, runId: snapshot.runId }
     );
-    return NextResponse.json({ ...result, persisted });
+
+    if (persisted) {
+      await completeScreeningRun(writer, {
+        screeningId: snapshot.screeningId,
+        userId: snapshot.userId,
+        runId: snapshot.runId,
+        profileId: snapshot.lookupId,
+        integrityScore: result.integrity_score,
+        auditData: result as unknown as Record<string, unknown>,
+      });
+    } else {
+      await failScreeningRun(writer, {
+        screeningId: snapshot.screeningId,
+        userId: snapshot.userId,
+        runId: snapshot.runId,
+        input,
+        error: "The live audit finished but could not be saved. Please retry.",
+      });
+    }
   } catch (error) {
-    console.error("[screen] Gemini execution failed:", error);
-    return NextResponse.json(
-      {
-        error:
-          "The live GitHub audit could not be completed. Please retry.",
-        retryable: true,
-      },
-      { status: 503 }
-    );
+    console.error("[screen] background audit failed:", error);
+    await failScreeningRun(writer, {
+      screeningId: snapshot.screeningId,
+      userId: snapshot.userId,
+      runId: snapshot.runId,
+      input,
+      error: "The live GitHub audit could not be completed. Please retry.",
+    });
   }
 }

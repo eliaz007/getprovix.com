@@ -14,13 +14,16 @@ import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
 import {
   AUDIT_STORAGE_PREFIX,
   coerceDeepScreeningResult,
-  DEEP_SCREENING_FETCH_TIMEOUT_MS,
   DEEP_SCREENING_STAGES,
   describeDeepScreeningFailure,
   getCandidateScreeningKey,
   getIntegrityScoreClass,
   isAbortOrTimeoutError,
+  isScreeningAcceptedResponse,
   parseStoredScreeningResult,
+  readScreeningQueueState,
+  SCREENING_BACKGROUND_WAIT_MS,
+  SCREENING_ENQUEUE_TIMEOUT_MS,
   type DeepScreeningResult,
   type ScreeningJobContext,
   type TalentPoolCandidate,
@@ -38,6 +41,24 @@ type GeminiDeepScreeningProps = {
   onToast?: (message: string) => void;
 };
 
+function cacheScreeningResult(
+  screeningKey: string,
+  result: DeepScreeningResult
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
+      JSON.stringify(result)
+    );
+  } catch (storageError) {
+    console.warn("Could not cache screening result:", storageError);
+  }
+}
+
 export default function GeminiDeepScreening({
   candidate,
   publicName,
@@ -53,10 +74,12 @@ export default function GeminiDeepScreening({
   const [error, setError] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<number | null>(null);
   const runIdRef = useRef(0);
   const resultRef = useRef<DeepScreeningResult | null>(null);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   resultRef.current = result;
 
@@ -67,6 +90,19 @@ export default function GeminiDeepScreening({
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+  };
+
+  const clearPoll = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const stopWatching = () => {
+    clearPoll();
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
   };
 
   const clearTimeoutHandle = () => {
@@ -84,7 +120,13 @@ export default function GeminiDeepScreening({
 
   useEffect(() => {
     let cancelled = false;
-    runIdRef.current += 1;
+    const runId = ++runIdRef.current;
+
+    setError(null);
+    setLoading(false);
+    setStage(0);
+    clearStageInterval();
+    stopWatching();
 
     const applyCachedResult = () => {
       if (typeof window === "undefined") {
@@ -92,80 +134,187 @@ export default function GeminiDeepScreening({
       }
 
       const cached = localStorage.getItem(`${AUDIT_STORAGE_PREFIX}${screeningKey}`);
-      if (!cached) {
+      const parsed = cached ? parseStoredScreeningResult(cached) : null;
+      if (!parsed || cancelled) {
         return false;
       }
 
-      const parsed = parseStoredScreeningResult(cached);
-      if (!parsed) {
-        return false;
-      }
-
-      if (!cancelled) {
-        setResult(parsed);
-        setShowResults(true);
-      }
+      setResult(parsed);
+      setShowResults(true);
       return true;
     };
 
-    setError(null);
-    setLoading(false);
-    setStage(0);
-    clearStageInterval();
+    void (async () => {
+      try {
+        const supabase = createClient();
+        const { data, error: loadError } = await supabase
+          .from("candidate_screenings")
+          .select("id, audit_data, integrity_score")
+          .eq("candidate_key", screeningKey)
+          .maybeSingle();
 
-    if (!applyCachedResult()) {
-      setResult(null);
-      setShowResults(false);
-
-      void (async () => {
-        try {
-          const supabase = createClient();
-          const { data, error: loadError } = await supabase
-            .from("candidate_screenings")
-            .select("audit_data")
-            .eq("candidate_key", screeningKey)
-            .maybeSingle();
-
-          if (cancelled) {
-            return;
-          }
-
-          if (!loadError && data?.audit_data) {
-            const audit = coerceDeepScreeningResult(
-              data.audit_data as DeepScreeningResult
-            );
-            setResult(audit);
-            setShowResults(true);
-            if (typeof window !== "undefined") {
-              try {
-                localStorage.setItem(
-                  `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
-                  JSON.stringify(audit)
-                );
-              } catch (storageError) {
-                console.warn("Could not cache screening result:", storageError);
-              }
-            }
-            return;
-          }
-
-          applyCachedResult();
-        } catch (err) {
-          console.error("Failed to load persisted screening:", err);
-          if (!cancelled) {
-            applyCachedResult();
-          }
+        if (cancelled || runId !== runIdRef.current) {
+          return;
         }
-      })();
-    }
+
+        if (loadError || !data) {
+          if (!applyCachedResult()) {
+            setResult(null);
+            setShowResults(false);
+          }
+          return;
+        }
+
+        const view = readScreeningQueueState(data);
+        if (view.phase === "completed") {
+          cacheScreeningResult(screeningKey, view.result);
+          setResult(view.result);
+          setShowResults(true);
+          setError(null);
+          return;
+        }
+
+        if (view.phase === "pending" || view.phase === "processing") {
+          if (data.id) {
+            setLoading(true);
+            setShowResults(false);
+            setStage(view.phase === "processing" ? 1 : 0);
+            void watchQueuedScreening(data.id, runId);
+          }
+          return;
+        }
+
+        if (view.phase === "failed") {
+          applyCachedResult();
+          setError(view.error);
+          return;
+        }
+
+        if (!applyCachedResult()) {
+          setResult(null);
+          setShowResults(false);
+        }
+      } catch (err) {
+        console.error("Failed to load persisted screening:", err);
+        if (!cancelled) {
+          applyCachedResult();
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
       runIdRef.current += 1;
       clearStageInterval();
+      stopWatching();
       abortInFlight();
     };
+    // watchQueuedScreening is recreated each render; the effect only rebinds on screeningKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screeningKey]);
+
+  const cacheAndShowResult = (data: DeepScreeningResult) => {
+    setStage(DEEP_SCREENING_STAGES.length - 1);
+    setResult(data);
+    setShowResults(true);
+    setError(null);
+    setLoading(false);
+    cacheScreeningResult(screeningKey, data);
+  };
+
+  const watchQueuedScreening = async (screeningId: string, runId: number) => {
+    stopWatching();
+    const supabase = createClient();
+    const isCurrentRun = () => runId === runIdRef.current;
+    let settled = false;
+
+    const finish = (view: ReturnType<typeof readScreeningQueueState>) => {
+      if (!isCurrentRun() || settled) {
+        return;
+      }
+
+      if (view.phase === "processing") {
+        setStage((prev) => Math.max(prev, 1));
+        return;
+      }
+
+      if (view.phase === "pending") {
+        return;
+      }
+
+      settled = true;
+      stopWatching();
+      clearStageInterval();
+
+      if (view.phase === "completed") {
+        applyQueuedResult(view.result);
+        return;
+      }
+
+      if (view.phase === "failed") {
+        setLoading(false);
+        setError(view.error);
+        setShowResults(Boolean(resultRef.current));
+        onToast?.("Deep screening dropped. Use retry to run the audit again.");
+      }
+    };
+
+    const applyQueuedResult = (data: DeepScreeningResult) => {
+      if (!isCurrentRun()) {
+        return;
+      }
+      cacheAndShowResult(data);
+    };
+
+    const poll = async () => {
+      const { data, error } = await supabase
+        .from("candidate_screenings")
+        .select("id, audit_data, integrity_score")
+        .eq("id", screeningId)
+        .maybeSingle();
+
+      if (!isCurrentRun() || error || !data) {
+        return;
+      }
+
+      finish(readScreeningQueueState(data));
+    };
+
+    const channel = supabase
+      .channel(`screening-${screeningId}-${runId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "candidate_screenings",
+          filter: `id=eq.${screeningId}`,
+        },
+        (payload) => {
+          finish(readScreeningQueueState(payload.new));
+        }
+      )
+      .subscribe();
+
+    unsubscribeRef.current = () => {
+      void supabase.removeChannel(channel);
+    };
+
+    void poll();
+    pollRef.current = setInterval(() => {
+      void poll();
+    }, 2500);
+
+    window.setTimeout(() => {
+      if (!isCurrentRun() || settled) {
+        return;
+      }
+
+      setError(
+        "The audit is still running in the background. Keep this panel open — the result will appear when it finishes."
+      );
+    }, SCREENING_BACKGROUND_WAIT_MS);
+  };
 
   const handleCopyInterviewQuestion = async (question: string) => {
     try {
@@ -193,6 +342,7 @@ export default function GeminiDeepScreening({
     const runId = ++runIdRef.current;
     abortInFlight();
     clearStageInterval();
+    stopWatching();
 
     setLoading(true);
     setError(null);
@@ -207,59 +357,52 @@ export default function GeminiDeepScreening({
     abortRef.current = controller;
     timeoutRef.current = window.setTimeout(() => {
       controller.abort();
-    }, DEEP_SCREENING_FETCH_TIMEOUT_MS);
+    }, SCREENING_ENQUEUE_TIMEOUT_MS);
 
     const isCurrentRun = () => runId === runIdRef.current;
 
     try {
-      let response: Response;
-      try {
-        response = await fetchWithAuth("/api/screen", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            candidate: {
-              name: publicName,
-              title: candidate.role,
-              bio: lockedBio,
-              skills: candidate.skills,
-              degree: candidate.major,
-              university: candidate.university,
-              major: candidate.major,
-              gpa: formatGpa(candidate.gpa),
-              graduation_year: candidate.graduationYear,
-              experience: candidate.experienceLevel,
-              projects: candidate.projects,
-              github_url: candidate.github_url ?? candidate.github ?? "",
-              github: candidate.github ?? "",
-            },
-            job: {
-              title: job.title,
-              company: job.company ?? companyName,
-              tags: jobDisplayTags(job),
-              tech_stack: parseJobListInput(job.tech_stack),
-              required_skills: parseJobListInput(job.required_skills),
-              location: job.location ?? "",
-            },
-            candidate_key: screeningKey,
-            profile_id:
-              resolveTalentProfileId(candidate) || candidate.profileId || undefined,
-          }),
-        });
-      } catch (networkError) {
-        throw networkError;
-      }
+      const response = await fetchWithAuth("/api/screen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          candidate: {
+            name: publicName,
+            title: candidate.role,
+            bio: lockedBio,
+            skills: candidate.skills,
+            degree: candidate.major,
+            university: candidate.university,
+            major: candidate.major,
+            gpa: formatGpa(candidate.gpa),
+            graduation_year: candidate.graduationYear,
+            experience: candidate.experienceLevel,
+            projects: candidate.projects,
+            github_url: candidate.github_url ?? candidate.github ?? "",
+            github: candidate.github ?? "",
+          },
+          job: {
+            title: job.title,
+            company: job.company ?? companyName,
+            tags: jobDisplayTags(job),
+            tech_stack: parseJobListInput(job.tech_stack),
+            required_skills: parseJobListInput(job.required_skills),
+            location: job.location ?? "",
+          },
+          candidate_key: screeningKey,
+          profile_id:
+            resolveTalentProfileId(candidate) || candidate.profileId || undefined,
+        }),
+      });
 
       if (!isCurrentRun()) {
         return;
       }
 
-      let payload: (DeepScreeningResult & { error?: string }) | null = null;
+      let payload: unknown = null;
       try {
-        payload = (await response.json()) as DeepScreeningResult & {
-          error?: string;
-        };
+        payload = await response.json();
       } catch (parseError) {
         throw new Error(
           response.ok
@@ -268,43 +411,37 @@ export default function GeminiDeepScreening({
         );
       }
 
+      if (response.status === 202 || isScreeningAcceptedResponse(payload)) {
+        if (!isScreeningAcceptedResponse(payload)) {
+          throw new Error("The audit was accepted without a screening id.");
+        }
+
+        clearTimeoutHandle();
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+        }
+        await watchQueuedScreening(payload.screening_id, runId);
+        return;
+      }
+
+      const record = payload as (DeepScreeningResult & { error?: string }) | null;
       if (!response.ok) {
         throw new Error(
-          payload?.error?.trim() ||
+          record?.error?.trim() ||
             describeDeepScreeningFailure(null, response.status)
         );
       }
 
-      let data: DeepScreeningResult;
-      try {
-        if (!payload || typeof payload.integrity_score !== "number") {
-          throw new Error("incomplete screening payload");
-        }
-        data = coerceDeepScreeningResult(payload);
-      } catch {
-        throw new Error(
-          "The live audit returned an incomplete result. Please retry."
-        );
+      if (!record || typeof record.integrity_score !== "number") {
+        throw new Error("The live audit returned an incomplete result. Please retry.");
       }
-      setStage(DEEP_SCREENING_STAGES.length - 1);
-      await new Promise((resolve) => window.setTimeout(resolve, 450));
+
       if (!isCurrentRun()) {
         return;
       }
 
-      setResult(data);
-      setShowResults(true);
-      setError(null);
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem(
-            `${AUDIT_STORAGE_PREFIX}${screeningKey}`,
-            JSON.stringify(data)
-          );
-        } catch (storageError) {
-          console.warn("Could not cache screening result:", storageError);
-        }
-      }
+      cacheAndShowResult(coerceDeepScreeningResult(record));
+      clearStageInterval();
     } catch (err) {
       if (!isCurrentRun()) {
         return;
@@ -314,19 +451,18 @@ export default function GeminiDeepScreening({
       const previousResult = resultRef.current;
       setError(describeDeepScreeningFailure(err));
       setShowResults(Boolean(previousResult));
+      setLoading(false);
       onToast?.(
         isAbortOrTimeoutError(err)
-          ? "Live audit timed out. Use retry to run the GitHub sequence again."
+          ? "Could not queue the live audit. Use retry to start it again."
           : "Deep screening dropped. Use retry to run the audit again."
       );
     } finally {
       if (isCurrentRun()) {
         clearTimeoutHandle();
-        clearStageInterval();
         if (abortRef.current === controller) {
           abortRef.current = null;
         }
-        setLoading(false);
       }
     }
   };
@@ -353,7 +489,7 @@ export default function GeminiDeepScreening({
         {loading ? (
           <>
             <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            Running live audit…
+            Running in background…
           </>
         ) : showResults ? (
           "Re-run Live Audit"
@@ -410,6 +546,13 @@ export default function GeminiDeepScreening({
               </div>
             );
           })}
+          <p className="text-[11px] text-textMuted leading-relaxed">
+            GitHub crawl and Gemini scoring continue in the background. This
+            panel updates when the audit finishes.
+          </p>
+          {error ? (
+            <p className="text-[11px] text-amber-200 leading-relaxed">{error}</p>
+          ) : null}
         </div>
       )}
 

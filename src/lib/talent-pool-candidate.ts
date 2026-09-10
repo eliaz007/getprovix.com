@@ -112,6 +112,35 @@ export const DEEP_SCREENING_STAGES = [
 ] as const;
 
 export const DEEP_SCREENING_FETCH_TIMEOUT_MS = 180_000;
+export const SCREENING_ENQUEUE_TIMEOUT_MS = 20_000;
+export const SCREENING_BACKGROUND_WAIT_MS = 180_000;
+
+export type ScreeningQueueStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed";
+
+export type ScreeningAcceptedResponse = {
+  accepted: true;
+  status: "pending";
+  screening_id: string;
+  candidate_key: string;
+  run_id: string;
+};
+
+export type ScreeningQueueRow = {
+  id?: string | null;
+  status?: string | null;
+  integrity_score?: number | null;
+  audit_data?: unknown;
+};
+
+export type ScreeningQueueView =
+  | { phase: "pending" | "processing" }
+  | { phase: "failed"; error: string }
+  | { phase: "completed"; result: DeepScreeningResult }
+  | { phase: "empty" };
 
 export function isAbortOrTimeoutError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
@@ -216,6 +245,75 @@ export function coerceDeepScreeningResult(
     ),
     metrics,
   };
+}
+
+function screeningAuditRecord(
+  value: unknown
+): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+export function isScreeningAcceptedResponse(
+  value: unknown
+): value is ScreeningAcceptedResponse {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return (
+    record.accepted === true &&
+    record.status === "pending" &&
+    typeof record.screening_id === "string" &&
+    record.screening_id.trim().length > 0
+  );
+}
+
+export function readScreeningQueueState(
+  row: ScreeningQueueRow | null | undefined
+): ScreeningQueueView {
+  if (!row) {
+    return { phase: "empty" };
+  }
+
+  const audit = screeningAuditRecord(row.audit_data);
+  const embedded =
+    typeof audit?.status === "string" ? audit.status : null;
+  const status = row.status ?? embedded;
+
+  if (status === "pending" || status === "processing") {
+    return { phase: status };
+  }
+
+  if (status === "failed") {
+    const error =
+      typeof audit?.error === "string" && audit.error.trim()
+        ? audit.error.trim()
+        : "The live audit could not be completed. Please retry.";
+    return { phase: "failed", error };
+  }
+
+  if (audit && typeof audit.integrity_score === "number") {
+    return {
+      phase: "completed",
+      result: coerceDeepScreeningResult(audit as DeepScreeningResult),
+    };
+  }
+
+  if (typeof row.integrity_score === "number" && audit) {
+    return {
+      phase: "completed",
+      result: coerceDeepScreeningResult({
+        ...(audit as DeepScreeningResult),
+        integrity_score: row.integrity_score,
+      }),
+    };
+  }
+
+  return { phase: "empty" };
 }
 
 export function parseStoredScreeningResult(raw: string): DeepScreeningResult | null {
