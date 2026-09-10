@@ -3910,7 +3910,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         key={activeTab}
         className="w-full max-w-5xl mx-auto space-y-10 animate-fadeIn"
       >
-          {!isBusinessAccount && !isEmployeeAccount ? (
+          {!isBusinessAccount &&
+          (!isEmployeeAccount ||
+            activeTab === "my_profile" ||
+            activeTab === "auditor") ? (
             <VerifiedCodeQualityScorecard
               record={candidateProductionAudit}
               onVisibilityChange={(nextVisible) => {

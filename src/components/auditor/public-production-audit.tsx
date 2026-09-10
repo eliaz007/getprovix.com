@@ -13,7 +13,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
-import ScoreMeter from "@/components/ScoreMeter";
 import { normalizeAuditChecks } from "@/lib/audit-checks";
 import { DAILY_LIMIT_UI_MESSAGE, type DailyScanUsage } from "@/lib/daily-scan-limit";
 import {
@@ -50,16 +49,13 @@ const TALENT_HREF = "/employer";
 
 function SubMetric({ label, score }: { label: string; score: number }) {
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-textMuted">
-          {label}
-        </span>
-        <span className="font-mono text-[11px] font-semibold text-textMain">
-          {score}/100
-        </span>
-      </div>
-      <ScoreMeter score={score} className="text-textMain" />
+    <div className="rounded-lg border border-border bg-background px-2.5 py-2 text-center">
+      <p className="font-mono text-sm font-bold tabular-nums text-textMain">
+        {score}
+      </p>
+      <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-textMuted">
+        {label}
+      </p>
     </div>
   );
 }
@@ -529,39 +525,34 @@ export default function PublicProductionAudit({
       ) : null}
 
       {!loading && result && claim && breakdown && !inaccessibleRepo ? (
-        <div className="space-y-6 text-left">
-          <section className="rounded-2xl border border-border bg-panel p-6">
-            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-emerald-400">
-                  <ShieldCheck className="h-4 w-4" aria-hidden />
-                  Production Audit Scorecard
-                </p>
-                <h2 className="mt-2 text-xl font-bold tracking-tight text-textMain">
-                  Public repository score
-                </h2>
-              </div>
+        <div className="space-y-4 text-left">
+          <section className="rounded-xl border border-border bg-panel p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                Production Audit
+              </p>
               <span
-                className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${badge.className}`}
+                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${badge.className}`}
               >
                 {badge.label}
               </span>
             </div>
 
-            <div className="flex flex-wrap items-end gap-4">
-              <p className="font-mono text-5xl font-extrabold tabular-nums text-textMain">
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <p className="font-mono text-3xl font-extrabold tabular-nums text-textMain">
                 {score}
-                <span className="ml-1 text-lg font-semibold text-textMuted">
+                <span className="ml-1 text-xs font-semibold text-textMuted">
                   /100
                 </span>
               </p>
-              <div className="min-w-0 text-sm text-textMuted">
+              <div className="min-w-0 pb-0.5 text-xs text-textMuted">
                 {repoLabel ? (
                   <a
                     href={breakdown.audited_repo_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium text-textMain hover:text-textMain"
+                    className="font-medium text-textMain hover:underline"
                   >
                     {repoLabel}
                   </a>
@@ -569,16 +560,10 @@ export default function PublicProductionAudit({
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="mt-3 grid grid-cols-3 gap-2">
               <SubMetric label="CI/CD" score={breakdown.ci_cd_score} />
-              <SubMetric
-                label="Test Assertion Density"
-                score={breakdown.test_density}
-              />
-              <SubMetric
-                label="Error Boundaries"
-                score={breakdown.error_handling}
-              />
+              <SubMetric label="Tests" score={breakdown.test_density} />
+              <SubMetric label="Errors" score={breakdown.error_handling} />
             </div>
           </section>
 
@@ -587,11 +572,11 @@ export default function PublicProductionAudit({
             onRequireAuth={requireAuthForClaim}
           />
 
-          <section className="rounded-2xl border border-border bg-panel p-6">
-            <h3 className="text-lg font-bold tracking-tight text-textMain">
+          <section className="rounded-xl border border-border bg-panel p-4">
+            <h3 className="text-sm font-bold tracking-tight text-textMain">
               Findings
             </h3>
-            <div className="mt-5 space-y-6">
+            <div className="mt-3 space-y-4">
               <FindingList
                 title="Verified strengths"
                 items={strengths}
@@ -610,20 +595,20 @@ export default function PublicProductionAudit({
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <article className="flex h-full flex-col rounded-2xl border border-border bg-panel p-6">
-              <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-background text-sky-400">
-                <Code2 className="h-5 w-5" aria-hidden />
+          <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <article className="flex h-full flex-col rounded-xl border border-border bg-panel p-4">
+              <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-sky-400">
+                <Code2 className="h-4 w-4" aria-hidden />
               </div>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-sky-400">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-sky-400">
                 For the author
               </p>
-              <h3 className="mt-3 text-lg font-bold tracking-tight text-textMain">
-                Claim this scorecard and join the vetted developer roster
+              <h3 className="mt-2 text-sm font-bold tracking-tight text-textMain">
+                Claim this scorecard on your profile
               </h3>
-              <p className="mt-3 flex-1 text-sm leading-relaxed text-textMuted">
-                Attach this production score to an anonymous candidate profile
-                so hiring founders can see verified work, not resume claims.
+              <p className="mt-2 flex-1 text-xs leading-relaxed text-textMuted">
+                Attach this production score so hiring founders see verified
+                work, not resume claims.
               </p>
               <button
                 type="button"
@@ -632,33 +617,33 @@ export default function PublicProductionAudit({
                     requireAuthForClaim(claim);
                   }
                 }}
-                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-brand text-white px-4 py-3 text-sm font-bold tracking-tight transition-colors duration-200 hover:bg-brandHover cursor-pointer"
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-brand px-3 py-2.5 text-xs font-bold tracking-tight text-white transition-colors duration-200 hover:bg-brandHover cursor-pointer"
               >
                 Save Score to Profile / Show to Employers
-                <ArrowRight className="h-4 w-4" aria-hidden />
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden />
               </button>
             </article>
 
-            <article className="flex h-full flex-col rounded-2xl border border-border bg-panel p-6">
-              <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-background text-brand">
-                <Building2 className="h-5 w-5" aria-hidden />
+            <article className="flex h-full flex-col rounded-xl border border-border bg-panel p-4">
+              <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-brand">
+                <Building2 className="h-4 w-4" aria-hidden />
               </div>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-brand">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-brand">
                 For a hiring founder
               </p>
-              <h3 className="mt-3 text-lg font-bold tracking-tight text-textMain">
-                Want to hire builders with scorecards like this?
+              <h3 className="mt-2 text-sm font-bold tracking-tight text-textMain">
+                Hire builders with scorecards like this
               </h3>
-              <p className="mt-3 flex-1 text-sm leading-relaxed text-textMuted">
-                Open the employer console to screen talent against verified
-                GitHub artifacts and production audit scores.
+              <p className="mt-2 flex-1 text-xs leading-relaxed text-textMuted">
+                Screen talent against verified GitHub artifacts and production
+                audit scores.
               </p>
               <Link
                 href={TALENT_HREF}
-                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-transparent px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors duration-200 hover:bg-white/5 cursor-pointer"
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-transparent px-3 py-2.5 text-xs font-bold tracking-tight text-white transition-colors duration-200 hover:bg-white/5 cursor-pointer"
               >
                 Browse Vetted Talent
-                <ArrowRight className="h-4 w-4" aria-hidden />
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden />
               </Link>
             </article>
           </section>

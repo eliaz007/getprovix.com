@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
-import ScoreMeter from "@/components/ScoreMeter";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import {
   canPublishProductionScore,
@@ -11,28 +10,72 @@ import {
   formatAuditedRepoLabel,
   getProductionScoreBadge,
   isPrivateAuditedRepoLabel,
+  parseProductionAuditHistoryRow,
   PUBLIC_SCORECARD_THRESHOLD,
+  type ProductionAuditHistoryEntry,
   type ProductionAuditRecord,
 } from "@/lib/production-audit";
 
-function SubMetric({
-  label,
-  score,
-}: {
-  label: string;
-  score: number;
-}) {
+function MetricChip({ label, score }: { label: string; score: number }) {
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-textMuted">
-          {label}
-        </span>
-        <span className="font-mono text-[11px] font-semibold text-textMain">
-          {score}/100
-        </span>
-      </div>
-      <ScoreMeter score={score} className="text-textMain" />
+    <div className="rounded-lg border border-border bg-background px-2.5 py-2 text-center">
+      <p className="font-mono text-sm font-bold tabular-nums text-textMain">
+        {score}
+      </p>
+      <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-textMuted">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function AuditHistoryList({
+  entries,
+  loading,
+}: {
+  entries: ProductionAuditHistoryEntry[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <p className="mt-4 text-xs text-textMuted">Loading audit history…</p>
+    );
+  }
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 border-t border-border pt-3">
+      <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-textMuted">
+        Audit history
+      </p>
+      <ul className="max-h-48 space-y-1.5 overflow-y-auto">
+        {entries.map((entry) => {
+          const repo = formatAuditedRepoLabel(entry.auditedRepoUrl);
+          const when = formatAuditedAt(entry.auditedAt || entry.createdAt);
+          return (
+            <li
+              key={entry.id}
+              className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/60 px-2.5 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-textMain">
+                  {repo}
+                </p>
+                <p className="mt-0.5 text-[10px] text-textMuted">
+                  {when || "—"} · CI {entry.ciCdScore} · Tests{" "}
+                  {entry.testDensity} · Errors {entry.errorHandling}
+                </p>
+              </div>
+              <p className="shrink-0 font-mono text-sm font-bold tabular-nums text-textMain">
+                {entry.productionScore}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -57,10 +100,39 @@ export default function VerifiedCodeQualityScorecard({
   const [visible, setVisible] = useState(Boolean(record?.isPubliclyVisible));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<ProductionAuditHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await fetchWithAuth("/api/profile/production-audit");
+      if (!response.ok) {
+        setHistory([]);
+        return;
+      }
+      const payload = (await response.json()) as {
+        history?: Array<Record<string, unknown>>;
+      };
+      setHistory(
+        (payload.history ?? [])
+          .map((row) => parseProductionAuditHistoryRow(row))
+          .filter((entry): entry is ProductionAuditHistoryEntry => Boolean(entry))
+      );
+    } catch {
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     setVisible(Boolean(record?.isPubliclyVisible));
   }, [record?.isPubliclyVisible]);
+
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory, record?.productionScore, record?.breakdown.audited_at]);
 
   const toggleVisibility = async () => {
     if (!hasScore || !canPublish || saving) {
@@ -95,20 +167,15 @@ export default function VerifiedCodeQualityScorecard({
   };
 
   return (
-    <section className="rounded-2xl border border-border bg-panel p-6">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-emerald-400">
-            <ShieldCheck className="h-4 w-4" aria-hidden />
-            Verified Code Quality Scorecard
-          </p>
-          <h2 className="mt-2 text-xl font-bold tracking-tight text-textMain">
-            Production Audit Score
-          </h2>
-        </div>
+    <section className="rounded-xl border border-border bg-panel p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+          <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+          Production Audit
+        </p>
         {hasScore ? (
           <span
-            className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${badge.className}`}
+            className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${badge.className}`}
           >
             {badge.label}
           </span>
@@ -117,12 +184,14 @@ export default function VerifiedCodeQualityScorecard({
 
       {hasScore && record ? (
         <>
-          <div className="flex flex-wrap items-end gap-4">
-            <p className="font-mono text-5xl font-extrabold tabular-nums text-textMain">
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <p className="font-mono text-3xl font-extrabold tabular-nums text-textMain">
               {score}
-              <span className="ml-1 text-lg font-semibold text-textMuted">/100</span>
+              <span className="ml-1 text-xs font-semibold text-textMuted">
+                /100
+              </span>
             </p>
-            <div className="min-w-0 text-sm text-textMuted">
+            <div className="min-w-0 pb-0.5 text-xs text-textMuted">
               {repo ? (
                 isPrivateAuditedRepoLabel(record.breakdown.audited_repo_url) ? (
                   <p className="font-medium text-textMain">{repo}</p>
@@ -131,47 +200,39 @@ export default function VerifiedCodeQualityScorecard({
                     href={record.breakdown.audited_repo_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium text-textMain hover:text-textMain"
+                    className="font-medium text-textMain hover:underline"
                   >
                     {repo}
                   </a>
                 )
               ) : null}
-              {auditedAt ? (
-                <p className="mt-0.5 text-xs text-textMuted">Audited {auditedAt}</p>
-              ) : null}
+              {auditedAt ? <p className="text-[10px]">Audited {auditedAt}</p> : null}
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <SubMetric
-              label="CI/CD Health"
-              score={record.breakdown.ci_cd_score}
-            />
-            <SubMetric
-              label="Test Assertion Density"
-              score={record.breakdown.test_density}
-            />
-            <SubMetric
-              label="Error Boundaries"
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <MetricChip label="CI/CD" score={record.breakdown.ci_cd_score} />
+            <MetricChip label="Tests" score={record.breakdown.test_density} />
+            <MetricChip
+              label="Errors"
               score={record.breakdown.error_handling}
             />
           </div>
 
-          <div className="mt-6 flex items-center justify-between gap-4 rounded-xl border border-border bg-background p-4">
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-textMain">
-                Show Verified Score to Employers
+              <p className="text-xs font-semibold text-textMain">
+                Show to employers
               </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-textMuted">
+              <p className="mt-0.5 text-[10px] leading-relaxed text-textMuted">
                 {canPublish
                   ? visible
-                    ? "Employers on the roster can see this production score."
-                    : "Employers will not see this production score. Your dashboard copy stays private."
-                  : `Employers only see ${PUBLIC_SCORECARD_THRESHOLD}+ scorecards. Re-run the audit after fixing CI/CD or test density.`}
+                    ? "Visible on the talent roster."
+                    : "Hidden from employers."
+                  : `Needs ${PUBLIC_SCORECARD_THRESHOLD}+ to publish.`}
               </p>
               {error ? (
-                <p className="mt-2 text-xs text-red-300">{error}</p>
+                <p className="mt-1 text-[10px] text-red-300">{error}</p>
               ) : null}
             </div>
             <button
@@ -181,32 +242,41 @@ export default function VerifiedCodeQualityScorecard({
               aria-label="Show Verified Score to Employers"
               disabled={!canPublish || saving}
               onClick={() => void toggleVisibility()}
-              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
- saving ? "opacity-60 cursor-wait" : canPublish ? "cursor-pointer" : "cursor-not-allowed opacity-50"
- } ${visible && canPublish ? "bg-emerald-500" : "bg-panel"}`}
+              className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+                saving
+                  ? "cursor-wait opacity-60"
+                  : canPublish
+                    ? "cursor-pointer"
+                    : "cursor-not-allowed opacity-50"
+              } ${visible && canPublish ? "bg-emerald-500" : "bg-panel"}`}
             >
               <span
-                className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform"
+                className="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform"
                 style={{
                   transform:
-                    visible && canPublish ? "translateX(20px)" : "translateX(0)",
+                    visible && canPublish ? "translateX(16px)" : "translateX(0)",
                 }}
               />
             </button>
           </div>
+
+          <AuditHistoryList entries={history} loading={historyLoading} />
         </>
       ) : (
-        <p className="text-sm leading-relaxed text-textMuted">
-          Run a public repository audit to attach a verified production score
-          to your anonymous developer profile.
-        </p>
+        <>
+          <p className="mt-3 text-xs leading-relaxed text-textMuted">
+            Run a public repository audit to attach a verified production score
+            to your profile.
+          </p>
+          <AuditHistoryList entries={history} loading={historyLoading} />
+        </>
       )}
 
       <Link
         href="/audit"
-        className="mt-6 inline-flex items-center justify-center rounded-md border border-border bg-brand text-white px-4 py-2.5 text-sm font-medium transition-colors hover:bg-brandHover"
+        className="mt-3 inline-flex w-full items-center justify-center rounded-md border border-border bg-brand px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-brandHover"
       >
-        {hasScore ? "Audit Another Repo" : "Run a Production Audit"}
+        {hasScore ? "Audit another repo" : "Run a production audit"}
       </Link>
     </section>
   );

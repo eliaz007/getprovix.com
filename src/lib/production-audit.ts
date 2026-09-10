@@ -45,6 +45,17 @@ export type ProductionAuditRecord = {
   isPubliclyVisible: boolean;
 };
 
+export type ProductionAuditHistoryEntry = {
+  id: string;
+  productionScore: number;
+  auditedRepoUrl: string;
+  auditedAt: string;
+  ciCdScore: number;
+  testDensity: number;
+  errorHandling: number;
+  createdAt: string;
+};
+
 export function canPublishProductionScore(score: number): boolean {
   return clampScore0to100(score) >= PUBLIC_SCORECARD_THRESHOLD;
 }
@@ -413,6 +424,7 @@ export async function persistProfileProductionAudit(
       .eq("id", profileId);
 
     if (!error) {
+      await insertProductionAuditHistory(supabase, userId, claim);
       return { error: null };
     }
 
@@ -432,6 +444,91 @@ export async function persistProfileProductionAudit(
   }
 
   return { error: "Could not save production audit." };
+}
+
+export async function insertProductionAuditHistory(
+  supabase: SupabaseClient,
+  userId: string,
+  claim: ProductionAuditClaim
+): Promise<void> {
+  const breakdown = claim.audit_breakdown;
+  const auditedAt = (() => {
+    const parsed = Date.parse(breakdown.audited_at);
+    return Number.isFinite(parsed)
+      ? new Date(parsed).toISOString()
+      : new Date().toISOString();
+  })();
+
+  const { error } = await supabase.from("production_audit_history").insert({
+    user_id: userId,
+    production_score: clampScore0to100(claim.production_score),
+    audited_repo_url: breakdown.audited_repo_url?.trim() || PRIVATE_AUDITED_REPO_LABEL,
+    audited_at: auditedAt,
+    ci_cd_score: clampScore0to100(breakdown.ci_cd_score),
+    test_density: clampScore0to100(breakdown.test_density),
+    error_handling: clampScore0to100(breakdown.error_handling),
+  });
+
+  if (error) {
+    // History is additive; do not fail the profile save if the migration is pending.
+    console.error("Failed to insert production audit history:", error);
+  }
+}
+
+export function parseProductionAuditHistoryRow(
+  row: Record<string, unknown> | null | undefined
+): ProductionAuditHistoryEntry | null {
+  if (!row || typeof row.id !== "string") {
+    return null;
+  }
+
+  const auditedRepoUrl =
+    typeof row.audited_repo_url === "string" ? row.audited_repo_url : "";
+  const auditedAt =
+    typeof row.audited_at === "string"
+      ? row.audited_at
+      : typeof row.created_at === "string"
+        ? row.created_at
+        : "";
+  const createdAt =
+    typeof row.created_at === "string" ? row.created_at : auditedAt;
+
+  return {
+    id: row.id,
+    productionScore: clampScore0to100(row.production_score),
+    auditedRepoUrl,
+    auditedAt,
+    ciCdScore: clampScore0to100(row.ci_cd_score),
+    testDensity: clampScore0to100(row.test_density),
+    errorHandling: clampScore0to100(row.error_handling),
+    createdAt,
+  };
+}
+
+export async function listProductionAuditHistory(
+  supabase: SupabaseClient,
+  userId: string,
+  limit = 25
+): Promise<ProductionAuditHistoryEntry[]> {
+  const { data, error } = await supabase
+    .from("production_audit_history")
+    .select(
+      "id, production_score, audited_repo_url, audited_at, ci_cd_score, test_density, error_handling, created_at"
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    if (!isSupabaseSchemaError(error)) {
+      console.error("Failed to load production audit history:", error);
+    }
+    return [];
+  }
+
+  return (data ?? [])
+    .map((row) => parseProductionAuditHistoryRow(row as Record<string, unknown>))
+    .filter((entry): entry is ProductionAuditHistoryEntry => Boolean(entry));
 }
 
 export async function persistScorecardVisibility(

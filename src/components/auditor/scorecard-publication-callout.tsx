@@ -70,38 +70,37 @@ export default function ScorecardPublicationCallout({
 
   if (canPublish) {
     return (
-      <section className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-6">
-        <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-emerald-400">
-          <ShieldCheck className="h-4 w-4" aria-hidden />
+      <section className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4">
+        <p className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+          <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
           Verified talent badge
         </p>
-        <h3 className="mt-3 text-xl font-bold tracking-tight text-textMain">
+        <h3 className="mt-2 text-sm font-bold tracking-tight text-textMain">
           Production-Grade Codebase Verified
         </h3>
-        <p className="mt-3 text-sm leading-relaxed text-textMuted">
-          Founders on Provix use verified repo scorecards to bypass resume
-          screens. Attach this score to an anonymous profile to receive direct
-          introduction requests.
+        <p className="mt-2 text-xs leading-relaxed text-textMuted">
+          Attach this score to your profile so founders can request intros from
+          verified work.
         </p>
         <button
           type="button"
           disabled={status === "saving"}
           onClick={() => void persistOrSignUp(true)}
-          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-brand text-white px-4 py-3 text-sm font-bold tracking-tight transition-colors duration-200 hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-brand px-3 py-2.5 text-xs font-bold tracking-tight text-white transition-colors duration-200 hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
         >
           {status === "saving" ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
           ) : (
-            <ArrowRight className="h-4 w-4" aria-hidden />
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
           )}
           Save Score to Profile / Show to Employers
         </button>
-        <p className="mt-3 text-xs text-textMuted">
+        <p className="mt-2 text-[10px] text-textMuted">
           Sign in or create an account to attach this scorecard to your profile.
         </p>
         {message ? (
           <p
-            className={`mt-3 text-sm ${
+            className={`mt-2 text-xs ${
               status === "error" ? "text-red-300" : "text-emerald-300"
             }`}
           >
@@ -113,35 +112,34 @@ export default function ScorecardPublicationCallout({
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-panel p-6">
-      <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-textMuted">
-        <Lock className="h-4 w-4" aria-hidden />
+    <section className="rounded-xl border border-border bg-panel p-4">
+      <p className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-textMuted">
+        <Lock className="h-3.5 w-3.5" aria-hidden />
         Private diagnostic
       </p>
-      <h3 className="mt-3 text-xl font-bold tracking-tight text-textMain">
+      <h3 className="mt-2 text-sm font-bold tracking-tight text-textMain">
         Private Diagnostic
       </h3>
-      <p className="mt-3 text-sm leading-relaxed text-textMuted">
-        Profiles in the employer pool require a 75+ score. Address the test
-        density or CI/CD flags above and re-run your repo to earn a verified
-        talent badge. You can still save this diagnostic to your profile.
+      <p className="mt-2 text-xs leading-relaxed text-textMuted">
+        Employer-visible profiles need a 75+ score. Fix CI/CD or test density
+        and re-run, or save this diagnostic privately.
       </p>
       <button
         type="button"
         disabled={status === "saving"}
         onClick={() => void persistOrSignUp(false)}
-        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-transparent px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors duration-200 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-transparent px-3 py-2.5 text-xs font-bold tracking-tight text-white transition-colors duration-200 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
       >
         {status === "saving" ? (
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
         ) : (
-          <ArrowRight className="h-4 w-4" aria-hidden />
+          <ArrowRight className="h-3.5 w-3.5" aria-hidden />
         )}
         Save Score to Profile
       </button>
       {message ? (
         <p
-          className={`mt-3 text-sm ${
+          className={`mt-2 text-xs ${
             status === "error" ? "text-red-300" : "text-textMuted"
           }`}
         >

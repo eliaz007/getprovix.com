@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireApiUser } from "@/lib/api-auth";
 import {
+  listProductionAuditHistory,
   parseProductionAuditBreakdown,
+  parseProductionAuditFromProfileRow,
   persistProfileProductionAudit,
   persistScorecardVisibility,
   resolvePublicScorecardVisibility,
@@ -16,6 +18,49 @@ function parseVisibilityFlag(value: unknown): boolean | undefined {
     return value;
   }
   return undefined;
+}
+
+export async function GET(request: Request) {
+  const access = await requireApiUser(request);
+  if (access instanceof NextResponse) {
+    return access;
+  }
+
+  const { data: profile } = await access.supabase
+    .from("profiles")
+    .select(
+      "production_score, audit_breakdown, is_audit_verified, is_publicly_visible, role"
+    )
+    .or(`id.eq.${access.user.id},user_id.eq.${access.user.id}`)
+    .limit(1)
+    .maybeSingle();
+
+  const history = await listProductionAuditHistory(
+    access.supabase,
+    access.user.id
+  );
+  const current = parseProductionAuditFromProfileRow(profile);
+
+  return NextResponse.json({
+    current: current
+      ? {
+          production_score: current.productionScore,
+          audit_breakdown: current.breakdown,
+          is_audit_verified: current.isAuditVerified,
+          is_publicly_visible: current.isPubliclyVisible,
+        }
+      : null,
+    history: history.map((entry) => ({
+      id: entry.id,
+      production_score: entry.productionScore,
+      audited_repo_url: entry.auditedRepoUrl,
+      audited_at: entry.auditedAt,
+      ci_cd_score: entry.ciCdScore,
+      test_density: entry.testDensity,
+      error_handling: entry.errorHandling,
+      created_at: entry.createdAt,
+    })),
+  });
 }
 
 export async function POST(request: Request) {
@@ -63,11 +108,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error }, { status: 500 });
   }
 
+  const history = await listProductionAuditHistory(
+    access.supabase,
+    access.user.id
+  );
+
   return NextResponse.json({
     production_score: claim.production_score,
     audit_breakdown: claim.audit_breakdown,
     is_audit_verified: true,
     is_publicly_visible: claim.is_publicly_visible,
+    history: history.map((entry) => ({
+      id: entry.id,
+      production_score: entry.productionScore,
+      audited_repo_url: entry.auditedRepoUrl,
+      audited_at: entry.auditedAt,
+      ci_cd_score: entry.ciCdScore,
+      test_density: entry.testDensity,
+      error_handling: entry.errorHandling,
+      created_at: entry.createdAt,
+    })),
   });
 }
 
