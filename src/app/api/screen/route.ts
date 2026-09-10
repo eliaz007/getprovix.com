@@ -33,6 +33,12 @@ import {
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import {
+  computeProductionAuditMetrics,
+  emptyProductionAuditMetrics,
+  parseProductionAuditMetrics,
+  type ProductionAuditMetrics,
+} from "@/lib/production-audit-metrics";
+import {
   CANONICAL_AUDIT_CHECKS,
   defaultAuditCheckSummary,
   normalizeAuditChecks,
@@ -81,6 +87,8 @@ export type InterviewQuestion = {
 
 export type { ScoreCapAudit };
 
+export type { ProductionAuditMetrics };
+
 export type ScreenResult = {
   integrity_score: number;
   timeline_flags: string[];
@@ -90,6 +98,7 @@ export type ScreenResult = {
   checks: AuditCheck[];
   github_audit?: GitHubAuditContext | null;
   scoreCap: ScoreCapAudit;
+  metrics: ProductionAuditMetrics;
 };
 
 const SYSTEM_PROMPT = `You are a rigorous Technical & Academic Auditor for Provix employer screening.
@@ -328,7 +337,9 @@ function normalizeStringArray(value: unknown, maxItems: number): string[] {
 }
 
 function applyScreenFilesystemCap(
-  result: ScreenResult,
+  result: Omit<ScreenResult, "metrics"> & {
+    metrics?: ProductionAuditMetrics | null;
+  },
   githubAudit: GitHubAuditContext | null
 ): ScreenResult {
   const capped = applyFilesystemScoreCap(
@@ -340,11 +351,36 @@ function applyScreenFilesystemCap(
     8
   );
 
+  const metrics = computeProductionAuditMetrics(githubAudit?.filesystem);
+  let integrity_score = capped.score;
+
+  if (metrics.evidence.inspected) {
+    integrity_score = clampIntegrityScore(
+      Math.round(capped.score * 0.45 + metrics.productionScore * 0.55)
+    );
+    const reCapped = applyFilesystemScoreCap(
+      {
+        score: integrity_score,
+        redFlags: capped.redFlags,
+      },
+      githubAudit?.filesystem,
+      8
+    );
+    return {
+      ...result,
+      integrity_score: reCapped.score,
+      timeline_flags: reCapped.redFlags,
+      scoreCap: reCapped.scoreCap,
+      metrics,
+    };
+  }
+
   return {
     ...result,
     integrity_score: capped.score,
     timeline_flags: capped.redFlags,
     scoreCap: capped.scoreCap,
+    metrics,
   };
 }
 
@@ -487,6 +523,9 @@ function normalizeScreenResult(
     checks,
     scoreCap:
       parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(restoredScore),
+    metrics:
+      parseProductionAuditMetrics(record.metrics) ??
+      emptyProductionAuditMetrics(),
   };
 }
 

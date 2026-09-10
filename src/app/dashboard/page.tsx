@@ -162,6 +162,7 @@ import { formatGpa, isGpaDraft } from "@/lib/gpa";
 import ScoreMeter from "@/components/ScoreMeter";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
 import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
+import ProductionScorecard from "@/components/auditor/production-scorecard";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
@@ -6143,6 +6144,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         score={employerAuditResult.score}
                         className="mt-3"
                       />
+
+                      <ProductionScorecard metrics={employerAuditResult.metrics} />
 
                       <ScoreCapBreakdown
                         scoreCap={employerAuditResult.scoreCap}
