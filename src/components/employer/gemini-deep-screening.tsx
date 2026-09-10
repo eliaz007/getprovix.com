@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
 import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
+import ProductionScorecard from "@/components/auditor/production-scorecard";
 import ScoreMeter from "@/components/ScoreMeter";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { formatGpa } from "@/lib/gpa";
@@ -457,6 +458,8 @@ export default function GeminiDeepScreening({
             score={result.integrity_score}
             filesystem={result.github_audit?.filesystem}
           />
+
+          <ProductionScorecard metrics={result.metrics} />
 
           {result.timeline_flags.filter(
             (flag) => !result.scoreCap?.applied || !isFilesystemCapRedFlag(flag)

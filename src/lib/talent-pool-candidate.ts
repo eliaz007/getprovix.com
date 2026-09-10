@@ -4,6 +4,12 @@ import {
 } from "@/lib/audit-checks";
 import type { GitHubAuditContext } from "@/lib/github-audit";
 import {
+  computeProductionAuditMetrics,
+  emptyProductionAuditMetrics,
+  parseProductionAuditMetrics,
+  type ProductionAuditMetrics,
+} from "@/lib/production-audit-metrics";
+import {
   parseRepoFilesystemEvidence,
   resolveScoreCapAudit,
   type ScoreCapAudit,
@@ -64,6 +70,7 @@ export type DeepScreeningResult = {
   checks: AuditCheck[];
   github_audit?: GitHubAuditContext | null;
   scoreCap?: ScoreCapAudit | null;
+  metrics?: ProductionAuditMetrics | null;
 };
 
 export type ScreeningJobContext = {
@@ -162,6 +169,11 @@ export function coerceDeepScreeningResult(
   const filesystem = result.github_audit?.filesystem
     ? parseRepoFilesystemEvidence(result.github_audit.filesystem)
     : null;
+  const metrics =
+    parseProductionAuditMetrics(result.metrics) ??
+    (filesystem
+      ? computeProductionAuditMetrics(filesystem)
+      : emptyProductionAuditMetrics());
 
   return {
     ...result,
@@ -182,6 +194,7 @@ export function coerceDeepScreeningResult(
       result.scoreCap,
       filesystem
     ),
+    metrics,
   };
 }
 

@@ -16,6 +16,7 @@ import ResumeFileUpload, {
 import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import ScoreMeter from "@/components/ScoreMeter";
 import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
+import ProductionScorecard from "@/components/auditor/production-scorecard";
 import {
   normalizeAuditChecks,
   type AuditCheckId,
@@ -495,6 +496,7 @@ export default function GitHubResumeAuditor() {
                 </div>
               </div>
               <ScoreMeter score={result.score} />
+              <ProductionScorecard metrics={result.metrics} />
               <ScoreCapBreakdown scoreCap={result.scoreCap} score={result.score} />
 
               <div className="space-y-3">
