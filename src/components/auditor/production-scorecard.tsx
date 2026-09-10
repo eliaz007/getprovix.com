@@ -146,7 +146,11 @@ export default function ProductionScorecard({
                   </div>
                   <p className="text-[11px] text-slate-500 truncate">
                     {resolved.evidence.inspected
-                      ? `${count} ${row.countLabel} · ${row.hint}`
+                      ? `${count} ${
+                          count === 1
+                            ? row.countLabel.replace(/s$/, "")
+                            : row.countLabel
+                        } · ${row.hint}`
                       : row.hint}
                   </p>
                 </div>
