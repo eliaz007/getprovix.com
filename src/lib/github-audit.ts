@@ -3,6 +3,7 @@ import {
   emptyRepoFilesystemEvidence,
   type RepoFilesystemEvidence,
 } from "@/lib/repo-filesystem";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 export type GitHubAuditContext = {
   repo_url: string;
@@ -301,7 +302,7 @@ async function listGithubContents(
     return [];
   }
 
-  const payload = (await response.json()) as
+  const payload = (await readJsonResponse(response)) as
     | { path?: string; name?: string; type?: string }
     | Array<{ path?: string; name?: string; type?: string }>;
 
@@ -350,7 +351,7 @@ async function fetchRepoFilesystem(
         continue;
       }
 
-      const payload = (await response.json()) as {
+      const payload = (await readJsonResponse(response)) as {
         truncated?: boolean;
         tree?: Array<{ path?: string; type?: string }>;
       };
@@ -428,7 +429,7 @@ async function fetchRepoAudit(
     const repoResponse = await githubFetch(base);
 
     if (repoResponse.ok) {
-      const repoData = (await repoResponse.json()) as {
+      const repoData = (await readJsonResponse(repoResponse)) as {
         stargazers_count?: number;
         forks_count?: number;
         created_at?: string;
@@ -458,7 +459,7 @@ async function fetchRepoAudit(
     const commitsResponse = await githubFetch(`${base}/commits?per_page=10`);
 
     if (commitsResponse.ok) {
-      const commitsData = (await commitsResponse.json()) as Array<{
+      const commitsData = (await readJsonResponse(commitsResponse)) as Array<{
         commit?: { author?: { date?: string } };
       }>;
 
@@ -530,7 +531,7 @@ async function fetchGitHubUser(
       return null;
     }
 
-    const data = (await response.json()) as {
+    const data = (await readJsonResponse(response)) as {
       login?: string;
       name?: string | null;
       bio?: string | null;
@@ -566,7 +567,7 @@ async function fetchTopOwnedRepos(
       return [];
     }
 
-    const repos = (await response.json()) as Array<{
+    const repos = (await readJsonResponse(response)) as Array<{
       name?: string;
       full_name?: string;
       fork?: boolean;

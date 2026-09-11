@@ -5,6 +5,7 @@ import { ShieldCheck } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import { createClient } from "@/utils/supabase/client";
 
 export default function GetVerifiedBanner({
@@ -74,7 +75,7 @@ export default function GetVerifiedBanner({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const payload = (await response.json().catch(() => null)) as {
+      const payload = (await readJsonResponse(response).catch(() => null)) as {
         error?: string;
         email?: string;
       } | null;

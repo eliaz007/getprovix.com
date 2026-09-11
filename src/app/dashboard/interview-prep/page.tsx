@@ -12,6 +12,7 @@ import {
   Terminal,
 } from "lucide-react";
 import type { InterviewSimulatorResult } from "@/app/api/interview-simulator/route";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 const INTERVIEW_ROUNDS = [
   "Initial Technical Screen",
@@ -111,7 +112,7 @@ export default function InterviewPrepPage() {
         }),
       });
 
-      const data = (await response.json()) as InterviewSimulatorResult & {
+      const data = (await readJsonResponse(response)) as InterviewSimulatorResult & {
         error?: string;
       };
 

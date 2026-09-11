@@ -7,6 +7,7 @@ import ProductionScoreBadge from "@/components/employer/production-score-badge";
 import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   APPLICANT_PIPELINE_STATUSES,
   applicantStatusClass,
@@ -64,7 +65,7 @@ export default function EmployerApplicantsSection({
 
     try {
       const response = await fetchWithAuth("/api/employer/applicants");
-      const payload = (await response.json().catch(() => null)) as
+      const payload = (await readJsonResponse(response).catch(() => null)) as
         | (EmployerApplicantsPayload & { error?: string })
         | null;
 
@@ -116,7 +117,7 @@ export default function EmployerApplicantsSection({
           status: "rejected",
         }),
       });
-      const payload = (await response.json().catch(() => null)) as {
+      const payload = (await readJsonResponse(response).catch(() => null)) as {
         ok?: boolean;
         error?: string;
       } | null;

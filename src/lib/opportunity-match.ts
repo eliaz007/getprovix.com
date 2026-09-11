@@ -1,4 +1,5 @@
 import type { GitHubAuditContext } from "@/lib/github-audit";
+import { readJsonResponse } from "@/lib/read-json-response";
 import { normalizeStringArray } from "@/lib/match-heuristic";
 import { clampScore0to100 } from "@/lib/score-scale";
 
@@ -245,7 +246,7 @@ export async function fetchOpportunityMatch(
       return buildFallbackOpportunityMatch(candidate, job);
     }
 
-    const raw = (await response.json()) as unknown;
+    const raw = (await readJsonResponse(response)) as unknown;
     if (raw && typeof raw === "object" && "error" in (raw as object)) {
       return buildFallbackOpportunityMatch(candidate, job);
     }

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import { isEmployerRole } from "@/lib/dashboard-account";
 import { parseGitHubUrl } from "@/lib/validate-github-url";
 import type {
@@ -559,14 +560,17 @@ export async function persistScorecardVisibility(
   }
 
   const profileId = typeof roleRow?.id === "string" ? roleRow.id : userId;
+  const ownerFilter = `id.eq.${profileId},user_id.eq.${userId}`;
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
       .update(payload)
-      .eq("id", profileId);
+      .or(ownerFilter)
+      .select("id, is_publicly_visible")
+      .maybeSingle();
 
-    if (!error) {
+    if (!error && data) {
       return {
         error: null,
         record: {
@@ -576,10 +580,17 @@ export async function persistScorecardVisibility(
       };
     }
 
+    if (!error && !data) {
+      return {
+        error: "Could not update scorecard visibility for this account.",
+        record: current,
+      };
+    }
+
     if (!isSupabaseSchemaError(error)) {
       console.error("Failed to update scorecard visibility:", error);
       return {
-        error: error.message ?? "Could not update scorecard visibility.",
+        error: error?.message ?? "Could not update scorecard visibility.",
         record: current,
       };
     }
@@ -599,7 +610,7 @@ export async function persistScorecardVisibility(
     }
 
     return {
-      error: error.message ?? "Could not update scorecard visibility.",
+      error: error?.message ?? "Could not update scorecard visibility.",
       record: current,
     };
   }
@@ -624,6 +635,7 @@ export async function claimPendingProductionAudit(): Promise<ProductionAuditReco
       return null;
     }
 
+    await readJsonResponse(response);
     clearPendingProductionAudit();
     return {
       productionScore: pending.production_score,

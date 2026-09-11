@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowRight, Lock, Loader2, ShieldCheck } from "lucide-react";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   cachePendingProductionAudit,
   canPublishProductionScore,
@@ -48,7 +49,7 @@ export default function ScorecardPublicationCallout({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(nextClaim),
       });
-      const payload = (await response.json()) as { error?: string };
+      const payload = await readJsonResponse<{ error?: string }>(response);
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not save this audit.");

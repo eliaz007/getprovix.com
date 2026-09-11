@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { PitchStudioResult } from "@/app/api/pitch-studio/route";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 const TONE_OPTIONS = [
   "Direct & High Signal",
@@ -96,7 +97,7 @@ export default function PitchStudioPage() {
         }),
       });
 
-      const data = (await response.json()) as PitchStudioResult & {
+      const data = (await readJsonResponse(response)) as PitchStudioResult & {
         error?: string;
       };
 

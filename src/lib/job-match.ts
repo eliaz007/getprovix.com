@@ -1,4 +1,5 @@
 import { normalizeStringArray } from "@/lib/match-heuristic";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   normalizeMatchReasons,
   scoreToFitVerdict,
@@ -670,7 +671,7 @@ export async function fetchJobMatches(
       signal: AbortSignal.timeout(45_000),
     });
 
-    const raw = (await response.json().catch(() => null)) as unknown;
+    const raw = (await readJsonResponse(response).catch(() => null)) as unknown;
     if (raw && typeof raw === "object") {
       const normalized = normalizeJobMatchResult(raw, listings, candidate);
       if (normalized.matches.length > 0 || listings.length === 0) {

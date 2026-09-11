@@ -9,6 +9,7 @@ import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 import { formatGpa } from "@/lib/gpa";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   educationFromProfileRow,
   hasTalentEducation,
@@ -321,7 +322,7 @@ export default function JobApplicantsDrawer({
         );
 
         if (fromApi.ok) {
-          const payload = (await fromApi.json()) as {
+          const payload = (await readJsonResponse(fromApi)) as {
             applications?: Array<
               Pick<
                 JobApplicationRow,

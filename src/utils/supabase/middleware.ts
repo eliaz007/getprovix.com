@@ -1,10 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import {
-  isDashboardAuditorPath,
+  isAuditorPath,
   isProtectedAppPath,
-  isPublicAuditorPath,
-  isPublicOpportunitiesPath,
+  isPublicRoute,
 } from "@/lib/dashboard-account";
 
 const cookieOptions = {
@@ -95,6 +94,14 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
+
+  // API routes must always return JSON. A redirect to the marketing page
+  // follows to HTML, and response.json() then throws on "<!DOCTYPE".
+  // Route handlers authenticate (cookie or bearer) and return { error }.
+  if (pathname.startsWith("/api/")) {
+    return supabaseResponse;
+  }
+
   const isLogin =
     pathname === "/login" || pathname.startsWith("/login/");
   const isHome = pathname === "/";
@@ -103,8 +110,6 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/update-password/");
   const isEmployer =
     pathname === "/employer" || pathname.startsWith("/employer/");
-  const isPublicAuditor = isPublicAuditorPath(pathname);
-  const isPublicOpportunities = isPublicOpportunitiesPath(pathname);
   const isProtectedRoute = isProtectedAppPath(pathname);
 
   // Unauthenticated users must be allowed to stay on /login (no redirect).
@@ -116,49 +121,22 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // /audit and /audits (and legacy auditor URLs) stay public so guests can run GitHub audits.
-  if (isPublicAuditor) {
-    if (!user && isDashboardAuditorPath(pathname)) {
-      return redirectWithSessionCookies(request, supabaseResponse, "/audits");
-    }
-
-    return supabaseResponse;
+  // Unsigned visitors never enter the app shell. Send them to the marketing page.
+  if (!user && isProtectedRoute && !isPublicRoute(pathname)) {
+    return redirectWithSessionCookies(request, supabaseResponse, "/");
   }
 
-  // /opportunities stays public so guests can browse the job feed.
-  if (isPublicOpportunities) {
-    return supabaseResponse;
-  }
-
-  // Protected routes: no session → login (cookies still copied on redirect).
-  if (isProtectedRoute && !user) {
-    const loginSearch = new URLSearchParams();
-    loginSearch.set("next", `${pathname}${request.nextUrl.search}`);
-    const verified = request.nextUrl.searchParams.get("employer_verified");
-    const verifyError = request.nextUrl.searchParams.get("verify_error");
-    if (verified) {
-      loginSearch.set("employer_verified", verified);
-    }
-    if (verifyError) {
-      loginSearch.set("verify_error", verifyError);
-    }
-    if (isEmployer) {
-      loginSearch.set("role", "employer");
-    }
-
+  // Signed-in alias: /auditor and /audits belong in the dashboard auditor.
+  if (user && isAuditorPath(pathname) && !pathname.startsWith("/dashboard/")) {
     return redirectWithSessionCookies(
       request,
       supabaseResponse,
-      "/login",
-      `?${loginSearch.toString()}`
+      "/dashboard/auditor",
+      request.nextUrl.search
     );
   }
 
-  if (isEmployer) {
-    if (!user) {
-      return redirectWithSessionCookies(request, supabaseResponse, "/login");
-    }
-
+  if (isEmployer && user) {
     try {
       const { data: profile } = await supabase
         .from("profiles")

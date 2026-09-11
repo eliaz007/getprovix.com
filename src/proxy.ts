@@ -17,12 +17,13 @@ export const config = {
      *
      * /api/intros is included so employer intro requests refresh the session.
      *
-     * Public pages: /, /audit, /audits, /opportunities
-     * Protected: /dashboard, /pitch-studio, /simulator,
-     * /profile-studio, /intro-requests, /employer
+     * Public pages: /, /login, /pricing, /privacy, /terms, /audit
+     * Unsigned app-shell routes redirect to /. Signed-in visits to /
+     * redirect to /dashboard. Matched /api routes never HTML-redirect.
      */
     "/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
     "/api/intros/:path*",
+    "/api/profile/:path*",
     "/api/talent-pool/:path*",
     "/api/jobs/:path*",
   ],

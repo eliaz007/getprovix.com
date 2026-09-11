@@ -10,7 +10,7 @@ import ExternalProjectsForm from "@/components/portfolio/external-projects-form"
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
 import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
 import PrivateRepositoryBanner from "@/components/auditor/private-repository-banner";
-import { normalizeAuditChecks } from "@/lib/audit-checks";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   buildProductionAuditClaim,
   cachePendingProductionAudit,
@@ -88,7 +88,7 @@ export default function GitHubResumeAuditor({
           return;
         }
 
-        const data = (await response.json()) as DailyScanUsage;
+        const data = (await readJsonResponse(response)) as DailyScanUsage;
         if (!cancelled) {
           setLimitReached(Boolean(data.limit_reached));
         }
@@ -106,7 +106,7 @@ export default function GitHubResumeAuditor({
         if (!response.ok) {
           return;
         }
-        const data = (await response.json()) as StoredResumeMeta;
+        const data = (await readJsonResponse(response)) as StoredResumeMeta;
         if (!cancelled) {
           setStoredResume(data);
           if (data.hasResume) {
@@ -210,7 +210,7 @@ export default function GitHubResumeAuditor({
         });
       }
 
-      const data = (await response.json()) as AuditResult &
+      const data = (await readJsonResponse(response)) as AuditResult &
         DailyScanUsage & {
           error?: string;
           isPrivateOrNotFound?: boolean;

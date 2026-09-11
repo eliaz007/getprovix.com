@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 
@@ -118,7 +119,7 @@ export default function RequestIntroModal({
         }),
       });
 
-      const payload = (await response.json().catch(() => null)) as {
+      const payload = (await readJsonResponse(response).catch(() => null)) as {
         error?: string;
       } | null;
 

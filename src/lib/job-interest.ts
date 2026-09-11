@@ -1,4 +1,5 @@
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 
@@ -18,7 +19,7 @@ export async function submitCandidateJobInterest(jobId: string): Promise<{
     `/api/jobs/${encodeURIComponent(jobId)}/interest`,
     { method: "POST" }
   );
-  const payload = (await response.json().catch(() => null)) as {
+  const payload = (await readJsonResponse(response).catch(() => null)) as {
     ok?: boolean;
     alreadyApplied?: boolean;
     error?: string;

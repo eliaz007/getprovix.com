@@ -16,6 +16,7 @@ import {
 } from "@/lib/candidate-anonymization";
 import { formatGpa } from "@/lib/gpa";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   formatTalentMatchLabel,
   getCandidateProjectLinks,
@@ -112,7 +113,9 @@ export default function CandidateIntelligenceDrawer({
             if (!response.ok) {
               return null;
             }
-            const payload = (await response.json()) as Record<string, unknown>;
+            const payload = await readJsonResponse<Record<string, unknown>>(
+              response
+            );
             return educationFromProfileRow(payload);
           } catch (error) {
             console.error("Talent pool education API failed:", error);

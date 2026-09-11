@@ -82,9 +82,9 @@ const CAREER_ACCELERATOR_NAV = [
   },
   {
     key: "github-auditor",
-    href: "/audits",
+    href: "/dashboard/auditor",
     label: "Code & Resume Auditor",
-    kind: "public" as const,
+    kind: "protected" as const,
   },
   {
     key: "interview-prep",
@@ -401,11 +401,15 @@ export default function DashboardSidebar() {
                     isActive={
                       item.key === "pitch-studio"
                         ? isPitchStudioPath(pathname)
-                        : isInterviewPrepPath(pathname)
+                        : item.key === "github-auditor"
+                          ? isAuditorPath(pathname)
+                          : isInterviewPrepPath(pathname)
                     }
                     icon={
                       item.key === "pitch-studio" ? (
                         <PenTool className="w-4 h-4 shrink-0" aria-hidden="true" />
+                      ) : item.key === "github-auditor" ? (
+                        <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
                       ) : (
                         <Terminal className="w-4 h-4 shrink-0" aria-hidden="true" />
                       )

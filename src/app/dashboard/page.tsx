@@ -66,6 +66,7 @@ import {
 } from "@/lib/persist-candidate-profile";
 import { createClient } from "@/utils/supabase/client";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   AVAILABILITY_STATUS_OPTIONS,
   DEFAULT_AVAILABILITY_STATUS,
@@ -1386,7 +1387,7 @@ export default function DashboardPage() {
           try {
             const response = await fetchWithAuth("/api/talent-pool");
             if (response.ok) {
-              const payload = (await response.json()) as {
+              const payload = (await readJsonResponse(response)) as {
                 profiles?: TalentPoolProfileRow[];
               };
               if (Array.isArray(payload.profiles) && payload.profiles.length > 0) {
@@ -2341,7 +2342,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         body: JSON.stringify({ status: nextStatus }),
       });
 
-      const payload = (await response.json()) as {
+      const payload = (await readJsonResponse(response)) as {
         error?: string;
         job?: { id: string; status?: string | null };
       };
@@ -2406,7 +2407,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       const response = await fetch(`/api/jobs/${listing.id}`, {
         method: "DELETE",
       });
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await readJsonResponse(response)) as { error?: string };
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not delete listing.");
@@ -2546,7 +2547,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               );
               return null;
             }
-            const payload = (await response.json()) as Record<string, unknown>;
+            const payload = (await readJsonResponse(response)) as Record<string, unknown>;
             return educationFromProfileRow(payload);
           } catch (error) {
             console.error("Talent pool education API failed:", error);
@@ -3093,7 +3094,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
-      const payload = (await response.json()) as {
+      const payload = (await readJsonResponse(response)) as {
         success?: boolean;
         message?: string;
         error?: string;
@@ -3159,7 +3160,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dismissed }),
       });
-      const payload = (await response.json()) as {
+      const payload = (await readJsonResponse(response)) as {
         success?: boolean;
         message?: string;
         error?: string;
@@ -3253,7 +3254,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         throw new Error(`Essay review failed (${response.status})`);
       }
 
-      const data = await response.json();
+      const data = await readJsonResponse(response);
       setEssayReview(data);
     } catch (err) {
       console.error("Essay review request failed:", err);
@@ -3320,7 +3321,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         throw new Error(`College fit request failed (${response.status})`);
       }
 
-      const data = (await response.json()) as CollegeFitResult;
+      const data = (await readJsonResponse(response)) as CollegeFitResult;
       setCollegeFitStage(COLLEGE_FIT_STAGES.length - 1);
       await new Promise((resolve) => window.setTimeout(resolve, 450));
       setCollegeFitReport(data);
@@ -3372,7 +3373,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         throw new Error(`Aid appeal failed (${response.status})`);
       }
 
-      const data = await response.json();
+      const data = await readJsonResponse(response);
       setAidAppealResult(data);
     } catch (err) {
       console.error("Aid appeal request failed:", err);
@@ -3441,7 +3442,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         }),
       });
 
-      const data = (await response.json()) as AuditResult & { error?: string };
+      const data = (await readJsonResponse(response)) as AuditResult & { error?: string };
 
       if (!response.ok) {
         throw new Error(data.error ?? `Audit failed (${response.status})`);

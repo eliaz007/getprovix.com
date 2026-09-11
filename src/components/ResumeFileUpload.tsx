@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Loader2, Upload, X } from "lucide-react";
 import { RESUME_ACCEPT } from "@/lib/resume-file";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 export type StoredResumeMeta = {
   filename: string | null;
@@ -64,7 +65,7 @@ export default function ResumeFileUpload({
       throw new Error("Sign in to upload a resume.");
     }
 
-    const data = (await response.json()) as StoredResumeMeta & {
+    const data = (await readJsonResponse(response)) as StoredResumeMeta & {
       error?: string;
     };
 
@@ -125,7 +126,7 @@ export default function ResumeFileUpload({
         }
         throw new Error("Sign in to update your resume.");
       }
-      const data = (await response.json()) as StoredResumeMeta & {
+      const data = (await readJsonResponse(response)) as StoredResumeMeta & {
         error?: string;
       };
       if (!response.ok) {

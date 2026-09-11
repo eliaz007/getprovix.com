@@ -7,6 +7,7 @@ import ProductionScorecard from "@/components/auditor/production-scorecard";
 import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
 import ScoreMeter from "@/components/ScoreMeter";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import { formatGpa } from "@/lib/gpa";
 import { jobDisplayTags, parseJobListInput } from "@/lib/jobs";
 import { clampScore0to100 } from "@/lib/score-scale";
@@ -402,7 +403,7 @@ export default function GeminiDeepScreening({
 
       let payload: unknown = null;
       try {
-        payload = await response.json();
+        payload = await readJsonResponse(response);
       } catch (parseError) {
         throw new Error(
           response.ok

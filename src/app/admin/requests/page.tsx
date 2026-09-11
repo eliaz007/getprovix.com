@@ -15,6 +15,7 @@ import {
 import SignOutButton from "@/components/SignOutButton";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { isAdminUser } from "@/lib/admin-access";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   INTRO_PIPELINE_STATUSES,
   getIntroStatusBadgeClass,
@@ -163,7 +164,7 @@ export default function AdminIntroRequestsPage() {
         warning?: string | null;
       } = {};
       try {
-        payload = (await response.json()) as {
+        payload = (await readJsonResponse(response)) as {
           data?: IntroRequestRow[];
           error?: string;
           details?: string;
@@ -248,7 +249,7 @@ export default function AdminIntroRequestsPage() {
 
       let payload: { data?: JobInterestRow[]; error?: string } = {};
       try {
-        payload = (await response.json()) as {
+        payload = (await readJsonResponse(response)) as {
           data?: JobInterestRow[];
           error?: string;
         };
@@ -452,7 +453,7 @@ export default function AdminIntroRequestsPage() {
         }),
       });
 
-      const payload = (await response.json()) as {
+      const payload = (await readJsonResponse(response)) as {
         success?: boolean;
         error?: string;
         details?: string;

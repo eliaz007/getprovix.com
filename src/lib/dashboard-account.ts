@@ -94,15 +94,6 @@ export function isPitchStudioPath(pathname: string): boolean {
   return pathname === "/dashboard/pitch-studio";
 }
 
-const PROTECTED_ROUTE_PREFIXES = [
-  "/dashboard",
-  "/employer",
-  "/pitch-studio",
-  "/simulator",
-  "/profile-studio",
-  "/intro-requests",
-] as const;
-
 export function isDashboardAuditorPath(pathname: string): boolean {
   return (
     pathname === "/dashboard/auditor" ||
@@ -128,6 +119,8 @@ export function isAuditorPath(pathname: string): boolean {
   return (
     pathname === "/audits" ||
     pathname.startsWith("/audits/") ||
+    pathname === "/auditor" ||
+    pathname.startsWith("/auditor/") ||
     isDashboardAuditorPath(pathname)
   );
 }
@@ -137,17 +130,49 @@ export function isOpportunitiesPath(pathname: string): boolean {
 }
 
 export function isPublicOpportunitiesPath(pathname: string): boolean {
-  return isOpportunitiesPath(pathname);
+  return false;
 }
 
-export function isProtectedAppPath(pathname: string): boolean {
-  if (isPublicAuditorPath(pathname) || isPublicOpportunitiesPath(pathname)) {
-    return false;
+const PUBLIC_EXACT_PATHS = new Set([
+  "/",
+  "/login",
+  "/privacy",
+  "/terms",
+  "/pricing",
+  "/update-password",
+  "/admin/login",
+  "/icon",
+  "/apple-icon",
+  "/opengraph-image",
+  "/robots.txt",
+  "/sitemap.xml",
+]);
+
+const PUBLIC_PREFIXES = [
+  "/login/",
+  "/auth/",
+  "/p/",
+  "/update-password/",
+  "/admin/login/",
+  "/audit/",
+] as const;
+
+/** Marketing, legal, auth, and the standalone public audit. Not the app shell. */
+export function isPublicRoute(pathname: string): boolean {
+  if (PUBLIC_EXACT_PATHS.has(pathname)) {
+    return true;
   }
 
-  return PROTECTED_ROUTE_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
+  if (pathname === "/audit") {
+    return true;
+  }
+
+  return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+/** App-shell and other internal pages. Unsigned visitors are sent to /. */
+export function isProtectedAppPath(pathname: string): boolean {
+  return !isPublicRoute(pathname);
 }
 
 export function isInterviewPrepPath(pathname: string): boolean {

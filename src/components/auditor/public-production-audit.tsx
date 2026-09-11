@@ -15,6 +15,7 @@ import {
 import type { AuditResult } from "@/app/api/audit/route";
 import { normalizeAuditChecks } from "@/lib/audit-checks";
 import { DAILY_LIMIT_UI_MESSAGE, type DailyScanUsage } from "@/lib/daily-scan-limit";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   buildProductionAuditClaim,
   cachePendingProductionAudit,
@@ -210,7 +211,7 @@ export default function PublicProductionAudit({
           inaccessibleRepo?: boolean;
         };
       try {
-        data = (await response.json()) as typeof data;
+        data = (await readJsonResponse(response)) as typeof data;
       } catch {
         if (response.status === 404 || response.status === 403) {
           setInaccessibleRepo(true);
@@ -318,7 +319,7 @@ export default function PublicProductionAudit({
         if (!response.ok) {
           return;
         }
-        const data = (await response.json()) as DailyScanUsage;
+        const data = (await readJsonResponse(response)) as DailyScanUsage;
         if (!cancelled) {
           setLimitReached(Boolean(data.limit_reached));
         }

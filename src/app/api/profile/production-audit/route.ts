@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireApiUser } from "@/lib/api-auth";
 import {
   listProductionAuditHistory,
@@ -13,6 +14,35 @@ import { clampScore0to100 } from "@/lib/score-scale";
 
 export const runtime = "nodejs";
 
+function jsonServerError(error: unknown, fallback: string) {
+  console.error(error);
+  return NextResponse.json({ error: fallback }, { status: 500 });
+}
+
+export async function GET(request: Request) {
+  try {
+    return await getProductionAudit(request);
+  } catch (error) {
+    return jsonServerError(error, "Could not load the production audit.");
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    return await postProductionAudit(request);
+  } catch (error) {
+    return jsonServerError(error, "Could not save the production audit.");
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    return await patchProductionAudit(request);
+  } catch (error) {
+    return jsonServerError(error, "Could not update scorecard visibility.");
+  }
+}
+
 function parseVisibilityFlag(value: unknown): boolean | undefined {
   if (typeof value === "boolean") {
     return value;
@@ -20,7 +50,7 @@ function parseVisibilityFlag(value: unknown): boolean | undefined {
   return undefined;
 }
 
-export async function GET(request: Request) {
+async function getProductionAudit(request: Request) {
   const access = await requireApiUser(request);
   if (access instanceof NextResponse) {
     return access;
@@ -63,7 +93,7 @@ export async function GET(request: Request) {
   });
 }
 
-export async function POST(request: Request) {
+async function postProductionAudit(request: Request) {
   const access = await requireApiUser(request);
   if (access instanceof NextResponse) {
     return access;
@@ -131,7 +161,7 @@ export async function POST(request: Request) {
   });
 }
 
-export async function PATCH(request: Request) {
+async function patchProductionAudit(request: Request) {
   const access = await requireApiUser(request);
   if (access instanceof NextResponse) {
     return access;
@@ -153,11 +183,27 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const { error, record: nextRecord } = await persistScorecardVisibility(
+  let result = await persistScorecardVisibility(
     access.supabase,
     access.user.id,
     isPubliclyVisible
   );
+
+  if (result.error) {
+    const admin = createServiceRoleClient();
+    if (admin) {
+      const adminResult = await persistScorecardVisibility(
+        admin,
+        access.user.id,
+        isPubliclyVisible
+      );
+      if (!adminResult.error) {
+        result = adminResult;
+      }
+    }
+  }
+
+  const { error, record: nextRecord } = result;
 
   if (error) {
     const status = nextRecord ? 400 : 500;

@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ShieldCheck } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
+import { createClient } from "@/utils/supabase/client";
 import {
   canPublishProductionScore,
   formatAuditedAt,
   formatAuditedRepoLabel,
-  getProductionScoreBadge,
   isPrivateAuditedRepoLabel,
   parseProductionAuditHistoryRow,
   PUBLIC_SCORECARD_THRESHOLD,
@@ -16,93 +16,82 @@ import {
   type ProductionAuditRecord,
 } from "@/lib/production-audit";
 
-function MetricChip({ label, score }: { label: string; score: number }) {
-  return (
-    <div className="rounded-md border border-border bg-background px-2 py-1.5 text-center">
-      <p className="font-mono text-sm font-bold tabular-nums text-textMain">
-        {score}
-      </p>
-      <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-textMuted">
-        {label}
-      </p>
-    </div>
-  );
-}
+const SIGNED_IN_AUDITOR_PATH = "/dashboard/auditor";
+const PUBLIC_AUDITOR_PATH = "/audits";
 
-function AuditHistoryList({
-  entries,
-  loading,
-}: {
-  entries: ProductionAuditHistoryEntry[];
-  loading: boolean;
-}) {
-  if (loading) {
-    return (
-      <p className="mt-3 text-[11px] text-textMuted">Loading audit history…</p>
-    );
+async function persistOwnScoreVisibility(nextVisible: boolean): Promise<void> {
+  const supabase = createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Sign in to change employer visibility.");
   }
 
-  if (entries.length === 0) {
-    return null;
+  const payload: Record<string, boolean> = {
+    is_publicly_visible: nextVisible,
+  };
+  if (nextVisible) {
+    payload.is_visible_in_pool = true;
   }
 
-  return (
-    <details className="mt-3 border-t border-border pt-2 group">
-      <summary className="cursor-pointer list-none text-[10px] font-bold uppercase tracking-wider text-textMuted [&::-webkit-details-marker]:hidden">
-        Audit history ({entries.length})
-      </summary>
-      <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto">
-        {entries.map((entry) => {
-          const repo = formatAuditedRepoLabel(entry.auditedRepoUrl);
-          const when = formatAuditedAt(entry.auditedAt || entry.createdAt);
-          return (
-            <li
-              key={entry.id}
-              className="flex items-start justify-between gap-3 rounded-md border border-border/70 bg-background/60 px-2 py-1.5"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-[11px] font-medium text-textMain">
-                  {repo}
-                </p>
-                <p className="mt-0.5 text-[10px] text-textMuted">
-                  {when || "—"} · CI {entry.ciCdScore} · Tests{" "}
-                  {entry.testDensity} · Errors {entry.errorHandling}
-                </p>
-              </div>
-              <p className="shrink-0 font-mono text-xs font-bold tabular-nums text-textMain">
-                {entry.productionScore}
-              </p>
-            </li>
-          );
-        })}
-      </ul>
-    </details>
-  );
+  let { data, error } = await supabase
+    .from("profiles")
+    .update(payload)
+    .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+    .select("id, is_publicly_visible")
+    .maybeSingle();
+
+  if (error && nextVisible && /is_visible_in_pool/i.test(error.message)) {
+    const retry = await supabase
+      .from("profiles")
+      .update({ is_publicly_visible: nextVisible })
+      .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+      .select("id, is_publicly_visible")
+      .maybeSingle();
+    data = retry.data;
+    error = retry.error;
+  }
+
+  if (!error && data) {
+    return;
+  }
+
+  const response = await fetchWithAuth("/api/profile/production-audit", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ is_publicly_visible: nextVisible }),
+  });
+
+  let apiError = error?.message ?? "Could not update visibility.";
+  try {
+    const body = await readJsonResponse<{ error?: string }>(response);
+    if (response.ok) {
+      return;
+    }
+    if (body.error?.trim()) {
+      apiError = body.error.trim();
+    }
+  } catch {
+    if (!response.ok) {
+      apiError = "Could not update visibility.";
+    }
+  }
+
+  throw new Error(apiError);
 }
 
-export default function VerifiedCodeQualityScorecard({
-  record,
-  onVisibilityChange,
-  compact = true,
-}: {
-  record: ProductionAuditRecord | null;
-  onVisibilityChange?: (visible: boolean) => void;
-  compact?: boolean;
-}) {
+function useEmployerScoreVisibility(
+  record: ProductionAuditRecord | null,
+  onVisibilityChange?: (visible: boolean) => void
+) {
   const hasScore = Boolean(record?.isAuditVerified);
   const score = record?.productionScore ?? 0;
   const canPublish = canPublishProductionScore(score);
-  const badge = getProductionScoreBadge(score);
-  const repo = record?.breakdown.audited_repo_url
-    ? formatAuditedRepoLabel(record.breakdown.audited_repo_url)
-    : "";
-  const auditedAt = record?.breakdown.audited_at
-    ? formatAuditedAt(record.breakdown.audited_at)
-    : "";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<ProductionAuditHistoryEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
   const [visibilityOverride, setVisibilityOverride] = useState<boolean | null>(
     null
   );
@@ -117,6 +106,280 @@ export default function VerifiedCodeQualityScorecard({
     setVisibilityOverride(null);
   }
 
+  const toggleVisibility = async () => {
+    if (!hasScore || !canPublish || saving) {
+      return;
+    }
+
+    const previousVisible = visible;
+    const nextVisible = !visible;
+    setVisibilityOverride(nextVisible);
+    onVisibilityChange?.(nextVisible);
+    setSaving(true);
+    setError(null);
+
+    try {
+      await persistOwnScoreVisibility(nextVisible);
+    } catch (err) {
+      setVisibilityOverride(previousVisible);
+      onVisibilityChange?.(previousVisible);
+      setError(
+        err instanceof Error ? err.message : "Could not update visibility."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return {
+    hasScore,
+    score,
+    canPublish,
+    visible,
+    saving,
+    error,
+    toggleVisibility,
+  };
+}
+
+function EmployerVisibilitySwitch({
+  checked,
+  disabled,
+  saving,
+  onToggle,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  saving: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label="Show verified score to employers"
+      disabled={disabled || saving}
+      onClick={onToggle}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+        saving
+          ? "cursor-wait opacity-60"
+          : disabled
+            ? "cursor-not-allowed opacity-50"
+            : "cursor-pointer"
+      } ${checked ? "bg-emerald-500" : "bg-background"}`}
+    >
+      <span
+        className="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+        style={{
+          transform: checked ? "translateX(16px)" : "translateX(0)",
+        }}
+      />
+    </button>
+  );
+}
+
+function auditTierBadge(score: number): {
+  label: "Verified" | "Growth";
+  className: string;
+} {
+  if (score >= 80) {
+    return {
+      label: "Verified",
+      className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+    };
+  }
+
+  return {
+    label: "Growth",
+    className: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+  };
+}
+
+export function AuditStatusBanner({
+  record,
+  onVisibilityChange,
+}: {
+  record: ProductionAuditRecord | null;
+  onVisibilityChange?: (visible: boolean) => void;
+}) {
+  const { hasScore, score, canPublish, visible, saving, error, toggleVisibility } =
+    useEmployerScoreVisibility(record, onVisibilityChange);
+  const tier = hasScore ? auditTierBadge(score) : null;
+
+  return (
+    <div className="rounded-xl border border-border bg-panel px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <p className="font-mono text-sm font-bold tabular-nums text-textMain">
+            {hasScore ? score : "—"}
+            <span className="ml-0.5 text-[10px] font-semibold text-textMuted">
+              /100
+            </span>
+          </p>
+          {tier ? (
+            <span
+              className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${tier.className}`}
+            >
+              {tier.label}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-[10px] font-medium text-textMuted">Employers</span>
+          <EmployerVisibilitySwitch
+            checked={visible && canPublish}
+            disabled={!canPublish}
+            saving={saving}
+            onToggle={() => void toggleVisibility()}
+          />
+        </div>
+      </div>
+      {error ? (
+        <p className="mt-1 text-[10px] text-red-300" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function MetricPill({ label, score }: { label: string; score: number }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[10px] leading-none text-textMuted">
+      {label}
+      <span className="font-mono font-medium tabular-nums text-textMain">
+        {score}
+      </span>
+    </span>
+  );
+}
+
+function AuditHistoryList({
+  entries,
+  loading,
+}: {
+  entries: ProductionAuditHistoryEntry[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <p className="text-[11px] text-textMuted">Loading history…</p>
+    );
+  }
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <details className="group">
+      <summary className="cursor-pointer list-none text-[11px] text-textMuted hover:text-textMain [&::-webkit-details-marker]:hidden">
+        <span className="group-open:hidden">History · {entries.length}</span>
+        <span className="hidden group-open:inline">Hide history</span>
+      </summary>
+      <ul className="mt-1.5 max-h-28 space-y-0.5 overflow-y-auto">
+        {entries.map((entry) => {
+          const repo = formatAuditedRepoLabel(entry.auditedRepoUrl);
+          const when = formatAuditedAt(entry.auditedAt || entry.createdAt);
+          return (
+            <li
+              key={entry.id}
+              className="flex items-center justify-between gap-3 py-1 text-[11px]"
+            >
+              <p className="min-w-0 truncate text-textMuted">
+                <span className="text-textMain">{repo}</span>
+                {when ? ` · ${when}` : ""}
+              </p>
+              <p className="shrink-0 font-mono tabular-nums text-textMain">
+                {entry.productionScore}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+}
+
+export default function VerifiedCodeQualityScorecard({
+  record,
+  onVisibilityChange,
+}: {
+  record: ProductionAuditRecord | null;
+  onVisibilityChange?: (visible: boolean) => void;
+  compact?: boolean;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const alreadyOnAuditor =
+    pathname === SIGNED_IN_AUDITOR_PATH ||
+    pathname === PUBLIC_AUDITOR_PATH ||
+    pathname.startsWith(`${SIGNED_IN_AUDITOR_PATH}/`);
+  const { hasScore, score, canPublish, visible, saving, error, toggleVisibility } =
+    useEmployerScoreVisibility(record, onVisibilityChange);
+  const status = hasScore
+    ? auditTierBadge(score)
+    : {
+        label: "No audit",
+        className: "border-border bg-background text-textMuted",
+      };
+  const repo = record?.breakdown.audited_repo_url
+    ? formatAuditedRepoLabel(record.breakdown.audited_repo_url)
+    : "";
+  const auditedAt = record?.breakdown.audited_at
+    ? formatAuditedAt(record.breakdown.audited_at)
+    : "";
+  const [history, setHistory] = useState<ProductionAuditHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [openingAuditor, setOpeningAuditor] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getUser();
+        if (!cancelled) {
+          setSignedIn(Boolean(data.user));
+        }
+      } catch {
+        if (!cancelled) {
+          setSignedIn(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const openAuditor = async () => {
+    if (openingAuditor) {
+      return;
+    }
+
+    setOpeningAuditor(true);
+    try {
+      let isSignedIn = signedIn;
+      if (isSignedIn == null) {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getUser();
+        isSignedIn = Boolean(data.user);
+        setSignedIn(isSignedIn);
+      }
+
+      router.push(isSignedIn ? SIGNED_IN_AUDITOR_PATH : PUBLIC_AUDITOR_PATH);
+    } catch {
+      router.push(PUBLIC_AUDITOR_PATH);
+    } finally {
+      setOpeningAuditor(false);
+    }
+  };
+
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
@@ -125,9 +388,9 @@ export default function VerifiedCodeQualityScorecard({
         setHistory([]);
         return;
       }
-      const payload = (await response.json()) as {
+      const payload = await readJsonResponse<{
         history?: Array<Record<string, unknown>>;
-      };
+      }>(response);
       setHistory(
         (payload.history ?? [])
           .map((row) => parseProductionAuditHistoryRow(row))
@@ -144,154 +407,95 @@ export default function VerifiedCodeQualityScorecard({
     void loadHistory();
   }, [loadHistory, record?.productionScore, record?.breakdown.audited_at]);
 
-  const toggleVisibility = async () => {
-    if (!hasScore || !canPublish || saving) {
-      return;
-    }
-
-    const nextVisible = !visible;
-    setSaving(true);
-    setError(null);
-
-    try {
-      const response = await fetchWithAuth("/api/profile/production-audit", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_publicly_visible: nextVisible }),
-      });
-      const payload = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Could not update visibility.");
-      }
-
-      setVisibilityOverride(nextVisible);
-      onVisibilityChange?.(nextVisible);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not update visibility."
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
+  const visibilityHint = !canPublish
+    ? `Needs ${PUBLIC_SCORECARD_THRESHOLD}+`
+    : visible
+      ? "Visible"
+      : "Hidden";
 
   return (
-    <section
-      className={`rounded-xl border border-border bg-panel ${
-        compact ? "p-3" : "p-4"
-      }`}
-    >
+    <section className="rounded-lg border border-border bg-panel px-3 py-2.5">
       <div className="flex items-center justify-between gap-3">
-        <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-          <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-          Production Audit
-        </p>
-        {hasScore ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="font-mono text-sm font-semibold tabular-nums text-textMain">
+            {hasScore ? score : "—"}
+            <span className="ml-0.5 text-[11px] font-normal text-textMuted">
+              /100
+            </span>
+          </p>
           <span
-            className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${badge.className}`}
+            className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${status.className}`}
           >
-            {badge.label}
+            {status.label}
           </span>
-        ) : null}
+        </div>
+        <label className="flex shrink-0 items-center gap-2 text-[11px] text-textMuted">
+          <span className="hidden sm:inline">Show to employers</span>
+          <span className="sm:hidden">Employers</span>
+          <EmployerVisibilitySwitch
+            checked={visible && canPublish}
+            disabled={!canPublish}
+            saving={saving}
+            onToggle={() => void toggleVisibility()}
+          />
+        </label>
       </div>
 
-      {hasScore && record ? (
-        <>
-          <div className="mt-2 flex flex-wrap items-end gap-2">
-            <p className="font-mono text-2xl font-extrabold tabular-nums text-textMain">
-              {score}
-              <span className="ml-1 text-[10px] font-semibold text-textMuted">
-                /100
-              </span>
-            </p>
-            <div className="min-w-0 pb-0.5 text-[11px] text-textMuted">
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+        {hasScore && record ? (
+          <>
+            <span className="truncate text-[11px] text-textMuted">
               {repo ? (
                 isPrivateAuditedRepoLabel(record.breakdown.audited_repo_url) ? (
-                  <p className="font-medium text-textMain">{repo}</p>
+                  repo
                 ) : (
                   <a
                     href={record.breakdown.audited_repo_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-medium text-textMain hover:underline"
+                    className="hover:text-textMain"
                   >
                     {repo}
                   </a>
                 )
               ) : null}
-              {auditedAt ? <p className="text-[10px]">Audited {auditedAt}</p> : null}
-            </div>
-          </div>
+              {repo && auditedAt ? " · " : null}
+              {auditedAt || null}
+              {visibilityHint ? ` · ${visibilityHint}` : null}
+            </span>
+            <span className="hidden h-3 w-px bg-border sm:inline" aria-hidden />
+            <MetricPill label="CI" score={record.breakdown.ci_cd_score} />
+            <MetricPill label="Tests" score={record.breakdown.test_density} />
+            <MetricPill label="Errors" score={record.breakdown.error_handling} />
+          </>
+        ) : (
+          <span className="text-[11px] text-textMuted">
+            No production audit yet.
+          </span>
+        )}
+      </div>
 
-          <div className="mt-2 grid grid-cols-3 gap-1.5">
-            <MetricChip label="CI/CD" score={record.breakdown.ci_cd_score} />
-            <MetricChip label="Tests" score={record.breakdown.test_density} />
-            <MetricChip
-              label="Errors"
-              score={record.breakdown.error_handling}
-            />
-          </div>
+      {error ? (
+        <p className="mt-1 text-[11px] text-red-300" role="alert">
+          {error}
+        </p>
+      ) : null}
 
-          <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-2.5 py-2">
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-textMain">
-                Show to employers
-              </p>
-              <p className="mt-0.5 text-[10px] leading-relaxed text-textMuted">
-                {canPublish
-                  ? visible
-                    ? "Visible on the talent roster."
-                    : "Hidden from employers."
-                  : `Needs ${PUBLIC_SCORECARD_THRESHOLD}+ to publish.`}
-              </p>
-              {error ? (
-                <p className="mt-1 text-[10px] text-red-300">{error}</p>
-              ) : null}
-            </div>
+      {(historyLoading || history.length > 0 || !alreadyOnAuditor) ? (
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <AuditHistoryList entries={history} loading={historyLoading} />
+          {alreadyOnAuditor ? null : (
             <button
               type="button"
-              role="switch"
-              aria-checked={visible && canPublish}
-              aria-label="Show Verified Score to Employers"
-              disabled={!canPublish || saving}
-              onClick={() => void toggleVisibility()}
-              className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-                saving
-                  ? "cursor-wait opacity-60"
-                  : canPublish
-                    ? "cursor-pointer"
-                    : "cursor-not-allowed opacity-50"
-              } ${visible && canPublish ? "bg-emerald-500" : "bg-panel"}`}
+              onClick={() => void openAuditor()}
+              disabled={openingAuditor}
+              className="ml-auto text-[11px] text-textMuted hover:text-textMain disabled:cursor-wait disabled:opacity-60"
             >
-              <span
-                className="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform"
-                style={{
-                  transform:
-                    visible && canPublish ? "translateX(16px)" : "translateX(0)",
-                }}
-              />
+              {hasScore ? "Audit another repo" : "Run audit"}
             </button>
-          </div>
-
-          <AuditHistoryList entries={history} loading={historyLoading} />
-        </>
-      ) : (
-        <>
-          <p className="mt-2 text-[11px] leading-relaxed text-textMuted">
-            Run a public repository audit to attach a verified production score
-            to your profile.
-          </p>
-          <AuditHistoryList entries={history} loading={historyLoading} />
-        </>
-      )}
-
-      <Link
-        href="/audit"
-        className="mt-2 inline-flex w-full items-center justify-center rounded-md border border-border bg-brand px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-brandHover"
-      >
-        {hasScore ? "Audit another repo" : "Run a production audit"}
-      </Link>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }

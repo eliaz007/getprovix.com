@@ -5,11 +5,16 @@ export async function fetchWithAuth(
   init: RequestInit = {}
 ): Promise<Response> {
   const supabase = createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
   let {
     data: { session },
   } = await supabase.auth.getSession();
 
-  if (!session?.access_token) {
+  if (userError || !user || !session?.access_token) {
     const refreshed = await supabase.auth.refreshSession();
     session = refreshed.data.session;
   }

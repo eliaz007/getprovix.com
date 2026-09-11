@@ -13,6 +13,7 @@ import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 type FeatureHighlight = {
   title: string;
@@ -106,7 +107,7 @@ export default function PricingPage() {
         return;
       }
 
-      const data = (await response.json()) as {
+      const data = (await readJsonResponse(response)) as {
         error?: string;
         success?: boolean;
         warnings?: string[];

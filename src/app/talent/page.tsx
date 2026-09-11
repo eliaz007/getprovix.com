@@ -18,11 +18,11 @@ export default function TalentDirectoryPage() {
           return;
         }
 
-        router.replace("/login?next=/dashboard");
+        router.replace("/");
       })
       .catch((err) => {
         console.error("Talent redirect failed:", err);
-        router.replace("/login?next=/dashboard");
+        router.replace("/");
       });
   }, [router]);
 
