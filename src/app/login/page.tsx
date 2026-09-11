@@ -10,12 +10,13 @@ import { ProvixLogo } from "@/components/ProvixLogo";
 import { getPostLoginPath } from "@/lib/admin-access";
 import {
   EMPLOYER_DASHBOARD_PATH,
-  isEmployerAuthIntent,
   isEmployerSignup,
   loadStoredAccountRole,
+  normalizeAccountKind,
   persistEmployerAccount,
   resolvePostAuthDestination,
   signupMetadataForKind,
+  signupRoleFromSearch,
 } from "@/lib/account-role";
 import {
   CLAIM_AUDIT_INTENT,
@@ -172,8 +173,11 @@ export default function LoginPage() {
       setSignUpType("candidate");
       setMode("sign-up");
       setIsClaimAudit(true);
-    } else if (isEmployerAuthIntent(search)) {
+    } else if (signupRoleFromSearch(search) === "employer") {
       setSignUpType("business");
+      setMode("sign-up");
+    } else if (signupRoleFromSearch(search) === "developer") {
+      setSignUpType("candidate");
       setMode("sign-up");
     }
     const authError = params.get("error")?.trim();
@@ -195,7 +199,21 @@ export default function LoginPage() {
     let cancelled = false;
 
     const leaveLogin = async (user: User) => {
-      const destination = await destinationAfterAuth(user, window.location.search);
+      const search = window.location.search;
+      const requestedRole = signupRoleFromSearch(search);
+      const storedRole = await loadStoredAccountRole(supabase, user);
+      const isEmployer = normalizeAccountKind(storedRole) === "employer";
+
+      if (requestedRole === "employer" && !isEmployer) {
+        if (!cancelled) {
+          setSignUpType("business");
+          setMode("sign-up");
+          setCheckingSession(false);
+        }
+        return;
+      }
+
+      const destination = await destinationAfterAuth(user, search);
       if (!cancelled) {
         window.location.href = destination;
       }

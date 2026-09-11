@@ -58,6 +58,34 @@ export function resolveAccountRole(
   return fromMeta;
 }
 
+export function signupRoleFromSearch(
+  search: string
+): "employer" | "developer" | null {
+  const params = new URLSearchParams(
+    search.startsWith("?") ? search.slice(1) : search
+  );
+  const role = params.get("role")?.trim().toLowerCase() ?? "";
+
+  if (
+    role === "employer" ||
+    role === "business" ||
+    role === "founder" ||
+    isEmployerAuthIntent(search)
+  ) {
+    return "employer";
+  }
+
+  if (role === "developer" || role === "candidate") {
+    return "developer";
+  }
+
+  return null;
+}
+
+export function loginHrefForSignupRole(kind: "employer" | "developer"): string {
+  return kind === "employer" ? "/login?role=employer" : "/login?role=developer";
+}
+
 export function isEmployerAuthIntent(search: string): boolean {
   const params = new URLSearchParams(
     search.startsWith("?") ? search.slice(1) : search

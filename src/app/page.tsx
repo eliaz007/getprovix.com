@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { ArrowRight, Building2, Code2, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LandingAuditForm from "@/components/landing/landing-audit-form";
+import LandingAudienceCards from "@/components/landing/landing-audience-cards";
 import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
@@ -9,9 +10,6 @@ export const metadata = buildPageMetadata(
   "Hire developers based on what they've actually built, not what they claim.",
   "/"
 );
-
-const founderHref = "/employer";
-const candidateHref = "/dashboard";
 
 export default function Home() {
   return (
@@ -51,56 +49,7 @@ export default function Home() {
 
         <LandingAuditForm />
 
-        <section className="mt-20 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-          <article className="flex h-full flex-col rounded-2xl border border-border bg-panel p-8">
-            <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-background text-brand">
-              <Building2 className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-brand">
-              For Founders
-            </p>
-            <h2 className="mt-3 text-2xl font-bold tracking-tight text-textMain">
-              Source pre-vetted builders using static code and repository
-              integrity analysis.
-            </h2>
-            <p className="mt-4 flex-1 text-sm leading-relaxed text-textMuted">
-              Skip resume theater. Open the employer console to screen talent
-              against verified GitHub artifacts and repository integrity signals.
-            </p>
-            <Link
-              href={founderHref}
-              className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-brand text-white px-4 py-3 text-sm font-bold tracking-tight transition-colors duration-200 hover:bg-brandHover cursor-pointer"
-            >
-              Enter Employer Console
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-          </article>
-
-          <article className="flex h-full flex-col rounded-2xl border border-border bg-panel p-8">
-            <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-background text-sky-400">
-              <Code2 className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-sky-400">
-              For Developers
-            </p>
-            <h2 className="mt-3 text-2xl font-bold tracking-tight text-textMain">
-              Run deep audits on your public repos to prove founder-ready
-              credibility.
-            </h2>
-            <p className="mt-4 flex-1 text-sm leading-relaxed text-textMuted">
-              Publish proof of work, keep your profile current, and show
-              employers what you have actually shipped — not what a resume
-              claims.
-            </p>
-            <Link
-              href={candidateHref}
-              className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-transparent px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors duration-200 hover:bg-white/5 cursor-pointer"
-            >
-              Open Candidate Dashboard
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
-          </article>
-        </section>
+        <LandingAudienceCards />
       </main>
 
       <footer className="border-t border-border">
