@@ -203,24 +203,19 @@ export function parseProductionAuditFromProfileRow(
 export function getProductionScoreBadge(score: number): {
   label: string;
   className: string;
-} {
-  const clamped = clampScore0to100(score);
-  if (clamped >= 80) {
-    return {
-      label: "80+ Production-Ready",
-      className:
-        "text-emerald-300 bg-emerald-500/10 border-emerald-500/30",
-    };
+} | null {
+  if (!canPublishProductionScore(score)) {
+    return null;
   }
 
   return {
-    label: "Needs production hardening",
-    className: "text-zinc-300 bg-white/5 border-white/10",
+    label: "Verified",
+    className: "text-emerald-300 bg-emerald-500/10 border-emerald-500/30",
   };
 }
 
 export function productionScoreBadgeClass(score: number): string {
-  return clampScore0to100(score) >= 80
+  return canPublishProductionScore(score)
     ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/30"
     : "text-zinc-300 bg-white/5 border-white/10";
 }

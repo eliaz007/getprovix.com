@@ -1,8 +1,8 @@
+import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
 import ScoreMeter from "@/components/ScoreMeter";
 import {
   formatAuditedAt,
   formatAuditedRepoLabel,
-  getProductionScoreBadge,
   type ProductionAuditRecord,
 } from "@/lib/production-audit";
 
@@ -45,7 +45,6 @@ export default function ProductionCodeAuditSection({
     return null;
   }
 
-  const badge = getProductionScoreBadge(record.productionScore);
   const repo = formatAuditedRepoLabel(record.breakdown.audited_repo_url);
   const auditedAt = formatAuditedAt(record.breakdown.audited_at);
 
@@ -55,22 +54,18 @@ export default function ProductionCodeAuditSection({
         Production Code Audit
       </div>
       <div className="space-y-4 rounded-xl border border-border bg-background p-3.5">
-        <div className="flex items-end justify-between gap-3">
-          <div>
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
             <p className="font-mono text-2xl font-extrabold tabular-nums text-textMain">
               {record.productionScore}
               <span className="ml-1 text-xs font-semibold text-textMuted">/100</span>
             </p>
-            <p className="mt-1 text-[11px] text-textMuted">{repo}</p>
-            {auditedAt ? (
-              <p className="text-[10px] text-textMuted">Audited {auditedAt}</p>
-            ) : null}
+            <ProductionScoreVerifiedBadge score={record.productionScore} />
           </div>
-          <span
-            className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${badge.className}`}
-          >
-            {badge.label}
-          </span>
+          <p className="mt-1 text-[11px] text-textMuted">{repo}</p>
+          {auditedAt ? (
+            <p className="text-[10px] text-textMuted">Audited {auditedAt}</p>
+          ) : null}
         </div>
         <SignalRow
           label="CI pipeline depth"

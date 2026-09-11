@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { createClient } from "@/utils/supabase/client";
@@ -179,22 +180,8 @@ function EmployerVisibilitySwitch({
   );
 }
 
-function auditTierBadge(score: number): {
-  label: "Verified" | "Growth";
-  className: string;
-} {
-  if (score >= 80) {
-    return {
-      label: "Verified",
-      className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-    };
-  }
-
-  return {
-    label: "Growth",
-    className: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-  };
-}
+const NO_AUDIT_BADGE_CLASS =
+  "border-border bg-background text-textMuted";
 
 export function AuditStatusBanner({
   record,
@@ -205,7 +192,6 @@ export function AuditStatusBanner({
 }) {
   const { hasScore, score, canPublish, visible, saving, error, toggleVisibility } =
     useEmployerScoreVisibility(record, onVisibilityChange);
-  const tier = hasScore ? auditTierBadge(score) : null;
 
   return (
     <div className="rounded-xl border border-border bg-panel px-3 py-2">
@@ -217,13 +203,7 @@ export function AuditStatusBanner({
               /100
             </span>
           </p>
-          {tier ? (
-            <span
-              className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${tier.className}`}
-            >
-              {tier.label}
-            </span>
-          ) : null}
+          {hasScore ? <ProductionScoreVerifiedBadge score={score} /> : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-[10px] font-medium text-textMuted">Employers</span>
@@ -318,12 +298,6 @@ export default function VerifiedCodeQualityScorecard({
     pathname.startsWith(`${SIGNED_IN_AUDITOR_PATH}/`);
   const { hasScore, score, canPublish, visible, saving, error, toggleVisibility } =
     useEmployerScoreVisibility(record, onVisibilityChange);
-  const status = hasScore
-    ? auditTierBadge(score)
-    : {
-        label: "No audit",
-        className: "border-border bg-background text-textMuted",
-      };
   const repo = record?.breakdown.audited_repo_url
     ? formatAuditedRepoLabel(record.breakdown.audited_repo_url)
     : "";
@@ -423,11 +397,15 @@ export default function VerifiedCodeQualityScorecard({
               /100
             </span>
           </p>
-          <span
-            className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${status.className}`}
-          >
-            {status.label}
-          </span>
+          {hasScore ? (
+            <ProductionScoreVerifiedBadge score={score} />
+          ) : (
+            <span
+              className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${NO_AUDIT_BADGE_CLASS}`}
+            >
+              No audit
+            </span>
+          )}
         </div>
         <label className="flex shrink-0 items-center gap-2 text-[11px] text-textMuted">
           <span className="hidden sm:inline">Show to employers</span>

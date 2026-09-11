@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { after, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireAiApiUser, rejectUnlessVerifiedEmployer } from "@/lib/api-auth";
 import {
@@ -1010,42 +1011,118 @@ export async function POST(request: Request) {
     input: jobInput,
   });
 
-  if (!queued.ok) {
+  if (queued.ok) {
+    const snapshot = {
+      userId: access.user.id,
+      screeningId: queued.row.id,
+      runId: queued.row.runId,
+      candidate,
+      job,
+      candidateKey,
+      profileId: profile_id,
+      lookupId,
+    };
+
+    after(() => {
+      void runQueuedScreening(snapshot);
+    });
+
     return NextResponse.json(
       {
-        error: queued.unavailable
-          ? "Screening storage is not ready yet. Apply the latest database migration and retry."
-          : "Could not queue the live audit. Please retry.",
-        retryable: true,
+        accepted: true,
+        status: "pending",
+        screening_id: queued.row.id,
+        candidate_key: queued.row.candidateKey,
+        run_id: queued.row.runId,
       },
-      { status: queued.unavailable ? 503 : 500 }
+      { status: 202 }
     );
   }
 
-  const snapshot = {
-    userId: access.user.id,
-    screeningId: queued.row.id,
-    runId: queued.row.runId,
-    candidate,
-    job,
-    candidateKey,
-    profileId: profile_id,
-    lookupId,
-  };
-
-  after(() => {
-    void runQueuedScreening(snapshot);
+  console.warn("[screen] queue storage unavailable; running live audit inline", {
+    unavailable: queued.unavailable,
+    error: queued.error,
   });
 
-  return NextResponse.json(
-    {
-      accepted: true,
-      status: "pending",
-      screening_id: queued.row.id,
-      candidate_key: queued.row.candidateKey,
-      run_id: queued.row.runId,
-    },
-    { status: 202 }
+  try {
+    const writer = createServiceRoleClient() ?? access.supabase;
+    const result = await executeLiveScreening({
+      candidate,
+      job,
+      lookupId,
+      writer,
+    });
+
+    try {
+      await persistScreeningResult(
+        candidateKey,
+        profile_id,
+        result,
+        access.user.id
+      );
+    } catch (persistError) {
+      console.warn("[screen] inline persist skipped:", persistError);
+    }
+
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("[screen] inline live audit failed:", error);
+    return NextResponse.json(
+      {
+        error: "The live GitHub audit could not be completed. Please retry.",
+        retryable: true,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+async function executeLiveScreening(args: {
+  candidate: CandidatePayload;
+  job: JobPayload;
+  lookupId: string | null;
+  writer: SupabaseClient;
+}): Promise<ScreenResult> {
+  const githubUrl = resolveCandidateGitHubUrl(args.candidate);
+  let githubAudit: GitHubAuditContext | null = null;
+
+  try {
+    if (githubUrl) {
+      githubAudit = await fetchGitHubAudit(githubUrl);
+    }
+  } catch (error) {
+    console.error("[screen] GitHub fetch sequence failed:", error);
+    githubAudit = emptyGitHubAuditContext({
+      repo_url: githubUrl ?? "",
+      fetch_warnings: [
+        "The GitHub fetch sequence timed out or dropped. Retry the live audit to reload repository artifacts.",
+      ],
+    });
+  }
+
+  let externalProjects: ExternalProjectRecord[] = [];
+  if (
+    args.lookupId &&
+    (!githubUrl || !githubAuditHasFetchedArtifacts(githubAudit))
+  ) {
+    const { data, error } = await args.writer
+      .from("external_projects")
+      .select("project_title, project_url, description, created_at")
+      .eq("user_id", args.lookupId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("[screen] failed to load external_projects:", error);
+    } else {
+      externalProjects = normalizeExternalProjects(data);
+    }
+  }
+
+  return generateGeminiScreen(
+    args.candidate,
+    args.job,
+    githubAudit,
+    hasUsableExternalProjects(externalProjects) ? externalProjects : []
   );
 }
 
@@ -1078,63 +1155,27 @@ async function runQueuedScreening(snapshot: {
   }
 
   try {
-    const githubUrl = resolveCandidateGitHubUrl(snapshot.candidate);
-    let githubAudit: GitHubAuditContext | null = null;
+    const stale = async () => {
+      const currentRunId = await readQueuedRunId(
+        writer,
+        snapshot.screeningId,
+        snapshot.userId
+      );
+      return Boolean(currentRunId && currentRunId !== snapshot.runId);
+    };
 
-    try {
-      if (githubUrl) {
-        githubAudit = await fetchGitHubAudit(githubUrl);
-      }
-    } catch (error) {
-      console.error("[screen] GitHub fetch sequence failed:", error);
-      githubAudit = emptyGitHubAuditContext({
-        repo_url: githubUrl ?? "",
-        fetch_warnings: [
-          "The GitHub fetch sequence timed out or dropped. Retry the live audit to reload repository artifacts.",
-        ],
-      });
-    }
-
-    let externalProjects: ExternalProjectRecord[] = [];
-    if (
-      snapshot.lookupId &&
-      (!githubUrl || !githubAuditHasFetchedArtifacts(githubAudit))
-    ) {
-      const { data, error } = await writer
-        .from("external_projects")
-        .select("project_title, project_url, description, created_at")
-        .eq("user_id", snapshot.lookupId)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("[screen] failed to load external_projects:", error);
-      } else {
-        externalProjects = normalizeExternalProjects(data);
-      }
-    }
-
-    const currentRunId = await readQueuedRunId(
-      writer,
-      snapshot.screeningId,
-      snapshot.userId
-    );
-    if (currentRunId && currentRunId !== snapshot.runId) {
+    if (await stale()) {
       return;
     }
 
-    const result = await generateGeminiScreen(
-      snapshot.candidate,
-      snapshot.job,
-      githubAudit,
-      hasUsableExternalProjects(externalProjects) ? externalProjects : []
-    );
-
-    const latestRunId = await readQueuedRunId(
+    const result = await executeLiveScreening({
+      candidate: snapshot.candidate,
+      job: snapshot.job,
+      lookupId: snapshot.lookupId,
       writer,
-      snapshot.screeningId,
-      snapshot.userId
-    );
-    if (latestRunId && latestRunId !== snapshot.runId) {
+    });
+
+    if (await stale()) {
       return;
     }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
 import {
   type ProductionAuditMetrics,
   emptyProductionAuditMetrics,
@@ -99,15 +100,18 @@ export default function ProductionScorecard({
                 : "Run a GitHub audit to compute CI, tests, and error boundaries."}
             </p>
           </div>
-          <div
-            className={`shrink-0 font-mono text-lg font-bold tabular-nums ${getMetricTone(
-              productionScore
-            )}`}
-          >
-            {productionScore}
-            <span className="text-[11px] font-semibold text-textMuted">
-              /100
-            </span>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <div
+              className={`font-mono text-lg font-bold tabular-nums ${getMetricTone(
+                productionScore
+              )}`}
+            >
+              {productionScore}
+              <span className="text-[11px] font-semibold text-textMuted">
+                /100
+              </span>
+            </div>
+            <ProductionScoreVerifiedBadge score={productionScore} />
           </div>
         </div>
 
@@ -168,7 +172,7 @@ export default function ProductionScorecard({
               : "Repository file tree was not inspected, so production metrics stay at 0."}
           </p>
         </div>
-        <div className="text-right shrink-0">
+        <div className="flex shrink-0 flex-col items-end gap-1.5 text-right">
           <div
             className={`text-2xl font-mono font-bold tabular-nums ${getMetricTone(
               productionScore
@@ -177,7 +181,8 @@ export default function ProductionScorecard({
             {productionScore}
             <span className="text-sm font-semibold text-textMuted">/100</span>
           </div>
-          <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mt-0.5">
+          <ProductionScoreVerifiedBadge score={productionScore} />
+          <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider">
             Weighted total
           </div>
         </div>

@@ -22,12 +22,12 @@ import {
   CLAIM_AUDIT_INTENT,
   clearPendingProductionAudit,
   formatAuditedRepoLabel,
-  getProductionScoreBadge,
   PRIVATE_AUDIT_INTENT,
   type ProductionAuditClaim,
 } from "@/lib/production-audit";
 import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
 import PrivateRepositoryBanner from "@/components/auditor/private-repository-banner";
+import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
 import {
@@ -399,7 +399,6 @@ export default function PublicProductionAudit({
 
   const breakdown = claim?.audit_breakdown;
   const score = claim?.production_score ?? 0;
-  const badge = getProductionScoreBadge(score);
   const repoLabel = breakdown
     ? formatAuditedRepoLabel(breakdown.audited_repo_url)
     : "";
@@ -533,11 +532,7 @@ export default function PublicProductionAudit({
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
                 Production Audit
               </p>
-              <span
-                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${badge.className}`}
-              >
-                {badge.label}
-              </span>
+              <ProductionScoreVerifiedBadge score={score} />
             </div>
 
             <div className="mt-3 flex flex-wrap items-end gap-3">
