@@ -24,10 +24,12 @@ export function GitHubSignInButton({
   className,
   onError,
   nextPath,
+  accountKind,
 }: {
   className?: string;
   onError?: (message: string) => void;
   nextPath?: string;
+  accountKind?: "employer" | "candidate";
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -36,7 +38,7 @@ export function GitHubSignInButton({
     onError?.("");
 
     try {
-      const { error } = await handleGitHubSignIn(nextPath);
+      const { error } = await handleGitHubSignIn(nextPath, accountKind);
       if (error) {
         onError?.(error.message);
       }

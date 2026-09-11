@@ -9,10 +9,13 @@ import { OAuthSignInButtons } from "@/components/OAuthSignInButtons";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { getPostLoginPath } from "@/lib/admin-access";
 import {
+  EMPLOYER_DASHBOARD_PATH,
   isEmployerAuthIntent,
   isEmployerSignup,
+  loadStoredAccountRole,
+  persistEmployerAccount,
+  resolvePostAuthDestination,
   signupMetadataForKind,
-  syncEmployerProfileAfterSignup,
 } from "@/lib/account-role";
 import {
   CLAIM_AUDIT_INTENT,
@@ -55,26 +58,15 @@ function BackToHomeLink({ className = "" }: { className?: string }) {
   );
 }
 
-function safePostAuthPath(user: User, search: string): string {
-  if (getPostLoginPath(user) === "/admin") {
-    return "/admin";
-  }
-
+function appendAuthQuery(
+  path: string,
+  search: string
+): string {
   const params = new URLSearchParams(search);
-  const next = params.get("next")?.trim() ?? "";
   const verified = params.get("employer_verified");
   const verifyError = params.get("verify_error");
-
-  let path = "/dashboard";
-  if (
-    next.startsWith("/") &&
-    !next.startsWith("//") &&
-    !next.includes("\\")
-  ) {
-    path = next;
-  }
-
   const url = new URL(path, "https://getprovix.com");
+
   if (verified && !url.searchParams.has("employer_verified")) {
     url.searchParams.set("employer_verified", verified);
   }
@@ -83,6 +75,25 @@ function safePostAuthPath(user: User, search: string): string {
   }
 
   return `${url.pathname}${url.search}`;
+}
+
+async function destinationAfterAuth(
+  user: User,
+  search: string,
+  signupKind?: SignUpType
+): Promise<string> {
+  const role =
+    signupKind === "business"
+      ? "employer"
+      : await loadStoredAccountRole(supabase, user);
+  const params = new URLSearchParams(search);
+  const destination = resolvePostAuthDestination({
+    role,
+    requestedNext: params.get("next"),
+    isAdmin: getPostLoginPath(user) === "/admin",
+  });
+
+  return appendAuthQuery(destination, search);
 }
 
 function hasAuthEmail(
@@ -136,6 +147,15 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const leaveLogin = async (user: User) => {
+      const destination = await destinationAfterAuth(user, window.location.search);
+      if (!cancelled) {
+        window.location.href = destination;
+      }
+    };
+
     const handleSession = (session: Session | null, event?: string) => {
       if (event === "PASSWORD_RECOVERY") {
         window.location.href = "/update-password";
@@ -143,29 +163,32 @@ export default function LoginPage() {
       }
 
       if (hasAuthEmail(session?.user ?? null)) {
-        window.location.href = safePostAuthPath(
-          session!.user,
-          window.location.search
-        );
+        void leaveLogin(session!.user);
         return;
       }
 
-      setCheckingSession(false);
+      if (!cancelled) {
+        setCheckingSession(false);
+      }
     };
 
     supabase.auth
       .getUser()
       .then(({ data: { user } }) => {
         if (hasAuthEmail(user)) {
-          window.location.href = safePostAuthPath(user, window.location.search);
+          void leaveLogin(user);
           return;
         }
 
-        setCheckingSession(false);
+        if (!cancelled) {
+          setCheckingSession(false);
+        }
       })
       .catch((err) => {
         console.error("Login session check failed:", err);
-        setCheckingSession(false);
+        if (!cancelled) {
+          setCheckingSession(false);
+        }
       });
 
     const {
@@ -174,7 +197,10 @@ export default function LoginPage() {
       handleSession(session, event);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const switchMode = (nextMode: AuthMode) => {
@@ -218,13 +244,16 @@ export default function LoginPage() {
     setMessage("Check your email for a password reset link.");
   };
 
-  const redirectAfterAuth = async (user: User | null | undefined) => {
+  const redirectAfterAuth = async (
+    user: User | null | undefined,
+    signupKind?: SignUpType
+  ) => {
     await supabase.auth.getSession();
-    if (user && !isEmployerSignup(user)) {
+    if (user && signupKind !== "business" && !isEmployerSignup(user)) {
       await claimPendingProductionAudit();
     }
     const destination = user
-      ? safePostAuthPath(user, window.location.search)
+      ? await destinationAfterAuth(user, window.location.search, signupKind)
       : getPostLoginPath(user);
     router.refresh();
     router.push(destination);
@@ -294,8 +323,8 @@ export default function LoginPage() {
       return;
     }
 
-    if (data.session?.user && isEmployerSignup(data.session.user)) {
-      await syncEmployerProfileAfterSignup(
+    if (data.session?.user && signUpType === "business") {
+      await persistEmployerAccount(
         supabase,
         data.session.user.id,
         data.session.user.email ?? trimmedEmail
@@ -310,7 +339,7 @@ export default function LoginPage() {
     }
 
     try {
-      await redirectAfterAuth(data.session?.user ?? null);
+      await redirectAfterAuth(data.session?.user ?? null, signUpType);
     } catch (redirectError) {
       console.error("Post-signup redirect failed:", redirectError);
       setError("Account created, but we could not redirect you. Please refresh and try again.");
@@ -373,6 +402,16 @@ export default function LoginPage() {
           {!showResetPassword && (
             <>
               <OAuthSignInButtons
+                accountKind={
+                  mode === "sign-up" && signUpType === "business"
+                    ? "employer"
+                    : undefined
+                }
+                nextPath={
+                  mode === "sign-up" && signUpType === "business"
+                    ? EMPLOYER_DASHBOARD_PATH
+                    : undefined
+                }
                 onError={(message) => {
                   setMessage(null);
                   setError(message || null);

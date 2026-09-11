@@ -10,10 +10,14 @@ export function OAuthSignInButtons({
   onError,
   layout = "stack",
   size = "default",
+  accountKind,
+  nextPath,
 }: {
   onError?: (message: string) => void;
   layout?: "stack" | "responsive";
   size?: "default" | "hero";
+  accountKind?: "employer" | "candidate";
+  nextPath?: string;
 }) {
   const layoutClass =
     layout === "responsive"
@@ -25,10 +29,14 @@ export function OAuthSignInButtons({
       <GoogleSignInButton
         className={size === "hero" ? HERO_OAUTH_CLASSES : undefined}
         onError={onError}
+        nextPath={nextPath}
+        accountKind={accountKind}
       />
       <GitHubSignInButton
         className={size === "hero" ? HERO_OAUTH_CLASSES : undefined}
         onError={onError}
+        nextPath={nextPath}
+        accountKind={accountKind}
       />
     </div>
   );

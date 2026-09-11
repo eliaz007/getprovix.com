@@ -38,10 +38,12 @@ export function GoogleSignInButton({
   className,
   onError,
   nextPath,
+  accountKind,
 }: {
   className?: string;
   onError?: (message: string) => void;
   nextPath?: string;
+  accountKind?: "employer" | "candidate";
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -50,7 +52,7 @@ export function GoogleSignInButton({
     onError?.("");
 
     try {
-      const { error } = await handleGoogleSignIn(nextPath);
+      const { error } = await handleGoogleSignIn(nextPath, accountKind);
       if (error) {
         onError?.(error.message);
       }

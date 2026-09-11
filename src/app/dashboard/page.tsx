@@ -1782,12 +1782,21 @@ export default function DashboardPage() {
       setActiveTab("my_profile");
     }
     if (
+      profileRole &&
+      !isBusinessAccount &&
+      (activeTab === "talent" ||
+        activeTab === "applicants" ||
+        activeTab === "evaluator")
+    ) {
+      router.replace("/dashboard");
+    }
+    if (
       (isBusinessAccount || isEmployeeAccount) &&
       activeTab === "intro_requests"
     ) {
       setActiveTab("my_profile");
     }
-  }, [showTalentPoolNav, isEmployeeAccount, isBusinessAccount, activeTab, user, authChecked, setActiveTab]);
+  }, [showTalentPoolNav, isEmployeeAccount, isBusinessAccount, activeTab, user, authChecked, setActiveTab, profileRole, router]);
 
   useEffect(() => {
     setMobileNavOpen(false);

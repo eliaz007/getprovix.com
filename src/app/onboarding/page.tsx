@@ -9,7 +9,9 @@ import {
   generateCodenameAlias,
 } from "@/lib/alias-generator";
 import {
+  EMPLOYER_DASHBOARD_PATH,
   normalizeAccountKind,
+  persistEmployerAccount,
   resolveAccountRole as resolveSignupAccountRole,
 } from "@/lib/account-role";
 import { createClient } from "@/utils/supabase/client";
@@ -194,6 +196,7 @@ export default function OnboardingPage() {
     setSaving(true);
 
     const supabase = createClient();
+    await persistEmployerAccount(supabase, user.id, user.email);
     const { error } = await supabase
       .from("profiles")
       .update({
@@ -213,7 +216,7 @@ export default function OnboardingPage() {
       return;
     }
 
-    window.location.href = "/dashboard";
+    window.location.href = EMPLOYER_DASHBOARD_PATH;
   };
 
   if (checkingRole || !accountRole) {

@@ -5,6 +5,11 @@ import {
   isProtectedAppPath,
   isPublicRoute,
 } from "@/lib/dashboard-account";
+import {
+  EMPLOYER_DASHBOARD_PATH,
+  isEmployerDashboardRequest,
+  normalizeAccountKind,
+} from "@/lib/account-role";
 
 const cookieOptions = {
   path: "/",
@@ -126,7 +131,61 @@ export async function updateSession(request: NextRequest) {
     return redirectWithSessionCookies(request, supabaseResponse, "/");
   }
 
-  // Signed-in alias: /auditor and /audits belong in the dashboard auditor.
+  if (user) {
+    const employerRequest = isEmployerDashboardRequest(
+      pathname,
+      request.nextUrl.search
+    );
+    const needsRole =
+      isHome ||
+      isEmployer ||
+      employerRequest ||
+      isAuditorPath(pathname);
+
+    if (needsRole) {
+      let role = normalizeAccountKind(
+        typeof user.user_metadata?.role === "string"
+          ? user.user_metadata.role
+          : null
+      );
+
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+        role =
+          normalizeAccountKind(
+            typeof profile?.role === "string" ? profile.role : null
+          ) ?? role;
+      } catch (err) {
+        console.error("Account role check failed:", err);
+      }
+
+      const isEmployerAccount = role === "employer";
+
+      if (isEmployerAccount && (isHome || isEmployer || isAuditorPath(pathname))) {
+        const destination = new URL(EMPLOYER_DASHBOARD_PATH, request.url);
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          destination.pathname,
+          destination.search
+        );
+      }
+
+      if (!isEmployerAccount && (isEmployer || employerRequest)) {
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          "/dashboard"
+        );
+      }
+    }
+  }
+
+  // Signed-in candidates: /auditor and /audits belong in the dashboard auditor.
   if (user && isAuditorPath(pathname) && !pathname.startsWith("/dashboard/")) {
     return redirectWithSessionCookies(
       request,
@@ -136,30 +195,7 @@ export async function updateSession(request: NextRequest) {
     );
   }
 
-  if (isEmployer && user) {
-    try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const role = profile?.role ?? user.user_metadata?.role;
-      if (role === "candidate") {
-        return redirectWithSessionCookies(
-          request,
-          supabaseResponse,
-          "/dashboard"
-        );
-      }
-    } catch (err) {
-      console.error("Employer role check failed:", err);
-    }
-
-    return supabaseResponse;
-  }
-
-  // Home only: active session → dashboard. /login stays put so users can choose.
+  // Home only: active session → candidate dashboard. Employers already left above.
   if (isHome && user) {
     if (request.nextUrl.searchParams.get("passwordUpdated") === "1") {
       return supabaseResponse;
