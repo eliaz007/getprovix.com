@@ -605,7 +605,7 @@ async function generateGeminiAudit(
           systemInstruction: SYSTEM_PROMPT,
           responseMimeType: "application/json",
           responseSchema: AUDIT_RESPONSE_SCHEMA,
-          temperature: 0.25,
+          temperature: 0,
         },
       });
 
