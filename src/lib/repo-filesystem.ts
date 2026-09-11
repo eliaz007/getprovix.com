@@ -70,16 +70,51 @@ const MAX_SAMPLE_PATHS = 20;
 const NOISE_PATH =
   /(^|\/)(node_modules|dist|build|out|\.next|coverage|vendor|\.git|__pycache__|\.venv|venv)(\/|$)/i;
 
-const TEST_DIR = /(^|\/)(__tests__|tests?|spec|e2e)(\/|$)/i;
-const TEST_FILE =
-  /\.(tests?|spec)\.[cm]?[jt]sx?$/i;
+const TEST_DIR =
+  /(^|\/)(__tests?__|tests?|spec|e2e|cypress|testing|playwright)(\/|$)/i;
+const TEST_FILE = /\.(tests?|spec|cy)\.[cm]?[jt]sx?$/i;
+const TEST_BASENAME = /(^|\/)(tests?|spec)\.[cm]?[jt]sx?$/i;
 const TEST_GO = /_test\.go$/i;
 const TEST_PY = /(^|\/)test_[^/]+\.py$|_test\.py$/i;
+const TEST_RUBY = /(_spec|_test)\.rb$/i;
+const TEST_RUST = /_test\.rs$/i;
+const TEST_ELIXIR = /_test\.exs?$/i;
+const TEST_JVM = /.+Tests?\.(java|kt|groovy)$/i;
+const TEST_SWIFT = /.+Tests\.swift$/i;
+const TEST_DART = /(_test|\.test)\.dart$/i;
+const TEST_DOTNET = /Tests?\.cs$/i;
 const TEST_CONFIG =
-  /(^|\/)(jest\.config|vitest\.config|karma\.conf|pytest\.ini|phpunit\.xml|cypress\.config|playwright\.config)/i;
+  /(^|\/)(jest\.config|jest\.setup|vitest\.config|vitest\.workspace|karma\.conf|pytest\.ini|phpunit\.xml|cypress\.config|playwright\.config|ava\.config|\.mocharc|mocha\.opts|wdio\.conf|nightwatch\.conf|web-test-runner\.config|jasmine\.json|conftest\.py|tox\.ini|pest\.php|\.rspec|setupTests\.|setup-tests\.)/i;
 
 const CI_PATH =
-  /(^|\/)(\.github\/workflows\/[^/]+\.ya?ml$|\.gitlab-ci\.ya?ml$|Jenkinsfile$|\.circleci\/|azure-pipelines\.ya?ml$|\.travis\.ya?ml$|bitbucket-pipelines\.ya?ml$|\.buildkite\/)/i;
+  /(^|\/)(\.github\/workflows\/[^/]+\.ya?ml$|\.gitlab-ci\.ya?ml$|Jenkinsfile$|\.circleci\/|azure-pipelines\.ya?ml$|\.travis\.ya?ml$|bitbucket-pipelines\.ya?ml$|\.buildkite\/|appveyor\.ya?ml$|\.?drone\.ya?ml$|cloudbuild\.ya?ml$|\.?woodpecker\.ya?ml$)/i;
+
+export const WORKSPACE_ROOT_DIRS = [
+  "packages",
+  "apps",
+  "services",
+  "libs",
+  "modules",
+  "workspaces",
+] as const;
+
+export const CORE_ARTIFACT_PROBE_DIRS = [
+  ".github/workflows",
+  "tests",
+  "test",
+  "__tests__",
+  "__test__",
+  "spec",
+  "e2e",
+  "cypress",
+  "testing",
+  "src/test",
+  "src/tests",
+  "src/__tests__",
+] as const;
+
+const WORKSPACE_PACKAGE_PREFIX =
+  /^(packages|apps|services|libs|modules|workspaces)\/[^/]+/i;
 
 const ERROR_HANDLING_PATH =
   /(error[-_]?boundar|error[-_]?handler|exception[-_]?handler|(^|\/)global-error\.[cm]?[jt]sx?$|(^|\/)error\.[cm]?[jt]sx?$|(^|\/)errors?\.(ts|js|tsx|jsx|py|go)$|(^|\/)errors\/|middleware\/.*error)/i;
@@ -128,10 +163,39 @@ export function isTestPath(path: string): boolean {
   return (
     TEST_DIR.test(path) ||
     TEST_FILE.test(path) ||
+    TEST_BASENAME.test(path) ||
     TEST_GO.test(path) ||
     TEST_PY.test(path) ||
+    TEST_RUBY.test(path) ||
+    TEST_RUST.test(path) ||
+    TEST_ELIXIR.test(path) ||
+    TEST_JVM.test(path) ||
+    TEST_SWIFT.test(path) ||
+    TEST_DART.test(path) ||
+    TEST_DOTNET.test(path) ||
     TEST_CONFIG.test(path)
   );
+}
+
+export function discoverWorkspacePackageDirs(
+  paths: string[],
+  limit = 12
+): string[] {
+  const packages = new Set<string>();
+
+  for (const raw of paths) {
+    const match = raw.trim().replace(/\\/g, "/").match(WORKSPACE_PACKAGE_PREFIX);
+    if (!match) {
+      continue;
+    }
+
+    packages.add(match[0]);
+    if (packages.size >= limit) {
+      break;
+    }
+  }
+
+  return Array.from(packages);
 }
 
 export function isCiWorkflowPath(path: string): boolean {
@@ -337,13 +401,13 @@ const DEDUCTION_META: Record<
     artifact: "tests",
     label: "Missing test suite",
     detail:
-      "No test files, test directories, or test-runner config were found in the inspected file tree. README claims of tests do not count.",
+      "No test files, nested package test dirs, or test-runner config were found in the inspected file tree (Jest, Vitest, Ava, Mocha, Pytest, Go test, Playwright, Cypress, and similar all count). README claims of tests do not count.",
   },
   missing_ci: {
     artifact: "ci",
     label: "Missing CI/CD workflows",
     detail:
-      "No CI/CD workflow files were found (.github/workflows, GitLab CI, Jenkins, CircleCI, Azure Pipelines, or Travis). README claims of CI do not count.",
+      "No CI/CD workflow files were found (.github/workflows, GitLab CI, Jenkins, CircleCI, Azure Pipelines, Travis, Buildkite, Drone, or Cloud Build). README claims of CI do not count.",
   },
   missing_error_handling: {
     artifact: "error_handling",

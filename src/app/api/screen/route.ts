@@ -902,7 +902,7 @@ async function generateGeminiScreen(
           systemInstruction: SYSTEM_PROMPT,
           responseMimeType: "application/json",
           responseSchema: SCREEN_RESPONSE_SCHEMA,
-          temperature: 0.2,
+          temperature: 0,
         },
       });
 

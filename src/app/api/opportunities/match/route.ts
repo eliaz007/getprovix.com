@@ -152,7 +152,7 @@ async function generateGeminiOpportunityMatch(
           systemInstruction: SYSTEM_PROMPT,
           responseMimeType: "application/json",
           responseSchema: MATCH_RESPONSE_SCHEMA,
-          temperature: 0.2,
+          temperature: 0,
         },
       });
 

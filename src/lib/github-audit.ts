@@ -1,6 +1,9 @@
 import {
   classifyRepoFilesystem,
+  CORE_ARTIFACT_PROBE_DIRS,
+  discoverWorkspacePackageDirs,
   emptyRepoFilesystemEvidence,
+  WORKSPACE_ROOT_DIRS,
   type RepoFilesystemEvidence,
 } from "@/lib/repo-filesystem";
 import { readJsonResponse } from "@/lib/read-json-response";
@@ -285,39 +288,222 @@ async function githubFetch(
     : new Error("GitHub fetch failed after retries.");
 }
 
-async function listGithubContents(
-  owner: string,
-  repo: string,
-  path: string
-): Promise<string[]> {
+const MAX_WORKSPACE_PACKAGE_TREES = 8;
+
+type GithubDirEntry = {
+  name: string;
+  path: string;
+  sha: string;
+  type: "dir" | "file" | "other";
+};
+
+function githubContentsUrl(owner: string, repo: string, path: string, ref?: string): string {
   const encoded = path
     .split("/")
+    .filter(Boolean)
     .map((segment) => encodeURIComponent(segment))
     .join("/");
-  const response = await githubFetch(
-    `https://api.github.com/repos/${owner}/${repo}/contents/${encoded}`
-  );
+  const base = encoded
+    ? `https://api.github.com/repos/${owner}/${repo}/contents/${encoded}`
+    : `https://api.github.com/repos/${owner}/${repo}/contents`;
+  return ref ? `${base}?ref=${encodeURIComponent(ref)}` : base;
+}
+
+async function listGithubDirEntries(
+  owner: string,
+  repo: string,
+  path: string,
+  ref?: string
+): Promise<GithubDirEntry[]> {
+  const response = await githubFetch(githubContentsUrl(owner, repo, path, ref));
 
   if (!response.ok) {
     return [];
   }
 
   const payload = (await readJsonResponse(response)) as
-    | { path?: string; name?: string; type?: string }
-    | Array<{ path?: string; name?: string; type?: string }>;
+    | { path?: string; name?: string; sha?: string; type?: string }
+    | Array<{ path?: string; name?: string; sha?: string; type?: string }>;
 
   const entries = Array.isArray(payload) ? payload : [payload];
   return entries
-    .map((entry) => {
-      if (typeof entry.path === "string" && entry.path.trim()) {
-        return entry.path.trim();
+    .map((entry): GithubDirEntry | null => {
+      const name = entry.name?.trim() || "";
+      const entryPath =
+        entry.path?.trim() || (name ? (path ? `${path}/${name}` : name) : "");
+      const sha = entry.sha?.trim() || "";
+      if (!entryPath) {
+        return null;
       }
-      if (typeof entry.name === "string" && entry.name.trim()) {
-        return path ? `${path}/${entry.name.trim()}` : entry.name.trim();
-      }
-      return "";
+
+      const type =
+        entry.type === "dir" ? "dir" : entry.type === "file" ? "file" : "other";
+      return { name: name || entryPath, path: entryPath, sha, type };
     })
-    .filter(Boolean);
+    .filter((entry): entry is GithubDirEntry => entry !== null);
+}
+
+async function listGithubContents(
+  owner: string,
+  repo: string,
+  path: string,
+  ref?: string
+): Promise<string[]> {
+  const entries = await listGithubDirEntries(owner, repo, path, ref);
+  return entries.map((entry) => entry.path);
+}
+
+async function fetchGitSubtreePaths(
+  owner: string,
+  repo: string,
+  treeSha: string,
+  pathPrefix: string
+): Promise<string[]> {
+  const response = await githubFetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(treeSha)}?recursive=1`
+  );
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const payload = (await readJsonResponse(response)) as {
+    tree?: Array<{ path?: string; type?: string }>;
+  };
+  const prefix = pathPrefix.replace(/\/$/, "");
+
+  return (payload.tree ?? [])
+    .filter((entry) => entry.type === "blob" && typeof entry.path === "string")
+    .map((entry) => `${prefix}/${entry.path as string}`);
+}
+
+async function collectTruncatedTreePaths(
+  owner: string,
+  repo: string,
+  branch: string,
+  existingPaths: string[],
+  warnings: string[]
+): Promise<string[]> {
+  const extraPaths: string[] = [];
+
+  const probeResults = await Promise.all(
+    CORE_ARTIFACT_PROBE_DIRS.map(async (dir) => {
+      try {
+        return await listGithubContents(owner, repo, dir, branch);
+      } catch (error) {
+        console.error(
+          `[github-audit] targeted contents fetch failed for ${owner}/${repo}/${dir}:`,
+          error
+        );
+        return [] as string[];
+      }
+    })
+  );
+  extraPaths.push(...probeResults.flat());
+
+  const packages = new Map<string, string>();
+
+  for (const dir of discoverWorkspacePackageDirs(
+    existingPaths,
+    MAX_WORKSPACE_PACKAGE_TREES
+  )) {
+    packages.set(dir, "");
+  }
+
+  const workspaceRoots = await Promise.all(
+    WORKSPACE_ROOT_DIRS.map(async (root) => {
+      try {
+        return await listGithubDirEntries(owner, repo, root, branch);
+      } catch (error) {
+        console.error(
+          `[github-audit] workspace root listing failed for ${owner}/${repo}/${root}:`,
+          error
+        );
+        return [] as GithubDirEntry[];
+      }
+    })
+  );
+
+  for (const entry of workspaceRoots.flat()) {
+    if (entry.type === "dir" && entry.sha) {
+      packages.set(entry.path, entry.sha);
+    }
+  }
+
+  const packageList = Array.from(packages.entries()).slice(
+    0,
+    MAX_WORKSPACE_PACKAGE_TREES
+  );
+
+  if (packageList.length > 0) {
+    warnings.push(
+      `Truncated file tree looked like a monorepo; inspected ${packageList
+        .map(([path]) => path)
+        .join(", ")} for nested tests, CI, and error-handling files.`
+    );
+  }
+
+  const subtreeResults = await Promise.all(
+    packageList.map(async ([pkgPath, knownSha]) => {
+      try {
+        const treeSha =
+          knownSha ||
+          (
+            await listGithubDirEntries(
+              owner,
+              repo,
+              pkgPath.includes("/")
+                ? pkgPath.slice(0, pkgPath.lastIndexOf("/"))
+                : "",
+              branch
+            )
+          ).find((entry) => entry.path === pkgPath && entry.type === "dir")
+            ?.sha;
+
+        const nestedDirs = [
+          "tests",
+          "test",
+          "__tests__",
+          "src/__tests__",
+          "src/test",
+          "cypress",
+        ];
+        const listNestedProbeDirs = async () => {
+          const nested = await Promise.all(
+            nestedDirs.map((dir) =>
+              listGithubContents(owner, repo, `${pkgPath}/${dir}`, branch)
+            )
+          );
+          return nested.flat();
+        };
+
+        if (!treeSha) {
+          return await listNestedProbeDirs();
+        }
+
+        const subtree = await fetchGitSubtreePaths(
+          owner,
+          repo,
+          treeSha,
+          pkgPath
+        );
+        if (subtree.length > 0) {
+          return subtree;
+        }
+
+        return await listNestedProbeDirs();
+      } catch (error) {
+        console.error(
+          `[github-audit] nested package tree fetch failed for ${owner}/${repo}/${pkgPath}:`,
+          error
+        );
+        return [] as string[];
+      }
+    })
+  );
+  extraPaths.push(...subtreeResults.flat());
+
+  return extraPaths;
 }
 
 async function fetchRepoFilesystem(
@@ -355,48 +541,37 @@ async function fetchRepoFilesystem(
         truncated?: boolean;
         tree?: Array<{ path?: string; type?: string }>;
       };
-      const paths = (payload.tree ?? [])
+      const entries = payload.tree ?? [];
+      const paths = entries
         .filter((entry) => entry.type === "blob" && typeof entry.path === "string")
         .map((entry) => entry.path as string);
+      const discoveryPaths = entries
+        .filter((entry) => typeof entry.path === "string" && entry.path.trim())
+        .map((entry) => entry.path as string);
 
-      const evidence = classifyRepoFilesystem(paths, {
-        inspected: true,
-        truncated: Boolean(payload.truncated),
-      });
-
-      if (payload.truncated) {
-        warnings.push(
-          `File-tree listing for ${owner}/${repo} was truncated; core artifacts were scored only from the returned paths.`
-        );
-
-        const extraPaths: string[] = [];
-        for (const dir of [
-          ".github/workflows",
-          "tests",
-          "test",
-          "__tests__",
-          "spec",
-          "e2e",
-        ]) {
-          try {
-            extraPaths.push(...(await listGithubContents(owner, repo, dir)));
-          } catch (error) {
-            console.error(
-              `[github-audit] targeted contents fetch failed for ${owner}/${repo}/${dir}:`,
-              error
-            );
-          }
-        }
-
-        if (extraPaths.length > 0) {
-          return classifyRepoFilesystem([...paths, ...extraPaths], {
-            inspected: true,
-            truncated: true,
-          });
-        }
+      if (!payload.truncated) {
+        return classifyRepoFilesystem(paths, {
+          inspected: true,
+          truncated: false,
+        });
       }
 
-      return evidence;
+      warnings.push(
+        `File-tree listing for ${owner}/${repo} was truncated; nested monorepo packages and alternative test-runner paths were probed so missing-file caps are not applied from a partial tree.`
+      );
+
+      const extraPaths = await collectTruncatedTreePaths(
+        owner,
+        repo,
+        branch,
+        discoveryPaths,
+        warnings
+      );
+
+      return classifyRepoFilesystem([...paths, ...extraPaths], {
+        inspected: true,
+        truncated: true,
+      });
     } catch (error) {
       console.error(
         `[github-audit] GitHub file-tree fetch failed for ${owner}/${repo}@${branch}:`,
