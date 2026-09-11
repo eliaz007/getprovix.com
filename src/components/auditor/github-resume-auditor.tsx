@@ -10,6 +10,7 @@ import ExternalProjectsForm from "@/components/portfolio/external-projects-form"
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
 import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
 import PrivateRepositoryBanner from "@/components/auditor/private-repository-banner";
+import { normalizeAuditChecks } from "@/lib/audit-checks";
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
   buildProductionAuditClaim,

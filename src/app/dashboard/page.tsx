@@ -3254,7 +3254,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         throw new Error(`Essay review failed (${response.status})`);
       }
 
-      const data = await readJsonResponse(response);
+      const data = await readJsonResponse<{
+        overallScore: number;
+        verdict: string;
+        strengths: string[];
+        improvements: string[];
+        lineFeedback: {
+          originalText: string;
+          suggestion: string;
+          reason: string;
+        }[];
+      }>(response);
       setEssayReview(data);
     } catch (err) {
       console.error("Essay review request failed:", err);
@@ -3373,7 +3383,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         throw new Error(`Aid appeal failed (${response.status})`);
       }
 
-      const data = await readJsonResponse(response);
+      const data = await readJsonResponse<{
+        strategyScore: "Strong Leverage" | "Moderate Leverage" | "Needs Evidence";
+        strategyAnalysis: string;
+        requiredDocuments: string[];
+        negotiationDosAndDonts: string[];
+        letterSubject: string;
+        letterBody: string;
+      }>(response);
       setAidAppealResult(data);
     } catch (err) {
       console.error("Aid appeal request failed:", err);

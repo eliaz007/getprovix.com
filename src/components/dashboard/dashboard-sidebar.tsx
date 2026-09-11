@@ -78,19 +78,16 @@ const CAREER_ACCELERATOR_NAV = [
     key: "pitch-studio",
     href: "/dashboard/pitch-studio",
     label: "Pitch Studio",
-    kind: "protected" as const,
   },
   {
     key: "github-auditor",
     href: "/dashboard/auditor",
     label: "Code & Resume Auditor",
-    kind: "protected" as const,
   },
   {
     key: "interview-prep",
     href: "/dashboard/interview-prep",
     label: "Interview Simulator",
-    kind: "protected" as const,
   },
 ] as const;
 
@@ -382,42 +379,29 @@ export default function DashboardSidebar() {
               Career Accelerator
             </span>
             <ul className={navListClass}>
-              {CAREER_ACCELERATOR_NAV.map((item) =>
-                item.kind === "public" ? (
-                  <li key={item.key} className={navItemShellClass}>
-                    <Link
-                      href={item.href}
-                      onClick={() => setMobileNavOpen(false)}
-                      className={navItemClass(isAuditorPath(pathname))}
-                    >
+              {CAREER_ACCELERATOR_NAV.map((item) => (
+                <ProtectedNavLink
+                  key={item.key}
+                  href={item.href}
+                  isActive={
+                    item.key === "pitch-studio"
+                      ? isPitchStudioPath(pathname)
+                      : item.key === "github-auditor"
+                        ? isAuditorPath(pathname)
+                        : isInterviewPrepPath(pathname)
+                  }
+                  icon={
+                    item.key === "pitch-studio" ? (
+                      <PenTool className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    ) : item.key === "github-auditor" ? (
                       <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
-                      {item.label}
-                    </Link>
-                  </li>
-                ) : (
-                  <ProtectedNavLink
-                    key={item.key}
-                    href={item.href}
-                    isActive={
-                      item.key === "pitch-studio"
-                        ? isPitchStudioPath(pathname)
-                        : item.key === "github-auditor"
-                          ? isAuditorPath(pathname)
-                          : isInterviewPrepPath(pathname)
-                    }
-                    icon={
-                      item.key === "pitch-studio" ? (
-                        <PenTool className="w-4 h-4 shrink-0" aria-hidden="true" />
-                      ) : item.key === "github-auditor" ? (
-                        <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
-                      ) : (
-                        <Terminal className="w-4 h-4 shrink-0" aria-hidden="true" />
-                      )
-                    }
-                    label={item.label}
-                  />
-                )
-              )}
+                    ) : (
+                      <Terminal className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    )
+                  }
+                  label={item.label}
+                />
+              ))}
             </ul>
           </div>
         )}
