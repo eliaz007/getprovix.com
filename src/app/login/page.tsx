@@ -39,6 +39,51 @@ const AUTH_INPUT_CLASS =
 const AUTH_PRIMARY_BUTTON_CLASS =
   "inline-flex w-full items-center justify-center rounded-md bg-brand text-white px-4 py-2.5 text-sm font-medium transition-colors hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 
+function AccountKindToggle({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: SignUpType;
+  onChange: (value: SignUpType) => void;
+  disabled?: boolean;
+}) {
+  const options = [
+    { id: "candidate" as const, label: "Developer" },
+    { id: "business" as const, label: "Employer" },
+  ];
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Account type"
+      className="mx-auto grid w-full grid-cols-2 gap-1 rounded-full border border-border bg-background p-1"
+    >
+      {options.map((option) => {
+        const isActive = value === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onChange(option.id)}
+            disabled={disabled}
+            tabIndex={disabled ? -1 : 0}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
+              isActive
+                ? "bg-white/10 text-white border border-border"
+                : "border border-transparent text-textMuted hover:text-textMain"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function tabButtonClass(isActive: boolean) {
   return `py-2 rounded-md text-sm font-medium tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
     isActive
@@ -355,7 +400,8 @@ export default function LoginPage() {
     );
   }
 
-  const isBusinessSignUp = mode === "sign-up" && signUpType === "business";
+  const isEmployer = signUpType === "business";
+  const isBusinessSignUp = mode === "sign-up" && isEmployer;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
@@ -372,11 +418,9 @@ export default function LoginPage() {
               ? "Reset Password"
               : isClaimAudit
                 ? "Claim your verified scorecard"
-                : isBusinessSignUp
-                  ? "Create your founder account"
-                  : "Welcome to Provix"}
+                : "Welcome to Provix"}
           </h1>
-          <p className="text-sm text-textMuted text-center mb-8">
+          <p className="text-sm text-textMuted text-center mb-8 mt-3">
             {showResetPassword
               ? "Enter your email to receive a password reset link"
               : isClaimAudit
@@ -384,7 +428,7 @@ export default function LoginPage() {
                 : mode === "sign-in"
                   ? "Sign in to access your account"
                   : isBusinessSignUp
-                    ? "Use any email — personal Gmail is welcome."
+                    ? "Create an employer account. Personal email is welcome."
                     : "Create an account to get started"}
           </p>
 
@@ -403,15 +447,9 @@ export default function LoginPage() {
             <>
               <OAuthSignInButtons
                 accountKind={
-                  mode === "sign-up" && signUpType === "business"
-                    ? "employer"
-                    : undefined
+                  isBusinessSignUp ? "employer" : undefined
                 }
-                nextPath={
-                  mode === "sign-up" && signUpType === "business"
-                    ? EMPLOYER_DASHBOARD_PATH
-                    : undefined
-                }
+                nextPath={isBusinessSignUp ? EMPLOYER_DASHBOARD_PATH : undefined}
                 onError={(message) => {
                   setMessage(null);
                   setError(message || null);
@@ -503,6 +541,25 @@ export default function LoginPage() {
             </form>
           ) : (
             <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
+              <div
+                className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
+                  mode === "sign-up"
+                    ? "grid-rows-[1fr] opacity-100"
+                    : "-mb-4 grid-rows-[0fr] opacity-0 pointer-events-none"
+                }`}
+                aria-hidden={mode !== "sign-up"}
+              >
+                <div className="overflow-hidden">
+                  <p className="mb-2 text-center text-[10px] font-bold uppercase tracking-widest text-textMuted">
+                    I am a
+                  </p>
+                  <AccountKindToggle
+                    value={signUpType}
+                    onChange={setSignUpType}
+                    disabled={mode !== "sign-up"}
+                  />
+                </div>
+              </div>
               {mode === "sign-up" && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
