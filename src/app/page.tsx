@@ -70,12 +70,6 @@ export default function Home() {
             >
               Terms
             </Link>
-            <Link
-              href="/pricing"
-              className="text-textMuted transition-colors duration-200 hover:text-textMain"
-            >
-              Pricing
-            </Link>
           </div>
         </div>
       </footer>
