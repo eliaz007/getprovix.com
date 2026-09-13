@@ -285,6 +285,7 @@ function AuditHistoryList({
 export default function VerifiedCodeQualityScorecard({
   record,
   onVisibilityChange,
+  compact = true,
 }: {
   record: ProductionAuditRecord | null;
   onVisibilityChange?: (visible: boolean) => void;
@@ -388,10 +389,22 @@ export default function VerifiedCodeQualityScorecard({
       : "Hidden";
 
   return (
-    <section className="rounded-lg border border-border bg-panel px-3 py-2.5">
+    <section
+      className={
+        compact
+          ? "rounded-lg border border-border bg-panel px-3 py-2.5"
+          : "rounded-2xl border border-border bg-panel px-5 py-4"
+      }
+    >
       <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <p className="font-mono text-sm font-semibold tabular-nums text-textMain">
+        <div className="flex min-w-0 items-center gap-3">
+          <p
+            className={
+              compact
+                ? "font-mono text-sm font-semibold tabular-nums text-textMain"
+                : "font-mono text-3xl font-extrabold tabular-nums tracking-tight text-textMain"
+            }
+          >
             {hasScore ? score : "—"}
             <span className="ml-0.5 text-[11px] font-normal text-textMuted">
               /100
@@ -419,7 +432,13 @@ export default function VerifiedCodeQualityScorecard({
         </label>
       </div>
 
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <div
+        className={
+          compact
+            ? "mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1"
+            : "mt-3 flex flex-wrap items-center gap-x-3 gap-y-2"
+        }
+      >
         {hasScore && record ? (
           <>
             <span className="truncate text-[11px] text-textMuted">

@@ -233,7 +233,7 @@ export default function OnboardingPage() {
         </h1>
         <p className="text-sm text-textMuted text-center mb-8">
           {isEmployer
-            ? "Tell us about your team so we can match you with vetted talent."
+            ? "Tell us about your team so we can match you with the Provix Talent Network."
             : "A few quick details before you get to the dashboard."}
         </p>
 

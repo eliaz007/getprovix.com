@@ -26,5 +26,7 @@ export const config = {
     "/api/profile/:path*",
     "/api/talent-pool/:path*",
     "/api/jobs/:path*",
+    "/api/verify-repo",
+    "/api/verify-repo/:path*",
   ],
 };

@@ -43,10 +43,10 @@ const employerHighlights: FeatureHighlight[] = [
 ];
 
 const talentHighlights = [
-  "List your profile in the vetted talent pool",
+  "List your profile in the Provix Talent Network",
   "Get AI match scores against live roles",
   "Share proof-of-work and portfolio links",
-  "Apply to opportunities with one click",
+  "Apply through the Provix Talent Network with one click",
 ];
 
 const BETA_UNLOCK_STORAGE_KEY = "beta_unlocked_session";
@@ -148,7 +148,7 @@ export default function PricingPage() {
           </p>
 
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-textMain">
-            Hire Vetted Talent with Zero Upfront Cost
+            Hire from the Provix Talent Network with Zero Upfront Cost
           </h1>
           <p className="text-textMuted text-base sm:text-lg mt-4 max-w-3xl mx-auto leading-relaxed">
             Browse profiles, view proof-of-work, and generate Gemini Deep

@@ -62,7 +62,7 @@ const CANDIDATE_PRIMARY_NAV = [
   {
     key: "opportunities",
     tab: "opportunities" as const,
-    label: "Opportunities",
+    label: "Provix Talent Network",
     icon: "Compass" as const,
   },
   {
@@ -95,7 +95,7 @@ const EMPLOYEE_HUB_NAV = [
   {
     key: "opportunity_radar",
     tab: "opportunity_radar" as const,
-    label: "Opportunity Radar",
+    label: "Provix Talent Network",
     icon: "Radar" as const,
   },
   {
@@ -125,7 +125,7 @@ const EMPLOYER_CONSOLE_NAV = [
   {
     key: "talent",
     tab: "talent" as const,
-    label: "Vetted Talent Pool",
+    label: "Provix Talent Network",
     icon: "Users" as const,
   },
   {
@@ -409,7 +409,7 @@ export default function DashboardSidebar() {
         {isEmployeeAccount && (
           <div className={secondaryNavSectionClass}>
             <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
-              Opportunity Hub
+              Provix Talent Network
             </span>
             <ul className={navListClass}>
               {EMPLOYEE_HUB_NAV.map((item) => (

@@ -27,6 +27,7 @@ import {
 } from "@/lib/production-audit";
 import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
 import PrivateRepositoryBanner from "@/components/auditor/private-repository-banner";
+import RepoOwnershipVerifier from "@/components/auditor/repo-ownership-verifier";
 import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
@@ -37,6 +38,7 @@ import {
 import {
   getGitHubUrlValidationMessage,
   hasUsableGitHubAuditTarget,
+  parseGitHubUrl,
 } from "@/lib/validate-github-url";
 import { createClient } from "@/utils/supabase/client";
 
@@ -153,6 +155,11 @@ export default function PublicProductionAudit({
   };
 
   const hasValidGithubInput = hasUsableGitHubAuditTarget(repoUrl);
+  const parsedGithub = parseGitHubUrl(repoUrl);
+  const ownershipRepoUrl =
+    parsedGithub?.repo != null
+      ? `https://github.com/${parsedGithub.owner}/${parsedGithub.repo}`
+      : "";
   const githubValidationMessage =
     repoUrl.trim() && !hasValidGithubInput
       ? getGitHubUrlValidationMessage(repoUrl)
@@ -444,6 +451,10 @@ export default function PublicProductionAudit({
         ) : null}
       </form>
 
+      {!embedded && ownershipRepoUrl ? (
+        <RepoOwnershipVerifier repoUrl={ownershipRepoUrl} />
+      ) : null}
+
       {limitReached ? (
         <div
           role="status"
@@ -638,7 +649,7 @@ export default function PublicProductionAudit({
                 href={TALENT_HREF}
                 className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-transparent px-3 py-2.5 text-xs font-bold tracking-tight text-white transition-colors duration-200 hover:bg-white/5 cursor-pointer"
               >
-                Browse Vetted Talent
+                Browse Provix Talent Network
                 <ArrowRight className="h-3.5 w-3.5" aria-hidden />
               </Link>
             </article>

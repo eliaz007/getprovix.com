@@ -102,7 +102,7 @@ export default function GetVerifiedBanner({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-amber-100">Get Verified</p>
           <p className="mt-1 text-sm text-amber-200/90">
-            Confirm a corporate work email to unlock the talent pool, AI screening, and job posting.
+            Confirm a corporate work email to unlock the Provix Talent Network, AI screening, and job posting.
             Personal inboxes like Gmail are not accepted.
           </p>
 

@@ -140,7 +140,7 @@ export default function FeaturedShowcase({
           Builders with verified proof-of-work
         </h2>
         <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-textMuted">
-          Real profiles from the Provix talent pool — screened for GitHub depth,
+          Real profiles from the Provix Talent Network — screened for GitHub depth,
           integrity, and technical signal before they reach your inbox.
         </p>
       </div>

@@ -111,7 +111,7 @@ export default function OpportunitiesJobFeed({
           Job Feed
         </p>
         <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
-          Opportunities
+          Provix Talent Network
         </h1>
         <p className="text-textMuted text-sm mt-2 leading-relaxed">
           {isGuest

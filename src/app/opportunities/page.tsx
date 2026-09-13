@@ -2,7 +2,7 @@ import PublicOpportunitiesFeed from "@/components/opportunities/public-opportuni
 import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
-  "Opportunities",
+  "Provix Talent Network",
   "Browse curated job listings, companies, and requirements. Sign in to express interest.",
   "/opportunities"
 );

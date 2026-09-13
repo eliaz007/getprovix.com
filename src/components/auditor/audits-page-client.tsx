@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
 import VerifiedCodeQualityScorecard from "@/components/dashboard/verified-code-quality-scorecard";
+import ScoreTrendChart from "@/components/dashboard/score-trend-chart";
 import {
   parseProductionAuditFromProfileRow,
   type ProductionAuditRecord,
@@ -69,27 +70,47 @@ export default function AuditsPageClient({
     };
   }, []);
 
+  const handleVisibilityChange = (nextVisible: boolean) => {
+    setScorecard((prev) =>
+      prev ? { ...prev, isPubliclyVisible: nextVisible } : prev
+    );
+  };
+
   return (
-    <div className="space-y-8">
-      {showScorecard ? (
-        <VerifiedCodeQualityScorecard
-          record={scorecard}
-          onVisibilityChange={(nextVisible) => {
-            setScorecard((prev) =>
-              prev ? { ...prev, isPubliclyVisible: nextVisible } : prev
-            );
-          }}
-        />
-      ) : null}
-      <GitHubResumeAuditor
-        key={`${initialGithubUrl}-${initialPrivateWork ? "private" : "public"}`}
-        initialGithubUrl={initialGithubUrl}
-        initialPrivateWork={initialPrivateWork}
-        onAuditPersisted={(record) => {
-          setShowScorecard(true);
-          setScorecard(record);
-        }}
-      />
-    </div>
+    <GitHubResumeAuditor
+      key={`${initialGithubUrl}-${initialPrivateWork ? "private" : "public"}`}
+      initialGithubUrl={initialGithubUrl}
+      initialPrivateWork={initialPrivateWork}
+      sidePanel={
+        showScorecard ? (
+          <ScoreTrendChart
+            className="h-full"
+            repoUrl={scorecard?.breakdown.audited_repo_url}
+            current={
+              scorecard
+                ? {
+                    score: scorecard.productionScore,
+                    auditedAt: scorecard.breakdown.audited_at,
+                    repoUrl: scorecard.breakdown.audited_repo_url,
+                  }
+                : null
+            }
+          />
+        ) : undefined
+      }
+      scoreSummary={
+        showScorecard ? (
+          <VerifiedCodeQualityScorecard
+            compact={false}
+            record={scorecard}
+            onVisibilityChange={handleVisibilityChange}
+          />
+        ) : null
+      }
+      onAuditPersisted={(record) => {
+        setShowScorecard(true);
+        setScorecard(record);
+      }}
+    />
   );
 }

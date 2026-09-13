@@ -41,6 +41,7 @@ import ResumeFileUpload from "@/components/ResumeFileUpload";
 import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import VerifiedCodeQualityScorecard from "@/components/dashboard/verified-code-quality-scorecard";
+import ScoreTrendChart from "@/components/dashboard/score-trend-chart";
 import ProductionScoreBadge from "@/components/employer/production-score-badge";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
 import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
@@ -1412,7 +1413,7 @@ export default function DashboardPage() {
         if (error && data.length === 0) {
           console.error("Talent pool fetch failed:", error);
           if (!opts?.silent) {
-            setTalentPoolError("Could not load the talent pool. Please try again.");
+            setTalentPoolError("Could not load the Provix Talent Network. Please try again.");
           }
           return;
         }
@@ -1440,7 +1441,7 @@ export default function DashboardPage() {
       } catch (err) {
         console.error("Talent pool fetch threw:", err);
         if (isMounted && !opts?.silent) {
-          setTalentPoolError("Could not load the talent pool. Please try again.");
+          setTalentPoolError("Could not load the Provix Talent Network. Please try again.");
         }
       } finally {
         if (isMounted && !opts?.silent) {
@@ -2029,7 +2030,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     if (nextVisible && !isValidGitHubUrl(portfolioUrl)) {
       showToast(
         getGitHubUrlValidationMessage(portfolioUrl) ??
-          "Add a valid GitHub profile URL before joining the talent pool."
+          "Add a valid GitHub profile URL before joining the Provix Talent Network."
       );
       return;
     }
@@ -2055,7 +2056,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       if (error) {
         setIsVisibleInPool(previousVisible);
         showToast(
-          userMessage ?? "Could not update talent pool visibility. Please try again."
+          userMessage ?? "Could not update Provix Talent Network visibility. Please try again."
         );
         return;
       }
@@ -2079,12 +2080,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       showToast(
         nextVisible
           ? "You are now visible to employers."
-          : "You are hidden from the talent pool."
+          : "You are hidden from the Provix Talent Network."
       );
     } catch (error) {
       console.error("Talent pool visibility update failed:", error);
       setIsVisibleInPool(previousVisible);
-      showToast("Could not update talent pool visibility. Please try again.");
+      showToast("Could not update Provix Talent Network visibility. Please try again.");
     } finally {
       setIsTogglingVisibility(false);
     }
@@ -3762,7 +3763,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               className={guestNavClass(false)}
             >
               <Icons.Compass />
-              Opportunities
+              Provix Talent Network
             </Link>
           </li>
           <li className="order-none w-full shrink-0">
@@ -4504,7 +4505,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </p>
                         )}
                         <p className="mt-2 text-[11px] text-textMuted">
-                          Required to save your profile and appear in the employer talent pool.
+                          Required to save your profile and appear in the Provix Talent Network.
                           If your GitHub is private or empty, add project artifacts below so the
                           AI auditor can still verify your work.
                         </p>
@@ -4575,7 +4576,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 Work Preference
                               </span>
                               <span className="text-[11px] text-textMuted">
-                                Shown on your public builder card and talent pool
+                                Shown on your public builder card and Provix Talent Network
                                 profile.
                               </span>
                             </div>
@@ -4627,7 +4628,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               Availability Status
                             </span>
                             <span className="text-[11px] text-textMuted">
-                              Shown on your talent pool card and used by recruiter
+                              Shown on your Provix Talent Network card and used by recruiter
                               availability filters.
                             </span>
                           </div>
@@ -4687,7 +4688,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </button>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-4">
                           <div>
                             <span className="font-bold text-xs text-textMain block">
                               Production Scorecard
@@ -4716,6 +4717,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 setIsVisibleInPool(true);
                               }
                             }}
+                          />
+                          <ScoreTrendChart
+                            repoUrl={
+                              candidateProductionAudit?.breakdown.audited_repo_url
+                            }
+                            current={
+                              candidateProductionAudit
+                                ? {
+                                    score: candidateProductionAudit.productionScore,
+                                    auditedAt:
+                                      candidateProductionAudit.breakdown.audited_at,
+                                    repoUrl:
+                                      candidateProductionAudit.breakdown
+                                        .audited_repo_url,
+                                  }
+                                : null
+                            }
                           />
                         </div>
 
@@ -5612,7 +5630,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   Live Matching
                 </p>
                 <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
-                  Opportunity Radar
+                  Provix Talent Network
                 </h1>
                 <p className="text-textMuted text-sm mt-2">
                   AI-matched roles from verified employers — tuned to your skills and visibility settings.
@@ -5914,7 +5932,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     onClick={() => setActiveTab("opportunity_radar")}
                     className="bg-brand hover:bg-brandHover text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-all cursor-pointer"
                   >
-                    Open Opportunity Radar
+                    Open Provix Talent Network
                   </button>
                 </div>
               ) : (
@@ -5984,7 +6002,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       ? savedCompanyName
                         ? `Welcome, ${savedCompanyName}`
                         : "Welcome"
-                      : "Vetted Talent Pool"}
+                      : "Provix Talent Network"}
                   </h1>
                   <p className="text-textMuted text-sm mt-2">
                     {isBusinessAccount

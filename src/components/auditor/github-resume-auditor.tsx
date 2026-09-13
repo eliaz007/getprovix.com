@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
 import ResumeFileUpload, {
@@ -10,6 +10,7 @@ import ExternalProjectsForm from "@/components/portfolio/external-projects-form"
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
 import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
 import PrivateRepositoryBanner from "@/components/auditor/private-repository-banner";
+import RepoOwnershipVerifier from "@/components/auditor/repo-ownership-verifier";
 import { normalizeAuditChecks } from "@/lib/audit-checks";
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
@@ -33,6 +34,7 @@ import {
 import {
   getGitHubUrlValidationMessage,
   hasUsableGitHubAuditTarget,
+  parseGitHubUrl,
 } from "@/lib/validate-github-url";
 import {
   DAILY_LIMIT_UI_MESSAGE,
@@ -51,10 +53,14 @@ export default function GitHubResumeAuditor({
   initialGithubUrl = "",
   initialPrivateWork = false,
   onAuditPersisted,
+  sidePanel,
+  scoreSummary,
 }: {
   initialGithubUrl?: string;
   initialPrivateWork?: boolean;
   onAuditPersisted?: (record: ProductionAuditRecord) => void;
+  sidePanel?: ReactNode;
+  scoreSummary?: ReactNode;
 }) {
   const [targetRole, setTargetRole] = useState("");
   const [githubUrl, setGithubUrl] = useState(initialGithubUrl);
@@ -144,6 +150,11 @@ export default function GitHubResumeAuditor({
   }, []);
 
   const hasValidGithubInput = hasUsableGitHubAuditTarget(githubUrl);
+  const parsedGithub = parseGitHubUrl(githubUrl);
+  const ownershipRepoUrl =
+    parsedGithub?.repo != null
+      ? `https://github.com/${parsedGithub.owner}/${parsedGithub.repo}`
+      : "";
   const hasPrivateArtifacts =
     isPrivateWork && hasUsableExternalProjects(externalProjects);
   const canSubmit = hasValidGithubInput || hasPrivateArtifacts;
@@ -297,183 +308,8 @@ export default function GitHubResumeAuditor({
     }
   };
 
-  return (
-    <div className="w-full max-w-5xl mx-auto space-y-10">
-      <div className="mb-8">
-        <div className="inline-flex items-center gap-2 text-brand text-xs font-bold uppercase tracking-widest mb-2">
-          <ShieldCheck className="w-4 h-4" aria-hidden="true" />
-          Career Accelerator
-        </div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
-          Code & Resume Auditor
-        </h1>
-        <p className="text-textMuted text-sm mt-2 max-w-2xl">
-          Deep-audit your GitHub artifacts, or private/enterprise project
-          write-ups, against resume claims for founder-ready credibility.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-7 space-y-5">
-          <div>
-            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide">
-              Target Role / Tech Stack
-            </label>
-            <input
-              type="text"
-              value={targetRole}
-              onChange={(e) => setTargetRole(e.target.value)}
-              placeholder="Full-Stack Next.js Developer"
-              className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide">
-              GitHub Profile / Repo URL
-              {isPrivateWork ? (
-                <span className="ml-1 font-medium normal-case tracking-normal text-textMuted">
-                  (optional)
-                </span>
-              ) : null}
-            </label>
-            <input
-              type="url"
-              inputMode="url"
-              autoComplete="url"
-              spellCheck={false}
-              value={githubUrl}
-              onChange={(e) => setGithubUrl(e.target.value)}
-              placeholder={
-                isPrivateWork
-                  ? "Optional — leave blank for private/enterprise work"
-                  : "https://github.com/your-handle or repo URL"
-              }
-              aria-invalid={Boolean(githubValidationMessage)}
-              aria-describedby={
-                githubValidationMessage ? "github-url-validation" : undefined
-              }
-              className={`w-full bg-background rounded-xl px-4 py-2.5 text-sm text-textMain font-mono placeholder:text-textMuted focus:outline-none ${
- githubValidationMessage
- ? "border border-red-500/60 focus:border-red-400"
- : "border border-border focus:border-brand"
- }`}
-            />
-            {githubValidationMessage ? (
-              <p
-                id="github-url-validation"
-                role="alert"
-                className="mt-2 text-xs text-red-300"
-              >
-                {githubValidationMessage}
-              </p>
-            ) : null}
-            <label className="mt-3 flex items-start gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isPrivateWork}
-                onChange={(e) => setIsPrivateWork(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border bg-background text-brand focus:ring-brand"
-              />
-              <span className="text-xs leading-relaxed text-textMuted">
-                This work is private or enterprise — I do not have a public
-                GitHub repository to audit.
-              </span>
-            </label>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide">
-              Target Compensation & Level
-            </label>
-            <select
-              value={compensationLevel}
-              onChange={(e) =>
-                setCompensationLevel(
-                  e.target.value as (typeof COMPENSATION_LEVELS)[number]
-                )
-              }
-              className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
-            >
-              {COMPENSATION_LEVELS.map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {isPrivateWork && (
-            <div className="border-t border-border pt-4">
-              <ExternalProjectsForm onProjectsChange={setExternalProjects} />
-              {!hasUsableExternalProjects(externalProjects) ? (
-                <p className="mt-3 text-xs text-amber-300/90">
-                  Save at least one project artifact above so the auditor can
-                  review your private or enterprise work instead of a public repo.
-                </p>
-              ) : null}
-            </div>
-          )}
-
-          <div className="border-t border-border pt-1">
-            <button
-              type="button"
-              onClick={() => setResumeOpen((open) => !open)}
-              aria-expanded={resumeOpen}
-              className="w-full text-left text-[13px] text-textMuted hover:text-textMuted transition-colors cursor-pointer py-2"
-            >
-              {resumeOpen ? "–" : "+"} Add resume for claim cross-verification
-              <span className="text-zinc-600"> (Optional)</span>
-            </button>
-            {resumeOpen && (
-              <div className="mt-1">
-                <ResumeFileUpload
-                  persistToProfile
-                  localFallbackOnAuthError
-                  initialFilename={storedResume?.filename ?? null}
-                  helperText="The auditor reads the parsed resume and checks it against GitHub artifacts or your saved project write-ups."
-                  onLocalFileChange={setResumeFile}
-                  onPersisted={(meta) => {
-                    setStoredResume(meta);
-                    if (!meta.hasResume) {
-                      setResumeFile(null);
-                    }
-                  }}
-                />
-              </div>
-            )}
-          </div>
-
-          {limitReached && (
-            <div
-              role="status"
-              className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
-            >
-              {DAILY_LIMIT_UI_MESSAGE}
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => void runAudit()}
-            disabled={loading || !canSubmit || limitReached}
-            className="w-full bg-brand hover:bg-brandHover disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-md text-xs tracking-tight transition-colors duration-200 ease-out flex items-center justify-center gap-2 cursor-pointer"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                Running AI Audit...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" aria-hidden="true" />
-                Run AI Audit
-              </>
-            )}
-          </button>
-        </div>
-
-        <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-4 sm:p-6 min-h-[320px] lg:min-h-[480px] lg:max-h-[calc(100vh-6rem)] overflow-visible lg:overflow-y-auto">
+  const resultsPanel = (
+        <div className="card-edge h-full min-h-[240px] rounded-2xl border border-border bg-panel p-4 sm:p-5 lg:min-h-0">
           {loading && (
             <div className="space-y-4">
               <div className="text-sm font-bold text-textMain mb-1">
@@ -573,14 +409,14 @@ export default function GitHubResumeAuditor({
           )}
 
           {!loading && !result && !error && (
-            <div className="flex flex-col items-center justify-center text-center min-h-[360px] px-4">
-              <div className="w-14 h-14 rounded-2xl bg-brand/15 border border-brand/25 flex items-center justify-center mb-4 text-textMain">
-                <ShieldCheck className="w-7 h-7 text-brand" aria-hidden="true" />
+            <div className="flex min-h-[200px] flex-col items-center justify-center px-4 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-brand/25 bg-brand/15 text-textMain">
+                <ShieldCheck className="h-6 w-6 text-brand" aria-hidden="true" />
               </div>
-              <h2 className="text-base font-bold text-textMain mb-2">
+              <h2 className="mb-2 text-base font-bold text-textMain">
                 Audit results will appear here
               </h2>
-              <p className="text-sm text-textMuted leading-relaxed max-w-sm">
+              <p className="max-w-sm text-sm leading-relaxed text-textMuted">
                 Provix runs Artifact Analysis, Architecture Review, and an API
                 & Data Resiliency Check, then produces a founder-ready
                 credibility score.
@@ -588,7 +424,202 @@ export default function GitHubResumeAuditor({
             </div>
           )}
         </div>
+  );
+
+  return (
+    <div className="mx-auto w-full max-w-6xl space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-brand">
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+            Career Accelerator
+          </div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
+            Code & Resume Auditor
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-textMuted">
+            Deep-audit your GitHub artifacts, or private/enterprise project
+            write-ups, against resume claims for founder-ready credibility.
+          </p>
+        </div>
+        {!isPrivateWork && ownershipRepoUrl ? (
+          <div className="w-full min-w-0 lg:max-w-xl">
+            <RepoOwnershipVerifier
+              repoUrl={ownershipRepoUrl}
+              variant="banner"
+            />
+          </div>
+        ) : null}
       </div>
+
+      <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
+        <div className="card-edge space-y-4 rounded-2xl border border-border bg-panel p-5">
+          <div>
+            <label className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-textMuted">
+              Target Role / Tech Stack
+            </label>
+            <input
+              type="text"
+              value={targetRole}
+              onChange={(e) => setTargetRole(e.target.value)}
+              placeholder="Full-Stack Next.js Developer"
+              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:border-brand focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-textMuted">
+              GitHub Profile / Repo URL
+              {isPrivateWork ? (
+                <span className="ml-1 font-medium normal-case tracking-normal text-textMuted">
+                  (optional)
+                </span>
+              ) : null}
+            </label>
+            <input
+              type="url"
+              inputMode="url"
+              autoComplete="url"
+              spellCheck={false}
+              value={githubUrl}
+              onChange={(e) => setGithubUrl(e.target.value)}
+              placeholder={
+                isPrivateWork
+                  ? "Optional — leave blank for private/enterprise work"
+                  : "https://github.com/your-handle or repo URL"
+              }
+              aria-invalid={Boolean(githubValidationMessage)}
+              aria-describedby={
+                githubValidationMessage ? "github-url-validation" : undefined
+              }
+              className={`w-full rounded-xl bg-background px-4 py-2.5 font-mono text-sm text-textMain placeholder:text-textMuted focus:outline-none ${
+ githubValidationMessage
+ ? "border border-red-500/60 focus:border-red-400"
+ : "border border-border focus:border-brand"
+ }`}
+            />
+            {githubValidationMessage ? (
+              <p
+                id="github-url-validation"
+                role="alert"
+                className="mt-2 text-xs text-red-300"
+              >
+                {githubValidationMessage}
+              </p>
+            ) : null}
+            <label className="mt-3 flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={isPrivateWork}
+                onChange={(e) => setIsPrivateWork(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border bg-background text-brand focus:ring-brand"
+              />
+              <span className="text-xs leading-relaxed text-textMuted">
+                This work is private or enterprise — I do not have a public
+                GitHub repository to audit.
+              </span>
+            </label>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-textMuted">
+              Target Compensation & Level
+            </label>
+            <select
+              value={compensationLevel}
+              onChange={(e) =>
+                setCompensationLevel(
+                  e.target.value as (typeof COMPENSATION_LEVELS)[number]
+                )
+              }
+              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-textMain focus:border-brand focus:outline-none"
+            >
+              {COMPENSATION_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {isPrivateWork && (
+            <div className="border-t border-border pt-4">
+              <ExternalProjectsForm onProjectsChange={setExternalProjects} />
+              {!hasUsableExternalProjects(externalProjects) ? (
+                <p className="mt-3 text-xs text-amber-300/90">
+                  Save at least one project artifact above so the auditor can
+                  review your private or enterprise work instead of a public repo.
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          <div className="border-t border-border pt-1">
+            <button
+              type="button"
+              onClick={() => setResumeOpen((open) => !open)}
+              aria-expanded={resumeOpen}
+              className="w-full cursor-pointer py-2 text-left text-[13px] text-textMuted transition-colors hover:text-textMuted"
+            >
+              {resumeOpen ? "–" : "+"} Add resume for claim cross-verification
+              <span className="text-zinc-600"> (Optional)</span>
+            </button>
+            {resumeOpen && (
+              <div className="mt-1">
+                <ResumeFileUpload
+                  persistToProfile
+                  localFallbackOnAuthError
+                  initialFilename={storedResume?.filename ?? null}
+                  helperText="The auditor reads the parsed resume and checks it against GitHub artifacts or your saved project write-ups."
+                  onLocalFileChange={setResumeFile}
+                  onPersisted={(meta) => {
+                    setStoredResume(meta);
+                    if (!meta.hasResume) {
+                      setResumeFile(null);
+                    }
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          {limitReached && (
+            <div
+              role="status"
+              className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+            >
+              {DAILY_LIMIT_UI_MESSAGE}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => void runAudit()}
+            disabled={loading || !canSubmit || limitReached}
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-brand py-3.5 text-xs font-bold tracking-tight text-white transition-colors duration-200 ease-out hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Running AI Audit...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                Run AI Audit
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="min-h-0">
+          {sidePanel ?? resultsPanel}
+        </div>
+      </div>
+
+      {scoreSummary}
+
+      {sidePanel && (loading || error || result) ? resultsPanel : null}
     </div>
   );
 }

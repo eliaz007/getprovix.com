@@ -28,7 +28,7 @@ export default function TalentDirectoryPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
-      <p className="text-sm text-textMuted">Loading vetted talent pool...</p>
+      <p className="text-sm text-textMuted">Loading Provix Talent Network...</p>
     </div>
   );
 }
