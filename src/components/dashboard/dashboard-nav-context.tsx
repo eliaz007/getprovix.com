@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -40,6 +41,8 @@ type DashboardNavContextValue = {
   userAvatarUrl: string | null;
   userInitials: string;
   authLoading: boolean;
+  contentReady: boolean;
+  setContentReady: (ready: boolean) => void;
   isGuest: boolean;
   isBusinessAccount: boolean;
   isEmployeeAccount: boolean;
@@ -153,6 +156,7 @@ function DashboardNavProviderImpl({
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   const [userInitials, setUserInitials] = useState("U");
   const [authLoading, setAuthLoading] = useState(true);
+  const [contentReady, setContentReadyState] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalError, setAuthModalError] = useState<string | null>(null);
   const [onOpenJobApplicants, setOnOpenJobApplicantsState] = useState<
@@ -200,6 +204,10 @@ function DashboardNavProviderImpl({
     tabHold.current = tab;
     setUserTab(tab);
   }, [tabHold]);
+
+  const setContentReady = useCallback((ready: boolean) => {
+    setContentReadyState(ready);
+  }, []);
 
   const requireAuth = useCallback(() => {
     if (userId) {
@@ -374,6 +382,8 @@ function DashboardNavProviderImpl({
       userAvatarUrl,
       userInitials,
       authLoading,
+      contentReady,
+      setContentReady,
       isGuest,
       isBusinessAccount,
       isEmployeeAccount,
@@ -397,6 +407,8 @@ function DashboardNavProviderImpl({
       userAvatarUrl,
       userInitials,
       authLoading,
+      contentReady,
+      setContentReady,
       isGuest,
       isBusinessAccount,
       isEmployeeAccount,
@@ -422,4 +434,23 @@ export function useDashboardNav() {
     throw new Error("useDashboardNav must be used within DashboardNavProvider");
   }
   return context;
+}
+
+/** Hold the dashboard chrome until this route's first paint of real content. */
+export function DashboardContentGate({ ready }: { ready: boolean }) {
+  const { setContentReady } = useDashboardNav();
+  const [released, setReleased] = useState(false);
+
+  if (ready && !released) {
+    setReleased(true);
+  }
+
+  useLayoutEffect(() => {
+    setContentReady(released);
+    return () => {
+      setContentReady(true);
+    };
+  }, [released, setContentReady]);
+
+  return null;
 }

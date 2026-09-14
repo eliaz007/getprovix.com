@@ -32,8 +32,8 @@ import {
   type TalentPoolCandidate,
 } from "@/lib/talent-pool-candidate";
 import CandidateIntroRequestsPanel from "@/components/dashboard/candidate-intro-requests-panel";
-import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
-import DashboardSkeleton from "@/components/dashboard/dashboard-skeleton";
+import { DashboardContentGate, useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
+import { DashboardContentSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { ProvixLogo } from "@/components/ProvixLogo";
@@ -3826,6 +3826,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
   return (
     <>
+      {dashboardNav ? <DashboardContentGate ready={!isLoading} /> : null}
       <div
         className={
           isStandaloneGuest
@@ -3920,7 +3921,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           />
         </div>
       ) : isLoading ? (
-        <DashboardSkeleton />
+        <DashboardContentSkeleton />
       ) : (
         <>
       {isEmployeeAccount && activeTab === "opportunity_radar" && (
