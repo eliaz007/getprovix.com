@@ -688,7 +688,7 @@ export default function GeminiDeepScreening({
 
           <ProductionScorecard metrics={result.metrics} compact />
 
-          {result.timeline_flags.filter(
+          {(result.timeline_flags ?? []).filter(
             (flag) => !result.scoreCap?.applied || !isFilesystemCapRedFlag(flag)
           ).length > 0 && (
             <div>
@@ -696,7 +696,7 @@ export default function GeminiDeepScreening({
                 Timeline & Repository Flags
               </div>
               <ul className="space-y-1.5">
-                {result.timeline_flags
+                {(result.timeline_flags ?? [])
                   .filter(
                     (flag) =>
                       !result.scoreCap?.applied || !isFilesystemCapRedFlag(flag)

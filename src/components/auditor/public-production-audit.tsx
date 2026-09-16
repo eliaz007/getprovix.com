@@ -409,11 +409,10 @@ export default function PublicProductionAudit({
   const repoLabel = breakdown
     ? formatAuditedRepoLabel(breakdown.audited_repo_url)
     : "";
-  const visibleRedFlags =
-    result?.redFlags.filter(
-      (item) => !result.scoreCap?.applied || !isFilesystemCapRedFlag(item)
-    ) ?? [];
-  const recommendations = result?.recommendations.slice(0, 3) ?? [];
+  const visibleRedFlags = (result?.redFlags ?? []).filter(
+    (item) => !result.scoreCap?.applied || !isFilesystemCapRedFlag(item)
+  );
+  const recommendations = (result?.recommendations ?? []).slice(0, 3);
   const strengths = result?.strengths ?? [];
 
   return (

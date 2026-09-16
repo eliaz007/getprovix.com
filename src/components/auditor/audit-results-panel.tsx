@@ -86,8 +86,8 @@ export default function AuditResultsPanel({ result }: { result: AuditResult }) {
     filesystem: result.filesystem,
     commitDates: result.commitDates,
   });
-  const recommendations = result.recommendations.slice(0, 3);
-  const visibleRedFlags = result.redFlags.filter(
+  const recommendations = (result.recommendations ?? []).slice(0, 3);
+  const visibleRedFlags = (result.redFlags ?? []).filter(
     (item) => !result.scoreCap?.applied || !isFilesystemCapRedFlag(item)
   );
   const filesystem = result.filesystem;
