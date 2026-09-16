@@ -410,7 +410,7 @@ export default function PublicProductionAudit({
     ? formatAuditedRepoLabel(breakdown.audited_repo_url)
     : "";
   const visibleRedFlags = (result?.redFlags ?? []).filter(
-    (item) => !result.scoreCap?.applied || !isFilesystemCapRedFlag(item)
+    (item) => !result?.scoreCap?.applied || !isFilesystemCapRedFlag(item)
   );
   const recommendations = (result?.recommendations ?? []).slice(0, 3);
   const strengths = result?.strengths ?? [];
