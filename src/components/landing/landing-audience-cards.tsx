@@ -102,7 +102,7 @@ export default function LandingAudienceCards() {
           Publish proof of work, keep your profile current, and show employers
           what you have actually shipped — not what a resume claims.
         </p>
-        <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-transparent px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors duration-200 group-hover:bg-white/5">
+        <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-sky-400 px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors duration-200 group-hover:bg-sky-500">
           {pending === "developer" ? "Opening..." : "Open Candidate Dashboard"}
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </span>
