@@ -42,6 +42,7 @@ export type TalentPoolCandidate = {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught?: boolean;
   skills: string[];
   rating: string;
   execution_score?: number | string | null;

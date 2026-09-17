@@ -17,8 +17,7 @@ import {
   type EmployerApplicantView,
   type EmployerApplicantsPayload,
 } from "@/lib/job-applicants";
-import { formatGpa } from "@/lib/gpa";
-import { hasTalentEducation } from "@/lib/talent-pool-profiles";
+import CandidateEducationSummary from "@/components/CandidateEducationSummary";
 import { subscribeIncomingJobInterest } from "@/lib/job-interest";
 import { createClient } from "@/utils/supabase/client";
 
@@ -380,29 +379,13 @@ export default function EmployerApplicantsSection({
                     Education
                   </span>
                   <div className="rounded-xl border border-border bg-background p-3.5 text-xs text-textMain space-y-2">
-                    {applicant.university ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-textMuted shrink-0">University</span>
-                        <span className="text-right">{applicant.university}</span>
-                      </div>
-                    ) : null}
-                    {applicant.major ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-textMuted shrink-0">Major</span>
-                        <span className="text-right">{applicant.major}</span>
-                      </div>
-                    ) : null}
-                    {formatGpa(applicant.gpa) ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-textMuted shrink-0">GPA</span>
-                        <span className="text-right font-mono">
-                          {formatGpa(applicant.gpa)}
-                        </span>
-                      </div>
-                    ) : null}
-                    {!hasTalentEducation(applicant) ? (
-                      <p className="text-textMuted">Education details not provided.</p>
-                    ) : null}
+                    <CandidateEducationSummary
+                      isSelfTaught={applicant.isSelfTaught}
+                      university={applicant.university}
+                      major={applicant.major}
+                      gpa={applicant.gpa}
+                      graduationYear={applicant.graduationYear}
+                    />
                   </div>
                 </div>
 

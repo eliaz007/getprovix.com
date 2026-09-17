@@ -12,12 +12,12 @@ import { formatGpa } from "@/lib/gpa";
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
   educationFromProfileRow,
-  hasTalentEducation,
 } from "@/lib/talent-pool-profiles";
 import {
   fetchProfilesForCandidateIds,
   resolvedProfileId,
 } from "@/lib/resolve-candidate-profile";
+import CandidateEducationSummary from "@/components/CandidateEducationSummary";
 import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { createClient } from "@/utils/supabase/client";
@@ -47,6 +47,8 @@ type ApplicantProfileRow = {
   university?: string | null;
   gpa?: string | number | null;
   graduation_year?: number | string | null;
+  education?: unknown;
+  is_self_taught?: boolean | string | number | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
   availability_status?: string | null;
@@ -78,6 +80,7 @@ export type JobApplicantView = {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught?: boolean;
   aiScoreLabel: string;
   appliedAtLabel: string;
   unlocked: boolean;
@@ -182,6 +185,8 @@ const APPLICANT_PROFILE_COLUMNS = [
   "university",
   "gpa",
   "graduation_year",
+  "education",
+  "is_self_taught",
   "portfolio_url",
   "youtube_url",
   "availability_status",
@@ -270,6 +275,7 @@ function mapApplicationToApplicant(
     major: education.major,
     gpa: formatGpa(education.gpa),
     graduationYear: education.graduationYear,
+    isSelfTaught: Boolean(education.isSelfTaught),
     aiScoreLabel: formatAiScoreLabel(
       matchByCandidateId.get(row.candidate_id),
       { skills, headline, bio: profile?.bio },
@@ -552,37 +558,13 @@ export default function JobApplicantsDrawer({
                     Education
                   </span>
                   <div className="rounded-xl border border-border bg-panel p-3.5 text-xs text-textMain space-y-2">
-                    {applicant.university ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-textMuted shrink-0">University</span>
-                        <span className="text-right">{applicant.university}</span>
-                      </div>
-                    ) : null}
-                    {applicant.major ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-textMuted shrink-0">Major</span>
-                        <span className="text-right">{applicant.major}</span>
-                      </div>
-                    ) : null}
-                    {formatGpa(applicant.gpa) ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-textMuted shrink-0">GPA</span>
-                        <span className="text-right font-mono">
-                          {formatGpa(applicant.gpa)}
-                        </span>
-                      </div>
-                    ) : null}
-                    {applicant.graduationYear ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-textMuted shrink-0">Graduation</span>
-                        <span className="text-right">{applicant.graduationYear}</span>
-                      </div>
-                    ) : null}
-                    {!hasTalentEducation(applicant) ? (
-                      <p className="text-textMuted">
-                        Education details not provided.
-                      </p>
-                    ) : null}
+                    <CandidateEducationSummary
+                      isSelfTaught={applicant.isSelfTaught}
+                      university={applicant.university}
+                      major={applicant.major}
+                      gpa={applicant.gpa}
+                      graduationYear={applicant.graduationYear}
+                    />
                   </div>
                 </div>
 

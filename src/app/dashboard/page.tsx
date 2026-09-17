@@ -32,6 +32,9 @@ import {
   type TalentPoolCandidate,
 } from "@/lib/talent-pool-candidate";
 import CandidateIntroRequestsPanel from "@/components/dashboard/candidate-intro-requests-panel";
+import SkillPicker from "@/components/dashboard/skill-picker";
+import SelfTaughtEngineerBadge from "@/components/SelfTaughtEngineerBadge";
+import EducationEntriesForm from "@/components/dashboard/education-entries-form";
 import { DashboardContentGate, useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import { DashboardContentSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import GuestAuthModal from "@/components/GuestAuthModal";
@@ -60,6 +63,27 @@ import {
 } from "@/lib/candidate-anonymization";
 import { signOutAndClearSession } from "@/lib/sign-out";
 import { buildProfileSlug, buildUniqueProfileSlug } from "@/lib/profile-slug";
+import {
+  CANDIDATE_BIO_PLACEHOLDER,
+  MAX_CANDIDATE_BIO_LENGTH,
+  getCandidateBioValidationError,
+  limitCandidateBio,
+} from "@/lib/candidate-bio";
+import {
+  candidateSkillsEqual,
+  getCandidateSkillsValidationError,
+  limitCandidateSkills,
+} from "@/lib/candidate-skills";
+import {
+  educationEntriesEqual,
+  getEducationValidationError,
+  parseEducationEntries,
+  parseEducationFromProfileRow,
+  parseIsSelfTaught,
+  primaryEducationFields,
+  SELF_TAUGHT_ENGINEER_LABEL,
+  type EducationEntry,
+} from "@/lib/candidate-education";
 import {
   buildCandidateProfileUpdatePayload,
   persistCandidatePoolVisibility,
@@ -168,7 +192,7 @@ import {
   type DashboardTab,
 } from "@/lib/dashboard-account";
 import { clampScore0to100 } from "@/lib/score-scale";
-import { formatGpa, isGpaDraft } from "@/lib/gpa";
+import { formatGpa } from "@/lib/gpa";
 import ScoreMeter from "@/components/ScoreMeter";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
@@ -340,6 +364,8 @@ type ProfileRecord = {
   bio?: string | null;
   school?: string | null;
   skills?: string[] | null;
+  education?: unknown;
+  is_self_taught?: boolean | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
   resume_filename?: string | null;
@@ -406,7 +432,11 @@ function formatTalentEducationLines(candidate: {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught?: boolean;
 }): string[] {
+  if (candidate.isSelfTaught) {
+    return [SELF_TAUGHT_ENGINEER_LABEL];
+  }
   return [
     candidate.university,
     candidate.major,
@@ -554,6 +584,9 @@ function mapProfileRowToTalentCandidate(
     major,
     gpa,
     graduationYear,
+    isSelfTaught: parseIsSelfTaught(
+      (row as { is_self_taught?: unknown }).is_self_taught
+    ),
     skills,
     rating: integrityScore !== null ? `${integrityScore}%` : "",
     execution_score: integrityScore,
@@ -1079,15 +1112,20 @@ export default function DashboardPage() {
 
         const loadedName = displayName || "";
         const loadedTitle = profileWithRole?.job_title ?? "";
-        const loadedBio = profileWithRole?.bio ?? "";
+        const loadedBio = limitCandidateBio(profileWithRole?.bio ?? "");
         const education = educationFromProfileRow(
           profileWithRole as unknown as Record<string, unknown>
         );
-        const loadedSchool = education.university;
-        const loadedDegree = education.major;
-        const loadedSkills = Array.isArray(profileWithRole?.skills)
-          ? profileWithRole.skills.join(", ")
-          : "";
+        const loadedEducation = parseEducationFromProfileRow(
+          profileWithRole as unknown as Record<string, unknown>
+        );
+        const loadedSelfTaught = parseIsSelfTaught(
+          (profileWithRole as { is_self_taught?: unknown } | null)?.is_self_taught
+        );
+        const primaryEducation = primaryEducationFields(loadedEducation);
+        const loadedSchool = primaryEducation.institution || education.university;
+        const loadedDegree = primaryEducation.fieldOfStudy || education.major;
+        const loadedSkills = limitCandidateSkills(profileWithRole?.skills);
         const loadedYoutubeUrl = profileWithRole?.youtube_url ?? "";
         const loadedExperienceLevel =
           profileWithRole?.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL;
@@ -1101,14 +1139,17 @@ export default function DashboardPage() {
           profileWithRole?.timezone
         );
         const loadedGradYear =
-          profileWithRole?.graduation_year != null
+          primaryEducation.graduationYear ||
+          (profileWithRole?.graduation_year != null
             ? String(profileWithRole.graduation_year)
-            : "";
+            : "");
 
         setTitle(loadedTitle);
         setBio(loadedBio);
         setSchool(loadedSchool);
         setDegree(loadedDegree);
+        setEducationEntries(loadedEducation);
+        setIsSelfTaught(loadedSelfTaught);
         setSkills(loadedSkills);
         setPortfolioUrl(loadedPortfolioUrl);
         setExperienceLevel(loadedExperienceLevel as ExperienceLevel);
@@ -1137,6 +1178,8 @@ export default function DashboardPage() {
           school: loadedSchool,
           degree: loadedDegree,
           skills: loadedSkills,
+          education: loadedEducation,
+          isSelfTaught: loadedSelfTaught,
           portfolioUrl: loadedPortfolioUrl,
           experienceLevel: loadedExperienceLevel,
           availabilityStatus: loadedAvailabilityStatus,
@@ -1918,7 +1961,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const [bio, setBio] = useState("");
   const [school, setSchool] = useState("");
   const [degree, setDegree] = useState("");
-  const [skills, setSkills] = useState("");
+  const [educationEntries, setEducationEntries] = useState<EducationEntry[]>([]);
+  const [isSelfTaught, setIsSelfTaught] = useState(false);
+  const [skills, setSkills] = useState<string[]>([]);
   const [portfolioUrl, setPortfolioUrl] = useState("");
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(
     DEFAULT_EXPERIENCE_LEVEL
@@ -1938,7 +1983,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     bio: string;
     school: string;
     degree: string;
-    skills: string;
+    skills: string[];
+    education: EducationEntry[];
+    isSelfTaught: boolean;
     portfolioUrl: string;
     experienceLevel: string;
     availabilityStatus: string;
@@ -1994,7 +2041,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       bio !== savedCandidateProfile.bio ||
       school !== savedCandidateProfile.school ||
       degree !== savedCandidateProfile.degree ||
-      skills !== savedCandidateProfile.skills ||
+      !educationEntriesEqual(educationEntries, savedCandidateProfile.education) ||
+      isSelfTaught !== savedCandidateProfile.isSelfTaught ||
+      !candidateSkillsEqual(skills, savedCandidateProfile.skills) ||
       portfolioUrl !== savedCandidateProfile.portfolioUrl ||
       experienceLevel !== savedCandidateProfile.experienceLevel ||
       availabilityStatus !== savedCandidateProfile.availabilityStatus ||
@@ -2182,6 +2231,27 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       return;
     }
 
+    const bioError = getCandidateBioValidationError(bio);
+    if (bioError) {
+      showToast(bioError);
+      return;
+    }
+
+    const skillsError = getCandidateSkillsValidationError(skills);
+    if (skillsError) {
+      showToast(skillsError);
+      return;
+    }
+
+    const nextEducation = parseEducationEntries(educationEntries);
+    const educationError = getEducationValidationError(nextEducation, {
+      isSelfTaught,
+    });
+    if (educationError) {
+      showToast(educationError);
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -2197,14 +2267,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         return;
       }
 
-      const skillsArray = (skills ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
       const normalizedAvailability = normalizeAvailabilityStatus(
         availabilityStatus
       );
-      const academicMajor = degree.trim();
+      const academicPrimary = primaryEducationFields(nextEducation);
+      const academicMajor = academicPrimary.fieldOfStudy;
+      const academicInstitution = academicPrimary.institution;
+      const academicGradYear = academicPrimary.graduationYear;
       const normalizedPortfolioUrl = normalizeGitHubUrl(portfolioUrl);
       const effectiveVisibleInPool =
         isVisibleInPool && isValidGitHubUrl(normalizedPortfolioUrl);
@@ -2216,10 +2285,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           fullName: profileData.name,
           jobTitle: title,
           bio,
-          university: school,
+          university: academicInstitution,
           major: academicMajor,
-          degree: academicMajor,
-          skills: skillsArray,
+          degree: academicPrimary.credentialType,
+          skills,
+          education: nextEducation,
+          isSelfTaught,
           portfolioUrl: normalizedPortfolioUrl,
           youtubeUrl: dbProfile?.youtube_url ?? "",
           experienceLevel,
@@ -2227,7 +2298,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           workPreference,
           candidateTimezone,
           isVisibleInPool: effectiveVisibleInPool,
-          gradYear: profileData.gradYear,
+          gradYear: academicGradYear,
           gpa: formatGpa(profileData.gpa),
           keyAccomplishments: profileData.projects,
         },
@@ -2261,20 +2332,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         );
       }
 
+      setSchool(academicInstitution);
+      setDegree(academicMajor);
+      setEducationEntries(nextEducation);
       const snapshot = {
         fullName: profileData.name,
         title,
         bio,
-        school,
-        degree,
+        school: academicInstitution,
+        degree: academicMajor,
         skills,
+        education: nextEducation,
+        isSelfTaught,
         portfolioUrl: normalizedPortfolioUrl,
         experienceLevel,
         availabilityStatus: normalizedAvailability,
         workPreference,
         candidateTimezone,
         visibleInPool: effectiveVisibleInPool,
-        gradYear: profileData.gradYear,
+        gradYear: academicGradYear,
         gpa: formatGpa(profileData.gpa),
         demoVideo: profileData.demoVideo,
         projects: profileData.projects,
@@ -2284,14 +2360,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         ...profileData,
         role: title,
         bio,
-        school,
-        degree,
+        school: academicInstitution,
+        degree: academicMajor,
         github: normalizedPortfolioUrl,
         gpa: formatGpa(profileData.gpa),
+        gradYear: academicGradYear,
       });
       setProfileData((current) => ({
         ...current,
+        school: academicInstitution,
+        degree: academicMajor,
         gpa: formatGpa(current.gpa),
+        gradYear: academicGradYear,
       }));
       setPortfolioUrl(normalizedPortfolioUrl);
       setAvailabilityStatus(normalizedAvailability);
@@ -2540,6 +2620,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         major: "",
         gpa: "",
         graduationYear: "",
+        isSelfTaught: false,
       };
 
       const [clientEducation, apiEducation] = await Promise.all([
@@ -2721,10 +2802,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       return dbProfile.skills;
     }
 
-    return (skills ?? "")
-      .split(",")
-      .map((skill) => skill.trim())
-      .filter(Boolean);
+    return skills;
   }, [dbProfile?.skills, skills]);
 
   const matchCandidate = useMemo(
@@ -3677,17 +3755,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     ? `${appOrigin}/c/${businessSlug}`
     : `/c/${businessSlug}`;
 
-  const candidateStatus =
-    dbProfile?.status ||
-    (typeof user?.user_metadata?.status === "string"
-      ? user.user_metadata.status
-      : "") ||
-    "";
-  const isHighSchoolStudent = candidateStatus === "High School Student";
-  const majorLabel = isHighSchoolStudent
-    ? "Intended Major / Academic Interest"
-    : "Major / Specialization";
-
   const renderProfileFormActions = (options?: { showShareLink?: boolean }) => (
     <div className="mt-6 pt-6 border-t border-border space-y-3">
       <div className="flex flex-col sm:flex-row gap-3">
@@ -3957,7 +4024,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       ? "Manage your company profile, hiring requirements, and account settings."
                       : candidateVerifiedOnProvix
                         ? "Your profile is complete and a GitHub integrity audit has run successfully."
-                        : "Complete every required field and run a GitHub integrity audit to earn Verified on Provix."}
+                        : "Complete every required field and run a code integrity audit to earn Verified on Provix."}
                   </p>
                 </div>
                 {!isBusinessAccount && (
@@ -4014,7 +4081,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
  : "text-textMuted hover:text-textMuted"
  }`}
                     >
-                      Academics & Major
+                      Academics
                     </button>
                     <button
                       type="button"
@@ -4311,26 +4378,35 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       </label>
                       <textarea
                         rows={3}
+                        maxLength={MAX_CANDIDATE_BIO_LENGTH}
                         value={bio}
-                        onChange={(e) => setBio(e.target.value)}
-                        className="w-full bg-background border border-border rounded-xl p-3.5 text-sm text-textMain focus:outline-none focus:border-brand resize-none leading-relaxed"
+                        placeholder={CANDIDATE_BIO_PLACEHOLDER}
+                        onChange={(e) =>
+                          setBio(limitCandidateBio(e.target.value))
+                        }
+                        className="w-full bg-background border border-border rounded-xl p-3.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none leading-relaxed"
                       />
+                      <p
+                        aria-live="polite"
+                        className={`mt-1.5 text-right font-mono text-[11px] ${
+                          bio.length >= MAX_CANDIDATE_BIO_LENGTH
+                            ? "text-rose-400"
+                            : "text-textMuted"
+                        }`}
+                      >
+                        {bio.length} / {MAX_CANDIDATE_BIO_LENGTH}
+                      </p>
                     </div>
 
                     <div>
                       <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                         Skills
                       </label>
-                      <input
-                        type="text"
-                        value={skills}
-                        onChange={(e) => setSkills(e.target.value)}
-                        placeholder="React, TypeScript, Python..."
-                        className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
+                      <SkillPicker
+                        selected={skills}
+                        onChange={setSkills}
+                        disabled={isSaving}
                       />
-                      <p className="text-[11px] text-textMuted mt-2">
-                        Comma-separated skills used for job matching.
-                      </p>
                     </div>
 
                     <div>
@@ -4338,43 +4414,55 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         Academic Snapshot
                       </div>
                       <div className="bg-background border border-border rounded-xl p-3.5 text-xs text-textMain space-y-2">
-                        {school ? (
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="text-textMuted shrink-0">University</span>
-                            <span className="text-right">{school}</span>
-                          </div>
-                        ) : null}
-                        {degree ? (
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="text-textMuted shrink-0">Major</span>
-                            <span className="text-right">{degree}</span>
-                          </div>
-                        ) : null}
-                        {formatGpa(profileData.gpa) ? (
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="text-textMuted shrink-0">GPA</span>
-                            <span className="text-right font-mono">
-                              {formatGpa(profileData.gpa)}
-                            </span>
-                          </div>
-                        ) : null}
-                        {profileData.gradYear ? (
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="text-textMuted shrink-0">Graduation</span>
-                            <span className="text-right">
-                              Class of {profileData.gradYear}
-                            </span>
-                          </div>
-                        ) : null}
-                        {!school &&
-                        !degree &&
-                        !formatGpa(profileData.gpa) &&
-                        !profileData.gradYear ? (
+                        {isSelfTaught ? (
+                          <SelfTaughtEngineerBadge />
+                        ) : educationEntries.length > 0 ? (
+                          educationEntries.map((entry) => (
+                            <div key={entry.id} className="space-y-1">
+                              {entry.institution ? (
+                                <div className="flex items-start justify-between gap-3">
+                                  <span className="text-textMuted shrink-0">
+                                    Institution
+                                  </span>
+                                  <span className="text-right">{entry.institution}</span>
+                                </div>
+                              ) : null}
+                              {entry.credentialType ? (
+                                <div className="flex items-start justify-between gap-3">
+                                  <span className="text-textMuted shrink-0">
+                                    Credential
+                                  </span>
+                                  <span className="text-right">
+                                    {entry.credentialType}
+                                  </span>
+                                </div>
+                              ) : null}
+                              {entry.fieldOfStudy ? (
+                                <div className="flex items-start justify-between gap-3">
+                                  <span className="text-textMuted shrink-0">
+                                    Field of study
+                                  </span>
+                                  <span className="text-right">{entry.fieldOfStudy}</span>
+                                </div>
+                              ) : null}
+                              {entry.graduationYear ? (
+                                <div className="flex items-start justify-between gap-3">
+                                  <span className="text-textMuted shrink-0">
+                                    Completion
+                                  </span>
+                                  <span className="text-right">
+                                    Class of {entry.graduationYear}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </div>
+                          ))
+                        ) : (
                           <p className="text-textMuted">
-                            Education details not provided. Add them in Academics
-                            & Major.
+                            Education is optional. Add programs in Academics if you
+                            want them listed.
                           </p>
-                        ) : null}
+                        )}
                       </div>
                     </div>
 
@@ -4384,92 +4472,31 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                 {profileSubMenu === "academics" && (
                   <div className="space-y-6">
-                    <h3 className="text-sm font-bold text-textMain mb-2">
-                      Education & University Status
-                    </h3>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
-                          School / Institution
-                        </label>
-                        <input
-                          type="text"
-                          value={school}
-                          onChange={(e) => setSchool(e.target.value)}
-                          className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
-                        />
+                    {loadingProfile ? (
+                      <div className="space-y-3">
+                        <div className="h-24 w-full rounded-xl bg-panel animate-pulse" />
+                        <div className="h-24 w-full rounded-xl bg-panel animate-pulse" />
                       </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
-                          {majorLabel}
-                        </label>
-                        {loadingProfile ? (
-                          <div className="h-11 w-full rounded-xl bg-panel animate-pulse" />
-                        ) : (
-                          <input
-                            type="text"
-                            value={degree}
-                            onChange={(e) => setDegree(e.target.value)}
-                            className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
-                          GPA
-                        </label>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="3.8"
-                          value={profileData.gpa}
-                          onChange={(e) => {
-                            const next = e.target.value;
-                            if (!isGpaDraft(next)) {
-                              return;
-                            }
-                            setProfileData({
-                              ...profileData,
-                              gpa: next,
-                            });
-                          }}
-                          onBlur={() => {
-                            setProfileData({
-                              ...profileData,
-                              gpa: formatGpa(profileData.gpa),
-                            });
-                          }}
-                          className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain font-mono focus:outline-none focus:border-brand"
-                        />
-                        <p className="mt-1.5 text-[10px] text-textMuted">
-                          4.0 scale only (for example 4.0 or 3.8).
-                        </p>
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
-                          Graduation Year
-                        </label>
-                        {loadingProfile ? (
-                          <div className="h-11 w-full rounded-xl bg-panel animate-pulse" />
-                        ) : (
-                          <input
-                            type="text"
-                            value={profileData.gradYear}
-                            onChange={(e) =>
-                              setProfileData({
-                                ...profileData,
-                                gradYear: e.target.value,
-                              })
-                            }
-                            className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain font-mono focus:outline-none focus:border-brand"
-                          />
-                        )}
-                      </div>
-                    </div>
+                    ) : (
+                      <EducationEntriesForm
+                        entries={educationEntries}
+                        isSelfTaught={isSelfTaught}
+                        onSelfTaughtChange={setIsSelfTaught}
+                        disabled={isSaving}
+                        onChange={(entries) => {
+                          setEducationEntries(entries);
+                          const primary = primaryEducationFields(entries);
+                          setSchool(primary.institution);
+                          setDegree(primary.fieldOfStudy);
+                          setProfileData((current) => ({
+                            ...current,
+                            school: primary.institution,
+                            degree: primary.fieldOfStudy,
+                            gradYear: primary.graduationYear,
+                          }));
+                        }}
+                      />
+                    )}
 
                     {renderProfileFormActions()}
                   </div>
@@ -4695,7 +4722,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               Production Scorecard
                             </span>
                             <span className="text-[11px] text-textMuted">
-                              Computed from your latest GitHub integrity audit
+                              Computed from your latest code integrity audit
                               file tree (CI, tests, error boundaries).
                             </span>
                           </div>

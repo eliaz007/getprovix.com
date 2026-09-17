@@ -8,13 +8,13 @@ import ProductionScoreBadge from "@/components/employer/production-score-badge";
 import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
+import CandidateEducationSummary from "@/components/CandidateEducationSummary";
 import { buildAlliterativeAliasIdentity } from "@/lib/alias-generator";
 import { getAvailabilityBadgeClass } from "@/lib/availability-status";
 import {
   getPublicCandidateInitials,
   redactPersonalNamesFromText,
 } from "@/lib/candidate-anonymization";
-import { formatGpa } from "@/lib/gpa";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
@@ -101,6 +101,7 @@ export default function CandidateIntelligenceDrawer({
         major: "",
         gpa: "",
         graduationYear: "",
+        isSelfTaught: false,
       };
 
       const [clientEducation, apiEducation] = await Promise.all([
@@ -150,6 +151,7 @@ export default function CandidateIntelligenceDrawer({
     candidate?.major,
     candidate?.gpa,
     candidate?.graduationYear,
+    candidate?.isSelfTaught,
   ]);
 
   const liveCandidate = candidate
@@ -290,38 +292,13 @@ export default function CandidateIntelligenceDrawer({
                 Education & Credentials
               </div>
               <div className="bg-background border border-border rounded-xl p-3.5 text-xs text-textMain space-y-2">
-                {liveCandidate.university ? (
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-textMuted shrink-0">University</span>
-                    <span className="text-right">{liveCandidate.university}</span>
-                  </div>
-                ) : null}
-                {liveCandidate.major ? (
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-textMuted shrink-0">Major</span>
-                    <span className="text-right">{liveCandidate.major}</span>
-                  </div>
-                ) : null}
-                {formatGpa(liveCandidate.gpa) ? (
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-textMuted shrink-0">GPA</span>
-                    <span className="text-right font-mono">
-                      {formatGpa(liveCandidate.gpa)}
-                    </span>
-                  </div>
-                ) : null}
-                {liveCandidate.graduationYear ? (
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-textMuted shrink-0">Graduation</span>
-                    <span className="text-right">{liveCandidate.graduationYear}</span>
-                  </div>
-                ) : null}
-                {!liveCandidate.university &&
-                !liveCandidate.major &&
-                !formatGpa(liveCandidate.gpa) &&
-                !liveCandidate.graduationYear ? (
-                  <p className="text-textMuted">Education details not provided.</p>
-                ) : null}
+                <CandidateEducationSummary
+                  isSelfTaught={liveCandidate.isSelfTaught}
+                  university={liveCandidate.university}
+                  major={liveCandidate.major}
+                  gpa={liveCandidate.gpa}
+                  graduationYear={liveCandidate.graduationYear}
+                />
               </div>
             </div>
 

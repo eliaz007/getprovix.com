@@ -93,8 +93,6 @@ export function hasCompleteRequiredProfileFields(
     isNonEmptyText(row.bio) &&
     hasRequiredSkills(row.skills) &&
     isNonEmptyText(row.experience_level) &&
-    hasAnyNonEmptyText(row.university, row.school) &&
-    hasAnyNonEmptyText(row.major, row.degree) &&
     hasAnyNonEmptyText(row.availability_status, row.availability) &&
     isNonEmptyText(row.work_preference) &&
     isNonEmptyText(row.timezone) &&

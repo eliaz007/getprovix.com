@@ -25,6 +25,7 @@ const EMPTY_EDUCATION = {
   major: "",
   gpa: "",
   graduationYear: "",
+  isSelfTaught: false,
 };
 
 async function loadProfileRow(

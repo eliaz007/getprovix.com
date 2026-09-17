@@ -54,6 +54,8 @@ export const APPLICANT_PROFILE_COLUMNS = [
   "university",
   "gpa",
   "graduation_year",
+  "education",
+  "is_self_taught",
   "portfolio_url",
   "youtube_url",
   "availability_status",
@@ -94,6 +96,8 @@ export type ApplicantProfileRow = {
   university?: string | null;
   gpa?: string | number | null;
   graduation_year?: number | string | null;
+  education?: unknown;
+  is_self_taught?: boolean | string | number | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
   availability_status?: string | null;
@@ -138,6 +142,7 @@ export type EmployerApplicantView = {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught: boolean;
   matchScore: number;
   fitVerdict: FitVerdict;
   matchingSkills: string[];
@@ -366,6 +371,7 @@ export function mapEmployerApplicant(input: {
     major: education.major,
     gpa: formatGpa(education.gpa),
     graduationYear: education.graduationYear,
+    isSelfTaught: Boolean(education.isSelfTaught),
     matchScore,
     fitVerdict: scoreToFitVerdict(matchScore),
     matchingSkills: match.matching_skills.slice(0, 4),
@@ -409,6 +415,7 @@ export type ApplicantIntelligenceSource = {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught?: boolean;
   verifiedOnProvix: boolean;
   productionScore?: number | null;
   auditBreakdown?: unknown;
@@ -473,6 +480,7 @@ export function mapApplicantToTalentCandidate(
     major: applicant.major,
     gpa: formatGpa(applicant.gpa),
     graduationYear: applicant.graduationYear,
+    isSelfTaught: Boolean(applicant.isSelfTaught),
     skills: applicant.skills,
     rating: applicant.aiScoreLabel || `${matchScore}% Match`,
     execution_score: matchScore,

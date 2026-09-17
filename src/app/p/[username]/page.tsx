@@ -8,6 +8,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
+import SelfTaughtEngineerBadge from "@/components/SelfTaughtEngineerBadge";
 import LockedGitHubReposBadge from "@/components/LockedGitHubReposBadge";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
@@ -94,6 +95,11 @@ export default async function PublicCandidateProfilePage({
           ]
             .filter(Boolean)
             .join(" · ");
+          const hasEducation =
+            profile.isSelfTaught ||
+            profile.education.length > 0 ||
+            Boolean(academicLine) ||
+            Boolean(profile.school);
   const proofScore = resolveCandidateScore({
     integrity_score: profile.integrityScore,
   });
@@ -210,7 +216,35 @@ export default async function PublicCandidateProfilePage({
               <h2 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-textMuted">
                 Education & Credentials
               </h2>
-              {academicLine || profile.school ? (
+              {profile.isSelfTaught ? (
+                <div className="rounded-2xl border border-border bg-background p-4">
+                  <SelfTaughtEngineerBadge />
+                </div>
+              ) : hasEducation ? (
+                <div className="space-y-3">
+                  {profile.education.length > 0
+                    ? profile.education.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="flex items-start gap-3 rounded-2xl border border-border bg-background p-4"
+                        >
+                          <GraduationCap
+                            className="mt-0.5 h-4 w-4 shrink-0 text-brand"
+                            aria-hidden
+                          />
+                          <div className="min-w-0 flex-1 space-y-2 text-sm text-textMain">
+                            <p className="font-semibold">{entry.institution}</p>
+                            <div className="space-y-1 text-textMuted">
+                              <p>{entry.credentialType}</p>
+                              {entry.fieldOfStudy ? <p>{entry.fieldOfStudy}</p> : null}
+                              {entry.graduationYear ? (
+                                <p>Class of {entry.graduationYear}</p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    : (
                 <div className="flex items-start gap-3 rounded-2xl border border-border bg-background p-4">
                   <GraduationCap
                     className="mt-0.5 h-4 w-4 shrink-0 text-brand"
@@ -254,10 +288,11 @@ export default async function PublicCandidateProfilePage({
                     ) : null}
                   </div>
                 </div>
+                    )}
+                </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-border bg-background px-4 py-6 text-sm text-textMuted">
-                  Education details will appear here once the candidate adds
-                  school, major, GPA, or graduation year.
+                  Education is optional and has not been added to this profile.
                 </div>
               )}
             </section>
