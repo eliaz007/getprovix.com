@@ -116,7 +116,7 @@ export default function OpportunitiesJobFeed({
         <p className="text-textMuted text-sm mt-2 leading-relaxed">
           {isGuest
             ? "Browse openings, companies, and requirements. Sign in when you are ready to express interest."
-            : "Curated openings matched to your profile — express interest in one click."}
+            : "Open roles matched to your verified stack. Connect directly with hiring teams."}
         </p>
         {enableAiMatch ? (
           <div className="mt-5">
@@ -167,8 +167,8 @@ export default function OpportunitiesJobFeed({
           </span>
           {!jobsLoading && activeOpeningsCount === 0 ? (
             <p className="text-xs text-textMuted mt-2 leading-relaxed">
-              New roles are posted as employers join Provix. Sign in to be first
-              in line.
+              New roles are added regularly. Keep your profile updated to match
+              with hiring founders.
             </p>
           ) : null}
         </div>

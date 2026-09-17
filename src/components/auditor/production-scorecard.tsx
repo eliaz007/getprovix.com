@@ -85,10 +85,10 @@ export default function ProductionScorecard({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[10px] uppercase font-bold tracking-wider text-textMuted">
+            <p className="text-xs uppercase font-bold tracking-wider text-zinc-400">
               Production scorecard
             </p>
-            <p className="mt-0.5 truncate text-[11px] text-textMuted">
+            <p className="mt-0.5 truncate text-sm text-zinc-400">
               {inspected
                 ? `${resolved.evidence.fileCount} paths · ${Math.round(
                     resolved.weights.ciCdHealth * 100
@@ -107,7 +107,7 @@ export default function ProductionScorecard({
               )}`}
             >
               {productionScore}
-              <span className="text-[11px] font-semibold text-textMuted">
+              <span className="text-sm font-semibold text-zinc-400">
                 /100
               </span>
             </div>
@@ -132,11 +132,11 @@ export default function ProductionScorecard({
                 >
                   {score}
                 </p>
-                <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-textMuted">
+                <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-zinc-400">
                   {row.shortLabel}
                 </p>
                 {inspected ? (
-                  <p className="text-[10px] tabular-nums text-textMuted/80">
+                  <p className="text-xs tabular-nums text-zinc-400">
                     {count}
                   </p>
                 ) : null}
@@ -154,13 +154,13 @@ export default function ProductionScorecard({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-1">
+          <div className="text-xs uppercase font-bold text-zinc-400 tracking-wider mb-1">
             Production audit scorecard
           </div>
           <p className="text-sm font-semibold text-textMain">
             File-tree production score
           </p>
-          <p className="text-[11px] text-textMuted leading-relaxed mt-1">
+          <p className="text-sm text-zinc-400 leading-relaxed mt-1">
             {inspected
               ? `Scored from ${resolved.evidence.fileCount} inspected path${
                   resolved.evidence.fileCount === 1 ? "" : "s"
@@ -179,10 +179,10 @@ export default function ProductionScorecard({
             )}`}
           >
             {productionScore}
-            <span className="text-sm font-semibold text-textMuted">/100</span>
+            <span className="text-sm font-semibold text-zinc-400">/100</span>
           </div>
           <ProductionScoreVerifiedBadge score={productionScore} />
-          <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider">
+          <div className="text-xs uppercase font-bold text-zinc-400 tracking-wider">
             Weighted total
           </div>
         </div>
@@ -199,7 +199,7 @@ export default function ProductionScorecard({
               className="rounded-lg border border-border px-3 py-2"
             >
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-semibold text-textMain">{row.label}</p>
+                <p className="text-sm font-semibold text-textMain">{row.label}</p>
                 <span
                   className={`text-sm font-mono font-bold tabular-nums ${getMetricTone(
                     score
@@ -208,7 +208,7 @@ export default function ProductionScorecard({
                   {score}
                 </span>
               </div>
-              <p className="mt-1 text-[11px] text-textMuted">
+              <p className="mt-1 text-sm text-zinc-400">
                 {inspected ? `${count} found` : "Not inspected"}
               </p>
             </li>

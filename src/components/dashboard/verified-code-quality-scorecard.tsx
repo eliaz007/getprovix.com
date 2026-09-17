@@ -181,7 +181,7 @@ function EmployerVisibilitySwitch({
 }
 
 const NO_AUDIT_BADGE_CLASS =
-  "border-border bg-background text-textMuted";
+  "border-border bg-background text-zinc-400";
 
 export function AuditStatusBanner({
   record,
@@ -199,14 +199,14 @@ export function AuditStatusBanner({
         <div className="flex min-w-0 items-center gap-2.5">
           <p className="font-mono text-sm font-bold tabular-nums text-textMain">
             {hasScore ? score : "—"}
-            <span className="ml-0.5 text-[10px] font-semibold text-textMuted">
+            <span className="ml-0.5 text-sm font-semibold text-zinc-400">
               /100
             </span>
           </p>
           {hasScore ? <ProductionScoreVerifiedBadge score={score} /> : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="text-[10px] font-medium text-textMuted">Employers</span>
+          <span className="text-sm font-medium text-zinc-400">Employers</span>
           <EmployerVisibilitySwitch
             checked={visible && canPublish}
             disabled={!canPublish}
@@ -216,7 +216,7 @@ export function AuditStatusBanner({
         </div>
       </div>
       {error ? (
-        <p className="mt-1 text-[10px] text-red-300" role="alert">
+        <p className="mt-1 text-sm text-red-300" role="alert">
           {error}
         </p>
       ) : null}
@@ -226,7 +226,7 @@ export function AuditStatusBanner({
 
 function MetricPill({ label, score }: { label: string; score: number }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[10px] leading-none text-textMuted">
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-xs leading-none text-zinc-400">
       {label}
       <span className="font-mono font-medium tabular-nums text-textMain">
         {score}
@@ -244,7 +244,7 @@ function AuditHistoryList({
 }) {
   if (loading) {
     return (
-      <p className="text-[11px] text-textMuted">Loading history…</p>
+      <p className="text-sm text-zinc-400">Loading history…</p>
     );
   }
 
@@ -254,7 +254,7 @@ function AuditHistoryList({
 
   return (
     <details className="group">
-      <summary className="cursor-pointer list-none text-[11px] text-textMuted hover:text-textMain [&::-webkit-details-marker]:hidden">
+      <summary className="cursor-pointer list-none text-sm text-zinc-400 hover:text-textMain [&::-webkit-details-marker]:hidden">
         <span className="group-open:hidden">History · {entries.length}</span>
         <span className="hidden group-open:inline">Hide history</span>
       </summary>
@@ -265,9 +265,9 @@ function AuditHistoryList({
           return (
             <li
               key={entry.id}
-              className="flex items-center justify-between gap-3 py-1 text-[11px]"
+              className="flex items-center justify-between gap-3 py-1 text-sm"
             >
-              <p className="min-w-0 truncate text-textMuted">
+              <p className="min-w-0 truncate text-zinc-400">
                 <span className="text-textMain">{repo}</span>
                 {when ? ` · ${when}` : ""}
               </p>
@@ -406,7 +406,7 @@ export default function VerifiedCodeQualityScorecard({
             }
           >
             {hasScore ? score : "—"}
-            <span className="ml-0.5 text-[11px] font-normal text-textMuted">
+            <span className="ml-0.5 text-sm font-normal text-zinc-400">
               /100
             </span>
           </p>
@@ -414,13 +414,13 @@ export default function VerifiedCodeQualityScorecard({
             <ProductionScoreVerifiedBadge score={score} />
           ) : (
             <span
-              className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none ${NO_AUDIT_BADGE_CLASS}`}
+              className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-xs font-medium leading-none ${NO_AUDIT_BADGE_CLASS}`}
             >
               No audit
             </span>
           )}
         </div>
-        <label className="flex shrink-0 items-center gap-2 text-[11px] text-textMuted">
+        <label className="flex shrink-0 items-center gap-2 text-sm text-zinc-400">
           <span className="hidden sm:inline">Show to employers</span>
           <span className="sm:hidden">Employers</span>
           <EmployerVisibilitySwitch
@@ -441,7 +441,7 @@ export default function VerifiedCodeQualityScorecard({
       >
         {hasScore && record ? (
           <>
-            <span className="truncate text-[11px] text-textMuted">
+            <span className="truncate text-sm text-zinc-400">
               {repo ? (
                 isPrivateAuditedRepoLabel(record.breakdown.audited_repo_url) ? (
                   repo
@@ -466,14 +466,14 @@ export default function VerifiedCodeQualityScorecard({
             <MetricPill label="Errors" score={record.breakdown.error_handling} />
           </>
         ) : (
-          <span className="text-[11px] text-textMuted">
+          <span className="text-sm text-zinc-400">
             No production audit yet.
           </span>
         )}
       </div>
 
       {error ? (
-        <p className="mt-1 text-[11px] text-red-300" role="alert">
+        <p className="mt-1 text-sm text-red-300" role="alert">
           {error}
         </p>
       ) : null}
@@ -486,7 +486,7 @@ export default function VerifiedCodeQualityScorecard({
               type="button"
               onClick={() => void openAuditor()}
               disabled={openingAuditor}
-              className="ml-auto text-[11px] text-textMuted hover:text-textMain disabled:cursor-wait disabled:opacity-60"
+              className="ml-auto text-sm text-zinc-400 hover:text-textMain disabled:cursor-wait disabled:opacity-60"
             >
               {hasScore ? "Audit another repo" : "Run audit"}
             </button>

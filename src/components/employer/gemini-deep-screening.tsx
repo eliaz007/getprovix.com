@@ -553,10 +553,10 @@ export default function GeminiDeepScreening({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-1">
-            Gemini Deep Screening
+            Provix Deep Screening
           </div>
           <p className="text-xs text-textMuted leading-relaxed">
-            Run live GitHub artifact audits and integrity scoring for this candidate.
+            Run live repository audits and production integrity scoring for this candidate.
           </p>
         </div>
       </div>
@@ -628,8 +628,8 @@ export default function GeminiDeepScreening({
             );
           })}
           <p className="text-[11px] text-textMuted leading-relaxed">
-            GitHub crawl and Gemini scoring are running. Results appear here
-            when the audit finishes.
+            Repository analysis and integrity scoring in progress. Results appear
+            here when complete.
           </p>
           {errorMessage ? (
             <p className="text-[11px] text-amber-200 leading-relaxed">{errorMessage}</p>

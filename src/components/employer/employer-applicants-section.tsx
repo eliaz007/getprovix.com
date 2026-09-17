@@ -192,10 +192,8 @@ export default function EmployerApplicantsSection({
         <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
           Interested Candidates
         </h1>
-        <p className="text-textMuted text-sm mt-2 max-w-2xl">
-          Candidates who expressed interest in your listings. Open a profile to
-          review AI match analysis, run Gemini Deep Screening, and request an
-          intro when you want to talk.
+        <p className="mt-2 max-w-2xl text-sm text-zinc-400">
+          Developers who expressed interest in your open roles.
         </p>
       </div>
 

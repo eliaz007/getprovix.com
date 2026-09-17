@@ -4009,7 +4009,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           {/* MY PROFILE TAB WITH NESTED MENU OPTIONS */}
           {activeTab === "my_profile" && (
             <div className="max-w-3xl">
-              <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
@@ -4019,12 +4019,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       <VerifiedOnProvixPill verified={candidateVerifiedOnProvix} />
                     ) : null}
                   </div>
-                  <p className="text-textMuted text-sm mt-2 max-w-2xl leading-relaxed">
+                  <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-zinc-400">
                     {isBusinessAccount
                       ? "Manage your company profile, hiring requirements, and account settings."
-                      : candidateVerifiedOnProvix
-                        ? "Your profile is complete and a GitHub integrity audit has run successfully."
-                        : "Complete every required field and run a code integrity audit to earn Verified on Provix."}
+                      : "Manage your technical profile, specializations, and verified work."}
                   </p>
                 </div>
                 {!isBusinessAccount && (
@@ -4718,10 +4716,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                         <div className="space-y-4">
                           <div>
-                            <span className="font-bold text-xs text-textMain block">
+                            <span className="font-bold text-sm text-textMain block">
                               Production Scorecard
                             </span>
-                            <span className="text-[11px] text-textMuted">
+                            <span className="text-sm leading-relaxed text-zinc-400">
                               Computed from your latest code integrity audit
                               file tree (CI, tests, error boundaries).
                             </span>
