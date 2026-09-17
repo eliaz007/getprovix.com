@@ -210,7 +210,8 @@ export function getProductionScoreBadge(score: number): {
 
   return {
     label: "Verified",
-    className: "text-emerald-300 bg-emerald-500/10 border-emerald-500/30",
+    className:
+      "bg-emerald-500/10 text-emerald-400 border-emerald-500/25",
   };
 }
 

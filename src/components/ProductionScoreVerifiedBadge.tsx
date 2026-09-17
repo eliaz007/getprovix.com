@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import {
   PUBLIC_SCORECARD_THRESHOLD,
   getProductionScoreBadge,
@@ -28,13 +28,13 @@ export default function ProductionScoreVerifiedBadge({
     <span
       title={`Production score of ${PUBLIC_SCORECARD_THRESHOLD}+`}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide",
-        badge.className,
+        "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.15)]",
         className
       )}
     >
-      <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+      <ShieldCheck className="h-3 w-3" strokeWidth={2} aria-hidden />
       {badge.label}
     </span>
   );
 }
+
