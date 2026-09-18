@@ -3,13 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Building2, Code2 } from "lucide-react";
-import {
-  EMPLOYER_DASHBOARD_PATH,
-  loginHrefForSignupRole,
-  loadStoredAccountRole,
-  normalizeAccountKind,
-} from "@/lib/account-role";
-import { createClient } from "@/utils/supabase/client";
+import { loginHrefForSignupRole } from "@/lib/account-role";
 
 type Audience = "employer" | "developer";
 
@@ -17,48 +11,20 @@ export default function LandingAudienceCards() {
   const router = useRouter();
   const [pending, setPending] = useState<Audience | null>(null);
 
-  const openAudience = async (kind: Audience) => {
+  const openAudience = (kind: Audience) => {
     if (pending) {
       return;
     }
 
     setPending(kind);
-
-    try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push(loginHrefForSignupRole(kind));
-        return;
-      }
-
-      if (kind === "developer") {
-        router.push("/dashboard");
-        return;
-      }
-
-      const role = await loadStoredAccountRole(supabase, user);
-      router.push(
-        normalizeAccountKind(role) === "employer"
-          ? EMPLOYER_DASHBOARD_PATH
-          : loginHrefForSignupRole("employer")
-      );
-    } catch (error) {
-      console.error("Landing audience route failed:", error);
-      router.push(loginHrefForSignupRole(kind));
-    } finally {
-      setPending(null);
-    }
+    router.push(loginHrefForSignupRole(kind));
   };
 
   return (
     <section className="mt-20 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
       <button
         type="button"
-        onClick={() => void openAudience("employer")}
+        onClick={() => openAudience("employer")}
         disabled={pending !== null}
         className="group flex h-full cursor-pointer flex-col rounded-2xl border border-border bg-panel p-8 text-left transition-colors duration-200 hover:border-white/15 hover:bg-white/[0.03] disabled:cursor-wait"
       >
@@ -84,7 +50,7 @@ export default function LandingAudienceCards() {
 
       <button
         type="button"
-        onClick={() => void openAudience("developer")}
+        onClick={() => openAudience("developer")}
         disabled={pending !== null}
         className="group flex h-full cursor-pointer flex-col rounded-2xl border border-border bg-panel p-8 text-left transition-colors duration-200 hover:border-white/15 hover:bg-white/[0.03] disabled:cursor-wait"
       >

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Session, User } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
@@ -11,8 +11,7 @@ import { getPostLoginPath } from "@/lib/admin-access";
 import {
   EMPLOYER_DASHBOARD_PATH,
   isEmployerSignup,
-  loadStoredAccountRole,
-  normalizeAccountKind,
+  loadProfileAccountKind,
   persistEmployerAccount,
   resolvePostAuthDestination,
   signupMetadataForKind,
@@ -128,10 +127,11 @@ async function destinationAfterAuth(
   search: string,
   signupKind?: SignUpType
 ): Promise<string> {
+  const profileKind = await loadProfileAccountKind(supabase, user.id);
   const role =
     signupKind === "business"
       ? "employer"
-      : await loadStoredAccountRole(supabase, user);
+      : profileKind;
   const params = new URLSearchParams(search);
   const destination = resolvePostAuthDestination({
     role,
@@ -140,12 +140,6 @@ async function destinationAfterAuth(
   });
 
   return appendAuthQuery(destination, search);
-}
-
-function hasAuthEmail(
-  value: User | null | undefined
-): value is User & { email: string } {
-  return Boolean(value && value.email && value.email.trim());
 }
 
 export default function LoginPage() {
@@ -198,67 +192,37 @@ export default function LoginPage() {
   useEffect(() => {
     let cancelled = false;
 
-    const leaveLogin = async (user: User) => {
-      const search = window.location.search;
-      const requestedRole = signupRoleFromSearch(search);
-      const storedRole = await loadStoredAccountRole(supabase, user);
-      const isEmployer = normalizeAccountKind(storedRole) === "employer";
-
-      if (requestedRole === "employer" && !isEmployer) {
-        if (!cancelled) {
-          setSignUpType("business");
-          setMode("sign-up");
-          setCheckingSession(false);
-        }
-        return;
-      }
-
-      const destination = await destinationAfterAuth(user, search);
-      if (!cancelled) {
-        window.location.href = destination;
-      }
-    };
-
-    const handleSession = (session: Session | null, event?: string) => {
-      if (event === "PASSWORD_RECOVERY") {
-        window.location.href = "/update-password";
-        return;
-      }
-
-      if (hasAuthEmail(session?.user ?? null)) {
-        void leaveLogin(session!.user);
-        return;
-      }
-
-      if (!cancelled) {
-        setCheckingSession(false);
-      }
-    };
-
-    supabase.auth
-      .getUser()
-      .then(({ data: { user } }) => {
-        if (hasAuthEmail(user)) {
-          void leaveLogin(user);
-          return;
-        }
-
-        if (!cancelled) {
-          setCheckingSession(false);
-        }
-      })
-      .catch((err) => {
-        console.error("Login session check failed:", err);
-        if (!cancelled) {
-          setCheckingSession(false);
-        }
-      });
-
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      handleSession(session, event);
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        window.location.href = "/update-password";
+      }
     });
+
+    const prepareLogin = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        // If this page rendered, middleware did not confirm a cookie session.
+        // Clear leftover client tokens so they cannot bounce us to `/dashboard` then `/`.
+        if (error || data.user) {
+          await supabase.auth.signOut({ scope: "local" });
+        }
+      } catch (err) {
+        console.error("Login session check failed:", err);
+        try {
+          await supabase.auth.signOut({ scope: "local" });
+        } catch {
+          // Ignore cleanup failures and still show the form.
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingSession(false);
+        }
+      }
+    };
+
+    void prepareLogin();
 
     return () => {
       cancelled = true;

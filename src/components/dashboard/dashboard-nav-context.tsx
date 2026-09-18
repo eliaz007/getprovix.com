@@ -15,10 +15,17 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
-import { resolveAccountRole } from "@/lib/account-role";
+import {
+  EMPLOYER_DASHBOARD_PATH,
+  isEmployerAllowedDashboardRequest,
+  normalizeAccountKind,
+  ROLE_ONBOARDING_PATH,
+} from "@/lib/account-role";
+import { isAdminUser } from "@/lib/admin-access";
 import {
   canAccessTalentPool,
   dashboardTabFromSearchParam,
+  defaultDashboardTabForRole,
   isDashboardRootPath,
   isEmployeeRole,
   isEmployerRole,
@@ -156,7 +163,7 @@ function DashboardNavProviderImpl({
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   const [userInitials, setUserInitials] = useState("U");
   const [authLoading, setAuthLoading] = useState(true);
-  const [contentReady, setContentReadyState] = useState(true);
+  const [contentReady, setContentReadyState] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalError, setAuthModalError] = useState<string | null>(null);
   const [onOpenJobApplicants, setOnOpenJobApplicantsState] = useState<
@@ -175,12 +182,13 @@ function DashboardNavProviderImpl({
     userSelectedTabRef.current = Boolean(nextTab);
   }
 
+  const defaultTab = defaultDashboardTabForRole(accountRole);
   const activeTab = isDashboardRootPath(pathname)
-    ? (userTab ?? "my_profile")
-    : ((locationChanged ? null : userTab) ?? pathTab ?? "my_profile");
+    ? (userTab ?? defaultTab)
+    : ((locationChanged ? null : userTab) ?? pathTab ?? defaultTab);
 
   if (isDashboardRootPath(pathname)) {
-    tabHold.current = userTab ?? (activeTab === "my_profile" ? null : activeTab);
+    tabHold.current = userTab ?? (activeTab === defaultTab ? null : activeTab);
   }
 
   const setOnOpenJobApplicants = useCallback(
@@ -227,13 +235,20 @@ function DashboardNavProviderImpl({
       return;
     }
 
+    userSelectedTabRef.current = true;
+    tabHold.current = urlTab;
+    setUserTab(urlTab);
+
+    // Keep employer hub tabs in the URL so refresh does not fall back to the
+    // candidate profile studio. Candidate default (my_profile) still strips.
+    if (isEmployerRole(accountRole) || urlTab !== "my_profile") {
+      return;
+    }
+
     if (didStripTabQueryRef.current) {
       return;
     }
     didStripTabQueryRef.current = true;
-    userSelectedTabRef.current = true;
-    tabHold.current = urlTab;
-    setUserTab(urlTab);
 
     const params = new URLSearchParams(window.location.search);
     if (!params.has("tab")) {
@@ -243,7 +258,20 @@ function DashboardNavProviderImpl({
     params.delete("tab");
     const next = `${pathname}${params.toString() ? `?${params}` : ""}`;
     router.replace(next, { scroll: false });
-  }, [pathname, urlTab, router]);
+  }, [pathname, urlTab, router, accountRole]);
+
+  useEffect(() => {
+    if (!isEmployerRole(accountRole) || !isDashboardRootPath(pathname)) {
+      return;
+    }
+
+    const search = tabParam ? `?tab=${encodeURIComponent(tabParam)}` : "";
+    if (isEmployerAllowedDashboardRequest(pathname, search)) {
+      return;
+    }
+
+    router.replace(EMPLOYER_DASHBOARD_PATH);
+  }, [accountRole, pathname, router, tabParam]);
 
   useEffect(() => {
     let active = true;
@@ -321,7 +349,13 @@ function DashboardNavProviderImpl({
           return;
         }
 
-        setAccountRole(resolveAccountRole(profile?.role, user));
+        const assignedRole = normalizeAccountKind(profile?.role);
+        if (!assignedRole && !isAdminUser(user)) {
+          router.replace(ROLE_ONBOARDING_PATH);
+          return;
+        }
+
+        setAccountRole(assignedRole);
       } catch (error) {
         console.error("Dashboard nav session bootstrap failed:", error);
         if (active) {
@@ -357,7 +391,7 @@ function DashboardNavProviderImpl({
       window.clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [pathname]);
+  }, [pathname, router]);
 
   const isGuest = !userId;
   const isBusinessAccount = isEmployerRole(accountRole);
@@ -439,18 +473,13 @@ export function useDashboardNav() {
 /** Hold the dashboard chrome until this route's first paint of real content. */
 export function DashboardContentGate({ ready }: { ready: boolean }) {
   const { setContentReady } = useDashboardNav();
-  const [released, setReleased] = useState(false);
-
-  if (ready && !released) {
-    setReleased(true);
-  }
 
   useLayoutEffect(() => {
-    setContentReady(released);
+    setContentReady(ready);
     return () => {
-      setContentReady(true);
+      setContentReady(false);
     };
-  }, [released, setContentReady]);
+  }, [ready, setContentReady]);
 
   return null;
 }

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
 import {
-  loadStoredAccountRole,
+  loadProfileAccountKind,
+  persistAccountRole,
   persistEmployerAccount,
   resolvePostAuthDestination,
   signupMetadataForKind,
@@ -44,7 +45,7 @@ export async function signInWithEmail(email: string, password: string) {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const role = user ? await loadStoredAccountRole(supabase, user) : null;
+      const role = user ? await loadProfileAccountKind(supabase, user.id) : null;
       revalidatePath("/", "layout");
       redirect(resolvePostAuthDestination({ role }));
     }
@@ -115,6 +116,13 @@ export async function signUpWithEmail(
         await persistEmployerAccount(
           supabase,
           user.id,
+          user.email ?? email
+        );
+      } else if (user && rawData.role === "candidate") {
+        await persistAccountRole(
+          supabase,
+          user.id,
+          "candidate",
           user.email ?? email
         );
       }

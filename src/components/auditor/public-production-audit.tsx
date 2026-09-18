@@ -1,14 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
-  ArrowRight,
-  Building2,
   Check,
-  Code2,
   Loader2,
   ShieldCheck,
 } from "lucide-react";
@@ -18,14 +14,12 @@ import { DAILY_LIMIT_UI_MESSAGE, type DailyScanUsage } from "@/lib/daily-scan-li
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
   buildProductionAuditClaim,
-  cachePendingProductionAudit,
-  CLAIM_AUDIT_INTENT,
   clearPendingProductionAudit,
   formatAuditedRepoLabel,
   PRIVATE_AUDIT_INTENT,
   type ProductionAuditClaim,
 } from "@/lib/production-audit";
-import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
+import TalentNetworkCta from "@/components/auditor/talent-network-cta";
 import PrivateRepositoryBanner from "@/components/auditor/private-repository-banner";
 import RepoOwnershipVerifier from "@/components/auditor/repo-ownership-verifier";
 import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
@@ -47,8 +41,6 @@ const AUDIT_STAGES = [
   "Architecture Review (Check 2)...",
   "API & Data Resiliency Check (Check 3)...",
 ] as const;
-
-const TALENT_HREF = "/employer";
 
 function SubMetric({ label, score }: { label: string; score: number }) {
   return (
@@ -137,7 +129,7 @@ export default function PublicProductionAudit({
     "Sign in or create an account to continue."
   );
   const [authNextPath, setAuthNextPath] = useState("/dashboard");
-  const [authIntent, setAuthIntent] = useState(CLAIM_AUDIT_INTENT);
+  const [authIntent, setAuthIntent] = useState(PRIVATE_AUDIT_INTENT);
   const stageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStartedRef = useRef("");
   const inFlightRef = useRef(false);
@@ -150,7 +142,7 @@ export default function PublicProductionAudit({
     setAuthModalError(null);
     setAuthModalDescription(options.description);
     setAuthNextPath(options.nextPath);
-    setAuthIntent(options.intent ?? CLAIM_AUDIT_INTENT);
+    setAuthIntent(options.intent ?? PRIVATE_AUDIT_INTENT);
     setAuthModalOpen(true);
   };
 
@@ -207,6 +199,7 @@ export default function PublicProductionAudit({
         body: JSON.stringify({
           githubUrl: trimmed,
           compensationLevel: "Mid",
+          playground: true,
         }),
       });
 
@@ -294,18 +287,7 @@ export default function PublicProductionAudit({
         scoreCap: nextResult.scoreCap,
       });
       setClaim(nextClaim);
-
-      try {
-        const supabase = createClient();
-        const { data: sessionData } = await supabase.auth.getUser();
-        if (sessionData.user) {
-          clearPendingProductionAudit();
-        } else {
-          cachePendingProductionAudit(nextClaim);
-        }
-      } catch {
-        cachePendingProductionAudit(nextClaim);
-      }
+      clearPendingProductionAudit();
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Could not complete audit.";
@@ -390,17 +372,6 @@ export default function PublicProductionAudit({
         "Private and enterprise repositories need an account so you can submit an architecture write-up from the candidate dashboard.",
       nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
       intent: PRIVATE_AUDIT_INTENT,
-    });
-  };
-
-  const requireAuthForClaim = (nextClaim: ProductionAuditClaim) => {
-    cachePendingProductionAudit(nextClaim);
-    openAuthModal({
-      description: nextClaim.is_publicly_visible
-        ? "Sign in or create an account to save this score to your profile and show it to employers."
-        : "Sign in or create an account to save this private diagnostic to your candidate profile.",
-      nextPath: `/dashboard?intent=${CLAIM_AUDIT_INTENT}`,
-      intent: CLAIM_AUDIT_INTENT,
     });
   };
 
@@ -573,11 +544,6 @@ export default function PublicProductionAudit({
             </div>
           </section>
 
-          <ScorecardPublicationCallout
-            claim={claim}
-            onRequireAuth={requireAuthForClaim}
-          />
-
           <section className="rounded-xl border border-border bg-panel p-4">
             <h3 className="text-sm font-bold tracking-tight text-textMain">
               Findings
@@ -601,58 +567,7 @@ export default function PublicProductionAudit({
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <article className="flex h-full flex-col rounded-xl border border-border bg-panel p-4">
-              <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-sky-400">
-                <Code2 className="h-4 w-4" aria-hidden />
-              </div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-sky-400">
-                For the author
-              </p>
-              <h3 className="mt-2 text-sm font-bold tracking-tight text-textMain">
-                Claim this scorecard on your profile
-              </h3>
-              <p className="mt-2 flex-1 text-xs leading-relaxed text-textMuted">
-                Attach this production score so hiring founders see verified
-                work, not resume claims.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  if (claim) {
-                    requireAuthForClaim(claim);
-                  }
-                }}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-brand px-3 py-2.5 text-xs font-bold tracking-tight text-white transition-colors duration-200 hover:bg-brandHover cursor-pointer"
-              >
-                Save Score to Profile / Show to Employers
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            </article>
-
-            <article className="flex h-full flex-col rounded-xl border border-border bg-panel p-4">
-              <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-brand">
-                <Building2 className="h-4 w-4" aria-hidden />
-              </div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-brand">
-                For a hiring founder
-              </p>
-              <h3 className="mt-2 text-sm font-bold tracking-tight text-textMain">
-                Hire builders with scorecards like this
-              </h3>
-              <p className="mt-2 flex-1 text-xs leading-relaxed text-textMuted">
-                Screen talent against verified GitHub artifacts and production
-                audit scores.
-              </p>
-              <Link
-                href={TALENT_HREF}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-transparent px-3 py-2.5 text-xs font-bold tracking-tight text-white transition-colors duration-200 hover:bg-white/5 cursor-pointer"
-              >
-                Browse Provix Talent Network
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-              </Link>
-            </article>
-          </section>
+          <TalentNetworkCta />
         </div>
       ) : null}
 

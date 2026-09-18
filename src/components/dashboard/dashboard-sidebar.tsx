@@ -208,9 +208,19 @@ function DashboardTabLink({
   variant?: "default" | "employer";
 }) {
   const pathname = usePathname();
-  const { activeTab, setActiveTab, setMobileNavOpen, isGuest, requireAuth } =
-    useDashboardNav();
+  const {
+    activeTab,
+    setActiveTab,
+    setMobileNavOpen,
+    isGuest,
+    isBusinessAccount,
+    requireAuth,
+  } = useDashboardNav();
   const isActive = isNavTabActive(tab, pathname, activeTab);
+  const href =
+    tab === "my_profile" && isBusinessAccount
+      ? "/dashboard?tab=my_profile"
+      : dashboardTabHref(tab);
 
   const selectTab = () => {
     setActiveTab(tab);
@@ -258,7 +268,7 @@ function DashboardTabLink({
   } else {
     control = (
       <Link
-        href={dashboardTabHref(tab)}
+        href={href}
         onClick={selectTab}
         className={navItemClass(isActive, variant)}
       >

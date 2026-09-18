@@ -22,6 +22,7 @@ import JobApplicantsDrawer, {
 } from "@/components/JobApplicantsDrawer";
 import CandidateIntelligenceDrawer from "@/components/employer/candidate-intelligence-drawer";
 import EmployerApplicantsSection from "@/components/employer/employer-applicants-section";
+import EmployerConsoleLockedCard from "@/components/employer/employer-console-locked";
 import {
   mapApplicantToTalentCandidate,
   type EmployerApplicantView,
@@ -51,9 +52,9 @@ import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast"
 import { buildAlliterativeAliasIdentity } from "@/lib/alias-generator";
 import {
   normalizeAccountKind,
-  resolveAccountRole,
-  profileDefaultsForAccountRole,
+  ROLE_ONBOARDING_PATH,
 } from "@/lib/account-role";
+import { isAdminUser } from "@/lib/admin-access";
 import {
   getPublicCandidateInitials,
   getPublicCandidateLocation,
@@ -747,29 +748,7 @@ async function ensureUserProfile(
   const existing = await fetchProfileRow(supabase, user.id);
 
   if (!existing.error && existing.data) {
-    const profile = existing.data as ProfileRecord;
-    const metadataRole = resolveAccountRole(null, user);
-    const shouldBeEmployer = normalizeAccountKind(metadataRole) === "employer";
-    const storedAsEmployer = normalizeAccountKind(profile.role) === "employer";
-
-    if (shouldBeEmployer && !storedAsEmployer) {
-      const { data: repaired, error: repairError } = await supabase
-        .from("profiles")
-        .update({
-          role: "employer",
-          is_visible_in_pool: false,
-          is_verified: false,
-        })
-        .eq("id", user.id)
-        .select("*")
-        .maybeSingle();
-
-      if (!repairError && repaired) {
-        return repaired as ProfileRecord;
-      }
-    }
-
-    return profile;
+    return existing.data as ProfileRecord;
   }
 
   if (existing.error) {
@@ -788,15 +767,13 @@ async function ensureUserProfile(
     displayNameFromSources(null, user) ||
     user.email?.split("@")[0] ||
     "New User";
-  const { role, is_visible_in_pool } = profileDefaultsForAccountRole(
-    resolveAccountRole(null, user)
-  );
 
   const extendedPayload = {
     id: user.id,
+    user_id: user.id,
     full_name: fullName,
-    role,
-    is_visible_in_pool,
+    role: null,
+    is_visible_in_pool: false,
     is_verified: false,
   };
 
@@ -814,7 +791,7 @@ async function ensureUserProfile(
   if (insertResult.error && isMissingColumnError(insertResult.error)) {
     insertResult = await supabase
       .from("profiles")
-      .insert({ id: user.id, full_name: fullName, role })
+      .insert({ id: user.id, full_name: fullName })
       .select("*")
       .maybeSingle();
 
@@ -859,7 +836,7 @@ export default function DashboardPage() {
   }
 
   const [fallbackActiveTab, setFallbackActiveTab] =
-    useState<DashboardTab>("opportunities");
+    useState<DashboardTab>("my_profile");
   const activeTab = dashboardNav?.activeTab ?? fallbackActiveTab;
   const navSetActiveTab = dashboardNav?.setActiveTab;
   const navSetDefaultTab = dashboardNav?.setDefaultTab;
@@ -984,8 +961,10 @@ export default function DashboardPage() {
   const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
   const [showPrivateAuditor, setShowPrivateAuditor] = useState(false);
 
-  // Prefer profiles.role, then auth user_metadata.role.
-  const profileRole = accountRole ?? dbProfile?.role;
+  // Prefer the loaded profile role. Fall back to the nav bootstrap role so the
+  // Company Hub never paints the candidate studio while the page query is in flight.
+  const profileRole =
+    accountRole ?? dbProfile?.role ?? dashboardNav?.accountRole ?? null;
   const isBusinessAccount = isEmployerRole(profileRole);
   const isEmployeeAccount = isEmployeeRole(profileRole);
   const isVerifiedEmployer = dbProfile?.is_verified === true;
@@ -1056,12 +1035,17 @@ export default function DashboardPage() {
 
         if (!isMounted) return;
 
+        if (
+          !normalizeAccountKind(profileRow?.role) &&
+          !isAdminUser(sessionUser)
+        ) {
+          window.location.replace(ROLE_ONBOARDING_PATH);
+          return;
+        }
+
         const profile = profileRow ?? null;
-        const resolvedRole = resolveAccountRole(profile?.role, sessionUser);
-        let profileWithRole =
-          profile && !profile.role && resolvedRole
-            ? { ...profile, role: resolvedRole }
-            : profile;
+        const resolvedRole = normalizeAccountKind(profile?.role);
+        let profileWithRole = profile;
 
         const displayName = displayNameFromSources(profileWithRole, sessionUser);
 
@@ -1199,7 +1183,7 @@ export default function DashboardPage() {
         setBusinessProfileData(hydratedBusiness);
         setSavedBusinessProfileData(hydratedBusiness);
 
-        if (canAccessTalentPool(resolvedRole, profileWithRole?.is_verified === true)) {
+        if (isEmployerRole(resolvedRole)) {
           setProfileSubMenu("companyInfo");
           if (navSetDefaultTab) {
             navSetDefaultTab("talent");
@@ -1801,7 +1785,19 @@ export default function DashboardPage() {
   ]);
 
   useEffect(() => {
-    if (!user || !authChecked) {
+    if (!user || !authChecked || !profileRole) {
+      return;
+    }
+
+    if (isBusinessAccount) {
+      if (
+        activeTab === "opportunities" ||
+        activeTab === "intro_requests" ||
+        activeTab === "opportunity_radar" ||
+        activeTab === "applications"
+      ) {
+        setActiveTab("talent");
+      }
       return;
     }
 
@@ -1819,14 +1815,10 @@ export default function DashboardPage() {
     ) {
       setActiveTab("my_profile");
     }
-    if (isBusinessAccount && activeTab === "opportunities") {
-      setActiveTab("my_profile");
-    }
     if (!isBusinessAccount && activeTab === "applicants") {
       setActiveTab("my_profile");
     }
     if (
-      profileRole &&
       !isBusinessAccount &&
       (activeTab === "talent" ||
         activeTab === "applicants" ||
@@ -1834,10 +1826,7 @@ export default function DashboardPage() {
     ) {
       router.replace("/dashboard");
     }
-    if (
-      (isBusinessAccount || isEmployeeAccount) &&
-      activeTab === "intro_requests"
-    ) {
+    if (isEmployeeAccount && activeTab === "intro_requests") {
       setActiveTab("my_profile");
     }
   }, [showTalentPoolNav, isEmployeeAccount, isBusinessAccount, activeTab, user, authChecked, setActiveTab, profileRole, router]);
@@ -1955,6 +1944,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const [profileSubMenu, setProfileSubMenu] = useState<
     "overview" | "academics" | "portfolio" | "settings" | "companyInfo" | "activeListings"
   >("overview");
+
+  useEffect(() => {
+    if (!isBusinessAccount) {
+      return;
+    }
+    setProfileSubMenu((current) =>
+      current === "companyInfo" ||
+      current === "activeListings" ||
+      current === "settings"
+        ? current
+        : "companyInfo"
+    );
+  }, [isBusinessAccount]);
 
   // --- CANDIDATE PROFILE STUDIO STATE (persisted to Supabase) ---
   const [title, setTitle] = useState("");
@@ -3886,7 +3888,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   );
 
   const isStandaloneGuest = Boolean(!user && !dashboardNav);
+  const roleReady = authChecked && !loadingProfile && (!user || Boolean(profileRole));
   const isLoading =
+    !roleReady ||
     loadingProfile ||
     ((activeTab === "opportunities" || activeTab === "opportunity_radar") &&
       jobsLoading);
@@ -4006,8 +4010,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         key={activeTab}
         className="w-full max-w-5xl mx-auto space-y-10 animate-fadeIn"
       >
+          {isBusinessAccount &&
+            !isVerifiedEmployer &&
+            activeTab !== "my_profile" && (
+              <EmployerConsoleLockedCard />
+            )}
+
           {/* MY PROFILE TAB WITH NESTED MENU OPTIONS */}
-          {activeTab === "my_profile" && (
+          {activeTab === "my_profile" && roleReady && (
             <div className="max-w-3xl">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -4109,7 +4119,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
               {/* SUB-MENU CONTENT PANELS */}
               <div className="card-edge bg-panel rounded-2xl border border-border p-8">
-                {profileSubMenu === "companyInfo" && (
+                {profileSubMenu === "companyInfo" && isBusinessAccount && (
                   <div className="space-y-6">
                     <div className="flex items-center gap-5 pb-6 border-b border-border">
                       <div className="w-16 h-16 rounded-2xl bg-brand/20 border border-brand/40 flex items-center justify-center text-xl font-bold text-brand">
@@ -4220,7 +4230,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
                 )}
 
-                {profileSubMenu === "activeListings" && (
+                {profileSubMenu === "activeListings" && isBusinessAccount && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-bold text-textMain">
@@ -4307,7 +4317,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
                 )}
 
-                {profileSubMenu === "overview" && (
+                {profileSubMenu === "overview" && !isBusinessAccount && (
                   <div className="space-y-6">
                     <div className="flex items-center gap-5 pb-6 border-b border-border">
                       {loadingProfile ? (
@@ -4468,7 +4478,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
                 )}
 
-                {profileSubMenu === "academics" && (
+                {profileSubMenu === "academics" && !isBusinessAccount && (
                   <div className="space-y-6">
                     {loadingProfile ? (
                       <div className="space-y-3">
@@ -4500,7 +4510,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
                 )}
 
-                {profileSubMenu === "portfolio" && (
+                {profileSubMenu === "portfolio" && !isBusinessAccount && (
                   <div className="space-y-6">
                     <h3 className="text-sm font-bold text-textMain mb-2">
                       Verifiable Projects & Links
@@ -6002,7 +6012,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           )}
 
           {/* EMPLOYER: INTERESTED CANDIDATES */}
-          {isBusinessAccount && activeTab === "applicants" && (
+          {isBusinessAccount &&
+            isVerifiedEmployer &&
+            activeTab === "applicants" && (
             <EmployerApplicantsSection
               key={applicantsRefreshKey}
               userId={user?.id ?? null}

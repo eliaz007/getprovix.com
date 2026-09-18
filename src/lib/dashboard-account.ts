@@ -40,6 +40,12 @@ export function isDashboardRootPath(pathname: string): boolean {
   return pathname === "/dashboard";
 }
 
+export function defaultDashboardTabForRole(
+  role: string | null | undefined
+): DashboardTab {
+  return isEmployerRole(role) ? "talent" : "my_profile";
+}
+
 export function dashboardTabHref(tab: DashboardTab): string {
   if (tab === "opportunities") {
     return "/opportunities";
@@ -51,6 +57,7 @@ export function dashboardTabHref(tab: DashboardTab): string {
 }
 
 const SEARCH_DASHBOARD_TABS = [
+  "my_profile",
   "intro_requests",
   "opportunity_radar",
   "applications",

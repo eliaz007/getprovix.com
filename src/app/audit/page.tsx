@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import PublicProductionAudit from "@/components/auditor/public-production-audit";
+import MarketingAuthLink from "@/components/marketing-auth-link";
 import { buildPageMetadata } from "@/lib/site";
 import { githubUrlFromAuditQuery } from "@/lib/validate-github-url";
 
@@ -26,12 +27,7 @@ export default async function PublicAuditPage({
             <ProvixLogo />
           </Link>
           <nav className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-semibold text-textMain transition-colors duration-200 hover:bg-white/5"
-            >
-              Sign in
-            </Link>
+            <MarketingAuthLink />
           </nav>
         </div>
       </header>

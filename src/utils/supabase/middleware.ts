@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isAdminUser } from "@/lib/admin-access";
 import {
   isAuditorPath,
   isProtectedAppPath,
@@ -7,8 +8,12 @@ import {
 } from "@/lib/dashboard-account";
 import {
   EMPLOYER_DASHBOARD_PATH,
+  isEmployerAllowedDashboardRequest,
   isEmployerDashboardRequest,
+  isRoleOnboardingPath,
   normalizeAccountKind,
+  resolvePostAuthDestination,
+  ROLE_ONBOARDING_PATH,
 } from "@/lib/account-role";
 
 const cookieOptions = {
@@ -91,9 +96,6 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Refresh the auth session so expired tokens are renewed before route checks.
-  await supabase.auth.getSession();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -136,34 +138,107 @@ export async function updateSession(request: NextRequest) {
       pathname,
       request.nextUrl.search
     );
+    const onRoleOnboarding = isRoleOnboardingPath(pathname);
     const needsRole =
       isHome ||
+      isLogin ||
       isEmployer ||
       employerRequest ||
-      isAuditorPath(pathname);
+      isAuditorPath(pathname) ||
+      onRoleOnboarding ||
+      (isProtectedRoute && !isLogin);
+
+    let role: ReturnType<typeof normalizeAccountKind> = null;
 
     if (needsRole) {
-      let role = normalizeAccountKind(
-        typeof user.user_metadata?.role === "string"
-          ? user.user_metadata.role
-          : null
-      );
-
       try {
         const { data: profile } = await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
           .maybeSingle();
-        role =
-          normalizeAccountKind(
-            typeof profile?.role === "string" ? profile.role : null
-          ) ?? role;
+        role = normalizeAccountKind(
+          typeof profile?.role === "string" ? profile.role : null
+        );
+
+        if (!role) {
+          const { data: linkedProfile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          role = normalizeAccountKind(
+            typeof linkedProfile?.role === "string" ? linkedProfile.role : null
+          );
+        }
       } catch (err) {
         console.error("Account role check failed:", err);
       }
 
+      if (
+        !role &&
+        !isAdminUser(user) &&
+        !onRoleOnboarding &&
+        !isLogin &&
+        (isProtectedRoute || isHome)
+      ) {
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          ROLE_ONBOARDING_PATH
+        );
+      }
+
+      if (role && onRoleOnboarding) {
+        const destination = new URL(
+          role === "employer" ? EMPLOYER_DASHBOARD_PATH : "/dashboard",
+          request.url
+        );
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          destination.pathname,
+          destination.search
+        );
+      }
+
+      if (isLogin) {
+        const destination = new URL(
+          resolvePostAuthDestination({
+            role,
+            requestedNext: request.nextUrl.searchParams.get("next"),
+            isAdmin: isAdminUser(user),
+          }),
+          request.url
+        );
+        if (
+          destination.pathname !== "/login" &&
+          !destination.pathname.startsWith("/login/")
+        ) {
+          return redirectWithSessionCookies(
+            request,
+            supabaseResponse,
+            destination.pathname,
+            destination.search
+          );
+        }
+      }
+
       const isEmployerAccount = role === "employer";
+
+      if (
+        isEmployerAccount &&
+        pathname === "/dashboard" &&
+        !isEmployerAllowedDashboardRequest(pathname, request.nextUrl.search)
+      ) {
+        const destination = new URL(EMPLOYER_DASHBOARD_PATH, request.url);
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          destination.pathname,
+          destination.search
+        );
+      }
 
       if (isEmployerAccount && (isHome || isEmployer || isAuditorPath(pathname))) {
         const destination = new URL(EMPLOYER_DASHBOARD_PATH, request.url);

@@ -3,9 +3,9 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { isAdminUser } from "@/lib/admin-access";
 import {
-  isEmployerSignup,
   normalizeAccountKind,
   resolvePostAuthDestination,
+  ROLE_ONBOARDING_PATH,
 } from "@/lib/account-role";
 import { EMPLOYER_SIGNUP_COOKIE } from "@/lib/google-auth";
 
@@ -44,6 +44,10 @@ function redirectWithCookies(
   return nextResponse;
 }
 
+function profileRoleValue(role: unknown): string | null {
+  return typeof role === "string" && role.trim() ? role : null;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -77,13 +81,15 @@ export async function GET(request: NextRequest) {
 
   let authenticated = false;
   let authErrorMessage: string | null = null;
+  let sessionUserId: string | null = null;
 
   if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       authErrorMessage = error.message;
     } else {
       authenticated = true;
+      sessionUserId = data.session?.user.id ?? null;
     }
   } else if (tokenHash && type) {
     const { error } = await supabase.auth.verifyOtp({
@@ -110,57 +116,48 @@ export async function GET(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const employerIntent =
-    request.cookies.get(EMPLOYER_SIGNUP_COOKIE)?.value === "employer";
+  const userId = sessionUserId ?? user?.id ?? null;
+
   let role: string | null = null;
 
-  if (user) {
+  if (userId) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle();
-    role =
-      (typeof profile?.role === "string" ? profile.role : null) ??
-      (typeof user.user_metadata?.role === "string"
-        ? user.user_metadata.role
-        : null);
 
-    if (
-      (isEmployerSignup(user) || employerIntent) &&
-      normalizeAccountKind(role) !== "employer"
-    ) {
-      await supabase.auth.updateUser({
-        data: { role: "employer", account_type: "business" },
-      });
-      await supabase.from("profiles").upsert(
-        {
-          id: user.id,
-          role: "employer",
-          is_visible_in_pool: false,
-          is_verified: false,
-          ...(user.email
-            ? { email: user.email, contact_email: user.email }
-            : {}),
-        },
-        { onConflict: "id" }
-      );
-      role = "employer";
+    role = profileRoleValue(profile?.role);
+
+    if (!role) {
+      const { data: linkedProfile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("user_id", userId)
+        .maybeSingle();
+      role = profileRoleValue(linkedProfile?.role);
     }
   }
 
-  const destination = resolvePostAuthDestination({
-    role: employerIntent || (user && isEmployerSignup(user)) ? "employer" : role,
-    requestedNext: nextParam,
-    isAdmin: isAdminUser(user),
-  });
+  const assignedRole = normalizeAccountKind(role);
+  const destination =
+    !assignedRole && !isAdminUser(user)
+      ? ROLE_ONBOARDING_PATH
+      : resolvePostAuthDestination({
+          role: assignedRole,
+          requestedNext: nextParam,
+          isAdmin: isAdminUser(user),
+        });
 
-  const nextResponse = redirectWithCookies(request, origin, destination, response);
-  if (employerIntent) {
-    nextResponse.cookies.set(EMPLOYER_SIGNUP_COOKIE, "", {
-      path: "/",
-      maxAge: 0,
-    });
-  }
+  const nextResponse = redirectWithCookies(
+    request,
+    origin,
+    destination,
+    response
+  );
+  nextResponse.cookies.set(EMPLOYER_SIGNUP_COOKIE, "", {
+    path: "/",
+    maxAge: 0,
+  });
   return nextResponse;
 }

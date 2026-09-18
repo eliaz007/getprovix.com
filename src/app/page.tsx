@@ -3,6 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LandingAuditForm from "@/components/landing/landing-audit-form";
 import LandingAudienceCards from "@/components/landing/landing-audience-cards";
+import MarketingAuthLink from "@/components/marketing-auth-link";
 import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
@@ -20,12 +21,7 @@ export default function Home() {
             <ProvixLogo />
           </Link>
           <nav className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-semibold text-textMain transition-colors duration-200 hover:bg-white/5"
-            >
-              Sign in
-            </Link>
+            <MarketingAuthLink />
           </nav>
         </div>
       </header>

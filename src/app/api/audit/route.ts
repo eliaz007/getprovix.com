@@ -75,6 +75,7 @@ export type AuditRequestBody = {
   resumeSummary?: string;
   compensationLevel?: string;
   workIsPrivate?: boolean;
+  playground?: boolean;
   externalProjects?: ExternalProjectRecord[];
 };
 
@@ -349,6 +350,7 @@ function normalizeAuditRequestBody(body: AuditRequestBody): AuditRequestBody {
     resumeSummary: body.resumeSummary,
     compensationLevel: body.compensationLevel,
     workIsPrivate: parseWorkIsPrivate(body.workIsPrivate),
+    playground: body.playground === true,
     externalProjects: normalizeExternalProjects(body.externalProjects),
   };
 }
@@ -371,6 +373,7 @@ async function readAuditRequest(request: Request): Promise<
           resumeSummary: formString(form, "resumeSummary"),
           compensationLevel: formString(form, "compensationLevel"),
           workIsPrivate: parseWorkIsPrivate(formString(form, "workIsPrivate")),
+          playground: formString(form, "playground") === "true",
           externalProjects: normalizeExternalProjects(
             parseJsonValue(formString(form, "externalProjects"))
           ),
@@ -976,6 +979,7 @@ export async function POST(request: Request) {
 
   if (
     access.user &&
+    payload.playground !== true &&
     (githubArtifactAuditSucceeded(githubArtifacts) ||
       (usedExternalFallback &&
         hasUsableExternalProjects(payload.externalProjects)))

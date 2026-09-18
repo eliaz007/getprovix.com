@@ -12,7 +12,6 @@ import {
   EMPLOYER_DASHBOARD_PATH,
   normalizeAccountKind,
   persistEmployerAccount,
-  resolveAccountRole as resolveSignupAccountRole,
 } from "@/lib/account-role";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -50,14 +49,6 @@ const COMPANY_SIZES = ["1–10", "11–50", "51–200", "201–1,000", "1,000+"]
 
 const inputClass =
   "bg-background border border-border text-textMain rounded-lg px-4 py-3 placeholder:text-textMuted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all";
-
-function resolveAccountRole(
-  profileRole: string | null | undefined,
-  metaRole: unknown
-): AccountRole {
-  const resolved = resolveSignupAccountRole(profileRole, metaRole);
-  return normalizeAccountKind(resolved) === "employer" ? "business" : "candidate";
-}
 
 function OnboardingSkeleton() {
   return (
@@ -130,9 +121,15 @@ export default function OnboardingPage() {
 
       if (!isMounted) return;
 
-      setAccountRole(
-        resolveAccountRole(profile?.role, data.user.user_metadata?.role)
+      const kind = normalizeAccountKind(
+        typeof profile?.role === "string" ? profile.role : null
       );
+      if (!kind) {
+        router.replace("/onboarding/role");
+        return;
+      }
+
+      setAccountRole(kind === "employer" ? "business" : "candidate");
       setCheckingRole(false);
     })();
 
