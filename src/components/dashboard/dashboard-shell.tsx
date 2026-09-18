@@ -44,7 +44,6 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const {
     authLoading,
     contentReady,
-    accountRole,
     isBusinessAccount,
     isVerifiedEmployer,
     isGuest,
@@ -61,8 +60,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     setAuthModalError,
   } = useDashboardNav();
 
-  const holdShell =
-    authLoading || !contentReady || (Boolean(userId) && !accountRole);
+  const holdShell = authLoading || !contentReady;
 
   return (
     <div className="h-screen overflow-hidden bg-background text-textMain font-sans antialiased selection:bg-brand/30">

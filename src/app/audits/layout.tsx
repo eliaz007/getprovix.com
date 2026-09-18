@@ -1,7 +1,20 @@
 "use client";
 
+import type { ReactNode } from "react";
 import DashboardShell from "@/components/dashboard/dashboard-shell";
-import { DashboardNavProvider } from "@/components/dashboard/dashboard-nav-context";
+import {
+  DashboardContentGate,
+  DashboardNavProvider,
+} from "@/components/dashboard/dashboard-nav-context";
+
+function AuditsReady({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <DashboardContentGate ready />
+      {children}
+    </>
+  );
+}
 
 export default function AuditsLayout({
   children,
@@ -10,7 +23,9 @@ export default function AuditsLayout({
 }) {
   return (
     <DashboardNavProvider>
-      <DashboardShell>{children}</DashboardShell>
+      <DashboardShell>
+        <AuditsReady>{children}</AuditsReady>
+      </DashboardShell>
     </DashboardNavProvider>
   );
 }

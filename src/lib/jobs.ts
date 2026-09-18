@@ -88,29 +88,95 @@ function shouldFallBackToLegacyColumns(error: JobFeedError | null): boolean {
   );
 }
 
+const JOB_FEED_LIMIT = 20;
+const JOB_FEED_TIMEOUT_MS = 8000;
+
+async function withJobFeedTimeout<T>(
+  promise: PromiseLike<T>,
+  label: string
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${JOB_FEED_TIMEOUT_MS}ms`));
+        }, JOB_FEED_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+function logJobFeed(
+  label: string,
+  startedAt: number,
+  count: number,
+  error: JobFeedError | { message: string } | null
+) {
+  const ms = Math.round(
+    (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+      startedAt
+  );
+  if (error) {
+    console.warn(`[jobs] ${label} failed`, {
+      ms,
+      message: error.message,
+      details: "details" in error ? error.details : undefined,
+      hint: "hint" in error ? error.hint : undefined,
+    });
+    return;
+  }
+  console.info(`[jobs] ${label}`, { ms, count, limit: JOB_FEED_LIMIT });
+}
+
 export async function fetchPublicJobFeed(supabase: SupabaseClient): Promise<{
   data: JobRow[];
   error: JobFeedError | null;
 }> {
-  const first = await supabase
-    .from("jobs")
-    .select(JOB_FEED_COLUMNS)
-    .eq("status", "active")
-    .order("created_at", { ascending: false });
+  const startedAt =
+    typeof performance !== "undefined" ? performance.now() : Date.now();
 
-  const result = shouldFallBackToLegacyColumns(first.error)
-    ? await supabase
+  try {
+    const first = await withJobFeedTimeout(
+      supabase
         .from("jobs")
-        .select(JOB_FEED_COLUMNS_LEGACY)
+        .select(JOB_FEED_COLUMNS)
         .eq("status", "active")
         .order("created_at", { ascending: false })
-    : first;
+        .limit(JOB_FEED_LIMIT),
+      "public job feed"
+    );
 
-  if (result.error) {
-    return { data: [], error: result.error };
+    const result = shouldFallBackToLegacyColumns(first.error)
+      ? await withJobFeedTimeout(
+          supabase
+            .from("jobs")
+            .select(JOB_FEED_COLUMNS_LEGACY)
+            .eq("status", "active")
+            .order("created_at", { ascending: false })
+            .limit(JOB_FEED_LIMIT),
+          "public job feed (legacy columns)"
+        )
+      : first;
+
+    if (result.error) {
+      logJobFeed("public feed", startedAt, 0, result.error);
+      return { data: [], error: result.error };
+    }
+
+    const data = (result.data ?? []) as JobRow[];
+    logJobFeed("public feed", startedAt, data.length, null);
+    return { data, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Job feed failed.";
+    logJobFeed("public feed", startedAt, 0, { message });
+    return { data: [], error: { message } };
   }
-
-  return { data: (result.data ?? []) as JobRow[], error: null };
 }
 
 export async function fetchDashboardJobs(supabase: SupabaseClient): Promise<{
