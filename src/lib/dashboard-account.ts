@@ -40,6 +40,18 @@ export function isDashboardRootPath(pathname: string): boolean {
   return pathname === "/dashboard";
 }
 
+/**
+ * Only the heavy Profile Studio root holds the full dashboard chrome until
+ * first content paints. Nested accelerator routes (Pitch Studio, Auditor,
+ * Interview Prep, etc.) mount their own Suspense/skeletons and must not
+ * block the shared shell on an unmarked contentReady flag.
+ */
+export function dashboardRouteHoldsChromeUntilContent(
+  pathname: string
+): boolean {
+  return isDashboardRootPath(pathname);
+}
+
 export function defaultDashboardTabForRole(
   role: string | null | undefined
 ): DashboardTab {
