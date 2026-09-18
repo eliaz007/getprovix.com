@@ -161,7 +161,9 @@ export default function RoleOnboardingPage() {
               signals.
             </p>
             <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors duration-200 group-hover:from-purple-400 group-hover:to-indigo-500">
-              {saving === "employer" ? "Saving..." : "Enter Employer Console"}
+              {saving === "employer"
+                ? "Setting up your account..."
+                : "Enter Employer Console"}
               {saving === "employer" ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : (
@@ -192,7 +194,9 @@ export default function RoleOnboardingPage() {
               claims.
             </p>
             <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-cyan-500 px-4 py-3 text-sm font-semibold tracking-tight text-slate-950 transition-colors duration-200 group-hover:bg-cyan-400">
-              {saving === "candidate" ? "Saving..." : "Open Candidate Dashboard"}
+              {saving === "candidate"
+                ? "Setting up your account..."
+                : "Open Candidate Dashboard"}
               {saving === "candidate" ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : (
