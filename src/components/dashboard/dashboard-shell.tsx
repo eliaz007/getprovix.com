@@ -14,6 +14,7 @@ import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import GetVerifiedBanner from "@/components/GetVerifiedBanner";
 import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
+import { dashboardRouteHoldsChromeUntilContent } from "@/lib/dashboard-account";
 
 function ContentFade({
   trigger,
@@ -60,7 +61,11 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     setAuthModalError,
   } = useDashboardNav();
 
-  const holdShell = authLoading || !contentReady;
+  // Nested dashboard routes must not hang forever when they forget (or never
+  // needed) DashboardContentGate. Only the profile-studio root waits on it.
+  const holdShell =
+    authLoading ||
+    (dashboardRouteHoldsChromeUntilContent(pathname) && !contentReady);
 
   return (
     <div className="h-screen overflow-hidden bg-background text-textMain font-sans antialiased selection:bg-brand/30">

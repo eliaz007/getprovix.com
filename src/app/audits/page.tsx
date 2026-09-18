@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import AuditsPageClient from "@/components/auditor/audits-page-client";
+import { DashboardContentSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { buildPageMetadata } from "@/lib/site";
 import { PRIVATE_AUDIT_INTENT } from "@/lib/production-audit";
 import { githubUrlFromSearchParam } from "@/lib/validate-github-url";
@@ -20,9 +22,11 @@ export default async function PublicAuditsPage({
   const intent = Array.isArray(params.intent) ? params.intent[0] : params.intent;
 
   return (
-    <AuditsPageClient
-      initialGithubUrl={initialGithubUrl}
-      initialPrivateWork={intent === PRIVATE_AUDIT_INTENT}
-    />
+    <Suspense fallback={<DashboardContentSkeleton />}>
+      <AuditsPageClient
+        initialGithubUrl={initialGithubUrl}
+        initialPrivateWork={intent === PRIVATE_AUDIT_INTENT}
+      />
+    </Suspense>
   );
 }

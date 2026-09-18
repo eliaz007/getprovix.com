@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
 import VerifiedCodeQualityScorecard from "@/components/dashboard/verified-code-quality-scorecard";
 import ScoreTrendChart from "@/components/dashboard/score-trend-chart";
+import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import {
   parseProductionAuditFromProfileRow,
   type ProductionAuditRecord,
@@ -17,30 +18,33 @@ export default function AuditsPageClient({
   initialGithubUrl?: string;
   initialPrivateWork?: boolean;
 }) {
+  const { authLoading, userId, isBusinessAccount } = useDashboardNav();
   const [scorecard, setScorecard] = useState<ProductionAuditRecord | null>(null);
   const [showScorecard, setShowScorecard] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    const load = async () => {
+    // Keep the auditor form mounted; scorecard is a non-blocking side panel.
+    if (authLoading) {
+      return;
+    }
+
+    if (!userId || isBusinessAccount) {
+      setShowScorecard(false);
+      setScorecard(null);
+      return;
+    }
+
+    const loadScorecard = async () => {
       try {
         const supabase = createClient();
-        const { data } = await supabase.auth.getUser();
-        if (!data.user) {
-          if (!cancelled) {
-            setShowScorecard(false);
-            setScorecard(null);
-          }
-          return;
-        }
-
         const { data: profile } = await supabase
           .from("profiles")
           .select(
             "production_score, audit_breakdown, is_audit_verified, is_publicly_visible, role"
           )
-          .or(`id.eq.${data.user.id},user_id.eq.${data.user.id}`)
+          .or(`id.eq.${userId},user_id.eq.${userId}`)
           .limit(1)
           .maybeSingle();
 
@@ -63,12 +67,12 @@ export default function AuditsPageClient({
       }
     };
 
-    void load();
+    void loadScorecard();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authLoading, userId, isBusinessAccount]);
 
   const handleVisibilityChange = (nextVisible: boolean) => {
     setScorecard((prev) =>
