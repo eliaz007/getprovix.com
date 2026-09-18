@@ -282,6 +282,39 @@ function DashboardNavProviderImpl({
       }
     }, AUTH_BOOTSTRAP_TIMEOUT_MS);
 
+    const loadProfileRole = async (
+      userId: string
+    ): Promise<{ role?: string | null; is_verified?: boolean | null } | null> => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("role, is_verified")
+        .or(`id.eq.${userId},user_id.eq.${userId}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (data) {
+        return data;
+      }
+
+      if (!error) {
+        return null;
+      }
+
+      // Older schemas may lack is_verified — fall back to role only once.
+      const fallback = await supabase
+        .from("profiles")
+        .select("role")
+        .or(`id.eq.${userId},user_id.eq.${userId}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (!fallback.data) {
+        return null;
+      }
+
+      return { role: fallback.data.role, is_verified: null };
+    };
+
     const bootstrapSession = async () => {
       try {
         const {
@@ -307,41 +340,7 @@ function DashboardNavProviderImpl({
         setUserInitials(identity.initials);
         setAuthModalOpen(false);
 
-        let profile: { role?: string | null; is_verified?: boolean | null } | null =
-          null;
-        const byId = await supabase
-          .from("profiles")
-          .select("role, is_verified")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        profile = byId.data;
-
-        if (!profile) {
-          const byUserId = await supabase
-            .from("profiles")
-            .select("role, is_verified")
-            .eq("user_id", user.id)
-            .maybeSingle();
-          profile = byUserId.data;
-
-          if (!profile && (byId.error || byUserId.error)) {
-            const fallbackById = await supabase
-              .from("profiles")
-              .select("role")
-              .eq("id", user.id)
-              .maybeSingle();
-            profile = fallbackById.data;
-            if (!profile) {
-              const fallbackByUserId = await supabase
-                .from("profiles")
-                .select("role")
-                .eq("user_id", user.id)
-                .maybeSingle();
-              profile = fallbackByUserId.data;
-            }
-          }
-        }
+        const profile = await loadProfileRole(user.id);
 
         setIsVerifiedEmployer(profile?.is_verified === true);
 
@@ -391,7 +390,9 @@ function DashboardNavProviderImpl({
       window.clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [pathname, router]);
+    // Bootstrap once per shell mount. Path changes must not re-run getUser +
+    // profile lookups — nested routes share this context.
+  }, [router]);
 
   const isGuest = !userId;
   const isBusinessAccount = isEmployerRole(accountRole);
@@ -470,7 +471,8 @@ export function useDashboardNav() {
   return context;
 }
 
-/** Hold the dashboard chrome until this route's first paint of real content. */
+/** Hold the dashboard chrome until this route's first paint of real content.
+ * Only needed on the dashboard root — nested routes no longer block the shell. */
 export function DashboardContentGate({ ready }: { ready: boolean }) {
   const { setContentReady } = useDashboardNav();
 
