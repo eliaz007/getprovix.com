@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LandingAuditForm from "@/components/landing/landing-audit-form";
 import LandingAudienceCards from "@/components/landing/landing-audience-cards";
+import LandingHeaderSignIn from "@/components/landing/landing-header-sign-in";
 import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
@@ -14,10 +15,11 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background text-textMuted">
       <header className="border-b border-border">
-        <div className="mx-auto flex max-w-6xl items-center px-6 py-5">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
           <Link href="/" className="transition-opacity hover:opacity-90">
             <ProvixLogo />
           </Link>
+          <LandingHeaderSignIn />
         </div>
       </header>
 
