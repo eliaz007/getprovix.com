@@ -106,11 +106,18 @@ export default function PublicProductionAudit({
   initialRepoUrl = "",
   embedded = false,
   showEmptyState = true,
+  formId = "public-audit-repo",
+  submitLabel = "Run Production Audit",
+  helperText = null,
 }: {
   initialRepoUrl?: string;
   /** Keep results on this page instead of navigating to `/audit`. */
   embedded?: boolean;
   showEmptyState?: boolean;
+  /** DOM id for the GitHub URL input (useful for landing anchors). */
+  formId?: string;
+  submitLabel?: string;
+  helperText?: string | null;
 }) {
   const router = useRouter();
   const [repoUrl, setRepoUrl] = useState(initialRepoUrl);
@@ -390,11 +397,11 @@ export default function PublicProductionAudit({
     <div className="mx-auto w-full max-w-4xl space-y-8">
       <form onSubmit={onSubmit} className="w-full">
         <div className="flex flex-col gap-3 rounded-2xl border border-border bg-panel p-2 sm:flex-row sm:items-stretch">
-          <label htmlFor="public-audit-repo" className="sr-only">
+          <label htmlFor={formId} className="sr-only">
             GitHub Profile or Repo URL
           </label>
           <input
-            id="public-audit-repo"
+            id={formId}
             name="repo"
             type="text"
             inputMode="url"
@@ -402,7 +409,7 @@ export default function PublicProductionAudit({
             spellCheck={false}
             value={repoUrl}
             onChange={(event) => setRepoUrl(event.target.value)}
-            placeholder="Paste GitHub Profile or Repo URL"
+            placeholder="Paste a public GitHub repo URL"
             aria-invalid={Boolean(githubValidationMessage)}
             className="min-h-14 min-w-0 flex-1 rounded-xl border border-border bg-surface px-4 py-3.5 font-mono text-sm text-textMain placeholder:text-textMuted outline-none transition-colors duration-200 focus:border-brand sm:text-[15px]"
           />
@@ -411,12 +418,16 @@ export default function PublicProductionAudit({
             disabled={loading || limitReached}
             className="inline-flex min-h-14 shrink-0 items-center justify-center rounded-xl border border-border bg-brand px-6 text-sm font-bold tracking-tight text-white transition-colors hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
           >
-            {loading ? "Running Audit..." : "Run Production Audit"}
+            {loading ? "Running Audit..." : submitLabel}
           </button>
         </div>
         {githubValidationMessage ? (
           <p role="alert" className="mt-3 text-left text-sm text-red-300">
             {githubValidationMessage}
+          </p>
+        ) : helperText ? (
+          <p className="mt-3 text-center text-xs leading-relaxed text-textMuted sm:text-left">
+            {helperText}
           </p>
         ) : null}
       </form>
