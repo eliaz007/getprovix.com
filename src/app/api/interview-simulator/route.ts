@@ -1,25 +1,17 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { requireAiApiAccess } from "@/lib/api-auth";
+import type {
+  InterviewQuestion,
+  InterviewSimulatorRequestBody,
+  InterviewSimulatorResult,
+} from "@/lib/interview-simulator-types";
 
-export type InterviewSimulatorRequestBody = {
-  targetJobTitle?: string;
-  coreTechStack?: string;
-  interviewRound?: string;
-  companyType?: string;
-};
-
-export type InterviewQuestion = {
-  question: string;
-  idealAnswer: string;
-  talkingPoints: string[];
-};
-
-export type InterviewSimulatorResult = {
-  questions: InterviewQuestion[];
-  technicalTrap: string;
-  closingQuestion: string;
-};
+export type {
+  InterviewQuestion,
+  InterviewSimulatorRequestBody,
+  InterviewSimulatorResult,
+} from "@/lib/interview-simulator-types";
 
 const SYSTEM_PROMPT = `You are Provix's Interview Simulator — a rigorous hiring manager coach for technical and architecture interviews.
 

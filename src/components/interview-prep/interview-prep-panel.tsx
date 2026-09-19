@@ -11,7 +11,7 @@ import {
   Sparkles,
   Terminal,
 } from "lucide-react";
-import type { InterviewSimulatorResult } from "@/app/api/interview-simulator/route";
+import type { InterviewSimulatorResult } from "@/lib/interview-simulator-types";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 const INTERVIEW_ROUNDS = [

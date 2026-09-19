@@ -1,25 +1,17 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { requireAiApiAccess } from "@/lib/api-auth";
+import type {
+  PitchStudioRequestBody,
+  PitchStudioResult,
+  PitchTemplate,
+} from "@/lib/pitch-studio-types";
 
-export type PitchStudioRequestBody = {
-  targetCompany?: string;
-  targetContactRole?: string;
-  roleApplyingFor?: string;
-  coreValueProp?: string;
-  tone?: string;
-};
-
-export type PitchTemplate = {
-  title: string;
-  channel: string;
-  body: string;
-  copyTip: string;
-};
-
-export type PitchStudioResult = {
-  pitches: PitchTemplate[];
-};
+export type {
+  PitchStudioRequestBody,
+  PitchStudioResult,
+  PitchTemplate,
+} from "@/lib/pitch-studio-types";
 
 const SYSTEM_PROMPT = `You are Provix's Pitch Studio — an expert at writing high-signal, founder-ready outreach that bypasses ATS filters.
 

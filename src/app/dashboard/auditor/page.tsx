@@ -11,7 +11,7 @@ export const metadata = buildPageMetadata(
   "/dashboard/auditor"
 );
 
-export default async function AuditorPage({
+async function AuditorPageContent({
   searchParams,
 }: {
   searchParams: Promise<{ github?: string | string[]; intent?: string | string[] }>;
@@ -21,11 +21,21 @@ export default async function AuditorPage({
   const intent = Array.isArray(params.intent) ? params.intent[0] : params.intent;
 
   return (
+    <AuditsPageClient
+      initialGithubUrl={initialGithubUrl}
+      initialPrivateWork={intent === PRIVATE_AUDIT_INTENT}
+    />
+  );
+}
+
+export default function AuditorPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ github?: string | string[]; intent?: string | string[] }>;
+}) {
+  return (
     <Suspense fallback={<DashboardContentSkeleton />}>
-      <AuditsPageClient
-        initialGithubUrl={initialGithubUrl}
-        initialPrivateWork={intent === PRIVATE_AUDIT_INTENT}
-      />
+      <AuditorPageContent searchParams={searchParams} />
     </Suspense>
   );
 }

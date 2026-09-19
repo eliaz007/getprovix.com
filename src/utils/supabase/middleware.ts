@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isAdminUser } from "@/lib/admin-access";
 import {
   isAuditorPath,
+  isDashboardAuditorPath,
   isProtectedAppPath,
   isPublicRoute,
 } from "@/lib/dashboard-account";
@@ -240,7 +241,12 @@ export async function updateSession(request: NextRequest) {
         );
       }
 
-      if (isEmployerAccount && (isHome || isEmployer || isAuditorPath(pathname))) {
+      if (
+        isEmployerAccount &&
+        (isHome ||
+          isEmployer ||
+          (isAuditorPath(pathname) && !isDashboardAuditorPath(pathname)))
+      ) {
         const destination = new URL(EMPLOYER_DASHBOARD_PATH, request.url);
         return redirectWithSessionCookies(
           request,

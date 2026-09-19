@@ -9,7 +9,7 @@ import {
   PenTool,
   Sparkles,
 } from "lucide-react";
-import type { PitchStudioResult } from "@/app/api/pitch-studio/route";
+import type { PitchStudioResult } from "@/lib/pitch-studio-types";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 const TONE_OPTIONS = [
