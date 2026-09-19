@@ -2,7 +2,6 @@ import Link from "next/link";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LandingAuditForm from "@/components/landing/landing-audit-form";
 import LandingAudienceCards from "@/components/landing/landing-audience-cards";
-import MarketingAuthLink from "@/components/marketing-auth-link";
 import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
@@ -11,35 +10,14 @@ export const metadata = buildPageMetadata(
   "/"
 );
 
-const navLinkClassName =
-  "text-sm font-semibold text-textMuted transition-colors duration-200 hover:text-textMain";
-
-const employerCtaClassName =
-  "rounded-lg border border-brand/40 bg-transparent px-3.5 py-2 text-sm font-semibold text-brand transition-colors duration-200 hover:border-brand hover:bg-brand/10";
-
 export default function Home() {
   return (
     <div className="min-h-screen bg-background text-textMuted">
       <header className="border-b border-border">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
+        <div className="mx-auto flex max-w-6xl items-center px-6 py-5">
           <Link href="/" className="transition-opacity hover:opacity-90">
             <ProvixLogo />
           </Link>
-          <nav
-            aria-label="Primary"
-            className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2 sm:gap-x-5"
-          >
-            <Link href="/#audit" className={navLinkClassName}>
-              Auditor
-            </Link>
-            <Link href="/opportunities" className={navLinkClassName}>
-              Talent Network
-            </Link>
-            <Link href="/pricing" className={employerCtaClassName}>
-              For Employers
-            </Link>
-            <MarketingAuthLink />
-          </nav>
         </div>
       </header>
 
