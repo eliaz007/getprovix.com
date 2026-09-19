@@ -6,8 +6,8 @@ import MarketingAuthLink from "@/components/marketing-auth-link";
 import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
-  "Prove what you built",
-  "Instant architectural audits for your code. Get a verified Proof-of-Work report and join a network of engineers hired on actual execution.",
+  "Your code is your credential",
+  "Instant architectural audits for developers. Provix evaluates code hygiene and structural depth to turn your side projects into a verified ticket into our engineering network.",
   "/"
 );
 
@@ -49,12 +49,12 @@ export default function Home() {
             Provix
           </p>
           <h1 className="text-4xl font-extrabold tracking-tight text-textMain sm:text-5xl lg:text-[3.5rem] lg:leading-[1.1]">
-            Resumes are ignored. Prove what you built.
+            Your code is your credential.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-textMuted sm:text-lg">
-            Instant architectural audits for your code. Get a verified
-            Proof-of-Work report and join a network of engineers hired on actual
-            execution.
+            Instant architectural audits for developers. Provix evaluates code
+            hygiene and structural depth to turn your side projects into a
+            verified ticket into our engineering network.
           </p>
         </section>
 

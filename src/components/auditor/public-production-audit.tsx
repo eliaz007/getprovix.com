@@ -108,6 +108,7 @@ export default function PublicProductionAudit({
   showEmptyState = true,
   formId = "public-audit-repo",
   submitLabel = "Run Production Audit",
+  inputPlaceholder = "Paste GitHub Profile or Repo URL",
   helperText = null,
 }: {
   initialRepoUrl?: string;
@@ -117,6 +118,7 @@ export default function PublicProductionAudit({
   /** DOM id for the GitHub URL input (useful for landing anchors). */
   formId?: string;
   submitLabel?: string;
+  inputPlaceholder?: string;
   helperText?: string | null;
 }) {
   const router = useRouter();
@@ -409,7 +411,7 @@ export default function PublicProductionAudit({
             spellCheck={false}
             value={repoUrl}
             onChange={(event) => setRepoUrl(event.target.value)}
-            placeholder="Paste a public GitHub repo URL"
+            placeholder={inputPlaceholder}
             aria-invalid={Boolean(githubValidationMessage)}
             className="min-h-14 min-w-0 flex-1 rounded-xl border border-border bg-surface px-4 py-3.5 font-mono text-sm text-textMain placeholder:text-textMuted outline-none transition-colors duration-200 focus:border-brand sm:text-[15px]"
           />

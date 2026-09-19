@@ -9,7 +9,8 @@ export default function LandingAuditForm() {
         embedded
         showEmptyState={false}
         formId="landing-audit-repo"
-        submitLabel="Audit My Code"
+        submitLabel="Get Verified"
+        inputPlaceholder="Paste your GitHub repo or project URL..."
         helperText="Free instant audit • Modularity, cadence & hygiene metrics • Join the talent network"
       />
     </div>
