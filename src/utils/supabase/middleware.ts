@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isAdminUser } from "@/lib/admin-access";
 import {
   isAuditorPath,
+  isCareerAcceleratorPath,
+  isDashboardAuditorPath,
   isProtectedAppPath,
   isPublicRoute,
 } from "@/lib/dashboard-account";
@@ -60,6 +62,16 @@ function redirectWithSessionCookies(
 }
 
 export async function updateSession(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Career Accelerator tools are client-gated (auth modal + shell). Soft
+  // navigations (including RSC flights) must not block on edge getUser() /
+  // profiles round-trips — that stalls Pitch Studio, Auditor, and Interview
+  // Simulator indefinitely when Supabase Auth is slow or unreachable.
+  if (isCareerAcceleratorPath(pathname)) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -99,8 +111,6 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const { pathname } = request.nextUrl;
 
   // API routes must always return JSON. A redirect to the marketing page
   // follows to HTML, and response.json() then throws on "<!DOCTYPE".
@@ -240,7 +250,12 @@ export async function updateSession(request: NextRequest) {
         );
       }
 
-      if (isEmployerAccount && (isHome || isEmployer || isAuditorPath(pathname))) {
+      if (
+        isEmployerAccount &&
+        (isHome ||
+          isEmployer ||
+          (isAuditorPath(pathname) && !isDashboardAuditorPath(pathname)))
+      ) {
         const destination = new URL(EMPLOYER_DASHBOARD_PATH, request.url);
         return redirectWithSessionCookies(
           request,
