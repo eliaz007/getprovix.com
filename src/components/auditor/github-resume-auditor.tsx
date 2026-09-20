@@ -55,12 +55,14 @@ export default function GitHubResumeAuditor({
   onAuditPersisted,
   sidePanel,
   scoreSummary,
+  isEmployerView = false,
 }: {
   initialGithubUrl?: string;
   initialPrivateWork?: boolean;
   onAuditPersisted?: (record: ProductionAuditRecord) => void;
   sidePanel?: ReactNode;
   scoreSummary?: ReactNode;
+  isEmployerView?: boolean;
 }) {
   const [targetRole, setTargetRole] = useState("");
   const [githubUrl, setGithubUrl] = useState(initialGithubUrl);
@@ -401,7 +403,18 @@ export default function GitHubResumeAuditor({
                 </>
               ) : (
                 <>
-                  <AuditResultsPanel result={result} />
+                  <AuditResultsPanel
+                    result={result}
+                    repoName={
+                      parsedGithub?.repo
+                        ? `${parsedGithub.owner}/${parsedGithub.repo}`
+                        : parsedGithub?.owner
+                    }
+                    repoUrl={githubUrl.trim() || undefined}
+                    isEmployerView={isEmployerView}
+                    onRescan={() => void runAudit()}
+                    rescanning={loading}
+                  />
                   {claim ? <ScorecardPublicationCallout claim={claim} /> : null}
                 </>
               )}

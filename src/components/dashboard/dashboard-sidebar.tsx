@@ -364,9 +364,15 @@ export default function DashboardSidebar() {
               : undefined
           }
         >
-          <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
+          <span
+            className={
+              isBusinessAccount
+                ? "text-[11px] font-semibold tracking-wider text-zinc-500 uppercase px-3 py-2 block"
+                : "text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2"
+            }
+          >
             {isBusinessAccount
-              ? "Company Hub"
+              ? "Organization"
               : isEmployeeAccount
                 ? "Employee Dashboard"
                 : "Candidate Dashboard"}
@@ -437,8 +443,8 @@ export default function DashboardSidebar() {
 
         {showTalentPoolNav && (
           <div className={secondaryNavSectionClass}>
-            <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
-              Employer Console (B2B)
+            <span className="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase px-3 py-2 block">
+              Talent & Evaluation
             </span>
             <ul className={navListClass}>
               {EMPLOYER_CONSOLE_NAV.map((item) => (

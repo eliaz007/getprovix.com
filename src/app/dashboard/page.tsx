@@ -6381,7 +6381,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       {employerAuditError}
                     </div>
                   ) : employerAuditResult ? (
-                    <AuditResultsPanel result={employerAuditResult} />
+                    <AuditResultsPanel
+                      result={employerAuditResult}
+                      roleSpec={evalRole.trim() || "Full-stack dev"}
+                      viewerRole="employer"
+                      isEmployerView
+                      onRescan={() => void evaluateCandidate()}
+                      rescanning={evaluatingPoW}
+                    />
                   ) : (
                     <div className="text-textMuted text-center mt-28 text-sm">
                       Awaiting candidate data...
@@ -6395,6 +6402,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           {showTalentPoolNav && activeTab === "auditor" && (
             <GitHubResumeAuditor
               initialPrivateWork={privateAuditorIntent}
+              isEmployerView
               onAuditPersisted={(record) => {
                 setDbProfile((prev) =>
                   prev

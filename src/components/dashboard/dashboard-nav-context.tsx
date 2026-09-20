@@ -391,7 +391,10 @@ function DashboardNavProviderImpl({
       window.clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [pathname, router]);
+    // Intentionally omit `pathname`: re-bootstrapping auth on every client
+    // transition (Pitch Studio / Auditor / Interview Simulator) stalls the
+    // shell behind authLoading and reintroduced the navigation deadlock.
+  }, [router]);
 
   const isGuest = !userId;
   const isBusinessAccount = isEmployerRole(accountRole);
