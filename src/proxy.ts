@@ -8,20 +8,19 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Run on all routes except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico
-     * - /api (public API routes such as /api/audit)
-     * - common static image extensions
+     * Run on page/API routes that need session refresh — never on:
+     * - _next/* (static chunks, image optimizer, _next/data, HMR, etc.)
+     * - favicon / common static asset extensions
+     * - /api by default (re-include specific mutating APIs below)
      *
-     * /api/intros is included so employer intro requests refresh the session.
+     * Career Accelerator dashboard tools are additionally short-circuited
+     * inside updateSession so soft navigations never await getUser().
      *
      * Public pages: /, /login, /pricing, /privacy, /terms, /audit
      * Unsigned app-shell routes redirect to /. Signed-in visits to /
      * redirect to /dashboard. Matched /api routes never HTML-redirect.
      */
-    "/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/|favicon.ico|api(?:/|$)|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|txt|woff2?)$).*)",
     "/api/intros/:path*",
     "/api/profile/:path*",
     "/api/talent-pool/:path*",

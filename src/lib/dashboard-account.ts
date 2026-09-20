@@ -200,3 +200,12 @@ export function isInterviewPrepPath(pathname: string): boolean {
     pathname === "/dashboard/interview-simulator"
   );
 }
+
+/** Pitch Studio, Auditor, and Interview Simulator — client-gated tool UIs. */
+export function isCareerAcceleratorPath(pathname: string): boolean {
+  return (
+    isPitchStudioPath(pathname) ||
+    isDashboardAuditorPath(pathname) ||
+    isInterviewPrepPath(pathname)
+  );
+}
