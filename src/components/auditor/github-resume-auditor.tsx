@@ -17,6 +17,7 @@ import {
   buildProductionAuditClaim,
   cachePendingProductionAudit,
   clearPendingProductionAudit,
+  formatAuditedRepoLabel,
   notifyProductionAuditUpdated,
   PRIVATE_AUDITED_REPO_LABEL,
   PRIVATE_AUDIT_INTENT,
@@ -401,7 +402,17 @@ export default function GitHubResumeAuditor({
                 </>
               ) : (
                 <>
-                  <AuditResultsPanel result={result} />
+                  <AuditResultsPanel
+                    result={result}
+                    repoLabel={
+                      isPrivateWork
+                        ? PRIVATE_AUDITED_REPO_LABEL
+                        : formatAuditedRepoLabel(
+                            ownershipRepoUrl || githubUrl.trim()
+                          )
+                    }
+                    targetRole={targetRole.trim() || "Full-stack dev"}
+                  />
                   {claim ? <ScorecardPublicationCallout claim={claim} /> : null}
                 </>
               )}

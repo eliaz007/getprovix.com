@@ -41,10 +41,91 @@ export function getReadinessBadge(score: number): ReadinessBadge {
   }
 
   return {
-      label: "Needs Production Hardening",
-      className: "text-rose-300 bg-rose-500/10 border-rose-500/30",
-      meterClassName: "text-rose-400",
+    label: "Needs Production Hardening",
+    className: "text-rose-300 bg-rose-500/10 border-rose-500/30",
+    meterClassName: "text-rose-400",
   };
+}
+
+/** Talent Network / public scorecard gate used by the executive dossier UI. */
+export const TALENT_NETWORK_SCORE_THRESHOLD = 75;
+
+/** UI remediation point values (simulation only — does not change audit math). */
+export const REMEDIATION_POINT_VALUES = {
+  ci: 25,
+  tests: 25,
+} as const;
+
+export type CredentialStatus = {
+  label: string;
+  className: string;
+  restricted: boolean;
+};
+
+export function getCredentialStatus(score: number): CredentialStatus {
+  const clamped = clampScore0to100(score);
+  if (clamped >= TALENT_NETWORK_SCORE_THRESHOLD) {
+    return {
+      label: "QUALIFIED — Talent Network Eligible",
+      className:
+        "text-emerald-300 bg-emerald-500/10 border-emerald-500/30",
+      restricted: false,
+    };
+  }
+
+  return {
+    label: "RESTRICTED — Private Diagnostic",
+    className: "text-amber-300 bg-amber-500/10 border-amber-500/30",
+    restricted: true,
+  };
+}
+
+export type RemediationActionId = "ci" | "tests";
+
+export type RemediationAction = {
+  id: RemediationActionId;
+  label: string;
+  points: number;
+  missing: boolean;
+};
+
+export function buildRemediationActions(input: {
+  scoreCap?: ScoreCapAudit | null;
+  filesystem?: RepoFilesystemEvidence | null;
+}): RemediationAction[] {
+  const artifacts = coreArtifactFlags(input.scoreCap, input.filesystem);
+
+  return [
+    {
+      id: "ci",
+      label: `Add GitHub Actions CI/CD (+${REMEDIATION_POINT_VALUES.ci} pts)`,
+      points: REMEDIATION_POINT_VALUES.ci,
+      missing: !artifacts.ci,
+    },
+    {
+      id: "tests",
+      label: `Add basic test suite (+${REMEDIATION_POINT_VALUES.tests} pts)`,
+      points: REMEDIATION_POINT_VALUES.tests,
+      missing: !artifacts.tests,
+    },
+  ];
+}
+
+export function projectRemediationScore(
+  currentScore: number,
+  selected: Iterable<RemediationActionId>,
+  actions: RemediationAction[]
+): number {
+  const selectedIds = new Set(selected);
+  let projected = clampScore0to100(currentScore);
+
+  for (const action of actions) {
+    if (action.missing && selectedIds.has(action.id)) {
+      projected += action.points;
+    }
+  }
+
+  return clampScore0to100(projected);
 }
 
 export function normalizeCommitDates(value: unknown): string[] {
