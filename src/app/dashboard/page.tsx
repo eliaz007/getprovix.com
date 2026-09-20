@@ -6381,7 +6381,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       {employerAuditError}
                     </div>
                   ) : employerAuditResult ? (
-                    <AuditResultsPanel result={employerAuditResult} />
+                    <AuditResultsPanel
+                      result={employerAuditResult}
+                      targetRole={evalRole.trim() || "Full-stack dev"}
+                    />
                   ) : (
                     <div className="text-textMuted text-center mt-28 text-sm">
                       Awaiting candidate data...
