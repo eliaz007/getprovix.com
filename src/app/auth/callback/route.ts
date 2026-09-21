@@ -14,9 +14,49 @@ const cookieOptions = {
   sameSite: "lax" as const,
 };
 
+type CookieToSet = {
+  name: string;
+  value: string;
+  options?: Record<string, unknown>;
+};
+
+/**
+ * Forward every Set-Cookie from the Supabase SSR response onto the redirect.
+ * Dropping options (httpOnly/secure/maxAge) causes the first OAuth hop to
+ * land without a readable session — middleware then bounces unsigned users to /.
+ */
 function copyResponseCookies(from: NextResponse, to: NextResponse) {
   from.cookies.getAll().forEach((cookie) => {
-    to.cookies.set(cookie);
+    to.cookies.set({
+      name: cookie.name,
+      value: cookie.value,
+      path: cookie.path ?? cookieOptions.path,
+      domain: cookie.domain,
+      expires: cookie.expires,
+      maxAge: cookie.maxAge,
+      httpOnly: cookie.httpOnly,
+      secure: cookie.secure,
+      sameSite: cookie.sameSite ?? cookieOptions.sameSite,
+    });
+  });
+
+  for (const header of ["cache-control", "expires", "pragma"] as const) {
+    const value = from.headers.get(header);
+    if (value) {
+      to.headers.set(header, value);
+    }
+  }
+}
+
+function applyTrackedCookies(
+  target: NextResponse,
+  cookiesToSet: CookieToSet[]
+) {
+  cookiesToSet.forEach(({ name, value, options }) => {
+    target.cookies.set(name, value, {
+      ...cookieOptions,
+      ...options,
+    });
   });
 }
 
@@ -31,15 +71,19 @@ function buildRedirectUrl(request: NextRequest, origin: string, path: string) {
   return `${origin}${path}`;
 }
 
-function redirectWithCookies(
+function redirectWithSessionCookies(
   request: NextRequest,
   origin: string,
   path: string,
-  sessionResponse: NextResponse
+  sessionResponse: NextResponse,
+  trackedCookies: CookieToSet[]
 ) {
   const nextResponse = NextResponse.redirect(
     buildRedirectUrl(request, origin, path)
   );
+  // Prefer the explicit jar written during exchange/setAll, then merge any
+  // remaining response cookies so nothing is dropped on the redirect hop.
+  applyTrackedCookies(nextResponse, trackedCookies);
   copyResponseCookies(sessionResponse, nextResponse);
   return nextResponse;
 }
@@ -56,6 +100,7 @@ export async function GET(request: NextRequest) {
   const nextParam = searchParams.get("next");
 
   let response = NextResponse.next({ request });
+  const trackedCookies: CookieToSet[] = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -66,14 +111,20 @@ export async function GET(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value, options }) => {
             request.cookies.set(name, value);
             response.cookies.set(name, value, {
               ...cookieOptions,
               ...options,
             });
+            trackedCookies.push({ name, value, options });
           });
+          if (headers) {
+            Object.entries(headers).forEach(([key, value]) => {
+              response.headers.set(key, value);
+            });
+          }
         },
       },
     }
@@ -85,21 +136,30 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
     if (error) {
       authErrorMessage = error.message;
+    } else if (!data.session?.user?.id) {
+      authErrorMessage = "Authentication callback did not return a session.";
     } else {
+      // Flush any deferred auth-subscriber cookie writes before we redirect.
+      await Promise.resolve();
       authenticated = true;
-      sessionUserId = data.session?.user.id ?? null;
+      sessionUserId = data.session.user.id;
     }
   } else if (tokenHash && type) {
-    const { error } = await supabase.auth.verifyOtp({
+    const { data, error } = await supabase.auth.verifyOtp({
       token_hash: tokenHash,
       type: type as EmailOtpType,
     });
     if (error) {
       authErrorMessage = error.message;
+    } else if (!data.session?.user?.id && !data.user?.id) {
+      authErrorMessage = "OTP verification did not return a session.";
     } else {
+      await Promise.resolve();
       authenticated = true;
+      sessionUserId = data.session?.user?.id ?? data.user?.id ?? null;
     }
   }
 
@@ -112,11 +172,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(loginUrl.toString());
   }
 
+  // Re-read the user only after the exchange has resolved and cookies are queued.
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
-  const userId = sessionUserId ?? user?.id ?? null;
+  if (userError || !user) {
+    const loginUrl = new URL("/login", origin);
+    loginUrl.searchParams.set(
+      "error",
+      userError?.message ?? "Session was not available after authentication."
+    );
+    return NextResponse.redirect(loginUrl.toString());
+  }
+
+  const userId = sessionUserId ?? user.id;
 
   let role: string | null = null;
 
@@ -149,11 +220,12 @@ export async function GET(request: NextRequest) {
           isAdmin: isAdminUser(user),
         });
 
-  const nextResponse = redirectWithCookies(
+  const nextResponse = redirectWithSessionCookies(
     request,
     origin,
     destination,
-    response
+    response,
+    trackedCookies
   );
   nextResponse.cookies.set(EMPLOYER_SIGNUP_COOKIE, "", {
     path: "/",
