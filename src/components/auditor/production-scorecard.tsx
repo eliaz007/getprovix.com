@@ -4,8 +4,17 @@ import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBa
 import {
   type ProductionAuditMetrics,
   emptyProductionAuditMetrics,
+  PRODUCTION_METRIC_WEIGHTS,
 } from "@/lib/production-audit-metrics";
 import { clampScore0to100 } from "@/lib/score-scale";
+
+const WEIGHT_PCT = {
+  ciCdHealth: Math.round(PRODUCTION_METRIC_WEIGHTS.ciCdHealth * 100),
+  testAssertionDensity: Math.round(
+    PRODUCTION_METRIC_WEIGHTS.testAssertionDensity * 100
+  ),
+  errorBoundaries: Math.round(PRODUCTION_METRIC_WEIGHTS.errorBoundaries * 100),
+} as const;
 
 const METRIC_ROWS: Array<{
   key: "ciCdHealth" | "testAssertionDensity" | "errorBoundaries";
@@ -90,13 +99,7 @@ export default function ProductionScorecard({
             </p>
             <p className="mt-0.5 truncate text-sm text-zinc-400">
               {inspected
-                ? `${resolved.evidence.fileCount} paths · ${Math.round(
-                    resolved.weights.ciCdHealth * 100
-                  )}/${Math.round(
-                    resolved.weights.testAssertionDensity * 100
-                  )}/${Math.round(
-                    resolved.weights.errorBoundaries * 100
-                  )}% weights`
+                ? `${resolved.evidence.fileCount} paths · ${WEIGHT_PCT.ciCdHealth}/${WEIGHT_PCT.testAssertionDensity}/${WEIGHT_PCT.errorBoundaries}% weights`
                 : "Run a GitHub audit to compute CI, tests, and error boundaries."}
             </p>
           </div>
@@ -166,9 +169,7 @@ export default function ProductionScorecard({
                   resolved.evidence.fileCount === 1 ? "" : "s"
                 }${
                   resolved.evidence.truncated ? " (truncated tree)" : ""
-                }. Weighted ${Math.round(resolved.weights.ciCdHealth * 100)}% CI/CD · ${Math.round(
-                  resolved.weights.testAssertionDensity * 100
-                )}% tests · ${Math.round(resolved.weights.errorBoundaries * 100)}% error boundaries.`
+                }. Weighted ${WEIGHT_PCT.ciCdHealth}% CI/CD · ${WEIGHT_PCT.testAssertionDensity}% tests · ${WEIGHT_PCT.errorBoundaries}% error boundaries.`
               : "Repository file tree was not inspected, so production metrics stay at 0."}
           </p>
         </div>

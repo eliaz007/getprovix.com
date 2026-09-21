@@ -35,13 +35,19 @@ import {
   resolveProductionAuditMetrics,
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
-import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
+import {
+  ARTIFACT_REMEDIATION_POINTS,
+  isFilesystemCapRedFlag,
+} from "@/lib/repo-filesystem";
 import { clampScore0to100 } from "@/lib/score-scale";
 
 /** Mirrors `PUBLIC_SCORECARD_THRESHOLD` without importing the heavy audit module. */
 const PUBLIC_SCORECARD_THRESHOLD = 75;
 const ROLE_SPEC_DEFAULT = "Full-stack dev";
-const REMEDIATION_POINTS = 25;
+
+function remediationPointsLabel(points: number, sign: "+" | "−"): string {
+  return `${sign}${points} pts`;
+}
 
 const FAIL_BADGE_CLASS =
   "border border-rose-500/30 bg-rose-500/10 text-rose-400 font-mono text-xs px-2.5 py-1 rounded-md";
@@ -60,7 +66,7 @@ type ScreenPrompt = {
 const CI_SCREEN_PROMPT: ScreenPrompt = {
   id: "ci",
   flagLabel: "Missing CI/CD",
-  deduction: "−25 pts",
+  deduction: remediationPointsLabel(ARTIFACT_REMEDIATION_POINTS.ci, "−"),
   label: "Architecture & Deployment Discipline",
   question:
     "I noticed this codebase deploys without an automated CI/CD pipeline. Walk me through how you prevent breaking production migrations or lint errors across a distributed team.",
@@ -71,7 +77,7 @@ const CI_SCREEN_PROMPT: ScreenPrompt = {
 const TESTS_SCREEN_PROMPT: ScreenPrompt = {
   id: "tests",
   flagLabel: "Missing Test Suite",
-  deduction: "−25 pts",
+  deduction: remediationPointsLabel(ARTIFACT_REMEDIATION_POINTS.tests, "−"),
   label: "Testing Strategy & Reliability",
   question:
     "This project currently operates with zero automated test coverage. If you had to add a smoke test to this codebase in under an hour, which critical path would you test first and why?",
@@ -201,10 +207,11 @@ function buildRemediationItems(result: AuditResult): RemediationItem[] {
     const items: RemediationItem[] = [];
 
     if (!artifacts.ci) {
+      const points = ARTIFACT_REMEDIATION_POINTS.ci;
       items.push({
         id: "ci",
-        label: "Add GitHub Actions CI/CD (+25 pts)",
-        points: REMEDIATION_POINTS,
+        label: `Add GitHub Actions CI/CD (${remediationPointsLabel(points, "+")})`,
+        points,
         drawer: {
           filePath: ".github/workflows/ci.yml",
           directions:
@@ -216,10 +223,11 @@ function buildRemediationItems(result: AuditResult): RemediationItem[] {
     }
 
     if (!artifacts.tests) {
+      const points = ARTIFACT_REMEDIATION_POINTS.tests;
       items.push({
         id: "tests",
-        label: "Add basic test suite (+25 pts)",
-        points: REMEDIATION_POINTS,
+        label: `Add basic test suite (${remediationPointsLabel(points, "+")})`,
+        points,
         drawer: {
           filePath: "src/__tests__/smoke.test.ts",
           directions:
@@ -231,10 +239,11 @@ function buildRemediationItems(result: AuditResult): RemediationItem[] {
     }
 
     if (!artifacts.error_handling) {
+      const points = ARTIFACT_REMEDIATION_POINTS.error_handling;
       items.push({
         id: "error_handling",
-        label: "Add error boundaries (+25 pts)",
-        points: REMEDIATION_POINTS,
+        label: `Add error boundaries (${remediationPointsLabel(points, "+")})`,
+        points,
       });
     }
 
@@ -260,9 +269,12 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
       fixes.push({
         id: "ci",
         title: "Missing CI/CD pipeline",
-        deductionLabel: "−25 pts",
+        deductionLabel: remediationPointsLabel(
+          ARTIFACT_REMEDIATION_POINTS.ci,
+          "−"
+        ),
         summary:
-          "No `.github/workflows/*.yml` detected. Shipping a GitHub Actions workflow restores the CI/CD scorecard pillar and lifts the filesystem cap.",
+          "No `.github/workflows/*.yml` detected. Shipping a GitHub Actions workflow restores the CI/CD scorecard pillar and lifts the soft filesystem penalty.",
         template: {
           filename: ".github/workflows/ci.yml",
           language: "yaml",
@@ -277,7 +289,10 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
       fixes.push({
         id: "tests",
         title: "Missing test suite",
-        deductionLabel: "−25 pts",
+        deductionLabel: remediationPointsLabel(
+          ARTIFACT_REMEDIATION_POINTS.tests,
+          "−"
+        ),
         summary:
           "No test files or runner config found. A minimal smoke suite unblocks the tests pillar and proves regression coverage exists.",
         template: {
@@ -294,7 +309,10 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
       fixes.push({
         id: "error_handling",
         title: "Missing error boundaries",
-        deductionLabel: "−25 pts",
+        deductionLabel: remediationPointsLabel(
+          ARTIFACT_REMEDIATION_POINTS.error_handling,
+          "−"
+        ),
         summary:
           "No `error.tsx` / ErrorBoundary modules detected. Add an App Router `error.tsx` or a React error boundary component to restore this pillar.",
       });

@@ -28,6 +28,7 @@ import {
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
   emptyScoreCapAudit,
+  MISSING_ARTIFACT_PENALTIES,
   MISSING_CORE_ARTIFACT_SCORE_CAP,
   parseScoreCapAudit,
   UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
@@ -133,9 +134,9 @@ Perform three artifact checks plus a chronological timeline conflict check:
 FILE-SYSTEM EVIDENCE VS PROSE:
 - Prose descriptions, README summaries, resume bullets, and external project write-ups can never override missing code artifacts.
 - If a README says the repo has tests, CI, or error handling but the matching filesystem path list is empty, treat that artifact as missing.
-- If any core technical requirement is missing from repo inspection (test suite, CI workflow, or explicit error-handling files), integrity_score MUST be at most ${MISSING_CORE_ARTIFACT_SCORE_CAP}.
-- If two or more core requirements are missing, or filesystem.inspected is false, integrity_score MUST be at most ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
-- Scores above 80 require concrete file-system proof: inspected file tree plus non-empty test_paths, ci_workflow_paths, and error_handling_paths. Cite those paths.
+- Honor scorePolicy.appliedMaxScore. When scorePolicy.hasQualitySignals is true, missing CI/tests/error-handling are capped soft penalties (about −${MISSING_ARTIFACT_PENALTIES.ci} to −${MISSING_ARTIFACT_PENALTIES.tests} pts each), not instant zeros.
+- When scorePolicy.hasQualitySignals is false, a single missing core requirement caps integrity_score at ${MISSING_CORE_ARTIFACT_SCORE_CAP}; two or more missing, or filesystem.inspected false, caps at ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
+- Scores above 80 require concrete file-system proof for present artifacts; never exceed scorePolicy.appliedMaxScore.
 - Never exceed scorePolicy.appliedMaxScore.
 
 Return strict JSON only in this exact structure:

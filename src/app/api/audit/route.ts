@@ -47,6 +47,7 @@ import {
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
   emptyScoreCapAudit,
+  MISSING_ARTIFACT_PENALTIES,
   MISSING_CORE_ARTIFACT_SCORE_CAP,
   parseRepoFilesystemEvidence,
   parseScoreCapAudit,
@@ -104,17 +105,16 @@ const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and
 RULES FOR YOUR AUDIT:
 1. NO BUZZWORDS: Never use words like "resiliency," "robust," "seamless," "leverage," "cutting-edge," or "paradigm." Speak in plain, direct, technical English.
 2. CITE SPECIFIC EVIDENCE: You are forbidden from claiming a code flaw or strength unless you can point to a specific file path from filesystem inspection, file type, directory pattern, commit history detail, live/documentation URL, or technical-breakdown detail you actually observed in the provided artifacts.
-3. HARSH SCORING: Grade out of 100 like a strict employer. Start at 100 and aggressively deduct points for missing production standards (e.g., missing error boundaries, lack of tests, empty READMEs, or shallow tutorial code). A score of 100 requires production-grade architecture AND file-system proof of tests, CI, and error handling.
-4. CONSTRUCTIVE, ACTIONABLE FIXES: Do not stop at the penalty. Pair every major deduction with a recommendation that names the exact file, nested package path, config, or command to add, the test runner or CI system to use, and what file-tree proof would lift the cap. Vague coaching ("add more tests", "improve quality") is forbidden.
+3. FAIR BUT STRICT SCORING: Grade out of 100 like a strict employer. Start at 100 and deduct for missing production standards. Prefer capped soft penalties (−${MISSING_ARTIFACT_PENALTIES.ci} to −${MISSING_ARTIFACT_PENALTIES.tests} pts per missing CI/tests/error-handling pillar on otherwise clean TypeScript repos) over instant zeros. A score of 100 still requires production-grade architecture AND file-system proof of tests, CI, and error handling.
+4. CONSTRUCTIVE, ACTIONABLE FIXES: Do not stop at the penalty. Pair every major deduction with a recommendation that names the exact file, nested package path, config, or command to add, the test runner or CI system to use, and what file-tree proof would lift the penalty. Vague coaching ("add more tests", "improve quality") is forbidden.
 5. CODE-FIRST: Provix scores repositories and file-system artifacts, not paperwork. A missing resume or experience summary must not lower the score and must not appear in redFlags. If resumeText is empty, ignore that absence. If a resume is present, use it only to check claim-vs-code mismatches.
 6. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo or external project write-up is a basic template, you must penalize the score heavily and state the mismatch explicitly.
 7. FILE-SYSTEM EVIDENCE VS PROSE: README text, resume bullets, commit messages, and external project write-ups are claims, not proof. They must never override missing code artifacts. Treat scorePolicy.coreArtifacts and scorePolicy.missingCoreArtifacts as the authority for whether tests, CI, and error handling exist. If those lists say an artifact is present, it is present — even when the files live in a nested package or use a non-Jest runner. Do not invent files that are not listed.
-8. HARD SCORE CAPS:
+8. SCORE CAPS (SOFT WHEN QUALITY SIGNALS EXIST):
    - Apply caps only from scorePolicy.missingCoreArtifacts and scorePolicy.appliedMaxScore. Never invent a missing-test or missing-CI failure because the repo is a monorepo or the runner is not Jest.
-   - If any core technical requirement is missing from repo inspection (test suite, CI workflow, or explicit error-handling files), the score MUST be at most ${MISSING_CORE_ARTIFACT_SCORE_CAP}.
-   - If two or more core requirements are missing, or filesystem.inspected is false, the score MUST be at most ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
-   - Scores above 80 are forbidden unless filesystem.inspected is true AND scorePolicy.coreArtifacts.tests, .ci, and .error_handling are all true. Cite the listed paths as proof.
-   - Honor scorePolicy.appliedMaxScore. Never exceed it. Never raise the score because the prose sounded production-grade.
+   - When scorePolicy.hasQualitySignals is true, missing artifacts are capped soft penalties (see scorePolicy.softPenalties). Honor scorePolicy.appliedMaxScore — do not invent harsher zeros.
+   - When scorePolicy.hasQualitySignals is false (messy/untyped trees), a single missing core requirement caps at ${MISSING_CORE_ARTIFACT_SCORE_CAP}; two or more missing, or filesystem.inspected false, caps at ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
+   - Scores above 80 still require inspected filesystem proof for the artifacts that are present; never exceed scorePolicy.appliedMaxScore. Never raise the score because the prose sounded production-grade.
 9. MONOREPOS AND ALTERNATIVE TEST RUNNERS: Nested packages under apps/, packages/, services/, libs/, modules/, or workspaces/ are valid production layouts. Tests, CI, and error-handling files inside those packages count. Jest, Vitest, Ava, Mocha, node:test, Pytest, Go testing, Playwright, Cypress, RSpec, JUnit, and similar runners count when their files or configs appear in filesystem.test_paths / ci_workflow_paths / error_handling_paths. Do not treat a missing repo-root /tests folder as a missing suite. If filesystem.truncated is true, do not assume nested package artifacts are absent just because they are not at the repository root; only treat an artifact as missing when scorePolicy lists it in missingCoreArtifacts.
 10. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts and cannot raise the score above the caps in rule 8. Never say the audit could not be completed solely because GitHub is private.
 
@@ -144,7 +144,7 @@ Return strict JSON only:
 }
 
 JSON field rules:
-- score: integer 0-100. Start at 100 and deduct. Apply the hard caps in rule 8 before returning. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling. Do not deduct for a missing resume. Do not deduct merely for a monorepo layout or a non-Jest test runner.
+- score: integer 0-100. Start at 100 and deduct. Apply the score caps in rule 8 before returning. Prefer soft penalties on clean TypeScript repos over zeroing entire pillars. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling. Do not deduct for a missing resume. Do not deduct merely for a monorepo layout or a non-Jest test runner.
 - strengths: 3-5 bullets. Each must cite a file path, file type, directory pattern, commit-history detail, live/documentation URL, or technical-breakdown detail from the provided artifacts. If you cannot cite it, omit it. Nested package paths and alternative test-runner files are valid citations. Do not cite README claims as proof of tests, CI, or error handling.
 - redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. If scorePolicy.missingCoreArtifacts is non-empty, say so. Do not red-flag a missing repo-root /tests folder when nested package tests or alternative runners are listed. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true. Never list a missing resume, CV, or experience summary as a red flag.
 - recommendations: exactly 3 constructive, actionable fixes. Each must name a concrete file, nested package path, config, or command, plus what evidence would lift the related penalty.
@@ -466,11 +466,11 @@ function buildFallbackAudit(
 
   recommendations.push(
     usedExternalFallback
-      ? `Tie each project write-up to ${level}-level ${role} work: APIs, data model, ownership, and production constraints.`
-      : `Pin 1-2 production repos that map directly to ${level}-level ${role} expectations.`,
+      ? `Tie each project write-up to ${level.toLowerCase()}-level expectations for ${role}: APIs, data model, ownership, and production constraints.`
+      : `Pin 1-2 production repos that map directly to ${level.toLowerCase()}-level expectations for ${role}.`,
     hasResume
       ? "Rewrite top resume bullets with metrics, stack tags, and links to live demos or PRs."
-      : "Add a real test file in the app package (for example packages/<app>/src/foo.test.ts, tests/test_app.py, or *_test.go), a CI workflow under .github/workflows, and an explicit error-handling module so the file tree can lift the score cap.",
+      : "Add a real test file in the app package (for example packages/<app>/src/foo.test.ts, tests/test_app.py, or *_test.go), a CI workflow under .github/workflows, and an explicit error-handling module so the file tree can lift the soft score penalty.",
     usedExternalFallback
       ? "Add architecture notes, error handling, and test strategy to each technical breakdown so reviewers can score production standards."
       : "Add a concise README per repo covering architecture, your contributions, and setup steps."
@@ -503,11 +503,11 @@ function buildFallbackAudit(
         ...canonical,
         summary:
           usedExternalFallback && primaryProject?.description
-            ? `Architecture was scored from the technical breakdown for "${primaryProject.project_title}". Module ownership and system boundaries still need file-system proof for ${level}-level ${role} work.`
+            ? `Architecture was scored from the technical breakdown for "${primaryProject.project_title}". Module ownership and system boundaries still need file-system proof for ${level.toLowerCase()}-level expectations for ${role}.`
             : filesystem?.sample_paths.length
-            ? `File tree from ${artifact?.owner}/${artifact?.repo} includes ${filesystem.sample_paths.slice(0, 4).join(", ")}. Folder-level architecture still needs a clearer ownership and module map for ${level}-level ${role} work.`
+            ? `File tree from ${artifact?.owner}/${artifact?.repo} includes ${filesystem.sample_paths.slice(0, 4).join(", ")}. Folder-level architecture still needs a clearer ownership and module map for ${level.toLowerCase()}-level expectations for ${role}.`
             : artifact?.readme_excerpt
-            ? `README excerpt from ${artifact.owner}/${artifact.repo} was reviewed as a claim sheet only. No file-tree architecture proof was available for ${level}-level ${role} work.`
+            ? `README excerpt from ${artifact.owner}/${artifact.repo} was reviewed as a claim sheet only. No file-tree architecture proof was available for ${level.toLowerCase()}-level expectations for ${role}.`
             : "Architecture signals were limited. No documented module structure or system-design notes were available from the provided artifacts.",
       };
     }
