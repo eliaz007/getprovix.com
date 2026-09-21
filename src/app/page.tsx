@@ -1,4 +1,6 @@
 import Link from "next/link";
+import AmbientLighting from "@/components/AmbientLighting";
+import ComparisonShowcase from "@/components/ComparisonShowcase";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LandingAuditForm from "@/components/landing/landing-audit-form";
 import LandingAudienceCards from "@/components/landing/landing-audience-cards";
@@ -13,7 +15,7 @@ export const metadata = buildPageMetadata(
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-background text-textMuted">
+    <AmbientLighting>
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
           <Link href="/" className="hover:opacity-90 transition-opacity">
@@ -38,6 +40,8 @@ export default function Home() {
             engineering teams hiring on how you actually ship.
           </p>
         </section>
+
+        <ComparisonShowcase />
 
         <LandingAuditForm />
 
@@ -65,6 +69,6 @@ export default function Home() {
           </div>
         </div>
       </footer>
-    </div>
+    </AmbientLighting>
   );
 }
