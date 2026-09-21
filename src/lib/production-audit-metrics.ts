@@ -1,12 +1,17 @@
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   emptyRepoFilesystemEvidence,
+  emptyQualitySignals,
+  hasRepoQualitySignals,
+  hasStrongQualitySignals,
   isCiWorkflowPath,
   isErrorHandlingPath,
   isNoisePath,
   isTestPath,
+  MISSING_ARTIFACT_PENALTIES,
   parseRepoFilesystemEvidence,
   type RepoFilesystemEvidence,
+  type RepoQualitySignals,
 } from "@/lib/repo-filesystem";
 
 /** Weights for the production audit scorecard (must sum to 1). */
@@ -14,6 +19,23 @@ export const PRODUCTION_METRIC_WEIGHTS = {
   ciCdHealth: 0.3,
   testAssertionDensity: 0.4,
   errorBoundaries: 0.3,
+} as const;
+
+/** Baseline floors / caps used when quality signals are present. */
+export const PRODUCTION_METRIC_FLOORS = {
+  /** Missing CI with quality signals: 100 − soft CI penalty. */
+  missingCiWithQuality: 100 - MISSING_ARTIFACT_PENALTIES.ci,
+  /** No formal tests, but TypeScript and/or linting. */
+  testsPartialTsOrLint: 48,
+  /** No formal tests, TypeScript + linting. */
+  testsPartialTsAndLint: 55,
+  /** No formal tests, TypeScript + lint + modular layout. */
+  testsPartialFullQuality: 60,
+  /** No explicit error handlers, but strong quality signals. */
+  errorsQualityFloor: 72,
+  /** Non-React error handlers (was hard-capped at 55). */
+  errorsOtherHandlersFloor: 75,
+  errorsOtherHandlersCap: 80,
 } as const;
 
 export type ProductionAuditMetrics = {
@@ -37,6 +59,7 @@ export type ProductionAuditMetrics = {
     ciWorkflowPaths: string[];
     testPaths: string[];
     errorBoundaryPaths: string[];
+    qualitySignals: RepoQualitySignals;
   };
 };
 
@@ -60,6 +83,12 @@ export function isReactErrorBoundaryPath(path: string): boolean {
   return REACT_ERROR_BOUNDARY_PATH.test(path);
 }
 
+function qualityFromEvidence(
+  evidence: RepoFilesystemEvidence
+): RepoQualitySignals {
+  return evidence.quality_signals ?? emptyQualitySignals();
+}
+
 export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
   return {
     ciCdHealth: 0,
@@ -78,13 +107,15 @@ export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
       ciWorkflowPaths: [],
       testPaths: [],
       errorBoundaryPaths: [],
+      qualitySignals: emptyQualitySignals(),
     },
   };
 }
 
 /**
  * CI/CD Health (0-100): prefers `.github/workflows/*.yml`, with partial
- * credit for other recognized CI config files.
+ * credit for other recognized CI config files. Missing CI on a clean repo
+ * is a capped soft penalty (−10 to −15), not an instant 0.
  */
 export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
@@ -92,25 +123,30 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
   }
 
   const workflows = evidence.ci_workflow_paths.filter(isCiWorkflowPath);
+  const quality = qualityFromEvidence(evidence);
+
   if (workflows.length === 0) {
-    return 0;
+    if (!hasRepoQualitySignals(quality)) {
+      return 0;
+    }
+    return clampScore0to100(PRODUCTION_METRIC_FLOORS.missingCiWithQuality);
   }
 
   const githubWorkflows = workflows.filter(isGithubWorkflowPath);
   const otherCi = workflows.length - githubWorkflows.length;
 
   if (githubWorkflows.length === 0) {
-    return clampScore0to100(Math.min(70, 35 + otherCi * 15));
+    return clampScore0to100(Math.min(75, 45 + otherCi * 15));
   }
 
-  let score = 55;
+  // Having workflows must always beat the missing-CI soft floor.
   if (githubWorkflows.length >= 2) {
-    score += 25;
+    return clampScore0to100(100);
   }
-  if (githubWorkflows.length >= 3) {
-    score += 20;
-  } else if (otherCi > 0) {
-    score += Math.min(15, otherCi * 8);
+
+  let score = 92;
+  if (otherCi > 0) {
+    score += Math.min(8, otherCi * 4);
   }
 
   return clampScore0to100(score);
@@ -119,7 +155,8 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
 /**
  * Test Assertion Density (0-100): approximates assertion coverage from
  * test file / directory presence relative to the inspected tree size.
- * (File-tree audits cannot count `expect()` calls without blob contents.)
+ * Clean TypeScript / linted / modular repos earn partial credit when no
+ * formal test files exist.
  */
 export function scoreTestAssertionDensity(
   evidence: RepoFilesystemEvidence
@@ -129,7 +166,22 @@ export function scoreTestAssertionDensity(
   }
 
   const testFiles = evidence.test_paths.filter(isTestPath);
+  const quality = qualityFromEvidence(evidence);
+
   if (testFiles.length === 0) {
+    if (
+      quality.typescript &&
+      quality.linting &&
+      quality.modularStructure
+    ) {
+      return clampScore0to100(PRODUCTION_METRIC_FLOORS.testsPartialFullQuality);
+    }
+    if (quality.typescript && quality.linting) {
+      return clampScore0to100(PRODUCTION_METRIC_FLOORS.testsPartialTsAndLint);
+    }
+    if (quality.typescript || quality.linting) {
+      return clampScore0to100(PRODUCTION_METRIC_FLOORS.testsPartialTsOrLint);
+    }
     return 0;
   }
 
@@ -145,7 +197,8 @@ export function scoreTestAssertionDensity(
 
 /**
  * Error Boundaries (0-100): rewards React `error.tsx` / `ErrorBoundary`
- * files, with limited credit for other explicit error-handling modules.
+ * files, with a 70–80 baseline for other handlers or strong quality signals
+ * (TypeScript, Zod/schema validation, route handlers).
  */
 export function scoreErrorBoundaries(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
@@ -153,7 +206,12 @@ export function scoreErrorBoundaries(evidence: RepoFilesystemEvidence): number {
   }
 
   const handlers = evidence.error_handling_paths.filter(isErrorHandlingPath);
+  const quality = qualityFromEvidence(evidence);
+
   if (handlers.length === 0) {
+    if (hasStrongQualitySignals(quality)) {
+      return clampScore0to100(PRODUCTION_METRIC_FLOORS.errorsQualityFloor);
+    }
     return 0;
   }
 
@@ -161,7 +219,11 @@ export function scoreErrorBoundaries(evidence: RepoFilesystemEvidence): number {
   const otherHandlers = handlers.length - reactBoundaries.length;
 
   if (reactBoundaries.length === 0) {
-    return clampScore0to100(Math.min(55, 25 + otherHandlers * 15));
+    const base = PRODUCTION_METRIC_FLOORS.errorsOtherHandlersFloor;
+    const scored = base + Math.max(0, otherHandlers - 1) * 5;
+    return clampScore0to100(
+      Math.min(PRODUCTION_METRIC_FLOORS.errorsOtherHandlersCap, scored)
+    );
   }
 
   if (reactBoundaries.length >= 2) {
@@ -226,6 +288,7 @@ export function computeProductionAuditMetrics(
       ciWorkflowPaths: ciWorkflowPaths.slice(0, 8),
       testPaths: testPaths.slice(0, 8),
       errorBoundaryPaths: errorBoundaryPaths.slice(0, 8),
+      qualitySignals: qualityFromEvidence(normalized),
     },
   };
 }
@@ -323,6 +386,28 @@ export function parseProductionAuditMetrics(
       ciWorkflowPaths: asPaths(evidenceRecord?.ciWorkflowPaths),
       testPaths: asPaths(evidenceRecord?.testPaths),
       errorBoundaryPaths: asPaths(evidenceRecord?.errorBoundaryPaths),
+      qualitySignals:
+        evidenceRecord?.qualitySignals &&
+        typeof evidenceRecord.qualitySignals === "object" &&
+        !Array.isArray(evidenceRecord.qualitySignals)
+          ? {
+              typescript:
+                (evidenceRecord.qualitySignals as Record<string, unknown>)
+                  .typescript === true,
+              linting:
+                (evidenceRecord.qualitySignals as Record<string, unknown>)
+                  .linting === true,
+              schemaValidation:
+                (evidenceRecord.qualitySignals as Record<string, unknown>)
+                  .schemaValidation === true,
+              routeHandlers:
+                (evidenceRecord.qualitySignals as Record<string, unknown>)
+                  .routeHandlers === true,
+              modularStructure:
+                (evidenceRecord.qualitySignals as Record<string, unknown>)
+                  .modularStructure === true,
+            }
+          : emptyQualitySignals(),
     },
   };
 }

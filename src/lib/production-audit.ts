@@ -101,9 +101,9 @@ export function buildProductionAuditBreakdown(input: {
   const errorPresent = Boolean(input.scoreCap?.coreArtifacts.error_handling);
 
   return {
-    ci_cd_score: ciPresent ? 55 : 0,
-    test_density: testsPresent ? 40 : 0,
-    error_handling: errorPresent ? 55 : 0,
+    ci_cd_score: ciPresent ? 92 : 0,
+    test_density: testsPresent ? 75 : 0,
+    error_handling: errorPresent ? 75 : 0,
     audited_repo_url: input.githubUrl.trim(),
     audited_at: input.auditedAt ?? new Date().toISOString(),
   };

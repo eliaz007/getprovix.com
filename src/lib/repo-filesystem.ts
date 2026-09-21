@@ -1,10 +1,39 @@
 import { clampScore0to100 } from "@/lib/score-scale";
 
+/** Harsh ceilings when a repo has no quality signals (messy / untyped). */
 export const MISSING_CORE_ARTIFACT_SCORE_CAP = 60;
 export const UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP = 50;
 export const HIGH_SCORE_FILESYSTEM_PROOF_FLOOR = 81;
 
+/**
+ * Soft per-artifact penalties for otherwise clean repos (TypeScript, lint,
+ * modular layout, schema validation, or route handlers). Used for both the
+ * filesystem score ceiling and the Remediation Simulator uplift.
+ */
+export const MISSING_ARTIFACT_PENALTIES = {
+  ci: 15,
+  tests: 14,
+  error_handling: 12,
+} as const;
+
+/** @deprecated Prefer MISSING_ARTIFACT_PENALTIES — kept as the CI soft penalty. */
+export const MISSING_CI_SOFT_PENALTY = MISSING_ARTIFACT_PENALTIES.ci;
+
+export const ARTIFACT_REMEDIATION_POINTS = {
+  ci: MISSING_ARTIFACT_PENALTIES.ci,
+  tests: MISSING_ARTIFACT_PENALTIES.tests,
+  error_handling: MISSING_ARTIFACT_PENALTIES.error_handling,
+} as const;
+
 export type CoreArtifactKind = "tests" | "ci" | "error_handling";
+
+export type RepoQualitySignals = {
+  typescript: boolean;
+  linting: boolean;
+  schemaValidation: boolean;
+  routeHandlers: boolean;
+  modularStructure: boolean;
+};
 
 export type RepoFilesystemEvidence = {
   inspected: boolean;
@@ -14,15 +43,18 @@ export type RepoFilesystemEvidence = {
   test_paths: string[];
   ci_workflow_paths: string[];
   error_handling_paths: string[];
+  quality_signals: RepoQualitySignals;
 };
 
 export type FilesystemScorePolicy = {
   proseNeverOverridesMissingFiles: true;
-  missingCoreArtifactMaxScore: typeof MISSING_CORE_ARTIFACT_SCORE_CAP;
-  multipleMissingOrUninspectedMaxScore: typeof UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP;
+  missingCoreArtifactMaxScore: number;
+  multipleMissingOrUninspectedMaxScore: number;
   scoreAbove80RequiresFilesystemProof: true;
   highScoreFloor: typeof HIGH_SCORE_FILESYSTEM_PROOF_FLOOR;
   inspected: boolean;
+  hasQualitySignals: boolean;
+  softPenalties: typeof MISSING_ARTIFACT_PENALTIES;
   coreArtifacts: {
     tests: boolean;
     ci: boolean;
@@ -119,6 +151,17 @@ const WORKSPACE_PACKAGE_PREFIX =
 const ERROR_HANDLING_PATH =
   /(error[-_]?boundar|error[-_]?handler|exception[-_]?handler|(^|\/)global-error\.[cm]?[jt]sx?$|(^|\/)error\.[cm]?[jt]sx?$|(^|\/)errors?\.(ts|js|tsx|jsx|py|go)$|(^|\/)errors\/|middleware\/.*error)/i;
 
+const TSCONFIG_PATH = /(^|\/)tsconfig(\.[^/]+)?\.json$/i;
+const TYPESCRIPT_SOURCE = /\.[cm]?tsx?$/i;
+const LINT_CONFIG_PATH =
+  /(^|\/)(eslint\.config\.[cm]?[jt]sx?$|\.eslintrc(\.|$)|biome\.jsonc?$|\.biome\.jsonc?$|\.prettierrc(\.|$)|prettier\.config\.[cm]?[jt]s$)/i;
+const SCHEMA_VALIDATION_PATH =
+  /(^|\/)(schemas?|validators?|validations?)\/|\.schema\.[cm]?[jt]sx?$|(^|\/)zod[^/]*\.[cm]?[jt]sx?$|[-_.]zod\.[cm]?[jt]sx?$/i;
+const ROUTE_HANDLER_PATH = /(^|\/)route\.[cm]?[jt]sx?$/i;
+const MODULAR_SRC = /(^|\/)src\//;
+const MODULAR_LAYOUT =
+  /(^|\/)(app|lib|components|packages|modules|features|hooks|utils)\//;
+
 function asStringPaths(value: unknown, limit = MAX_PATHS_PER_BUCKET): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -131,6 +174,16 @@ function asStringPaths(value: unknown, limit = MAX_PATHS_PER_BUCKET): string[] {
     .slice(0, limit);
 }
 
+export function emptyQualitySignals(): RepoQualitySignals {
+  return {
+    typescript: false,
+    linting: false,
+    schemaValidation: false,
+    routeHandlers: false,
+    modularStructure: false,
+  };
+}
+
 export function emptyRepoFilesystemEvidence(): RepoFilesystemEvidence {
   return {
     inspected: false,
@@ -140,6 +193,101 @@ export function emptyRepoFilesystemEvidence(): RepoFilesystemEvidence {
     test_paths: [],
     ci_workflow_paths: [],
     error_handling_paths: [],
+    quality_signals: emptyQualitySignals(),
+  };
+}
+
+export function detectQualitySignals(paths: string[]): RepoQualitySignals {
+  const clean = paths
+    .map((path) => path.trim().replace(/\\/g, "/"))
+    .filter((path) => path && !isNoisePath(path));
+
+  let typescriptSources = 0;
+  let hasTsconfig = false;
+  let linting = false;
+  let schemaValidation = false;
+  let routeHandlers = false;
+  let hasSrc = false;
+  let hasLayout = false;
+
+  for (const path of clean) {
+    if (TSCONFIG_PATH.test(path)) {
+      hasTsconfig = true;
+    }
+    if (TYPESCRIPT_SOURCE.test(path)) {
+      typescriptSources += 1;
+    }
+    if (LINT_CONFIG_PATH.test(path)) {
+      linting = true;
+    }
+    if (SCHEMA_VALIDATION_PATH.test(path)) {
+      schemaValidation = true;
+    }
+    if (ROUTE_HANDLER_PATH.test(path)) {
+      routeHandlers = true;
+    }
+    if (MODULAR_SRC.test(path)) {
+      hasSrc = true;
+    }
+    if (MODULAR_LAYOUT.test(path)) {
+      hasLayout = true;
+    }
+  }
+
+  return {
+    typescript: hasTsconfig || typescriptSources >= 5,
+    linting,
+    schemaValidation,
+    routeHandlers,
+    modularStructure: hasSrc && hasLayout && clean.length >= 12,
+  };
+}
+
+export function hasRepoQualitySignals(
+  signals: RepoQualitySignals | null | undefined
+): boolean {
+  if (!signals) {
+    return false;
+  }
+  return (
+    signals.typescript ||
+    signals.linting ||
+    signals.schemaValidation ||
+    signals.routeHandlers ||
+    signals.modularStructure
+  );
+}
+
+/** Strong enough signals to award error-handling / test baseline floors. */
+export function hasStrongQualitySignals(
+  signals: RepoQualitySignals | null | undefined
+): boolean {
+  if (!signals) {
+    return false;
+  }
+  if (signals.typescript && (signals.linting || signals.modularStructure)) {
+    return true;
+  }
+  if (
+    signals.typescript &&
+    (signals.schemaValidation || signals.routeHandlers)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function parseQualitySignals(value: unknown): RepoQualitySignals {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return emptyQualitySignals();
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    typescript: record.typescript === true,
+    linting: record.linting === true,
+    schemaValidation: record.schemaValidation === true,
+    routeHandlers: record.routeHandlers === true,
+    modularStructure: record.modularStructure === true,
   };
 }
 
@@ -234,6 +382,7 @@ export function classifyRepoFilesystem(
     error_handling_paths: unique
       .filter(isErrorHandlingPath)
       .slice(0, MAX_PATHS_PER_BUCKET),
+    quality_signals: detectQualitySignals(unique),
   };
 }
 
@@ -251,14 +400,29 @@ export function parseRepoFilesystemEvidence(
       ? Math.max(0, Math.round(record.file_count))
       : 0;
 
+  const samplePaths = asStringPaths(record.sample_paths, MAX_SAMPLE_PATHS);
+  const testPaths = asStringPaths(record.test_paths);
+  const ciPaths = asStringPaths(record.ci_workflow_paths);
+  const errorPaths = asStringPaths(record.error_handling_paths);
+  const parsedSignals = parseQualitySignals(record.quality_signals);
+  const inferredSignals = hasRepoQualitySignals(parsedSignals)
+    ? parsedSignals
+    : detectQualitySignals([
+        ...samplePaths,
+        ...testPaths,
+        ...ciPaths,
+        ...errorPaths,
+      ]);
+
   return {
     inspected,
     truncated: record.truncated === true,
     file_count: fileCount,
-    sample_paths: asStringPaths(record.sample_paths, MAX_SAMPLE_PATHS),
-    test_paths: asStringPaths(record.test_paths),
-    ci_workflow_paths: asStringPaths(record.ci_workflow_paths),
-    error_handling_paths: asStringPaths(record.error_handling_paths),
+    sample_paths: samplePaths,
+    test_paths: testPaths,
+    ci_workflow_paths: ciPaths,
+    error_handling_paths: errorPaths,
+    quality_signals: inferredSignals,
   };
 }
 
@@ -295,17 +459,34 @@ export function missingCoreArtifacts(
   return missing;
 }
 
+export function softPenaltyForMissing(missing: CoreArtifactKind[]): number {
+  return missing.reduce(
+    (sum, kind) => sum + MISSING_ARTIFACT_PENALTIES[kind],
+    0
+  );
+}
+
 export function filesystemScoreCeiling(
   evidence: RepoFilesystemEvidence | null | undefined
 ): number {
-  const missing = missingCoreArtifacts(evidence);
-  if (!evidence?.inspected || missing.length >= 2) {
+  if (!evidence?.inspected) {
     return UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP;
   }
-  if (missing.length === 1) {
-    return MISSING_CORE_ARTIFACT_SCORE_CAP;
+
+  const missing = missingCoreArtifacts(evidence);
+  if (missing.length === 0) {
+    return 100;
   }
-  return 100;
+
+  const quality = hasRepoQualitySignals(evidence.quality_signals);
+  if (!quality) {
+    return missing.length >= 2
+      ? UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP
+      : MISSING_CORE_ARTIFACT_SCORE_CAP;
+  }
+
+  // Clean repos: capped soft penalties (−10 to −15 per missing pillar).
+  return clampScore0to100(100 - softPenaltyForMissing(missing));
 }
 
 export function capScoreForFilesystemEvidence(
@@ -356,13 +537,24 @@ export function buildFilesystemScorePolicy(
     coreArtifacts.error_handling = false;
   }
 
+  const quality = hasRepoQualitySignals(evidence?.quality_signals);
+  const softCeiling = clampScore0to100(
+    100 - softPenaltyForMissing(["ci", "tests", "error_handling"])
+  );
+
   return {
     proseNeverOverridesMissingFiles: true,
-    missingCoreArtifactMaxScore: MISSING_CORE_ARTIFACT_SCORE_CAP,
-    multipleMissingOrUninspectedMaxScore: UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
+    missingCoreArtifactMaxScore: quality
+      ? clampScore0to100(100 - MISSING_ARTIFACT_PENALTIES.ci)
+      : MISSING_CORE_ARTIFACT_SCORE_CAP,
+    multipleMissingOrUninspectedMaxScore: quality
+      ? softCeiling
+      : UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
     scoreAbove80RequiresFilesystemProof: true,
     highScoreFloor: HIGH_SCORE_FILESYSTEM_PROOF_FLOOR,
     inspected: Boolean(evidence?.inspected),
+    hasQualitySignals: quality,
+    softPenalties: { ...MISSING_ARTIFACT_PENALTIES },
     coreArtifacts,
     missingCoreArtifacts: missingCoreArtifacts(evidence),
     appliedMaxScore: filesystemScoreCeiling(evidence),
@@ -397,23 +589,23 @@ const DEDUCTION_META: Record<
     detail:
       "GitHub file-tree inspection did not produce a path list, so tests, CI/CD, and error handling could not be verified as code artifacts. README, resume, and project write-ups cannot substitute.",
   },
-  missing_tests: {
-    artifact: "tests",
-    label: "Missing test suite",
-    detail:
-      "No test files, nested package test dirs, or test-runner config were found in the inspected file tree (Jest, Vitest, Ava, Mocha, Pytest, Go test, Playwright, Cypress, and similar all count). README claims of tests do not count.",
-  },
   missing_ci: {
     artifact: "ci",
     label: "Missing CI/CD workflows",
     detail:
-      "No CI/CD workflow files were found (.github/workflows, GitLab CI, Jenkins, CircleCI, Azure Pipelines, Travis, Buildkite, Drone, or Cloud Build). README claims of CI do not count.",
+      "No CI/CD workflow files were found (.github/workflows, GitLab CI, Jenkins, CircleCI, Azure Pipelines, Travis, Buildkite, Drone, or Cloud Build). On clean TypeScript repos this is a capped soft penalty, not an instant zero. README claims of CI do not count.",
   },
   missing_error_handling: {
     artifact: "error_handling",
     label: "Missing error-handling files",
     detail:
-      "No explicit error-handling files were found (error boundaries, error/exception handlers, or errors modules). Prose descriptions of error handling do not count.",
+      "No explicit error-handling files were found (error boundaries, error/exception handlers, or errors modules). Clean TypeScript / schema-validated repos still receive a baseline floor; prose descriptions do not count.",
+  },
+  missing_tests: {
+    artifact: "tests",
+    label: "Missing test suite",
+    detail:
+      "No test files, nested package test dirs, or test-runner config were found in the inspected file tree (Jest, Vitest, Ava, Mocha, Pytest, Go test, Playwright, Cypress, and similar all count). Strict TypeScript / lint configs can earn partial credit; README claims of tests do not count.",
   },
 };
 
