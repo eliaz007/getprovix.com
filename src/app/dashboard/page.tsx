@@ -4416,61 +4416,64 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       />
                     </div>
 
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-2">
-                        Academic Snapshot
-                      </div>
-                      <div className="bg-background border border-border rounded-xl p-3.5 text-xs text-textMain space-y-2">
-                        {isSelfTaught ? (
-                          <SelfTaughtEngineerBadge />
-                        ) : educationEntries.length > 0 ? (
-                          educationEntries.map((entry) => (
-                            <div key={entry.id} className="space-y-1">
-                              {entry.institution ? (
-                                <div className="flex items-start justify-between gap-3">
-                                  <span className="text-textMuted shrink-0">
-                                    Institution
-                                  </span>
-                                  <span className="text-right">{entry.institution}</span>
-                                </div>
-                              ) : null}
-                              {entry.credentialType ? (
-                                <div className="flex items-start justify-between gap-3">
-                                  <span className="text-textMuted shrink-0">
-                                    Credential
-                                  </span>
-                                  <span className="text-right">
-                                    {entry.credentialType}
-                                  </span>
-                                </div>
-                              ) : null}
-                              {entry.fieldOfStudy ? (
-                                <div className="flex items-start justify-between gap-3">
-                                  <span className="text-textMuted shrink-0">
-                                    Field of study
-                                  </span>
-                                  <span className="text-right">{entry.fieldOfStudy}</span>
-                                </div>
-                              ) : null}
-                              {entry.graduationYear ? (
-                                <div className="flex items-start justify-between gap-3">
-                                  <span className="text-textMuted shrink-0">
-                                    Completion
-                                  </span>
-                                  <span className="text-right">
-                                    Class of {entry.graduationYear}
-                                  </span>
-                                </div>
-                              ) : null}
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-textMuted">
-                            Education is optional. Add programs in Academics if you
-                            want them listed.
-                          </p>
-                        )}
-                      </div>
+                    <div className="rounded-lg border border-neutral-800 bg-[#0d0f17] p-4">
+                      <p className="mb-3 font-mono text-[11px] uppercase tracking-wider text-neutral-500">
+                        // Academic Snapshot
+                      </p>
+                      {isSelfTaught ? (
+                        <SelfTaughtEngineerBadge />
+                      ) : educationEntries.some(
+                          (entry) =>
+                            entry.institution.trim() ||
+                            entry.fieldOfStudy.trim() ||
+                            entry.graduationYear.trim()
+                        ) ? (
+                        <ul className="divide-y divide-neutral-800/70">
+                          {educationEntries
+                            .filter(
+                              (entry) =>
+                                entry.institution.trim() ||
+                                entry.fieldOfStudy.trim() ||
+                                entry.graduationYear.trim()
+                            )
+                            .map((entry) => {
+                              const credential = entry.credentialType.trim();
+                              const field = entry.fieldOfStudy.trim();
+                              const subtitle =
+                                credential && field
+                                  ? `${credential} • ${field}`
+                                  : credential || field;
+
+                              return (
+                                <li
+                                  key={entry.id}
+                                  className="py-3 first:pt-0 last:pb-0"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <p className="text-sm font-medium text-white">
+                                      {entry.institution.trim() || "Untitled program"}
+                                    </p>
+                                    {entry.graduationYear.trim() ? (
+                                      <span className="shrink-0 rounded border border-neutral-800 bg-neutral-900 px-2 py-0.5 font-mono text-xs text-neutral-400">
+                                        {entry.graduationYear.trim()}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  {subtitle ? (
+                                    <p className="mt-1 text-xs text-neutral-400">
+                                      {subtitle}
+                                    </p>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-neutral-400">
+                          Education is optional. Add programs in Academics if you
+                          want them listed.
+                        </p>
+                      )}
                     </div>
 
                     {renderProfileFormActions()}
