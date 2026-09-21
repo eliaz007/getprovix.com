@@ -2,10 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Building2, Code2 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { loginHrefForSignupRole } from "@/lib/account-role";
 
 type Audience = "employer" | "developer";
+
+const cardClass =
+  "group flex h-full cursor-pointer flex-col rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-6 text-left transition-colors duration-200 hover:border-neutral-700/80 disabled:cursor-wait sm:p-8";
+
+const ctaClass =
+  "mt-8 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-transparent px-4 py-2.5 text-sm font-medium tracking-tight text-white transition-colors duration-200 group-hover:border-neutral-500";
 
 export default function LandingAudienceCards() {
   const router = useRouter();
@@ -21,30 +27,27 @@ export default function LandingAudienceCards() {
   };
 
   return (
-    <section className="mt-20 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <section className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
       <button
         type="button"
         onClick={() => openAudience("employer")}
         disabled={pending !== null}
-        className="group flex h-full cursor-pointer flex-col rounded-2xl border border-border bg-panel p-8 text-left transition-colors duration-200 hover:border-white/15 hover:bg-white/[0.03] disabled:cursor-wait"
+        className={cardClass}
       >
-        <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-background text-brand">
-          <Building2 className="h-5 w-5" aria-hidden="true" />
-        </div>
-        <p className="text-[11px] font-bold uppercase tracking-widest text-brand">
-          For Founders
+        <p className="font-mono text-[11px] tracking-widest text-violet-300">
+          // 01 FOUNDERS
         </p>
-        <h2 className="mt-3 text-2xl font-bold tracking-tight text-textMain">
+        <h2 className="mt-4 text-xl font-medium tracking-tight text-white">
           Source pre-vetted builders using static code and repository integrity
           analysis.
         </h2>
-        <p className="mt-4 flex-1 text-sm leading-relaxed text-textMuted">
+        <p className="mt-4 flex-1 text-sm leading-relaxed text-neutral-400">
           Skip resume theater. Open the employer console to screen talent
           against verified GitHub artifacts and repository integrity signals.
         </p>
-        <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-brand px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors duration-200 group-hover:bg-brandHover">
+        <span className={ctaClass}>
           {pending === "employer" ? "Opening..." : "Enter Employer Console"}
-          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          <ArrowRight className="h-4 w-4 text-neutral-400" aria-hidden="true" />
         </span>
       </button>
 
@@ -52,25 +55,22 @@ export default function LandingAudienceCards() {
         type="button"
         onClick={() => openAudience("developer")}
         disabled={pending !== null}
-        className="group flex h-full cursor-pointer flex-col rounded-2xl border border-border bg-panel p-8 text-left transition-colors duration-200 hover:border-white/15 hover:bg-white/[0.03] disabled:cursor-wait"
+        className={cardClass}
       >
-        <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-background text-sky-400">
-          <Code2 className="h-5 w-5" aria-hidden="true" />
-        </div>
-        <p className="text-[11px] font-bold uppercase tracking-widest text-sky-400">
-          For Developers
+        <p className="font-mono text-[11px] tracking-widest text-cyan-400">
+          // 02 DEVELOPERS
         </p>
-        <h2 className="mt-3 text-2xl font-bold tracking-tight text-textMain">
-          Run deep audits on your public repos to prove founder-ready
+        <h2 className="mt-4 text-xl font-medium tracking-tight text-white">
+          Run deep audits across public or private repos to prove founder-ready
           credibility.
         </h2>
-        <p className="mt-4 flex-1 text-sm leading-relaxed text-textMuted">
+        <p className="mt-4 flex-1 text-sm leading-relaxed text-neutral-400">
           Publish proof of work, keep your profile current, and show employers
           what you have actually shipped — not what a resume claims.
         </p>
-        <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-sky-400 px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors duration-200 group-hover:bg-sky-500">
+        <span className={ctaClass}>
           {pending === "developer" ? "Opening..." : "Open Candidate Dashboard"}
-          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          <ArrowRight className="h-4 w-4 text-neutral-400" aria-hidden="true" />
         </span>
       </button>
     </section>

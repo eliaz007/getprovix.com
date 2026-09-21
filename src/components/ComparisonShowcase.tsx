@@ -6,25 +6,24 @@ export default function ComparisonShowcase() {
   const [activeTab, setActiveTab] = useState<'provix' | 'boards'>('provix');
 
   return (
-    <section className="relative py-16 px-4 max-w-3xl mx-auto">
-      {/* Header */}
-      <div className="text-center space-y-2 mb-8">
-        <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+    <section className="relative mx-auto max-w-2xl px-4 py-14">
+      <div className="pointer-events-none absolute top-8 left-1/2 h-56 w-80 -translate-x-1/2 rounded-full bg-violet-600/5 blur-3xl" />
+      <div className="relative mb-8 space-y-3 text-center">
+        <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
           A better way to get hired.
         </h2>
-        <p className="text-sm text-neutral-400 max-w-md mx-auto">
-          See how the hiring process changes when verified code replaces keyword resumes.
+        <p className="mx-auto max-w-md text-xs text-neutral-400 sm:text-sm">
+          Compare the typical hiring funnel with code-first inbound.
         </p>
-        {/* Tab Toggle */}
-        <div className="pt-4 flex justify-center">
-          <div className="inline-flex rounded-full border border-neutral-800 bg-[#0d0e12] p-1 shadow-inner">
+        <div className="flex justify-center pt-2">
+          <div className="inline-flex rounded-full border border-neutral-800/80 bg-[#0d0f17] p-1">
             <button
               type="button"
               onClick={() => setActiveTab('boards')}
-              className={`px-4 py-1.5 rounded-full text-xs font-mono transition-all duration-300 ${
+              className={`rounded-full border px-4 py-1.5 font-mono text-xs transition-colors duration-200 ${
                 activeTab === 'boards'
-                  ? 'bg-neutral-800 text-neutral-200 border border-neutral-700 shadow-sm'
-                  : 'text-neutral-400 hover:text-white border border-transparent'
+                  ? 'border-neutral-700 bg-neutral-800 text-neutral-200 shadow-sm'
+                  : 'border-transparent text-neutral-400 hover:text-white'
               }`}
             >
               Standard Job Boards
@@ -32,84 +31,80 @@ export default function ComparisonShowcase() {
             <button
               type="button"
               onClick={() => setActiveTab('provix')}
-              className={`px-4 py-1.5 rounded-full text-xs font-mono transition-all duration-300 ${
+              className={`rounded-full border px-4 py-1.5 font-mono text-xs transition-all duration-200 ${
                 activeTab === 'provix'
-                  ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
-                  : 'text-neutral-400 hover:text-white border border-transparent'
+                  ? 'border-violet-500/30 bg-violet-500/10 text-violet-300 shadow-[0_0_12px_rgba(124,58,237,0.15)]'
+                  : 'border-transparent text-neutral-400 hover:text-white'
               }`}
             >
-              Provix Network
+              Provix Talent Network
             </button>
           </div>
         </div>
       </div>
-      {/* Card Content */}
-      <div className="relative min-h-[360px]">
+
+      <div className="relative rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-6 transition-colors hover:border-neutral-700/80 sm:p-8">
         {activeTab === 'boards' ? (
-          <div
-            key="boards"
-            className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-2xl border border-neutral-800 bg-[#0b0c10] p-6 space-y-4 shadow-xl"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-900">
-              <span className="font-mono text-xs text-neutral-400">The Traditional Process</span>
-              <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
-                High Effort, Low Yield
-              </span>
+          <div key="boards" className="animate-in fade-in duration-200 space-y-6">
+            <div className="flex items-center justify-between border-b border-neutral-800/60 pb-3 font-mono text-xs">
+              <span className="text-neutral-400">Pipeline: Traditional Hiring Loop</span>
+              <span className="text-red-400/80">&lt; 5% response rate</span>
             </div>
-            <div className="space-y-3 font-mono text-xs">
-              <div className="p-3 rounded-lg border border-neutral-800/80 bg-neutral-900/30">
-                <span className="text-[11px] text-neutral-500 block uppercase">1. How You Apply</span>
-                <span className="text-sm font-semibold text-neutral-200 mt-1 block">Submit 100+ blind applications</span>
-                <span className="text-neutral-400 text-[11px] mt-1 block">Your PDF sits in an automated resume filter alongside 500 other applicants.</span>
+            <div className="relative space-y-6 pl-6 before:absolute before:top-2 before:bottom-2 before:left-2 before:w-px before:bg-neutral-800">
+              <div className="relative">
+                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-neutral-600 ring-4 ring-[#0d0f17]" />
+                <h4 className="text-sm font-medium text-neutral-200">Submit Blind Applications</h4>
+                <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                  Upload static PDFs into automated keyword parsers alongside hundreds of identical submissions.
+                </p>
               </div>
-              <div className="p-3 rounded-lg border border-neutral-800/80 bg-neutral-900/30">
-                <span className="text-[11px] text-neutral-500 block uppercase">2. The Technical Screen</span>
-                <span className="text-sm font-semibold text-neutral-200 mt-1 block">Unpaid multi-day take-homes & whiteboard trivia</span>
-                <span className="text-neutral-400 text-[11px] mt-1 block">Spend days on an unpaid assignment, then defend live whiteboard trivia that has nothing to do with the job.</span>
+              <div className="relative">
+                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-neutral-600 ring-4 ring-[#0d0f17]" />
+                <h4 className="text-sm font-medium text-neutral-200">Unpaid Take-Home Tests</h4>
+                <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                  Spend days building throwaway projects or answering whiteboard trivia before speaking to an engineer.
+                </p>
               </div>
-              <div className="p-3 rounded-lg border border-neutral-800/80 bg-neutral-900/30">
-                <span className="text-[11px] text-neutral-500 block uppercase">3. The Interaction</span>
-                <span className="text-sm font-semibold text-neutral-200 mt-1 block">Recruiter outreach & ghosting</span>
-                <span className="text-neutral-400 text-[11px] mt-1 block">Initial calls are held with non-technical recruiters reading from a script.</span>
+              <div className="relative">
+                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-neutral-600 ring-4 ring-[#0d0f17]" />
+                <h4 className="text-sm font-medium text-neutral-200">Recruiter Keyword Screens</h4>
+                <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                  Initial rounds are gated by non-technical screeners filtering by school or years-of-experience checklists.
+                </p>
               </div>
-            </div>
-            <div className="pt-3 border-t border-neutral-900 flex justify-between items-center font-mono text-xs text-neutral-500">
-              <span>Typical Response Rate:</span>
-              <span className="text-red-400">Under 5%</span>
             </div>
           </div>
         ) : (
-          <div
-            key="provix"
-            className="animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-2xl border border-emerald-500/30 bg-[#0c0d12] p-6 space-y-4 shadow-[0_15px_40px_rgba(16,185,129,0.08)]"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
-              <span className="font-mono text-xs text-white">The Provix Talent Network</span>
-              <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Verified Standards
+          <div key="provix" className="animate-in fade-in duration-200 space-y-6">
+            <div className="flex items-center justify-between border-b border-neutral-800/60 pb-3 font-mono text-xs">
+              <span className="text-cyan-400">Pipeline: Provix Talent Network</span>
+              <span className="flex items-center gap-1.5 text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Verified Inbound
               </span>
             </div>
-            <div className="space-y-3 font-mono text-xs">
-              <div className="p-3 rounded-lg border border-neutral-800 bg-neutral-900/60">
-                <span className="text-[11px] text-emerald-400/80 block uppercase">1. How You Apply</span>
-                <span className="text-sm font-semibold text-white mt-1 block">Connect a public, private, or enterprise codebase once</span>
-                <span className="text-neutral-400 text-[11px] mt-1 block">Provix verifies tests, CI/CD, and TypeScript hygiene without exposing private IP. Your profile is automatically published.</span>
+            <div className="relative space-y-6 pl-6 before:absolute before:top-2 before:bottom-2 before:left-2 before:w-px before:bg-violet-500/20">
+              <div className="relative">
+                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_10px_rgba(167,139,250,0.7)] ring-4 ring-[#0d0f17]" />
+                <h4 className="text-sm font-medium text-white">One-Time Codebase Audit</h4>
+                <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                  Connect public, private, or enterprise repositories. Provix verifies tests, CI/CD, and architecture health with zero code exposed.
+                </p>
               </div>
-              <div className="p-3 rounded-lg border border-neutral-800 bg-neutral-900/60">
-                <span className="text-[11px] text-emerald-400/80 block uppercase">2. The Technical Screen</span>
-                <span className="text-sm font-semibold text-white mt-1 block">Bypassed by verified production code</span>
-                <span className="text-neutral-400 text-[11px] mt-1 block">Hiring teams can already see your passing test suites and workflow configurations.</span>
+              <div className="relative">
+                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.55)] ring-4 ring-[#0d0f17]" />
+                <h4 className="text-sm font-medium text-white">Verified Engineering Proof</h4>
+                <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                  Give hiring teams concrete evidence of production hygiene upfront, replacing the need for toy projects and generic filters.
+                </p>
               </div>
-              <div className="p-3 rounded-lg border border-neutral-800 bg-neutral-900/60">
-                <span className="text-[11px] text-emerald-400/80 block uppercase">3. The Interaction</span>
-                <span className="text-sm font-semibold text-white mt-1 block">Direct inbound from technical founders</span>
-                <span className="text-neutral-400 text-[11px] mt-1 block">Founders message you directly based on the exact tools and standards you use.</span>
+              <div className="relative">
+                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_10px_rgba(167,139,250,0.7)] ring-4 ring-[#0d0f17]" />
+                <h4 className="text-sm font-medium text-white">Direct Founder & Lead Inbound</h4>
+                <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                  Founders contact you directly based on the exact tools, architectures, and engineering standards you ship with.
+                </p>
               </div>
-            </div>
-            <div className="pt-3 border-t border-neutral-800 flex justify-between items-center font-mono text-xs">
-              <span className="text-neutral-400">Founder Match Quality:</span>
-              <span className="text-emerald-400 font-semibold">High Signal • Zero Keyword Games</span>
             </div>
           </div>
         )}

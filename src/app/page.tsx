@@ -1,9 +1,7 @@
 import Link from "next/link";
 import AmbientLighting from "@/components/AmbientLighting";
-import ComparisonShowcase from "@/components/ComparisonShowcase";
 import { ProvixLogo } from "@/components/ProvixLogo";
-import LandingAuditForm from "@/components/landing/landing-audit-form";
-import LandingAudienceCards from "@/components/landing/landing-audience-cards";
+import LandingHome from "@/components/landing/landing-home";
 import MarketingAuthLink from "@/components/marketing-auth-link";
 import { buildPageMetadata } from "@/lib/site";
 
@@ -29,7 +27,7 @@ export default function Home() {
 
       <main className="mx-auto flex max-w-6xl flex-col px-6 pb-20 pt-16 sm:pt-24">
         <section className="hero-fade-in mx-auto max-w-4xl text-center">
-          <p className="mb-5 font-mono text-[11px] font-medium uppercase tracking-widest text-sky-400">
+          <p className="mb-5 font-mono text-[11px] font-medium uppercase tracking-widest text-cyan-400">
             Don’t explain your code. Prove it.
           </p>
           <h1 className="text-4xl font-extrabold tracking-tight text-textMain sm:text-5xl lg:text-[3.5rem] lg:leading-[1.1]">
@@ -41,11 +39,7 @@ export default function Home() {
           </p>
         </section>
 
-        <ComparisonShowcase />
-
-        <LandingAuditForm />
-
-        <LandingAudienceCards />
+        <LandingHome />
       </main>
 
       <footer className="border-t border-border">

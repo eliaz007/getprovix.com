@@ -73,7 +73,7 @@ function FindingList({
       ? "text-emerald-400"
       : tone === "warn"
         ? "text-amber-400"
-        : "text-brand";
+        : "text-neutral-400";
 
   return (
     <div>
@@ -106,11 +106,13 @@ export default function PublicProductionAudit({
   initialRepoUrl = "",
   embedded = false,
   showEmptyState = true,
+  onHasResultsChange,
 }: {
   initialRepoUrl?: string;
   /** Keep results on this page instead of navigating to `/audit`. */
   embedded?: boolean;
   showEmptyState?: boolean;
+  onHasResultsChange?: (hasResults: boolean) => void;
 }) {
   const router = useRouter();
   const [repoUrl, setRepoUrl] = useState(initialRepoUrl);
@@ -385,11 +387,19 @@ export default function PublicProductionAudit({
   );
   const recommendations = (result?.recommendations ?? []).slice(0, 3);
   const strengths = result?.strengths ?? [];
+  const hasResults = Boolean(
+    !loading && result && claim && breakdown && !inaccessibleRepo
+  );
+
+  useEffect(() => {
+    onHasResultsChange?.(hasResults);
+  }, [hasResults, onHasResultsChange]);
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
       <form onSubmit={onSubmit} className="w-full">
-        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-panel p-2 sm:flex-row sm:items-stretch">
+        <div className="relative flex flex-col gap-2 overflow-hidden rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-1.5 transition-colors hover:border-neutral-700/80 sm:flex-row sm:items-stretch">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-violet-600/5 blur-2xl" />
           <label htmlFor="public-audit-repo" className="sr-only">
             GitHub Profile or Repo URL
           </label>
@@ -404,12 +414,12 @@ export default function PublicProductionAudit({
             onChange={(event) => setRepoUrl(event.target.value)}
             placeholder="Paste GitHub Profile or Repo URL"
             aria-invalid={Boolean(githubValidationMessage)}
-            className="min-h-14 min-w-0 flex-1 rounded-xl border border-border bg-surface px-4 py-3.5 font-mono text-sm text-textMain placeholder:text-textMuted outline-none transition-colors duration-200 focus:border-brand sm:text-[15px]"
+            className="relative min-h-12 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-4 py-3 font-mono text-sm text-white placeholder:text-neutral-500 outline-none transition-colors duration-200 focus:border-cyan-500/20 sm:text-[15px]"
           />
           <button
             type="submit"
             disabled={loading || limitReached}
-            className="inline-flex min-h-14 shrink-0 items-center justify-center rounded-xl border border-border bg-brand px-6 text-sm font-bold tracking-tight text-white transition-colors hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+            className="relative inline-flex min-h-12 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-violet-600 px-5 text-sm font-medium tracking-tight text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Running Audit..." : "Run Production Audit"}
           </button>
@@ -435,7 +445,7 @@ export default function PublicProductionAudit({
       ) : null}
 
       {loading ? (
-        <section className="rounded-2xl border border-border bg-panel p-6">
+        <section className="rounded-2xl border border-neutral-800/80 bg-[#0d0f17] p-6">
           <p className="text-sm font-bold text-textMain">Running production audit</p>
           <p className="mt-1 text-xs text-textMuted">
             Provix is inspecting CI/CD, test density, and error boundaries.
@@ -450,19 +460,19 @@ export default function PublicProductionAudit({
                   key={stage}
                   className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${
  isComplete
- ? "border-emerald-500/25 bg-emerald-500/5"
+ ? "border-emerald-500/20 bg-emerald-500/10"
  : isActive
- ? "border-brand/30 bg-brandGlow"
- : "border-border bg-background"
+ ? "border-neutral-700 bg-neutral-900"
+ : "border-neutral-800 bg-transparent"
  }`}
                 >
                   <span
                     className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
  isComplete
- ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+ ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
  : isActive
- ? "border-brand/40 bg-brandGlow text-brand"
- : "border-border text-zinc-600"
+ ? "border-neutral-600 text-white"
+ : "border-neutral-800 text-neutral-600"
  }`}
                   >
                     {isComplete ? (
@@ -476,10 +486,10 @@ export default function PublicProductionAudit({
                   <p
                     className={`text-xs leading-relaxed ${
  isComplete
- ? "text-emerald-200"
+ ? "text-emerald-400"
  : isActive
- ? "text-indigo-100"
- : "text-textMuted"
+ ? "text-neutral-200"
+ : "text-neutral-500"
  }`}
                   >
                     {stage}
@@ -507,7 +517,7 @@ export default function PublicProductionAudit({
 
       {!loading && result && claim && breakdown && !inaccessibleRepo ? (
         <div className="space-y-4 text-left">
-          <section className="rounded-xl border border-border bg-panel p-4">
+          <section className="rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-4">
             <div className="flex items-center justify-between gap-3">
               <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
@@ -544,7 +554,7 @@ export default function PublicProductionAudit({
             </div>
           </section>
 
-          <section className="rounded-xl border border-border bg-panel p-4">
+          <section className="rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-4">
             <h3 className="text-sm font-bold tracking-tight text-textMain">
               Findings
             </h3>
