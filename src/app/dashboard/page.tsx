@@ -3889,15 +3889,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
   const isStandaloneGuest = Boolean(!user && !dashboardNav);
   const roleReady = authChecked && !loadingProfile && (!user || Boolean(profileRole));
-  const isLoading =
-    !roleReady ||
-    loadingProfile ||
-    ((activeTab === "opportunities" || activeTab === "opportunity_radar") &&
-      jobsLoading);
+  // Tab-specific fetches (e.g. jobs) must NOT gate the shell — that flashed the
+  // full-screen skeleton on every sidebar tab click. Opportunities/radar already
+  // handle jobsLoading inline.
+  const showBootstrapSkeleton = !roleReady || loadingProfile;
 
   return (
     <>
-      {dashboardNav ? <DashboardContentGate ready={!isLoading} /> : null}
+      {dashboardNav ? <DashboardContentGate ready={roleReady} /> : null}
       <div
         className={
           isStandaloneGuest
@@ -3991,7 +3990,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             onRespond={handleCandidateIntroResponse}
           />
         </div>
-      ) : isLoading ? (
+      ) : showBootstrapSkeleton ? (
         <DashboardContentSkeleton />
       ) : (
         <>

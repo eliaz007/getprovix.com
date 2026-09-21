@@ -548,6 +548,22 @@ export default function GeminiDeepScreening({
     }
   };
 
+  const hasAuditedCodebase = Boolean(
+    result &&
+      (result.github_audit?.repo_url?.trim() ||
+        candidate.github_url?.trim() ||
+        candidate.github?.trim()) &&
+      result.github_audit?.filesystem?.inspected === true
+  );
+
+  const visibleTimelineFlags =
+    result && hasAuditedCodebase
+      ? (result.timeline_flags ?? []).filter(
+          (flag) =>
+            !result.scoreCap?.applied || !isFilesystemCapRedFlag(flag)
+        )
+      : [];
+
   return (
     <div className="bg-background border border-border rounded-xl p-4 space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -680,79 +696,98 @@ export default function GeminiDeepScreening({
             )}
           </div>
 
-          <ScoreCapBreakdown
-            scoreCap={result.scoreCap}
-            score={result.integrity_score}
-            filesystem={result.github_audit?.filesystem}
-          />
-
           <ProductionScorecard metrics={result.metrics} compact />
 
-          {(result.timeline_flags ?? []).filter(
-            (flag) => !result.scoreCap?.applied || !isFilesystemCapRedFlag(flag)
-          ).length > 0 && (
-            <div>
-              <div className="text-[10px] uppercase font-bold text-red-400 tracking-wider mb-2">
-                Timeline & Repository Flags
+          {!hasAuditedCodebase ? (
+            <>
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-zinc-300">
+                <span className="font-semibold text-amber-400 block mb-1">
+                  Codebase Not Connected
+                </span>
+                Deep architectural audits, CI/CD verification, and AST analysis
+                are pending candidate repository connection.
               </div>
-              <ul className="space-y-1.5">
-                {(result.timeline_flags ?? [])
-                  .filter(
-                    (flag) =>
-                      !result.scoreCap?.applied || !isFilesystemCapRedFlag(flag)
-                  )
-                  .map((flag, index) => (
-                  <li
-                    key={`flag-${index}`}
-                    className="text-xs text-red-200 leading-relaxed bg-red-500/5 border border-red-500/20 rounded-lg px-3 py-2"
-                  >
-                    {flag}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
 
-          <AuditChecksList checks={result.checks} />
-
-          <div>
-            <div className="text-[10px] uppercase font-bold text-purple-300 tracking-wider mb-2">
-              Employer Interview Cheat Sheet
-            </div>
-            <div className="space-y-3">
-              {(result.interview_questions ?? []).map((item, index) => (
-                <div
-                  key={`interview-question-${index}`}
-                  className="bg-background border border-border rounded-xl p-3.5 space-y-2.5"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="inline-flex px-2 py-1 rounded-md text-[10px] font-bold bg-brandGlow text-brand border border-brand/20 shrink-0">
-                      {item.category}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyInterviewQuestion(item.question)}
-                      className="inline-flex items-center gap-1 text-[10px] font-bold text-textMuted hover:text-textMain transition-colors cursor-pointer shrink-0"
-                    >
-                      <Copy className="w-3 h-3" aria-hidden />
-                      Copy Question
-                    </button>
-                  </div>
-                  <p className="text-xs text-textMain font-medium leading-relaxed">
-                    {item.question}
-                  </p>
-                  <div className="pt-2 border-t border-border">
-                    <p className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-1">
-                      What to listen for
-                    </p>
-                    <p className="text-[11px] text-textMuted leading-relaxed">
-                      {item.what_to_listen_for}
-                    </p>
-                  </div>
+              <div>
+                <div className="text-[10px] uppercase font-bold text-purple-300 tracking-wider mb-2">
+                  Employer Interview Cheat Sheet
                 </div>
-              ))}
-            </div>
-          </div>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-xs text-zinc-400 text-center">
+                  Targeted interview questions and scoring rubrics generate
+                  automatically once repository artifacts are audited.
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <ScoreCapBreakdown
+                scoreCap={result.scoreCap}
+                score={result.integrity_score}
+                filesystem={result.github_audit?.filesystem}
+              />
+
+              {visibleTimelineFlags.length > 0 ? (
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-red-400 tracking-wider mb-2">
+                    Timeline & Repository Flags
+                  </div>
+                  <ul className="space-y-1.5">
+                    {visibleTimelineFlags.map((flag, index) => (
+                      <li
+                        key={`flag-${index}`}
+                        className="text-xs text-red-200 leading-relaxed bg-red-500/5 border border-red-500/20 rounded-lg px-3 py-2"
+                      >
+                        {flag}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <AuditChecksList checks={result.checks} />
+
+              <div>
+                <div className="text-[10px] uppercase font-bold text-purple-300 tracking-wider mb-2">
+                  Employer Interview Cheat Sheet
+                </div>
+                <div className="space-y-3">
+                  {(result.interview_questions ?? []).map((item, index) => (
+                    <div
+                      key={`interview-question-${index}`}
+                      className="bg-background border border-border rounded-xl p-3.5 space-y-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="inline-flex px-2 py-1 rounded-md text-[10px] font-bold bg-brandGlow text-brand border border-brand/20 shrink-0">
+                          {item.category}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleCopyInterviewQuestion(item.question)
+                          }
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-textMuted hover:text-textMain transition-colors cursor-pointer shrink-0"
+                        >
+                          <Copy className="w-3 h-3" aria-hidden />
+                          Copy Question
+                        </button>
+                      </div>
+                      <p className="text-xs text-textMain font-medium leading-relaxed">
+                        {item.question}
+                      </p>
+                      <div className="pt-2 border-t border-border">
+                        <p className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-1">
+                          What to listen for
+                        </p>
+                        <p className="text-[11px] text-textMuted leading-relaxed">
+                          {item.what_to_listen_for}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           <div>
             <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">

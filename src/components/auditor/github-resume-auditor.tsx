@@ -415,7 +415,9 @@ export default function GitHubResumeAuditor({
                     onRescan={() => void runAudit()}
                     rescanning={loading}
                   />
-                  {claim ? <ScorecardPublicationCallout claim={claim} /> : null}
+                  {!isEmployerView && claim ? (
+                    <ScorecardPublicationCallout claim={claim} />
+                  ) : null}
                 </>
               )}
             </div>
@@ -445,17 +447,18 @@ export default function GitHubResumeAuditor({
         <div className="min-w-0">
           <div className="mb-2 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-brand">
             <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-            Career Accelerator
+            {isEmployerView ? "Evaluation & Screening" : "Career Accelerator"}
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
             Code & Resume Auditor
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-textMuted">
-            Deep-audit your GitHub artifacts, or private/enterprise project
-            write-ups, against resume claims for founder-ready credibility.
+            {isEmployerView
+              ? "Deep-audit a candidate GitHub repository for architectural deficits, then generate targeted technical screen questions."
+              : "Deep-audit your GitHub artifacts, or private/enterprise project write-ups, against resume claims for founder-ready credibility."}
           </p>
         </div>
-        {!isPrivateWork && ownershipRepoUrl ? (
+        {!isEmployerView && !isPrivateWork && ownershipRepoUrl ? (
           <div className="w-full min-w-0 lg:max-w-xl">
             <RepoOwnershipVerifier
               repoUrl={ownershipRepoUrl}
@@ -534,26 +537,28 @@ export default function GitHubResumeAuditor({
             </label>
           </div>
 
-          <div>
-            <label className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-textMuted">
-              Target Compensation & Level
-            </label>
-            <select
-              value={compensationLevel}
-              onChange={(e) =>
-                setCompensationLevel(
-                  e.target.value as (typeof COMPENSATION_LEVELS)[number]
-                )
-              }
-              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-textMain focus:border-brand focus:outline-none"
-            >
-              {COMPENSATION_LEVELS.map((level) => (
-                <option key={level} value={level}>
-                  {level}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!isEmployerView ? (
+            <div>
+              <label className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-textMuted">
+                Target Compensation & Level
+              </label>
+              <select
+                value={compensationLevel}
+                onChange={(e) =>
+                  setCompensationLevel(
+                    e.target.value as (typeof COMPENSATION_LEVELS)[number]
+                  )
+                }
+                className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-textMain focus:border-brand focus:outline-none"
+              >
+                {COMPENSATION_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           {isPrivateWork && (
             <div className="border-t border-border pt-4">
@@ -567,34 +572,36 @@ export default function GitHubResumeAuditor({
             </div>
           )}
 
-          <div className="border-t border-border pt-1">
-            <button
-              type="button"
-              onClick={() => setResumeOpen((open) => !open)}
-              aria-expanded={resumeOpen}
-              className="w-full cursor-pointer py-2 text-left text-[13px] text-textMuted transition-colors hover:text-textMuted"
-            >
-              {resumeOpen ? "–" : "+"} Add resume for claim cross-verification
-              <span className="text-zinc-600"> (Optional)</span>
-            </button>
-            {resumeOpen && (
-              <div className="mt-1">
-                <ResumeFileUpload
-                  persistToProfile
-                  localFallbackOnAuthError
-                  initialFilename={storedResume?.filename ?? null}
-                  helperText="The auditor reads the parsed resume and checks it against GitHub artifacts or your saved project write-ups."
-                  onLocalFileChange={setResumeFile}
-                  onPersisted={(meta) => {
-                    setStoredResume(meta);
-                    if (!meta.hasResume) {
-                      setResumeFile(null);
-                    }
-                  }}
-                />
-              </div>
-            )}
-          </div>
+          {!isEmployerView ? (
+            <div className="border-t border-border pt-1">
+              <button
+                type="button"
+                onClick={() => setResumeOpen((open) => !open)}
+                aria-expanded={resumeOpen}
+                className="w-full cursor-pointer py-2 text-left text-[13px] text-textMuted transition-colors hover:text-textMuted"
+              >
+                {resumeOpen ? "–" : "+"} Add resume for claim cross-verification
+                <span className="text-zinc-600"> (Optional)</span>
+              </button>
+              {resumeOpen && (
+                <div className="mt-1">
+                  <ResumeFileUpload
+                    persistToProfile
+                    localFallbackOnAuthError
+                    initialFilename={storedResume?.filename ?? null}
+                    helperText="The auditor reads the parsed resume and checks it against GitHub artifacts or your saved project write-ups."
+                    onLocalFileChange={setResumeFile}
+                    onPersisted={(meta) => {
+                      setStoredResume(meta);
+                      if (!meta.hasResume) {
+                        setResumeFile(null);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          ) : null}
 
           {limitReached && (
             <div

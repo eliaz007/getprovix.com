@@ -477,12 +477,19 @@ export function useDashboardNav() {
 export function DashboardContentGate({ ready }: { ready: boolean }) {
   const { setContentReady } = useDashboardNav();
 
+  // Set ready without an intermediate `false` when the prop toggles — cleanup
+  // on `[ready]` previously flashed the full-shell skeleton on every change.
   useLayoutEffect(() => {
-    setContentReady(ready);
+    if (ready) {
+      setContentReady(true);
+    }
+  }, [ready, setContentReady]);
+
+  useLayoutEffect(() => {
     return () => {
       setContentReady(false);
     };
-  }, [ready, setContentReady]);
+  }, [setContentReady]);
 
   return null;
 }

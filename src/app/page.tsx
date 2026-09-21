@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ShieldCheck } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import LandingAuditForm from "@/components/landing/landing-audit-form";
 import LandingAudienceCards from "@/components/landing/landing-audience-cards";
@@ -28,18 +27,15 @@ export default function Home() {
 
       <main className="mx-auto flex max-w-6xl flex-col px-6 pb-20 pt-16 sm:pt-24">
         <section className="hero-fade-in mx-auto max-w-4xl text-center">
-          <p className="mb-5 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
-            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-            Proof-of-work hiring
+          <p className="mb-5 font-mono text-[11px] font-medium uppercase tracking-widest text-sky-400">
+            Don’t explain your code. Prove it.
           </p>
           <h1 className="text-4xl font-extrabold tracking-tight text-textMain sm:text-5xl lg:text-[3.5rem] lg:leading-[1.1]">
-            Hire developers based on what they&apos;ve actually built, not what
-            they claim.
+            Stop applying with PDFs. Let your code speak for you.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-textMuted sm:text-lg">
-            Provix audits public repositories for integrity, architecture, and
-            execution so founders can source builders from verified work — not
-            resume claims.
+            Turn your codebase into verified proof of work. Get discovered by
+            engineering teams hiring on how you actually ship.
           </p>
         </section>
 
