@@ -6,8 +6,8 @@ export default function ComparisonShowcase() {
   const [activeTab, setActiveTab] = useState<'provix' | 'boards'>('provix');
 
   return (
-    <section className="relative mx-auto max-w-2xl px-4 py-14">
-      <div className="pointer-events-none absolute top-8 left-1/2 h-56 w-80 -translate-x-1/2 rounded-full bg-violet-600/5 blur-3xl" />
+    <section className="relative mx-auto max-w-2xl overflow-hidden px-4 py-14">
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -z-10 h-[220px] w-[480px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-500/8 blur-[100px]" />
       <div className="relative mb-8 space-y-3 text-center">
         <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
           A better way to get hired.
