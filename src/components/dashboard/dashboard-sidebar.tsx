@@ -249,10 +249,10 @@ function buildEmployeeGroups(): NavGroup[] {
 
 function SidebarBrand({
   badge,
-  amberBadge = false,
+  consoleBadge = false,
 }: {
   badge: string;
-  amberBadge?: boolean;
+  consoleBadge?: boolean;
 }) {
   return (
     <div>
@@ -260,20 +260,33 @@ function SidebarBrand({
         href="/"
         className="flex items-center gap-3 transition-opacity hover:opacity-90"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/brand/provix-mark.jpg"
-          alt=""
-          className="h-8 w-8 rounded-[22%] object-cover"
-        />
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-700/80 bg-zinc-900 text-[11px] font-bold text-white">
+          <svg
+            viewBox="0 0 36 36"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-8 w-8"
+            aria-hidden="true"
+          >
+            <rect width="36" height="36" rx="8" fill="#18181B" stroke="#27272A" strokeWidth="1" />
+            <path
+              d="M12 25V11H19.5C22.5 11 24.5 13 24.5 16C24.5 19 22.5 21 19.5 21H12"
+              stroke="#6366F1"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="18.5" cy="16" r="1.5" fill="#38BDF8" />
+          </svg>
+        </span>
         <span className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-zinc-100">
           PROVIX
         </span>
       </Link>
       <span
         className={
-          amberBadge
-            ? "mt-2 inline-block rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-400/90"
+          consoleBadge
+            ? "mt-2 inline-block rounded-md border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-violet-300"
             : "mt-2 inline-block rounded-md border border-white/[0.05] bg-white/[0.02] px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-zinc-500"
         }
       >
@@ -312,7 +325,7 @@ function NavItemRow({
   const trailing = isActive ? (
     <span
       aria-hidden
-      className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]"
+      className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.8)]"
     />
   ) : null;
 
@@ -459,7 +472,7 @@ function SidebarFooter() {
             setMobileNavOpen(false);
             requireAuth();
           }}
-          className="w-full cursor-pointer rounded-lg bg-[#F4F4F6] px-3 py-2 font-mono text-xs font-semibold text-[#0B0B0D] shadow-sm transition-colors hover:bg-white"
+          className="w-full cursor-pointer rounded-lg bg-brand px-3 py-2 font-mono text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brandHover"
         >
           Sign In
         </button>
@@ -491,7 +504,7 @@ function SidebarFooter() {
       <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-400">
         <span
           aria-hidden
-          className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]"
+          className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.8)]"
         />
         Live
       </span>
@@ -521,7 +534,7 @@ export default function DashboardSidebar() {
   return (
     <div className="flex h-full min-h-0 w-64 shrink-0 flex-col justify-between border-r border-white/[0.08] bg-[#0E0E12] p-5">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <SidebarBrand badge={badge} amberBadge={onEmployerSurface} />
+        <SidebarBrand badge={badge} consoleBadge={onEmployerSurface} />
         <SidebarNavGroups groups={groups} />
       </div>
       <SidebarFooter />

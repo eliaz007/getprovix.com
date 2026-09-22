@@ -11,15 +11,15 @@
 
 /* Theme colors must be concrete values — var(--background) bridges can circularize. */
 @theme inline {
-  --color-background: #0b0b0d;
-  --color-surface: #070709;
-  --color-panel: #131316;
+  --color-background: #000000;
+  --color-surface: #0a0a0a;
+  --color-panel: #141414;
   --color-border: rgba(255, 255, 255, 0.08);
   --color-textMain: #ededed;
   --color-textMuted: #a1a1aa;
-  --color-brand: #f59e0b;
-  --color-brandHover: #d97706;
-  --color-brandGlow: rgba(245, 158, 11, 0.15);
+  --color-brand: #7c3aed;
+  --color-brandHover: #6d28d9;
+  --color-brandGlow: rgba(124, 58, 237, 0.15);
   --color-success: #10b981;
   --color-danger: #ef4444;
   --color-foreground: #ededed;
@@ -42,7 +42,7 @@
   }
 
   body {
-    background: #0b0b0d;
+    background: #000000;
     color: #ededed;
     font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
     line-height: 1.6;
@@ -70,13 +70,13 @@
     position: relative;
     border-radius: 0.75rem;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(19, 19, 22, 0.85);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(24px);
+    background: rgba(20, 20, 20, 0.9);
+    box-shadow: none;
+    backdrop-filter: none;
   }
 
   .inset-well {
-    background: #070709;
+    background: #0a0a0a;
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: #f4f4f5;
   }
@@ -86,28 +86,28 @@
   }
 
   .inset-well:focus {
-    border-color: rgba(245, 158, 11, 0.5);
+    border-color: rgba(124, 58, 237, 0.5);
     outline: none;
-    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2);
+    box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.2);
   }
 
   .accent-badge {
-    background: rgba(245, 158, 11, 0.1);
-    color: #fcd34d;
-    border: 1px solid rgba(245, 158, 11, 0.25);
+    background: rgba(124, 58, 237, 0.1);
+    color: #c4b5fd;
+    border: 1px solid rgba(124, 58, 237, 0.25);
     font-family: var(--font-geist-mono), ui-monospace, monospace;
   }
 
   .primary-cta {
-    background: #f4f4f6;
-    color: #0b0b0d;
+    background: #7c3aed;
+    color: #ffffff;
     font-weight: 600;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    box-shadow: none;
     transition: background-color 200ms ease-out, color 200ms ease-out;
   }
 
   .primary-cta:hover:not(:disabled) {
-    background: #ffffff;
+    background: #6d28d9;
   }
 
   .card-edge::before,

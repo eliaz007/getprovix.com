@@ -7,7 +7,7 @@ export default function ComparisonShowcase() {
 
   return (
     <section className="relative mx-auto max-w-2xl px-4 py-14">
-      <div className="pointer-events-none absolute top-8 left-1/2 h-56 w-80 -translate-x-1/2 rounded-full bg-amber-500/[0.06] blur-3xl" />
+      <div className="pointer-events-none absolute top-8 left-1/2 h-56 w-80 -translate-x-1/2 rounded-full bg-violet-600/5 blur-3xl" />
       <div className="relative mb-8 space-y-3 text-center">
         <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
           A better way to get hired.
@@ -33,7 +33,7 @@ export default function ComparisonShowcase() {
               onClick={() => setActiveTab('provix')}
               className={`rounded-full border px-4 py-1.5 font-mono text-xs transition-all duration-200 ${
                 activeTab === 'provix'
-                  ? 'border-amber-500/25 bg-amber-500/10 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.15)]'
+                  ? 'border-violet-500/25 bg-violet-500/10 text-violet-300 shadow-[0_0_12px_rgba(124,58,237,0.15)]'
                   : 'border-transparent text-zinc-400 hover:text-zinc-200'
               }`}
             >
@@ -77,29 +77,29 @@ export default function ComparisonShowcase() {
         ) : (
           <div key="provix" className="animate-in fade-in duration-200 space-y-6">
             <div className="flex items-center justify-between border-b border-white/[0.06] pb-3 font-mono text-xs">
-              <span className="text-amber-300">Pipeline: Provix Talent Network</span>
+              <span className="text-violet-300">Pipeline: Provix Talent Network</span>
               <span className="flex items-center gap-1.5 text-emerald-400">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                 Verified Inbound
               </span>
             </div>
-            <div className="relative space-y-6 pl-6 before:absolute before:top-2 before:bottom-2 before:left-2 before:w-px before:bg-amber-500/20">
+            <div className="relative space-y-6 pl-6 before:absolute before:top-2 before:bottom-2 before:left-2 before:w-px before:bg-violet-500/20">
               <div className="relative">
-                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.55)] ring-4 ring-[#131316]" />
+                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_10px_rgba(124,58,237,0.55)] ring-4 ring-[#131316]" />
                 <h4 className="text-sm font-medium text-white">One-Time Codebase Audit</h4>
                 <p className="mt-1 text-xs leading-relaxed text-zinc-400">
                   Connect public, private, or enterprise repositories. Provix verifies tests, CI/CD, and architecture health with zero code exposed.
                 </p>
               </div>
               <div className="relative">
-                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-amber-300 shadow-[0_0_10px_rgba(252,211,77,0.45)] ring-4 ring-[#131316]" />
+                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-violet-300 shadow-[0_0_10px_rgba(196,181,253,0.45)] ring-4 ring-[#131316]" />
                 <h4 className="text-sm font-medium text-white">Verified Engineering Proof</h4>
                 <p className="mt-1 text-xs leading-relaxed text-zinc-400">
                   Give hiring teams concrete evidence of production hygiene upfront, replacing the need for toy projects and generic filters.
                 </p>
               </div>
               <div className="relative">
-                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.55)] ring-4 ring-[#131316]" />
+                <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_10px_rgba(124,58,237,0.55)] ring-4 ring-[#131316]" />
                 <h4 className="text-sm font-medium text-white">Direct Founder & Lead Inbound</h4>
                 <p className="mt-1 text-xs leading-relaxed text-zinc-400">
                   Founders contact you directly based on the exact tools, architectures, and engineering standards you ship with.

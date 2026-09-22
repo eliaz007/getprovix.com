@@ -158,7 +158,7 @@ export default function InterviewPrepPage() {
                 value={targetJobTitle}
                 onChange={(e) => setTargetJobTitle(e.target.value)}
                 placeholder="Junior Backend Engineer"
-                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
               />
             </div>
 
@@ -171,7 +171,7 @@ export default function InterviewPrepPage() {
                 value={coreTechStack}
                 onChange={(e) => setCoreTechStack(e.target.value)}
                 placeholder="Next.js, PostgreSQL, REST APIs"
-                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
               />
             </div>
 
@@ -186,7 +186,7 @@ export default function InterviewPrepPage() {
                     e.target.value as (typeof INTERVIEW_ROUNDS)[number]
                   )
                 }
-                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
               >
                 {INTERVIEW_ROUNDS.map((round) => (
                   <option key={round} value={round}>
@@ -207,7 +207,7 @@ export default function InterviewPrepPage() {
                     e.target.value as (typeof COMPANY_TYPES)[number]
                   )
                 }
-                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
               >
                 {COMPANY_TYPES.map((type) => (
                   <option key={type} value={type}>
@@ -285,7 +285,7 @@ export default function InterviewPrepPage() {
  isComplete
  ? "text-emerald-200"
  : isActive
- ? "text-amber-100"
+ ? "text-violet-100"
  : "text-textMuted"
  }`}
                         >
@@ -380,8 +380,8 @@ export default function InterviewPrepPage() {
                   })}
                 </div>
 
-                <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
-                  <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-2">
+                <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-4">
+                  <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-violet-400 tracking-wider mb-2">
                     <AlertTriangle className="w-3.5 h-3.5" aria-hidden />
                     Top Technical Trap / Pitfall
                   </div>

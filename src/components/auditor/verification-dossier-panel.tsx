@@ -30,7 +30,7 @@ function cicdLabel(ciScore: number): string {
 function badgeTone(ok: boolean): string {
   return ok
     ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-    : "border-amber-500/25 bg-amber-500/10 text-amber-300";
+    : "border-violet-500/25 bg-violet-500/10 text-violet-300";
 }
 
 export default function VerificationDossierPanel({
@@ -60,7 +60,7 @@ export default function VerificationDossierPanel({
         >
           Verification Dossier
         </span>
-        <span className="inline-flex items-center rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wide text-amber-300">
+        <span className="inline-flex items-center rounded-full border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wide text-violet-300">
           {platformRankLabel(score)}
         </span>
       </div>

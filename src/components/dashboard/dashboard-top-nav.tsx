@@ -257,7 +257,7 @@ function TopRightBrandButton() {
     <Link
       href="/dashboard/profile"
       aria-label="Open your profile"
-      className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[22%] border border-amber-500/25 transition-opacity hover:opacity-90"
+      className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[22%] border border-violet-500/25 transition-opacity hover:opacity-90"
     >
       <ProvixMark className="h-8 w-8" alt="" />
     </Link>

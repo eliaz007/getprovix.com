@@ -74,7 +74,7 @@ function FindingList({
     tone === "pass"
       ? "text-emerald-400"
       : tone === "warn"
-        ? "text-amber-400"
+        ? "text-violet-400"
         : "text-neutral-400";
 
   return (
@@ -422,8 +422,8 @@ export default function PublicProductionAudit({
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
       <form onSubmit={onSubmit} className="w-full">
-        <div className="relative flex flex-col gap-2 overflow-hidden rounded-xl border border-white/[0.08] bg-[#131316]/85 p-1.5 shadow-2xl backdrop-blur-xl transition-colors hover:border-amber-500/25 sm:flex-row sm:items-stretch">
-          <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-amber-500/[0.06] blur-2xl" />
+        <div className="relative flex flex-col gap-2 overflow-hidden rounded-xl border border-white/[0.08] bg-[#131316]/85 p-1.5 shadow-2xl backdrop-blur-xl transition-colors hover:border-violet-500/25 sm:flex-row sm:items-stretch">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-violet-600/5 blur-2xl" />
           <label htmlFor="public-audit-repo" className="sr-only">
             GitHub Profile or Repo URL
           </label>
@@ -438,12 +438,12 @@ export default function PublicProductionAudit({
             onChange={(event) => setRepoUrl(event.target.value)}
             placeholder="Paste GitHub Profile or Repo URL"
             aria-invalid={Boolean(githubValidationMessage)}
-            className="relative min-h-12 min-w-0 flex-1 rounded-lg border border-transparent bg-[#070709] px-4 py-3 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 outline-none transition-colors duration-200 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 sm:text-[15px]"
+            className="relative min-h-12 min-w-0 flex-1 rounded-lg border border-transparent bg-[#070709] px-4 py-3 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 outline-none transition-colors duration-200 focus:border-brand focus:ring-1 focus:ring-brand/20 sm:text-[15px]"
           />
           <button
             type="submit"
             disabled={loading || limitReached}
-            className="relative inline-flex min-h-12 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-[#F4F4F6] px-5 text-sm font-semibold tracking-tight text-[#0B0B0D] shadow-sm transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="relative inline-flex min-h-12 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-brand px-5 text-sm font-semibold tracking-tight text-white transition-colors hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Running Audit..." : "Run Production Audit"}
           </button>
@@ -468,7 +468,7 @@ export default function PublicProductionAudit({
       {limitReached ? (
         <div
           role="status"
-          className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+          className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-3 text-sm text-violet-200"
         >
           {DAILY_LIMIT_UI_MESSAGE}
         </div>

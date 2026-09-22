@@ -60,7 +60,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const holdShell = authLoading || !contentReady;
 
   return (
-    <div className="flex h-screen min-h-screen bg-[#0B0B0D] text-textMain font-sans antialiased selection:bg-amber-500/30">
+    <div className="flex h-screen min-h-screen bg-[#0B0B0D] text-textMain font-sans antialiased selection:bg-brand/30">
       {holdShell ? <DashboardSkeleton /> : null}
 
       <div

@@ -18,7 +18,7 @@ import {
 import { createClient } from "@/utils/supabase/client";
 
 const inputClass =
-  "w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20";
+  "w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20";
 
 const labelClass =
   "block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide";

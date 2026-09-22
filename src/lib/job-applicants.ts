@@ -290,9 +290,9 @@ export function applicantStatusClass(status: ApplicantReviewStatus): string {
     case "rejected":
       return "bg-rose-500/10 text-rose-300 border-rose-500/20";
     case "intro_requested":
-      return "bg-amber-500/10 text-amber-300 border-amber-500/20";
+      return "bg-violet-500/10 text-violet-300 border-violet-500/20";
     default:
-      return "bg-amber-500/10 text-amber-300 border-amber-500/20";
+      return "bg-violet-500/10 text-violet-300 border-violet-500/20";
   }
 }
 

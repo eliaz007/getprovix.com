@@ -71,7 +71,7 @@ function getAvailabilityClass(status: string | null): string {
   }
 
   if (status === "Interviewing") {
-    return "bg-amber-500/10 text-amber-300 border-amber-500/25";
+    return "bg-violet-500/10 text-violet-300 border-violet-500/25";
   }
 
   return "bg-panel text-textMuted border-border";

@@ -269,7 +269,7 @@ export default function RepoOwnershipVerifier({
           </div>
         </div>
         {error ? (
-          <p role="alert" className="mt-2 text-xs text-amber-100">
+          <p role="alert" className="mt-2 text-xs text-violet-100">
             {error}
           </p>
         ) : null}
@@ -371,7 +371,7 @@ export default function RepoOwnershipVerifier({
       {error ? (
         <p
           role="alert"
-          className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100"
+          className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-2.5 text-sm text-violet-100"
         >
           {error}
         </p>

@@ -242,7 +242,7 @@ export default function CandidateIntelligenceDrawer({
                   <button
                     type="button"
                     onClick={() => onRequestIntro(liveCandidate)}
-                    className="mt-2.5 inline-flex items-center gap-1.5 bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+                    className="mt-2.5 inline-flex items-center gap-1.5 bg-brand hover:bg-brandHover text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer"
                   >
                     Request Introduction
                   </button>
@@ -401,7 +401,7 @@ export default function CandidateIntelligenceDrawer({
             <button
               type="button"
               onClick={() => onRequestIntro(liveCandidate)}
-              className="w-full bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full bg-brand hover:bg-brandHover text-white font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               Request Introduction
             </button>

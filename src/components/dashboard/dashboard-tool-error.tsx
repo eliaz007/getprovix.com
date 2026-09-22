@@ -15,8 +15,8 @@ export default function DashboardToolError({
   }, [error]);
 
   return (
-    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 sm:p-8">
-      <p className="text-[10px] uppercase font-bold tracking-wider text-amber-400">
+    <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-6 sm:p-8">
+      <p className="text-[10px] uppercase font-bold tracking-wider text-violet-400">
         Tool unavailable
       </p>
       <h1 className="mt-2 text-xl font-extrabold tracking-tight text-textMain">

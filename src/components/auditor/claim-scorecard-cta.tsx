@@ -16,7 +16,7 @@ export default function ClaimScorecardCta() {
           </p>
           <Link
             href={claimAuditLoginHref()}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#F4F4F6] text-[#0B0B0D] shadow-sm px-4 py-2.5 text-sm font-medium transition-colors hover:bg-brandHover"
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-brand text-white shadow-sm px-4 py-2.5 text-sm font-medium transition-colors hover:bg-brandHover"
           >
             Claim Scorecard & Join Roster
             <ArrowRight className="h-4 w-4" aria-hidden />

@@ -640,7 +640,7 @@ export default function JobApplicantsDrawer({
                     <button
                       type="button"
                       onClick={() => onRequestIntro(applicant)}
-                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm transition-all cursor-pointer"
+                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-brand hover:bg-brandHover text-white transition-all cursor-pointer"
                     >
                       Request Intro
                     </button>

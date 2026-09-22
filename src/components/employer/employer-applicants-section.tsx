@@ -210,7 +210,7 @@ export default function EmployerApplicantsSection({
           <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
             New to review
           </span>
-          <span className="text-3xl font-mono font-extrabold tabular-nums text-amber-300">
+          <span className="text-3xl font-mono font-extrabold tabular-nums text-violet-300">
             {newCount}
           </span>
         </div>
@@ -237,7 +237,7 @@ export default function EmployerApplicantsSection({
               onClearFocusJob?.();
             }
           }}
-          className="flex-1 bg-panel border border-border rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
+          className="flex-1 bg-panel border border-border rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
         >
           <option value="all">All listings</option>
           {jobs.map((job) => (
@@ -253,7 +253,7 @@ export default function EmployerApplicantsSection({
           id="applicant-status-filter"
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value)}
-          className="sm:w-52 bg-panel border border-border rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
+          className="sm:w-52 bg-panel border border-border rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
         >
           <option value="all">All statuses</option>
           {APPLICANT_PIPELINE_STATUSES.map((status) => (
@@ -405,7 +405,7 @@ export default function EmployerApplicantsSection({
                     ) : null}
                     {applicant.missingSkills.length > 0 ? (
                       <p>
-                        <span className="text-amber-300/90 font-medium">Gaps: </span>
+                        <span className="text-violet-300/90 font-medium">Gaps: </span>
                         {applicant.missingSkills.join(", ")}
                       </p>
                     ) : null}
@@ -460,7 +460,7 @@ export default function EmployerApplicantsSection({
                         event.stopPropagation();
                         onRequestIntro(applicant);
                       }}
-                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm transition-all cursor-pointer"
+                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-brand hover:bg-brandHover text-white transition-all cursor-pointer"
                     >
                       Request Intro
                     </button>

@@ -5,15 +5,15 @@ import { cn } from "@/lib/cn";
 export const HARD_SHADOW = "border border-border";
 
 export const BUTTON_MOTION =
-  "transition-all duration-200 ease-out";
+  "transition-colors duration-200 ease-out";
 
 const VARIANT_CLASSES = {
   primary:
-    "bg-[#F4F4F6] text-[#0B0B0D] border-transparent hover:bg-white font-semibold shadow-sm",
+    "bg-brand text-white border-transparent hover:bg-brandHover transition-colors",
   secondary:
-    "bg-[#131316]/85 text-textMain border-white/[0.08] hover:bg-[#1A1A1E] backdrop-blur-xl",
+    "bg-panel text-textMain border-border hover:bg-surface",
   ghost:
-    "bg-transparent text-zinc-300 border-white/[0.08] hover:bg-white/[0.04] hover:text-zinc-100",
+    "bg-panel text-textMain border-border hover:bg-surface",
 } as const;
 
 export type ButtonVariant = keyof typeof VARIANT_CLASSES;

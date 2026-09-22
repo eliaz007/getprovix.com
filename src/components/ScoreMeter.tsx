@@ -11,7 +11,7 @@ export default function ScoreMeter({ score, className = "" }: ScoreMeterProps) {
     clamped >= 75
       ? "bg-emerald-500"
       : clamped >= 60
-        ? "bg-amber-500"
+        ? "bg-yellow-500"
         : "bg-rose-500";
 
   return (

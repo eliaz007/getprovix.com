@@ -8,10 +8,10 @@ import { loginHrefForSignupRole } from "@/lib/account-role";
 type Audience = "employer" | "developer";
 
 const cardClass =
-  "group flex h-full cursor-pointer flex-col rounded-xl border border-white/[0.08] bg-[#131316]/85 p-6 text-left shadow-2xl backdrop-blur-xl transition-colors duration-200 hover:border-amber-500/25 disabled:cursor-wait sm:p-8";
+  "group flex h-full cursor-pointer flex-col rounded-xl border border-white/[0.08] bg-[#131316]/85 p-6 text-left shadow-2xl backdrop-blur-xl transition-colors duration-200 hover:border-violet-500/25 disabled:cursor-wait sm:p-8";
 
 const ctaClass =
-  "mt-8 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#F4F4F6] px-4 py-2.5 text-sm font-semibold tracking-tight text-[#0B0B0D] shadow-sm transition-all duration-200 hover:bg-white";
+  "mt-8 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold tracking-tight text-white transition-colors duration-200 hover:bg-brandHover";
 
 export default function LandingAudienceCards() {
   const router = useRouter();
@@ -34,7 +34,7 @@ export default function LandingAudienceCards() {
         disabled={pending !== null}
         className={cardClass}
       >
-        <p className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] tracking-widest text-amber-300 w-fit">
+        <p className="rounded-md border border-violet-500/25 bg-violet-500/10 px-2 py-0.5 font-mono text-[11px] tracking-widest text-violet-300 w-fit">
           // 01 FOUNDERS
         </p>
         <h2 className="mt-4 text-xl font-medium tracking-tight text-white">
@@ -47,7 +47,7 @@ export default function LandingAudienceCards() {
         </p>
         <span className={ctaClass}>
           {pending === "employer" ? "Opening..." : "Enter Employer Console"}
-          <ArrowRight className="h-4 w-4 text-[#0B0B0D]/70" aria-hidden="true" />
+          <ArrowRight className="h-4 w-4 text-white/70" aria-hidden="true" />
         </span>
       </button>
 
@@ -57,7 +57,7 @@ export default function LandingAudienceCards() {
         disabled={pending !== null}
         className={cardClass}
       >
-        <p className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] tracking-widest text-amber-300 w-fit">
+        <p className="rounded-md border border-violet-500/25 bg-violet-500/10 px-2 py-0.5 font-mono text-[11px] tracking-widest text-violet-300 w-fit">
           // 02 DEVELOPERS
         </p>
         <h2 className="mt-4 text-xl font-medium tracking-tight text-white">
@@ -70,7 +70,7 @@ export default function LandingAudienceCards() {
         </p>
         <span className={ctaClass}>
           {pending === "developer" ? "Opening..." : "Open Candidate Dashboard"}
-          <ArrowRight className="h-4 w-4 text-[#0B0B0D]/70" aria-hidden="true" />
+          <ArrowRight className="h-4 w-4 text-white/70" aria-hidden="true" />
         </span>
       </button>
     </section>

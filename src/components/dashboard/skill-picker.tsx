@@ -206,7 +206,7 @@ export default function SkillPicker({
         <div
           className={cn(
             "flex min-h-12 flex-wrap items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#070709] px-3 py-2 transition-colors",
-            "focus-within:border-amber-500/50 focus-within:ring-1 focus-within:ring-amber-500/20",
+            "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand/20",
             inputDisabled && "cursor-not-allowed"
           )}
           onClick={() => {
@@ -218,7 +218,7 @@ export default function SkillPicker({
           {selected.map((skill) => (
             <span
               key={skill}
-              className="inline-flex max-w-full items-center gap-1 rounded-md border border-white/[0.07] bg-[#1A1A1E] py-1 pl-2 pr-1 text-xs font-semibold text-zinc-300 transition-colors hover:border-amber-500/30"
+              className="inline-flex max-w-full items-center gap-1 rounded-md border border-white/[0.07] bg-[#1A1A1E] py-1 pl-2 pr-1 text-xs font-semibold text-zinc-300 transition-colors hover:border-violet-500/30"
             >
               <span className="truncate">{skill}</span>
               <button

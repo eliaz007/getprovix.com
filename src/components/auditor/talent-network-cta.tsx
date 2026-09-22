@@ -9,10 +9,10 @@ const CAPABILITIES = [
 export default function TalentNetworkCta() {
   return (
     <div className="relative mt-8 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#131316]/85 p-8 shadow-2xl backdrop-blur-xl">
-      <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-amber-500/[0.06] blur-3xl" />
+      <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-violet-600/5 blur-3xl" />
       <div className="relative">
-        <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-0.5 font-mono text-xs text-amber-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+        <span className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-violet-500/25 bg-violet-500/10 px-2.5 py-0.5 font-mono text-xs text-violet-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse" />
           // BUILDER ACCESS
         </span>
         <h3 className="text-2xl font-bold leading-snug tracking-tight text-white sm:text-3xl">
@@ -35,7 +35,7 @@ export default function TalentNetworkCta() {
         <div>
           <Link
             href="/login?role=developer"
-            className="inline-flex items-center justify-center rounded-lg bg-[#F4F4F6] px-6 py-2.5 text-sm font-semibold text-[#0B0B0D] shadow-sm transition-all hover:bg-white"
+            className="inline-flex items-center justify-center rounded-lg bg-brand px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brandHover"
           >
             Create Free Account →
           </Link>
