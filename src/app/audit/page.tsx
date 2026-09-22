@@ -5,6 +5,8 @@ import MarketingAuthLink from "@/components/marketing-auth-link";
 import { buildPageMetadata } from "@/lib/site";
 import { githubUrlFromAuditQuery } from "@/lib/validate-github-url";
 
+export const dynamic = "force-dynamic";
+
 export const metadata = buildPageMetadata(
   "Production Audit",
   "Run a public GitHub production audit and view the scorecard without signing in.",

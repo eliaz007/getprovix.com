@@ -2,6 +2,8 @@ import AuditsPageClient from "@/components/auditor/audits-page-client";
 import { PRIVATE_AUDIT_INTENT } from "@/lib/production-audit";
 import { githubUrlFromSearchParam } from "@/lib/validate-github-url";
 
+export const dynamic = "force-dynamic";
+
 const SEARCH_PARAMS_TIMEOUT_MS = 2500;
 
 type AuditorSearchParams = {
