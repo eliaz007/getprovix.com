@@ -153,7 +153,6 @@ const PUBLIC_EXACT_PATHS = new Set([
   "/opengraph-image",
   "/robots.txt",
   "/sitemap.xml",
-  "/nav-island-preview",
 ]);
 
 const PUBLIC_PREFIXES = [
