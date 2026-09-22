@@ -1,9 +1,14 @@
 import type { AuditResult } from "@/app/api/audit/route";
 
+/** Shown when GitHub returns 401/403/404 or the repo is otherwise unreachable. */
+export const INACCESSIBLE_PUBLIC_REPO_MESSAGE =
+  "Repository is private or cannot be reached. Provix currently audits public repositories. Please provide a public GitHub repo URL.";
+
 export type PrivateOrNotFoundAuditResponse = {
   isPrivateOrNotFound: true;
   repoUrl: string;
   inaccessibleRepo?: boolean;
+  error?: string;
 };
 
 export function isPrivateOrNotFoundAuditResponse(
@@ -29,7 +34,11 @@ export function isInaccessiblePublicAudit(input: {
       })
     | null;
 }): boolean {
-  if (input.status === 404 || input.status === 403) {
+  if (
+    input.status === 401 ||
+    input.status === 403 ||
+    input.status === 404
+  ) {
     return true;
   }
 
@@ -38,6 +47,8 @@ export function isInaccessiblePublicAudit(input: {
   }
 
   return (input.result?.redFlags ?? []).some((flag) =>
-    /404 HTTP|returned a 404|private or otherwise inaccessible/i.test(flag)
+    /404 HTTP|returned a 404|private or otherwise inaccessible|cannot be reached/i.test(
+      flag
+    )
   );
 }

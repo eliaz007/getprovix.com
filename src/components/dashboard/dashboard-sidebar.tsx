@@ -3,8 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { PenTool, ShieldCheck, Terminal } from "lucide-react";
-import { ProvixLogo } from "@/components/ProvixLogo";
+import { ShieldCheck, Terminal } from "lucide-react";
 import {
   dashboardTabHref,
   isAuditorPath,
@@ -12,38 +11,26 @@ import {
   isDashboardRootPath,
   isInterviewPrepPath,
   isOpportunitiesPath,
-  isPitchStudioPath,
   type DashboardTab,
 } from "@/lib/dashboard-account";
 import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 
-const navListClass = "m-0 flex list-none flex-col gap-1 p-0";
+const ALIGN_X = "px-2.5";
+const navListClass = "m-0 flex list-none flex-col gap-0.5 p-0";
 const navItemShellClass = "order-none w-full shrink-0";
+const sectionHeaderClass = `${ALIGN_X} text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-semibold mb-1.5 block`;
 
-function navButtonClass(
-  isActive: boolean,
-  variant: "default" | "employer" = "default"
-) {
-  if (variant === "employer") {
-    return isActive
-      ? "bg-brandGlow text-brand border-brand/20"
-      : "text-textMuted border-transparent hover:bg-panel hover:text-textMain";
-  }
+/** Approx. zinc-850 — between zinc-800 and zinc-900 (not in default Tailwind). */
+const ACTIVE_PILL =
+  "bg-[#1f1f22]/90 text-zinc-100 border border-zinc-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]";
+const INACTIVE_ITEM = "text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-zinc-900/60";
 
-  return isActive
-    ? "bg-panel text-white border-transparent"
-    : "text-textMuted border-transparent hover:bg-panel hover:text-textMain";
+function navItemClass(isActive: boolean) {
+  return `w-full text-left ${ALIGN_X} py-1.5 rounded-md text-xs font-medium flex items-center gap-2.5 transition-all cursor-pointer border ${
+    isActive ? ACTIVE_PILL : INACTIVE_ITEM
+  }`;
 }
-
-function navItemClass(
-  isActive: boolean,
-  variant: "default" | "employer" = "default"
-) {
-  return `w-full text-left px-3 py-2 rounded-lg border font-medium transition-colors duration-200 ease-out flex items-center gap-3 text-[13px] cursor-pointer ${navButtonClass(isActive, variant)}`;
-}
-
-const secondaryNavSectionClass = "mt-8 pt-8 border-t border-border";
 
 type NavVisibility = {
   isBusinessAccount: boolean;
@@ -74,11 +61,6 @@ const CANDIDATE_PRIMARY_NAV = [
 ] as const;
 
 const CAREER_ACCELERATOR_NAV = [
-  {
-    key: "pitch-studio",
-    href: "/dashboard/pitch-studio",
-    label: "Pitch Studio",
-  },
   {
     key: "github-auditor",
     href: "/dashboard/auditor",
@@ -177,12 +159,26 @@ function isNavTabActive(
 
 function NavIcon({
   name,
+  active = false,
 }: {
-  name: "User" | "Compass" | "Mail" | "Radar" | "Document" | "Users" | "Shield" | "Briefcase";
+  name:
+    | "User"
+    | "Compass"
+    | "Mail"
+    | "Radar"
+    | "Document"
+    | "Users"
+    | "Shield"
+    | "Briefcase";
+  active?: boolean;
 }) {
+  const tone = active ? "text-zinc-200" : "text-zinc-400";
+
   if (name === "Shield") {
     return (
-      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+      <span
+        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${tone}`}
+      >
         <ShieldCheck className="h-4 w-4" aria-hidden="true" />
       </span>
     );
@@ -190,22 +186,42 @@ function NavIcon({
 
   const Icon = DashboardIcons[name];
   return (
-    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+    <span
+      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${tone}`}
+    >
       <Icon />
     </span>
   );
 }
 
+function ToolIcon({
+  kind,
+  active,
+}: {
+  kind: "auditor" | "interview";
+  active: boolean;
+}) {
+  const tone = active ? "text-zinc-200" : "text-zinc-400";
+  const Icon = kind === "auditor" ? ShieldCheck : Terminal;
+  return <Icon className={`h-4 w-4 shrink-0 ${tone}`} aria-hidden="true" />;
+}
+
 function DashboardTabLink({
   tab,
   label,
-  icon,
-  variant = "default",
+  iconName,
 }: {
   tab: DashboardTab;
   label: string;
-  icon: ReactNode;
-  variant?: "default" | "employer";
+  iconName:
+    | "User"
+    | "Compass"
+    | "Mail"
+    | "Radar"
+    | "Document"
+    | "Users"
+    | "Shield"
+    | "Briefcase";
 }) {
   const pathname = usePathname();
   const {
@@ -221,6 +237,7 @@ function DashboardTabLink({
     tab === "my_profile" && isBusinessAccount
       ? "/dashboard?tab=my_profile"
       : dashboardTabHref(tab);
+  const icon = <NavIcon name={iconName} active={isActive} />;
 
   const selectTab = () => {
     setActiveTab(tab);
@@ -234,10 +251,10 @@ function DashboardTabLink({
       <Link
         href={dashboardTabHref(tab)}
         onClick={() => setMobileNavOpen(false)}
-        className={navItemClass(isActive, variant)}
+        className={navItemClass(isActive)}
       >
         {icon}
-        {label}
+        <span className="truncate">{label}</span>
       </Link>
     );
   } else if (isGuest) {
@@ -248,10 +265,10 @@ function DashboardTabLink({
           setMobileNavOpen(false);
           requireAuth();
         }}
-        className={navItemClass(isActive, variant)}
+        className={navItemClass(isActive)}
       >
         {icon}
-        {label}
+        <span className="truncate">{label}</span>
       </button>
     );
   } else if (isDashboardRootPath(pathname)) {
@@ -259,21 +276,17 @@ function DashboardTabLink({
       <button
         type="button"
         onClick={selectTab}
-        className={navItemClass(isActive, variant)}
+        className={navItemClass(isActive)}
       >
         {icon}
-        {label}
+        <span className="truncate">{label}</span>
       </button>
     );
   } else {
     control = (
-      <Link
-        href={href}
-        onClick={selectTab}
-        className={navItemClass(isActive, variant)}
-      >
+      <Link href={href} onClick={selectTab} className={navItemClass(isActive)}>
         {icon}
-        {label}
+        <span className="truncate">{label}</span>
       </Link>
     );
   }
@@ -286,13 +299,11 @@ function ProtectedNavLink({
   label,
   icon,
   isActive,
-  variant = "default",
 }: {
   href: string;
   label: ReactNode;
   icon: ReactNode;
   isActive: boolean;
-  variant?: "default" | "employer";
 }) {
   const { isGuest, requireAuth, setMobileNavOpen } = useDashboardNav();
 
@@ -303,35 +314,116 @@ function ProtectedNavLink({
         setMobileNavOpen(false);
         requireAuth();
       }}
-      className={navItemClass(isActive, variant)}
+      className={navItemClass(isActive)}
     >
       {icon}
-      {label}
+      <span className="truncate">{label}</span>
     </button>
   ) : (
     <Link
       href={href}
       onClick={() => setMobileNavOpen(false)}
-      className={navItemClass(isActive, variant)}
+      className={navItemClass(isActive)}
     >
       {icon}
-      {label}
+      <span className="truncate">{label}</span>
     </Link>
   );
 
   return <li className={navItemShellClass}>{control}</li>;
 }
 
+function SidebarBrand() {
+  return (
+    <Link
+      href="/"
+      className={`mb-5 flex items-center gap-2.5 ${ALIGN_X} py-1.5 transition-opacity hover:opacity-90`}
+    >
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-900 text-[11px] font-bold text-white">
+        P
+      </span>
+      <span className="text-xs font-bold tracking-widest text-zinc-100">
+        PROVIX
+      </span>
+    </Link>
+  );
+}
+
+function SidebarUserFooter() {
+  const {
+    isGuest,
+    authLoading,
+    userAvatarUrl,
+    userInitials,
+    userDisplayName,
+    isVerifiedEmployer,
+    requireAuth,
+    setMobileNavOpen,
+  } = useDashboardNav();
+
+  if (isGuest && !authLoading) {
+    return (
+      <div className="mt-auto border-t border-zinc-800 pt-4">
+        <button
+          type="button"
+          onClick={() => {
+            setMobileNavOpen(false);
+            requireAuth();
+          }}
+          className="w-full cursor-pointer rounded-md bg-zinc-100 px-2.5 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white"
+        >
+          Sign In
+        </button>
+      </div>
+    );
+  }
+
+  if (isGuest || authLoading) {
+    return null;
+  }
+
+  const statusLabel = isVerifiedEmployer ? "Vetted" : "Available";
+
+  return (
+    <div className="mt-auto border-t border-zinc-800 pt-4">
+      <div className={`flex items-center gap-2.5 ${ALIGN_X}`}>
+        {userAvatarUrl ? (
+          <img
+            src={userAvatarUrl}
+            alt=""
+            className="h-7 w-7 shrink-0 rounded-md object-cover ring-1 ring-zinc-700/60"
+          />
+        ) : (
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-800 text-[10px] font-semibold text-zinc-200 ring-1 ring-zinc-700/60">
+            {userInitials}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium text-zinc-200">
+            {userDisplayName}
+          </p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-zinc-500">
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                isVerifiedEmployer ? "bg-emerald-400" : "bg-zinc-500"
+              }`}
+              aria-hidden
+            />
+            {statusLabel}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardSidebar() {
   const pathname = usePathname();
   const {
-    authLoading,
-    isGuest,
     isBusinessAccount,
     isEmployeeAccount,
+    isGuest,
     showTalentPoolNav,
-    requireAuth,
-    setMobileNavOpen,
   } = useDashboardNav();
 
   const visibility: NavVisibility = {
@@ -351,31 +443,17 @@ export default function DashboardSidebar() {
       );
 
   return (
-    <div className="p-6 flex flex-col min-h-full">
-      <Link href="/" className="block mb-8 hover:opacity-90 transition-opacity">
-        <ProvixLogo />
-      </Link>
+    <div className="flex min-h-full flex-col justify-between bg-zinc-950 p-3">
+      <div>
+        <SidebarBrand />
 
-      <div className="flex-1">
-        <div
-          className={
-            !isBusinessAccount && !isEmployeeAccount
-              ? secondaryNavSectionClass
-              : undefined
-          }
-        >
-          <span
-            className={
-              isBusinessAccount
-                ? "text-[11px] font-semibold tracking-wider text-zinc-500 uppercase px-3 py-2 block"
-                : "text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2"
-            }
-          >
+        <div>
+          <span className={sectionHeaderClass}>
             {isBusinessAccount
               ? "Organization"
               : isEmployeeAccount
-                ? "Employee Dashboard"
-                : "Candidate Dashboard"}
+                ? "Employee"
+                : "General"}
           </span>
           <ul className={navListClass}>
             {primaryItems.map((item) => (
@@ -383,58 +461,54 @@ export default function DashboardSidebar() {
                 key={item.key}
                 tab={item.tab}
                 label={item.label}
-                icon={<NavIcon name={item.icon} />}
+                iconName={item.icon}
               />
             ))}
           </ul>
         </div>
 
         {showCandidateAccelerator && (
-          <div className={secondaryNavSectionClass}>
-            <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
-              Career Accelerator
-            </span>
+          <div className="mt-5">
+            <span className={sectionHeaderClass}>Tools</span>
             <ul className={navListClass}>
-              {CAREER_ACCELERATOR_NAV.map((item) => (
-                <ProtectedNavLink
-                  key={item.key}
-                  href={item.href}
-                  isActive={
-                    item.key === "pitch-studio"
-                      ? isPitchStudioPath(pathname)
-                      : item.key === "github-auditor"
-                        ? isAuditorPath(pathname)
-                        : isInterviewPrepPath(pathname)
-                  }
-                  icon={
-                    item.key === "pitch-studio" ? (
-                      <PenTool className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    ) : item.key === "github-auditor" ? (
-                      <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    ) : (
-                      <Terminal className="w-4 h-4 shrink-0" aria-hidden="true" />
-                    )
-                  }
-                  label={item.label}
-                />
-              ))}
+              {CAREER_ACCELERATOR_NAV.map((item) => {
+                const isActive =
+                  item.key === "github-auditor"
+                    ? isAuditorPath(pathname)
+                    : isInterviewPrepPath(pathname);
+                return (
+                  <ProtectedNavLink
+                    key={item.key}
+                    href={item.href}
+                    isActive={isActive}
+                    icon={
+                      <ToolIcon
+                        kind={
+                          item.key === "github-auditor"
+                            ? "auditor"
+                            : "interview"
+                        }
+                        active={isActive}
+                      />
+                    }
+                    label={item.label}
+                  />
+                );
+              })}
             </ul>
           </div>
         )}
 
         {isEmployeeAccount && (
-          <div className={secondaryNavSectionClass}>
-            <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
-              Provix Talent Network
-            </span>
+          <div className="mt-5">
+            <span className={sectionHeaderClass}>Network</span>
             <ul className={navListClass}>
               {EMPLOYEE_HUB_NAV.map((item) => (
                 <DashboardTabLink
                   key={item.key}
                   tab={item.tab}
                   label={item.label}
-                  icon={<NavIcon name={item.icon} />}
-                  variant="employer"
+                  iconName={item.icon}
                 />
               ))}
             </ul>
@@ -442,18 +516,15 @@ export default function DashboardSidebar() {
         )}
 
         {showTalentPoolNav && (
-          <div className={secondaryNavSectionClass}>
-            <span className="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase px-3 py-2 block">
-              Talent & Evaluation
-            </span>
+          <div className="mt-5">
+            <span className={sectionHeaderClass}>Evaluation</span>
             <ul className={navListClass}>
               {EMPLOYER_CONSOLE_NAV.map((item) => (
                 <DashboardTabLink
                   key={item.key}
                   tab={item.tab}
                   label={item.label}
-                  icon={<NavIcon name={item.icon} />}
-                  variant="employer"
+                  iconName={item.icon}
                 />
               ))}
             </ul>
@@ -461,20 +532,7 @@ export default function DashboardSidebar() {
         )}
       </div>
 
-      {isGuest && !authLoading && (
-        <button
-          type="button"
-          onClick={() => {
-            setMobileNavOpen(false);
-            requireAuth();
-          }}
-          className="mt-8 w-full bg-brand hover:bg-brandHover text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
-        >
-          {isOpportunitiesPath(pathname)
-            ? "Sign in to get matched"
-            : "Sign In"}
-        </button>
-      )}
+      <SidebarUserFooter />
     </div>
   );
 }

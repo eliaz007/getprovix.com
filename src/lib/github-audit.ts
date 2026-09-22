@@ -87,7 +87,7 @@ export function githubArtifactAuditSucceeded(
   );
 }
 
-const ACCESS_DENIED_STATUS = /\((404|403)\)/;
+const ACCESS_DENIED_STATUS = /\((401|403|404)\)/;
 
 export function githubAuditLooksInaccessible(
   artifacts: GitHubArtifactAudit | null | undefined

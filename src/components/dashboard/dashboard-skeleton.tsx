@@ -40,15 +40,6 @@ function ContentCard() {
   );
 }
 
-function NavItemPulse({ wide = false }: { wide?: boolean }) {
-  return (
-    <div className="flex items-center gap-3 px-3 py-2">
-      <Pulse className="h-4 w-4 rounded shrink-0 bg-white/10" />
-      <Pulse className={`h-3 rounded bg-white/10 ${wide ? "w-32" : "w-24"}`} />
-    </div>
-  );
-}
-
 export function DashboardContentSkeleton() {
   return (
     <div className="w-full max-w-5xl mx-auto space-y-10">
@@ -87,45 +78,35 @@ export function DashboardContentSkeleton() {
 export default function DashboardSkeleton() {
   return (
     <div
-      className="flex h-screen overflow-hidden bg-background text-textMain"
+      className="flex h-screen flex-col overflow-hidden bg-background text-textMain"
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
       <span className="sr-only">Loading dashboard</span>
 
-      <aside className="hidden md:flex w-64 h-screen shrink-0 flex-col bg-panel border-r border-border">
-        <div className="p-6 flex flex-col min-h-full">
-          <div className="flex items-center gap-3 mb-8">
-            <Pulse className="h-8 w-8 rounded-lg shrink-0 bg-white/10" />
-            <Pulse className="h-4 w-20 rounded bg-white/10" />
-          </div>
-          <Pulse className="h-2.5 w-28 rounded mb-3 mx-2 bg-white/10" />
-          <div className="space-y-1">
-            <NavItemPulse />
-            <NavItemPulse wide />
-            <NavItemPulse />
-          </div>
-          <div className="mt-8 pt-8 border-t border-border">
-            <Pulse className="h-2.5 w-24 rounded mb-3 mx-2 bg-white/10" />
-            <div className="space-y-1">
-              <NavItemPulse />
-              <NavItemPulse wide />
-              <NavItemPulse />
+      <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#0B0B0D]/85 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Pulse className="h-6 w-6 shrink-0 rounded-md bg-white/10" />
+            <Pulse className="hidden h-3 w-16 rounded bg-white/10 sm:block" />
+            <span className="mx-2 hidden h-4 w-px bg-zinc-800 sm:block" />
+            <div className="flex items-center gap-4">
+              <Pulse className="h-3 w-14 rounded bg-white/10" />
+              <Pulse className="h-3 w-20 rounded bg-white/10" />
+              <Pulse className="hidden h-3 w-16 rounded bg-white/10 sm:block" />
+              <Pulse className="hidden h-3 w-12 rounded bg-white/10 md:block" />
             </div>
           </div>
-        </div>
-      </aside>
-
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex md:hidden items-center justify-between gap-3 px-4 py-3 bg-panel border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <Pulse className="h-8 w-8 rounded-lg bg-white/10" />
-            <Pulse className="h-4 w-20 rounded bg-white/10" />
+          <div className="flex items-center gap-3">
+            <Pulse className="hidden h-5 w-16 rounded-full bg-white/10 sm:block" />
+            <Pulse className="h-8 w-8 rounded-full bg-white/10" />
           </div>
-          <Pulse className="h-9 w-9 rounded-full bg-white/10" />
         </div>
-        <div className="flex-1 overflow-hidden p-4 pt-8 sm:p-6 sm:pt-10 md:p-12">
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="mx-auto w-full max-w-6xl px-4 py-8">
           <DashboardContentSkeleton />
         </div>
       </div>

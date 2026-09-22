@@ -26,6 +26,7 @@ import ScoreMeter from "@/components/ScoreMeter";
 import {
   buildExecutiveChecklist,
   getReadinessBadge,
+  resolveDisplayedReadinessScore,
   type ChecklistTone,
   type ExecutiveChecklistItem,
 } from "@/lib/audit-readiness";
@@ -131,6 +132,15 @@ type ActionableFix = {
   };
 };
 
+const SECTION_LABEL =
+  "text-[11px] font-semibold uppercase tracking-wider text-zinc-500";
+
+const TONE_PILL: Record<ChecklistTone, string> = {
+  pass: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+  warn: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+  fail: "bg-red-500/10 text-red-400 border border-red-500/20",
+};
+
 const TONE_STYLES: Record<
   ChecklistTone,
   { iconWrap: string; status: string }
@@ -148,6 +158,23 @@ const TONE_STYLES: Record<
     status: "text-rose-400",
   },
 };
+
+function remediationTitle(label: string): string {
+  return label.replace(/\s*\(\+\d+\s*pts?\)\s*$/i, "").trim() || label;
+}
+
+function formatAuditDateLabel(commitDates?: string[] | null): string {
+  const parsed = (commitDates ?? [])
+    .map((value) => Date.parse(value))
+    .filter((value) => Number.isFinite(value));
+  const timestamp =
+    parsed.length > 0 ? Math.max(...parsed) : Date.now();
+  return new Date(timestamp).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 function ChecklistIcon({ tone }: { tone: ChecklistTone }) {
   if (tone === "pass") {
@@ -189,6 +216,16 @@ function ProofPathList({
   );
 }
 
+function remediationPointsFor(
+  result: AuditResult,
+  artifact: RemediationId
+): number {
+  const match = result?.scoreCap?.deductions?.find(
+    (row) => row.artifact === artifact && row.points > 0
+  );
+  return match?.points ?? REMEDIATION_POINTS;
+}
+
 function buildRemediationItems(result: AuditResult): RemediationItem[] {
   try {
     const artifacts = result?.scoreCap?.coreArtifacts ?? {
@@ -201,10 +238,11 @@ function buildRemediationItems(result: AuditResult): RemediationItem[] {
     const items: RemediationItem[] = [];
 
     if (!artifacts.ci) {
+      const points = remediationPointsFor(result, "ci");
       items.push({
         id: "ci",
-        label: "Add GitHub Actions CI/CD (+25 pts)",
-        points: REMEDIATION_POINTS,
+        label: `Add GitHub Actions CI/CD (+${points} pts)`,
+        points,
         drawer: {
           filePath: ".github/workflows/ci.yml",
           directions:
@@ -216,10 +254,11 @@ function buildRemediationItems(result: AuditResult): RemediationItem[] {
     }
 
     if (!artifacts.tests) {
+      const points = remediationPointsFor(result, "tests");
       items.push({
         id: "tests",
-        label: "Add basic test suite (+25 pts)",
-        points: REMEDIATION_POINTS,
+        label: `Add basic test suite (+${points} pts)`,
+        points,
         drawer: {
           filePath: "src/__tests__/smoke.test.ts",
           directions:
@@ -231,10 +270,11 @@ function buildRemediationItems(result: AuditResult): RemediationItem[] {
     }
 
     if (!artifacts.error_handling) {
+      const points = remediationPointsFor(result, "error_handling");
       items.push({
         id: "error_handling",
-        label: "Add error boundaries (+25 pts)",
-        points: REMEDIATION_POINTS,
+        label: `Add error boundaries (+${points} pts)`,
+        points,
       });
     }
 
@@ -257,10 +297,11 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
     const fixes: ActionableFix[] = [];
 
     if (!artifacts.ci) {
+      const points = remediationPointsFor(result, "ci");
       fixes.push({
         id: "ci",
         title: "Missing CI/CD pipeline",
-        deductionLabel: "−25 pts",
+        deductionLabel: `−${points} pts`,
         summary:
           "No `.github/workflows/*.yml` detected. Shipping a GitHub Actions workflow restores the CI/CD scorecard pillar and lifts the filesystem cap.",
         template: {
@@ -274,10 +315,11 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
     }
 
     if (!artifacts.tests) {
+      const points = remediationPointsFor(result, "tests");
       fixes.push({
         id: "tests",
         title: "Missing test suite",
-        deductionLabel: "−25 pts",
+        deductionLabel: `−${points} pts`,
         summary:
           "No test files or runner config found. A minimal smoke suite unblocks the tests pillar and proves regression coverage exists.",
         template: {
@@ -291,10 +333,11 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
     }
 
     if (!artifacts.error_handling) {
+      const points = remediationPointsFor(result, "error_handling");
       fixes.push({
         id: "error_handling",
         title: "Missing error boundaries",
-        deductionLabel: "−25 pts",
+        deductionLabel: `−${points} pts`,
         summary:
           "No `error.tsx` / ErrorBoundary modules detected. Add an App Router `error.tsx` or a React error boundary component to restore this pillar.",
       });
@@ -550,71 +593,71 @@ function RemediationSimulator({
   }, [checked, items, score]);
 
   const qualifies = projected >= PUBLIC_SCORECARD_THRESHOLD;
+  const alreadyCleared = score >= PUBLIC_SCORECARD_THRESHOLD;
 
-  if (items.length === 0) {
+  if (alreadyCleared || items.length === 0) {
     return (
-      <section className="rounded-2xl border border-indigo-500/30 bg-zinc-900/80 p-4 sm:p-5 shadow-lg shadow-indigo-500/5 space-y-4">
-        <div className="text-[10px] uppercase font-bold tracking-wider text-emerald-400">
-          Remediation Simulator: Path to Talent Network Qualification
+      <section className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
+          <p className="text-sm font-medium text-emerald-300">
+            All Core Production Artifacts Verified
+          </p>
+          <span className="ml-auto font-mono text-xs tabular-nums text-emerald-400/80">
+            {score}/100
+          </span>
         </div>
-        <p className="text-sm text-zinc-300 leading-relaxed">
-          No core artifact deficits flagged. Current score already clears the
-          remediation checklist.
-        </p>
-        <StatusBadge pass>
-          <ShieldCheck className="h-3 w-3" aria-hidden />
-          Qualifies · {score}/100
-        </StatusBadge>
       </section>
     );
   }
 
   return (
-    <section className="rounded-2xl border border-indigo-500/30 bg-zinc-900/80 p-4 sm:p-5 shadow-lg shadow-indigo-500/5 space-y-4">
+    <section className="space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 sm:p-6 backdrop-blur-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <div className="text-[10px] uppercase font-bold tracking-wider text-indigo-300 mb-1">
-            Remediation Simulator
-          </div>
-          <h3 className="text-sm font-bold text-zinc-100 tracking-tight">
+          <div className={`${SECTION_LABEL} mb-1`}>Remediation Simulator</div>
+          <h3 className="text-sm font-bold tracking-tight text-zinc-100">
             Path to Talent Network Qualification
           </h3>
-          <p className="mt-1 text-xs text-zinc-500 leading-relaxed">
-            Toggle fixes to project how closing flagged deficits moves your
-            readiness score past the {PUBLIC_SCORECARD_THRESHOLD}+ publish bar.
-            Expand a row for directions and copy-ready boilerplate.
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+            Simulate targeted fixes to reach the {PUBLIC_SCORECARD_THRESHOLD}+
+            network threshold. Select items below to inspect remediation steps.
           </p>
         </div>
-        <div className="shrink-0 sm:text-right space-y-2">
-          <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">
-            Projected Score
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        <div className="shrink-0 space-y-1.5 sm:text-right">
+          <div className={SECTION_LABEL}>Projected Score</div>
+          <div
+            className="flex flex-wrap items-baseline gap-1 sm:justify-end"
+            aria-live="polite"
+            aria-atomic="true"
+          >
             <span
-              key={projected}
-              className="font-mono text-xl font-black tabular-nums text-zinc-50 transition-all duration-300 animate-fadeIn"
+              className={`font-mono text-4xl font-black tabular-nums tracking-tight transition-colors duration-300 ${
+                qualifies ? "text-emerald-400" : "text-white"
+              }`}
             >
-              {score}
-              <span className="text-zinc-500 font-semibold"> → </span>
-              <span className={qualifies ? "text-emerald-400" : "text-rose-400"}>
-                {projected}
-              </span>
-              <span className="text-sm font-semibold text-zinc-500">/100</span>
+              {projected}
             </span>
-            <StatusBadge pass={qualifies} animateKey={projected}>
-              {qualifies ? (
-                <>
-                  <ShieldCheck className="h-3 w-3" aria-hidden />
-                  Qualifies
-                </>
-              ) : (
-                <>
-                  <Lock className="h-3 w-3" aria-hidden />
-                  Below {PUBLIC_SCORECARD_THRESHOLD}
-                </>
-              )}
-            </StatusBadge>
+            <span className="text-base font-semibold text-zinc-500">/100</span>
           </div>
+          {projected !== score ? (
+            <p className="font-mono text-xs tabular-nums text-zinc-500 sm:text-right">
+              from {score}
+            </p>
+          ) : null}
+          <StatusBadge pass={qualifies} animateKey={projected}>
+            {qualifies ? (
+              <>
+                <ShieldCheck className="h-3 w-3" aria-hidden />
+                Qualifies
+              </>
+            ) : (
+              <>
+                <Lock className="h-3 w-3" aria-hidden />
+                Below {PUBLIC_SCORECARD_THRESHOLD}
+              </>
+            )}
+          </StatusBadge>
         </div>
       </div>
 
@@ -623,61 +666,60 @@ function RemediationSimulator({
           const isOn = Boolean(checked[item.id]);
           const isOpen = Boolean(expanded[item.id]);
           const hasDrawer = Boolean(item.drawer);
+          const title = remediationTitle(item.label);
 
           return (
             <li
               key={item.id}
-              className="rounded-xl border border-zinc-800 bg-zinc-950/80 overflow-hidden"
+              className="overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-900/60 transition hover:bg-zinc-900/80"
             >
-              <div className="flex items-center gap-2 px-3 py-2.5">
+              <div className="flex items-center justify-between gap-3 p-3.5">
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
                   <input
                     type="checkbox"
                     checked={isOn}
-                    onChange={() =>
+                    onChange={(event) =>
                       setChecked((prev) => ({
                         ...prev,
-                        [item.id]: !prev[item.id],
+                        [item.id]: event.target.checked,
                       }))
                     }
-                    className="h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-950 text-emerald-500 focus:ring-emerald-500/40 focus:ring-offset-0"
+                    className="h-4 w-4 cursor-pointer rounded border-zinc-600 bg-zinc-950 text-emerald-500 focus:ring-0"
                   />
-                  <span className="min-w-0 flex-1 text-sm font-medium text-zinc-200 leading-snug">
-                    {item.label}
-                  </span>
-                  <span
-                    className={`text-[11px] font-mono font-bold tabular-nums ${
-                      isOn ? "text-emerald-400" : "text-zinc-500"
-                    }`}
-                  >
-                    +{item.points}
+                  <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-zinc-200">
+                    {title}
                   </span>
                 </label>
-                {hasDrawer ? (
-                  <button
-                    type="button"
-                    aria-expanded={isOpen}
-                    aria-label={
-                      isOpen
-                        ? `Collapse ${item.label} template`
-                        : `Expand ${item.label} template`
-                    }
-                    onClick={() =>
-                      setExpanded((prev) => ({
-                        ...prev,
-                        [item.id]: !prev[item.id],
-                      }))
-                    }
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-zinc-700 text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-200 cursor-pointer"
-                  >
-                    <ChevronDown
-                      className={`h-4 w-4 transition-transform duration-200 ${
-                        isOpen ? "rotate-180" : ""
-                      }`}
-                      aria-hidden
-                    />
-                  </button>
-                ) : null}
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs font-medium text-emerald-400">
+                    +{item.points} pts
+                  </span>
+                  {hasDrawer ? (
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-label={
+                        isOpen
+                          ? `Collapse ${title} template`
+                          : `Expand ${title} template`
+                      }
+                      onClick={() =>
+                        setExpanded((prev) => ({
+                          ...prev,
+                          [item.id]: !prev[item.id],
+                        }))
+                      }
+                      className="inline-flex cursor-pointer items-center justify-center text-zinc-500 transition-colors hover:text-zinc-200"
+                    >
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-200 ${
+                          isOpen ? "rotate-180" : ""
+                        }`}
+                        aria-hidden
+                      />
+                    </button>
+                  ) : null}
+                </div>
               </div>
               {hasDrawer && isOpen && item.drawer ? (
                 <CodeSnippet {...item.drawer} />
@@ -1029,8 +1071,18 @@ function safeDeriveAuditView(result: AuditResult): {
   actionableFixes: ActionableFix[];
 } {
   try {
-    const score = clampScore0to100(result?.score ?? 0);
     const filesystem = result?.filesystem ?? null;
+    const metrics = resolveProductionAuditMetrics({
+      metrics: result?.metrics,
+      filesystem,
+    });
+    const score = resolveDisplayedReadinessScore({
+      score: result?.score ?? 0,
+      productionScore: metrics.productionScore,
+      filesystem,
+      scoreCap: result?.scoreCap,
+      commitDates: result?.commitDates,
+    });
     return {
       score,
       badge: getReadinessBadge(score),
@@ -1042,10 +1094,7 @@ function safeDeriveAuditView(result: AuditResult): {
       visibleRedFlags: (result?.redFlags ?? []).filter(
         (item) => !result?.scoreCap?.applied || !isFilesystemCapRedFlag(item)
       ),
-      metrics: resolveProductionAuditMetrics({
-        metrics: result?.metrics,
-        filesystem,
-      }),
+      metrics,
       remediationItems: buildRemediationItems(result),
       actionableFixes: buildActionableFixes(result),
     };
@@ -1139,8 +1188,8 @@ function AuditResultsPanelView({
   } = derived;
   const filesystem = result?.filesystem ?? null;
   const displayRepo = repoName?.trim() || "Audited repository";
+  const auditedLabel = formatAuditDateLabel(result?.commitDates);
   const isRestricted = score < PUBLIC_SCORECARD_THRESHOLD;
-  const qualifies = !isRestricted;
   const employerView = isEmployerView || isEmployerRole(viewerRole);
   const screenPrompts = useMemo(
     () => (employerView ? buildScreenPrompts(result) : []),
@@ -1160,46 +1209,43 @@ function AuditResultsPanelView({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 sm:p-5 space-y-4">
+      <section className="space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 sm:p-6 backdrop-blur-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-2">
-            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">
-              Executive Verdict
-            </div>
-            <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-zinc-50 truncate">
+          <div className="min-w-0 space-y-3">
+            <div className={SECTION_LABEL}>Executive Verdict</div>
+            <h2 className="truncate text-lg font-extrabold tracking-tight text-zinc-50 sm:text-xl">
               {displayRepo}
             </h2>
+            <p className="font-mono text-xs tabular-nums text-zinc-400 sm:text-sm">
+              Audited {auditedLabel} · Target: {PUBLIC_SCORECARD_THRESHOLD}+
+            </p>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] font-semibold text-zinc-300">
+              <span className="inline-flex items-center rounded-md border border-zinc-700/60 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-semibold text-zinc-300">
                 {roleSpec}
               </span>
-              <StatusBadge pass={qualifies}>
-                {isRestricted ? (
-                  <>
-                    <Lock className="h-3 w-3" aria-hidden />
-                    RESTRICTED — Private Diagnostic
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="h-3 w-3" aria-hidden />
-                    CLEARED — Talent Network Eligible
-                  </>
-                )}
-              </StatusBadge>
+              {isRestricted ? (
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700/60 bg-zinc-900/80 px-2.5 py-1 text-xs font-medium text-zinc-400">
+                  <Lock className="h-3.5 w-3.5 text-zinc-400" aria-hidden />
+                  Private Audit
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                  Talent Network Eligible
+                </span>
+              )}
             </div>
           </div>
-          <div className="shrink-0 sm:text-right space-y-2">
-            <div className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">
-              Readiness Score
-            </div>
+          <div className="shrink-0 space-y-2 sm:text-right">
+            <div className={SECTION_LABEL}>Readiness Score</div>
             <div className="flex items-baseline gap-1 sm:justify-end">
-              <span className="text-4xl sm:text-5xl font-mono font-black tabular-nums text-white tracking-tight drop-shadow-[0_0_12px_rgba(255,255,255,0.08)]">
+              <span className="font-mono text-4xl font-black tabular-nums tracking-tight text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.08)] sm:text-5xl">
                 {score}
               </span>
               <span className="text-base font-semibold text-zinc-400">/100</span>
             </div>
             <span
-              className={`mt-1 inline-flex w-fit max-w-full items-center ${readinessBadgeClass(
+              className={`mt-1 inline-flex w-fit max-w-full items-center rounded-md border px-2.5 py-1 text-xs font-medium ${readinessBadgeClass(
                 score
               )}`}
             >
@@ -1208,7 +1254,7 @@ function AuditResultsPanelView({
           </div>
         </div>
 
-        <ScoreMeter score={score} className={badge.meterClassName} />
+        <ScoreMeter score={score} />
 
         <ProductionScorecard metrics={metrics} compact />
       </section>
@@ -1223,17 +1269,22 @@ function AuditResultsPanelView({
         />
       )}
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 sm:p-5">
-        <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-3">
-          Executive Checklist
-        </div>
+      <section className="rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 sm:p-6 backdrop-blur-sm">
+        <div className={`${SECTION_LABEL} mb-3`}>Executive Checklist</div>
         <ul className="space-y-2">
           {checklist.map((item) => {
             const tone = TONE_STYLES[item.tone];
+            const rawStatus = item.status?.trim() ?? "";
+            const statusText =
+              !rawStatus || /History\s*\(\s*\)/i.test(rawStatus)
+                ? item.id === "commit_cadence"
+                  ? "Verified Human Cadence"
+                  : "Unavailable"
+                : rawStatus;
             return (
               <li
                 key={item.id}
-                className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2.5"
+                className="flex items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3.5 py-3"
               >
                 <span
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${tone.iconWrap}`}
@@ -1241,13 +1292,13 @@ function AuditResultsPanelView({
                 >
                   <ChecklistIcon tone={item.tone} />
                 </span>
-                <span className="min-w-0 flex-1 text-sm font-semibold text-zinc-100 leading-snug">
+                <span className="min-w-0 flex-1 text-sm font-semibold leading-snug text-zinc-100">
                   {item.label}
                 </span>
                 <span
-                  className={`text-right text-[11px] sm:text-xs font-semibold leading-snug ${tone.status}`}
+                  className={`inline-flex max-w-[55%] shrink-0 truncate rounded-md px-2 py-0.5 text-[11px] font-medium sm:text-xs ${TONE_PILL[item.tone]}`}
                 >
-                  {item.status}
+                  {statusText}
                 </span>
               </li>
             );
@@ -1257,7 +1308,7 @@ function AuditResultsPanelView({
 
       {!employerView ? (
         <section>
-          <div className="text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-3">
+          <div className={`${SECTION_LABEL} mb-3 text-amber-400`}>
             Actionable Fixes
           </div>
           {actionableFixes.length > 0 ? (
@@ -1275,7 +1326,7 @@ function AuditResultsPanelView({
         </section>
       ) : null}
 
-      <details className="group rounded-2xl border border-zinc-800 bg-zinc-950">
+      <details className="group rounded-xl border border-zinc-800/80 bg-zinc-950 backdrop-blur-sm">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-zinc-100 [&::-webkit-details-marker]:hidden">
           <span>View Raw Inspection Artifacts &amp; AST Logs</span>
           <ChevronDown
@@ -1292,8 +1343,8 @@ function AuditResultsPanelView({
 
           <AuditChecksList checks={result?.checks ?? []} />
 
-          <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
-            <div className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">
+          <div className="space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-3">
+            <div className={`${SECTION_LABEL} text-cyan-300`}>
               Filesystem paths &amp; AST evidence
             </div>
             <ProofPathList
@@ -1314,7 +1365,7 @@ function AuditResultsPanelView({
             />
             {(result?.commitDates ?? []).length > 0 ? (
               <div>
-                <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-2">
+                <div className={`${SECTION_LABEL} mb-2`}>
                   Sampled commit timestamps
                 </div>
                 <ul className="space-y-1">
@@ -1333,17 +1384,17 @@ function AuditResultsPanelView({
 
           {(result?.strengths ?? []).length > 0 ? (
             <div>
-              <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-3">
+              <div className={`${SECTION_LABEL} mb-3 text-emerald-400`}>
                 Verified Strengths
               </div>
               <ul className="space-y-2">
                 {(result.strengths ?? []).map((item) => (
                   <li
                     key={item}
-                    className="flex items-start gap-2 text-sm text-zinc-400 leading-relaxed"
+                    className="flex items-start gap-2 text-sm leading-relaxed text-zinc-400"
                   >
                     <Check
-                      className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400"
                       aria-hidden
                     />
                     <span>{item}</span>
@@ -1355,23 +1406,32 @@ function AuditResultsPanelView({
 
           {visibleRedFlags.length > 0 ? (
             <div>
-              <div className="text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-3">
+              <div className={`${SECTION_LABEL} mb-3 text-amber-400`}>
                 Detected Red Flags / Missing Proof-of-Work
               </div>
               <ul className="space-y-2">
                 {visibleRedFlags.map((item) => (
                   <li
                     key={item}
-                    className="flex items-start gap-2 text-sm text-zinc-400 leading-relaxed"
+                    className="flex items-start gap-2 text-sm leading-relaxed text-zinc-400"
                   >
                     <AlertTriangle
-                      className="w-4 h-4 text-amber-400 shrink-0 mt-0.5"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-amber-400"
                       aria-hidden
                     />
                     <span>{item}</span>
                   </li>
                 ))}
               </ul>
+            </div>
+          ) : null}
+
+          {employerView && briefMarkdown ? (
+            <div className="space-y-2">
+              <div className={SECTION_LABEL}>Interview brief</div>
+              <pre className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-zinc-400 whitespace-pre-wrap">
+                {briefMarkdown}
+              </pre>
             </div>
           ) : null}
         </div>
@@ -1395,3 +1455,4 @@ export default function AuditResultsPanel(props: AuditResultsPanelProps) {
     </AuditResultsErrorBoundary>
   );
 }
+

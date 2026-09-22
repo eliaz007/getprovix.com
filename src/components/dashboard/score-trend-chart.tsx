@@ -30,6 +30,8 @@ type ScoreTrendChartProps = {
     repoUrl?: string;
   } | null;
   className?: string;
+  /** Nested under Verification Dossier — no outer chrome / title. */
+  variant?: "standalone" | "embedded";
 };
 
 const HISTORY_LIMIT = 40;
@@ -303,7 +305,9 @@ export default function ScoreTrendChart({
   repoUrl = "",
   current = null,
   className,
+  variant = "standalone",
 }: ScoreTrendChartProps) {
+  const embedded = variant === "embedded";
   const reactId = useId().replace(/:/g, "");
   const fillId = `score-trend-fill-${reactId}`;
   const glowId = `score-trend-glow-${reactId}`;
@@ -398,61 +402,65 @@ export default function ScoreTrendChart({
   return (
     <section
       className={cn(
-        "flex h-full flex-col rounded-2xl border border-border bg-panel p-4 sm:p-5",
+        embedded
+          ? "flex min-h-0 flex-col"
+          : "flex h-full flex-col rounded-xl border border-white/[0.08] bg-[#131316]/90 p-4 shadow-2xl backdrop-blur-xl sm:p-5",
         className
       )}
-      aria-labelledby="score-trend-heading"
+      aria-labelledby={embedded ? undefined : "score-trend-heading"}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-brand">
-            Code health
-          </p>
-          <h3
-            id="score-trend-heading"
-            className="mt-1 text-sm font-bold tracking-tight text-textMain"
-          >
-            Score trend
-          </h3>
-          <p className="mt-1 truncate text-xs text-textMuted">
-            {repoLabel
-              ? `Verified repository · ${repoLabel}`
-              : "Past production audits for your verified repository"}
-          </p>
+      {!embedded ? (
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+              Code health
+            </p>
+            <h3
+              id="score-trend-heading"
+              className="mt-1 text-sm font-bold tracking-tight text-zinc-100"
+            >
+              Score trend
+            </h3>
+            <p className="mt-1 truncate text-xs text-zinc-500">
+              {repoLabel
+                ? `Verified repository · ${repoLabel}`
+                : "Past production audits for your verified repository"}
+            </p>
+          </div>
+
+          {change && !loading ? (
+            <p
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                change.tone === "up" &&
+                  "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
+                change.tone === "down" &&
+                  "border-red-500/20 bg-red-500/10 text-red-300",
+                change.tone === "flat" &&
+                  "border-zinc-700/60 bg-zinc-950/60 text-zinc-400"
+              )}
+            >
+              {change.tone === "up" ? (
+                <TrendingUp className="h-3.5 w-3.5" aria-hidden />
+              ) : change.tone === "down" ? (
+                <TrendingDown className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <Minus className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {change.label}
+            </p>
+          ) : null}
         </div>
+      ) : null}
 
-        {change && !loading ? (
-          <p
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
-              change.tone === "up" &&
-                "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
-              change.tone === "down" &&
-                "border-red-500/20 bg-red-500/10 text-red-300",
-              change.tone === "flat" &&
-                "border-border bg-background text-textMuted"
-            )}
-          >
-            {change.tone === "up" ? (
-              <TrendingUp className="h-3.5 w-3.5" aria-hidden />
-            ) : change.tone === "down" ? (
-              <TrendingDown className="h-3.5 w-3.5" aria-hidden />
-            ) : (
-              <Minus className="h-3.5 w-3.5" aria-hidden />
-            )}
-            {change.label}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="relative mt-3 min-h-0 flex-1">
+      <div className={cn("relative min-h-0 flex-1", !embedded && "mt-3")}>
         {loading ? (
           <div
-            className="flex h-[188px] items-center justify-center rounded-xl border border-border bg-background"
+            className="flex h-[188px] items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950/50"
             aria-busy="true"
           >
             <Loader2
-              className="h-5 w-5 animate-spin text-brand"
+              className="h-5 w-5 animate-spin text-zinc-400"
               aria-hidden
             />
             <span className="sr-only">Loading score history</span>
@@ -460,17 +468,17 @@ export default function ScoreTrendChart({
         ) : error ? (
           <p
             role="alert"
-            className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-8 text-center text-sm text-red-300"
+            className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-8 text-center text-sm text-red-300"
           >
             {error}
           </p>
         ) : points.length === 0 ? (
-          <p className="rounded-xl border border-border bg-background px-4 py-10 text-center text-sm text-textMuted">
+          <p className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-4 py-10 text-center text-sm text-zinc-500">
             Run a production audit on your repository to start tracking code
             health over time.
           </p>
         ) : (
-          <div className="rounded-xl border border-border bg-background/80 px-1 py-1">
+          <div className="rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-1 py-1">
             <svg
               role="img"
               aria-label={
@@ -503,11 +511,11 @@ export default function ScoreTrendChart({
             >
               <defs>
                 <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.32" />
-                  <stop offset="100%" stopColor="#7c3aed" stopOpacity="0" />
+                  <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#F59E0B" stopOpacity="0" />
                 </linearGradient>
                 <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feGaussianBlur stdDeviation="2.5" result="blur" />
                   <feMerge>
                     <feMergeNode in="blur" />
                     <feMergeNode in="SourceGraphic" />
@@ -528,7 +536,7 @@ export default function ScoreTrendChart({
                           x2={VIEW_WIDTH - PAD.right}
                           y1={y}
                           y2={y}
-                          className="stroke-white/10"
+                          className="stroke-zinc-800"
                           strokeWidth="1"
                         />
                         <text
@@ -551,8 +559,8 @@ export default function ScoreTrendChart({
                   <path
                     d={linePath}
                     fill="none"
-                    stroke="#a78bfa"
-                    strokeWidth="2.25"
+                    stroke="#F59E0B"
+                    strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     filter={`url(#${glowId})`}
@@ -564,7 +572,7 @@ export default function ScoreTrendChart({
                   x2={VIEW_WIDTH - PAD.right}
                   y1={mapped[0].y}
                   y2={mapped[0].y}
-                  stroke="#a78bfa"
+                  stroke="#F59E0B"
                   strokeDasharray="4 6"
                   strokeOpacity="0.45"
                 />
@@ -585,8 +593,8 @@ export default function ScoreTrendChart({
                       cx={point.x}
                       cy={point.y}
                       r={active ? 4.5 : 3.25}
-                      fill={active ? "#ededed" : "#0a0a0a"}
-                      stroke="#a78bfa"
+                      fill={active ? "#FDE68A" : "#0B0B0D"}
+                      stroke="#F59E0B"
                       strokeWidth="2"
                       className="pointer-events-none"
                     />
@@ -623,7 +631,7 @@ export default function ScoreTrendChart({
                     x2={hovered.x}
                     y1={PAD.top}
                     y2={VIEW_HEIGHT - PAD.bottom}
-                    stroke="#a78bfa"
+                    stroke="#F59E0B"
                     strokeOpacity="0.35"
                     strokeDasharray="3 4"
                   />
@@ -636,7 +644,7 @@ export default function ScoreTrendChart({
                     width="108"
                     height="32"
                     rx="8"
-                    className="fill-panel stroke-border"
+                    className="fill-[#0B0B0D] stroke-white/[0.12]"
                     strokeWidth="1"
                   />
                   <text
@@ -648,7 +656,7 @@ export default function ScoreTrendChart({
                     }
                     y={Math.max(hovered.y - 42, 6) + 14}
                     textAnchor="middle"
-                    className="fill-textMain"
+                    className="fill-zinc-100"
                     fontSize="11"
                     fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
                   >
@@ -672,7 +680,7 @@ export default function ScoreTrendChart({
               ) : null}
             </svg>
             {points.length === 1 ? (
-              <p className="px-3 pb-3 text-center text-[11px] text-textMuted">
+              <p className="px-3 pb-3 text-center text-[11px] text-zinc-500">
                 Run another audit to plot improvement over time.
               </p>
             ) : null}

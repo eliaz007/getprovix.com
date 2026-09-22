@@ -24,6 +24,11 @@ import {
 } from "@/lib/resolve-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
+  blendReadinessScore,
+  MAX_COMMIT_HISTORY_PENALTY,
+  STALE_COMMIT_HISTORY_PENALTY,
+} from "@/lib/audit-readiness";
+import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
@@ -124,7 +129,7 @@ Perform three artifact checks plus a chronological timeline conflict check:
 - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support claimed skills. README is a claim sheet, not file-system proof.
 - Check 2 architecture_review: system design signals, folder/module structure from the file tree, and whether the candidate demonstrates architectural thinking.
 - Check 3 api_resiliency: API design, data handling, error handling, and production resiliency signals. Tests, CI workflows, and error handling pass only if filesystem.test_paths, filesystem.ci_workflow_paths, and filesystem.error_handling_paths contain real paths. If evidence is thin, say so explicitly.
-- timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history).
+- timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history). Stale or inactive commit history is not a chronological conflict. Cap any history/cadence integrity ding at ${MAX_COMMIT_HISTORY_PENALTY} points (${STALE_COMMIT_HISTORY_PENALTY} for a finished but inactive project). Never apply a −25 History penalty.
 - Be skeptical but fair; cite concrete file paths from filesystem inspection when available. Repo metadata and external project write-ups are secondary.
 - Do not treat GitHub handle, GitHub login, or GitHub profile name vs Provix display name/codename as a red flag, identity issue, or scoring penalty. Never add a timeline_flag or lower integrity_score because those strings do not match.
 - CODE-FIRST: A missing resume, CV, or experience summary must not lower integrity_score and must not appear in timeline_flags. Score from GitHub file-tree artifacts, commits, and project write-ups. If a resume is present, use it only to check claim-vs-code mismatches.
@@ -363,9 +368,11 @@ function applyScreenFilesystemCap(
   let integrity_score = capped.score;
 
   if (metrics.evidence.inspected) {
-    integrity_score = clampIntegrityScore(
-      Math.round(capped.score * 0.45 + metrics.productionScore * 0.55)
-    );
+    integrity_score = blendReadinessScore({
+      qualitativeScore: capped.score,
+      productionScore: metrics.productionScore,
+      commitDates: githubAudit?.commit_dates,
+    });
     const reCapped = applyFilesystemScoreCap(
       {
         score: integrity_score,
@@ -579,7 +586,7 @@ function buildFallbackScreen(
       timeline_flags.push(
         "Repository shows minimal commit history relative to claimed project ownership."
       );
-      integrity_score -= 15;
+      integrity_score -= MAX_COMMIT_HISTORY_PENALTY;
     }
 
     if (githubAudit.readme_excerpt) {

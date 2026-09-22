@@ -7,10 +7,16 @@ type ScoreMeterProps = {
 
 export default function ScoreMeter({ score, className = "" }: ScoreMeterProps) {
   const clamped = clampScore0to100(score);
+  const fillTone =
+    clamped >= 75
+      ? "bg-emerald-500"
+      : clamped >= 60
+        ? "bg-amber-500"
+        : "bg-rose-500";
 
   return (
     <div
-      className={`h-1.5 w-full overflow-hidden rounded-full bg-black/40 ${className}`.trim()}
+      className={`mt-4 h-2 w-full overflow-hidden rounded-full border border-zinc-800/80 bg-zinc-900/80 ${className}`.trim()}
       role="progressbar"
       aria-label="Score out of 100"
       aria-valuenow={clamped}
@@ -18,7 +24,7 @@ export default function ScoreMeter({ score, className = "" }: ScoreMeterProps) {
       aria-valuemax={100}
     >
       <div
-        className="h-full rounded-full bg-current"
+        className={`h-full rounded-full transition-all duration-300 ${fillTone}`}
         style={{ width: scoreBarWidthPercent(clamped) }}
       />
     </div>

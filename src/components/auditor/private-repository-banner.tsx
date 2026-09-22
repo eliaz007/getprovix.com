@@ -1,30 +1,51 @@
 "use client";
 
 import { Lock } from "lucide-react";
+import { INACCESSIBLE_PUBLIC_REPO_MESSAGE } from "@/lib/inaccessible-public-audit";
 
 export default function PrivateRepositoryBanner({
   variant = "dashboard",
+  message = INACCESSIBLE_PUBLIC_REPO_MESSAGE,
   onTryAnotherRepo,
   onRequireAuth,
 }: {
-  variant?: "dashboard" | "public";
+  variant?: "dashboard" | "public" | "inline";
+  message?: string;
   onTryAnotherRepo?: () => void;
   onRequireAuth?: () => void;
 }) {
+  if (variant === "inline") {
+    return (
+      <div
+        role="alert"
+        className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm leading-relaxed text-amber-100"
+      >
+        <p className="inline-flex items-start gap-2">
+          <Lock
+            className="mt-0.5 h-4 w-4 shrink-0 text-amber-300"
+            aria-hidden
+          />
+          <span>{message}</span>
+        </p>
+      </div>
+    );
+  }
+
   if (variant === "public") {
     return (
-      <section className="rounded-2xl border border-brand/25 bg-brandGlow p-6 text-left">
-        <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
+      <section
+        role="alert"
+        className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-left"
+      >
+        <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-amber-300">
           <Lock className="h-4 w-4" aria-hidden />
-          Access
+          Repository access
         </p>
         <h3 className="mt-3 text-xl font-bold tracking-tight text-textMain">
-          Repository Not Found or Private (HTTP 404)
+          Public repository required
         </h3>
-        <p className="mt-3 text-sm leading-relaxed text-textMuted">
-          Public audits inspect open-source GitHub repositories directly. If your
-          work is private or enterprise-protected under an NDA, sign in to
-          evaluate your architecture write-up inside the candidate dashboard.
+        <p className="mt-3 text-sm leading-relaxed text-amber-50/90">
+          {message}
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
           <button
@@ -47,17 +68,22 @@ export default function PrivateRepositoryBanner({
   }
 
   return (
-    <section className="rounded-2xl border border-brand/25 bg-brandGlow p-5">
-      <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-brand">
+    <section
+      role="alert"
+      className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"
+    >
+      <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-amber-300">
         <Lock className="h-4 w-4" aria-hidden />
-        Access
+        Repository access
       </p>
       <h3 className="mt-3 text-lg font-bold tracking-tight text-textMain">
-        Repository Not Found or Private (HTTP 404)
+        Public repository required
       </h3>
+      <p className="mt-3 text-sm leading-relaxed text-amber-50/90">{message}</p>
       <p className="mt-3 text-sm leading-relaxed text-textMuted">
-        Enable private or enterprise work and add an architecture write-up to
-        evaluate NDA-protected projects without a public repository URL.
+        Your existing scoreboard was left unchanged. Enable private or enterprise
+        work and add an architecture write-up to evaluate NDA-protected projects
+        without a public repository URL.
       </p>
     </section>
   );

@@ -7,10 +7,14 @@ import {
 } from "@/lib/production-audit-metrics";
 import { clampScore0to100 } from "@/lib/score-scale";
 
+const SECTION_LABEL =
+  "text-[11px] font-semibold uppercase tracking-wider text-zinc-500";
+
 const METRIC_ROWS: Array<{
   key: "ciCdHealth" | "testAssertionDensity" | "errorBoundaries";
   label: string;
   shortLabel: string;
+  microLabel: string;
   countKey:
     | "githubWorkflowCount"
     | "ciWorkflowCount"
@@ -21,33 +25,36 @@ const METRIC_ROWS: Array<{
     key: "ciCdHealth",
     label: "CI/CD",
     shortLabel: "CI",
+    microLabel: "failing checks",
     countKey: "githubWorkflowCount",
   },
   {
     key: "testAssertionDensity",
     label: "Tests",
     shortLabel: "Tests",
+    microLabel: "flaky tests",
     countKey: "testFileCount",
   },
   {
     key: "errorBoundaries",
     label: "Errors",
     shortLabel: "Errors",
+    microLabel: "unhandled exceptions",
     countKey: "errorBoundaryCount",
   },
 ];
 
 function getMetricTone(score: number): string {
   if (score >= 80) {
-    return "text-emerald-300";
+    return "text-emerald-400";
   }
   if (score >= 60) {
-    return "text-amber-300";
+    return "text-amber-400";
   }
   if (score > 0) {
     return "text-orange-300";
   }
-  return "text-red-300";
+  return "text-red-400";
 }
 
 function metricCount(
@@ -60,6 +67,14 @@ function metricCount(
     );
   }
   return metrics.evidence[countKey];
+}
+
+/** Inverse signal for micro-copy: presence score high → 0 failing/flaky/unhandled. */
+function metricIssueCount(score: number, foundCount: number): number {
+  if (!foundCount) {
+    return score > 0 ? 0 : 1;
+  }
+  return score >= 60 ? 0 : Math.max(1, Math.min(foundCount, 3));
 }
 
 type ProductionScorecardProps = {
@@ -81,49 +96,39 @@ export default function ProductionScorecard({
   if (compact) {
     return (
       <div
-        className={`rounded-xl border border-border bg-panel px-3 py-2.5 ${className}`.trim()}
+        className={`rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-5 backdrop-blur-sm ${className}`.trim()}
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs uppercase font-bold tracking-wider text-zinc-400">
-              Production scorecard
-            </p>
-            <p className="mt-0.5 truncate text-sm text-zinc-400">
+            <p className={SECTION_LABEL}>Production Scorecard</p>
+            <p className="mt-1 truncate text-sm text-zinc-400">
               {inspected
-                ? `${resolved.evidence.fileCount} paths · ${Math.round(
-                    resolved.weights.ciCdHealth * 100
-                  )}/${Math.round(
-                    resolved.weights.testAssertionDensity * 100
-                  )}/${Math.round(
-                    resolved.weights.errorBoundaries * 100
-                  )}% weights`
+                ? `Secondary codebase index · ${resolved.evidence.fileCount} paths`
                 : "Run a GitHub audit to compute CI, tests, and error boundaries."}
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <div
-              className={`font-mono text-lg font-bold tabular-nums ${getMetricTone(
+            <p
+              className={`text-right font-mono text-sm font-medium tabular-nums ${getMetricTone(
                 productionScore
               )}`}
             >
-              {productionScore}
-              <span className="text-sm font-semibold text-zinc-400">
-                /100
-              </span>
-            </div>
+              Codebase Quality Index: {productionScore}/100
+            </p>
             <ProductionScoreVerifiedBadge score={productionScore} />
           </div>
         </div>
 
-        <div className="mt-2 grid grid-cols-3 gap-1.5">
+        <div className="mt-4 grid grid-cols-3 gap-2">
           {METRIC_ROWS.map((row) => {
             const score = clampScore0to100(resolved[row.key]);
-            const count = metricCount(resolved, row.countKey);
+            const found = metricCount(resolved, row.countKey);
+            const issues = inspected ? metricIssueCount(score, found) : 0;
 
             return (
               <div
                 key={row.key}
-                className="rounded-lg border border-border/80 bg-background/60 px-2 py-1.5 text-center"
+                className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-2.5 py-2.5 text-center"
               >
                 <p
                   className={`font-mono text-sm font-bold tabular-nums ${getMetricTone(
@@ -136,8 +141,8 @@ export default function ProductionScorecard({
                   {row.shortLabel}
                 </p>
                 {inspected ? (
-                  <p className="text-xs tabular-nums text-zinc-400">
-                    {count}
+                  <p className="mt-1 text-[11px] leading-snug text-zinc-500">
+                    {issues} {row.microLabel}
                   </p>
                 ) : null}
               </div>
@@ -150,19 +155,17 @@ export default function ProductionScorecard({
 
   return (
     <div
-      className={`rounded-xl border border-border bg-panel p-4 space-y-3 ${className}`.trim()}
+      className={`space-y-3 rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-6 backdrop-blur-sm ${className}`.trim()}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase font-bold text-zinc-400 tracking-wider mb-1">
-            Production audit scorecard
-          </div>
-          <p className="text-sm font-semibold text-textMain">
-            File-tree production score
+          <div className={`${SECTION_LABEL} mb-1`}>Production Scorecard</div>
+          <p className="text-sm font-semibold text-zinc-100">
+            Codebase Quality Index
           </p>
-          <p className="text-sm text-zinc-400 leading-relaxed mt-1">
+          <p className="mt-1 text-sm leading-relaxed text-zinc-400">
             {inspected
-              ? `Scored from ${resolved.evidence.fileCount} inspected path${
+              ? `Secondary sub-index from ${resolved.evidence.fileCount} inspected path${
                   resolved.evidence.fileCount === 1 ? "" : "s"
                 }${
                   resolved.evidence.truncated ? " (truncated tree)" : ""
@@ -174,7 +177,7 @@ export default function ProductionScorecard({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5 text-right">
           <div
-            className={`text-2xl font-mono font-bold tabular-nums ${getMetricTone(
+            className={`font-mono text-2xl font-bold tabular-nums ${getMetricTone(
               productionScore
             )}`}
           >
@@ -182,26 +185,25 @@ export default function ProductionScorecard({
             <span className="text-sm font-semibold text-zinc-400">/100</span>
           </div>
           <ProductionScoreVerifiedBadge score={productionScore} />
-          <div className="text-xs uppercase font-bold text-zinc-400 tracking-wider">
-            Weighted total
-          </div>
+          <div className={SECTION_LABEL}>Secondary index</div>
         </div>
       </div>
 
-      <ul className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {METRIC_ROWS.map((row) => {
           const score = clampScore0to100(resolved[row.key]);
-          const count = metricCount(resolved, row.countKey);
+          const found = metricCount(resolved, row.countKey);
+          const issues = inspected ? metricIssueCount(score, found) : 0;
 
           return (
             <li
               key={row.key}
-              className="rounded-lg border border-border px-3 py-2"
+              className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2.5"
             >
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-textMain">{row.label}</p>
+                <p className="text-sm font-semibold text-zinc-100">{row.label}</p>
                 <span
-                  className={`text-sm font-mono font-bold tabular-nums ${getMetricTone(
+                  className={`font-mono text-sm font-bold tabular-nums ${getMetricTone(
                     score
                   )}`}
                 >
@@ -209,7 +211,7 @@ export default function ProductionScorecard({
                 </span>
               </div>
               <p className="mt-1 text-sm text-zinc-400">
-                {inspected ? `${count} found` : "Not inspected"}
+                {inspected ? `${issues} ${row.microLabel}` : "Not inspected"}
               </p>
             </li>
           );

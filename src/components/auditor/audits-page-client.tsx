@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
-import VerifiedCodeQualityScorecard from "@/components/dashboard/verified-code-quality-scorecard";
-import ScoreTrendChart from "@/components/dashboard/score-trend-chart";
+import VerificationDossierPanel from "@/components/auditor/verification-dossier-panel";
 import {
   parseProductionAuditFromProfileRow,
   type ProductionAuditRecord,
@@ -70,47 +69,23 @@ export default function AuditsPageClient({
     };
   }, []);
 
-  const handleVisibilityChange = (nextVisible: boolean) => {
-    setScorecard((prev) =>
-      prev ? { ...prev, isPubliclyVisible: nextVisible } : prev
-    );
-  };
-
   return (
-    <GitHubResumeAuditor
-      key={`${initialGithubUrl}-${initialPrivateWork ? "private" : "public"}`}
-      initialGithubUrl={initialGithubUrl}
-      initialPrivateWork={initialPrivateWork}
-      sidePanel={
-        showScorecard ? (
-          <ScoreTrendChart
-            className="h-full"
-            repoUrl={scorecard?.breakdown.audited_repo_url}
-            current={
-              scorecard
-                ? {
-                    score: scorecard.productionScore,
-                    auditedAt: scorecard.breakdown.audited_at,
-                    repoUrl: scorecard.breakdown.audited_repo_url,
-                  }
-                : null
-            }
-          />
-        ) : undefined
-      }
-      scoreSummary={
-        showScorecard ? (
-          <VerifiedCodeQualityScorecard
-            compact={false}
-            record={scorecard}
-            onVisibilityChange={handleVisibilityChange}
-          />
-        ) : null
-      }
-      onAuditPersisted={(record) => {
-        setShowScorecard(true);
-        setScorecard(record);
-      }}
-    />
+    <div className="-mx-4 -my-8 min-h-[calc(100vh-3.5rem)] bg-[#0B0B0D] px-4 py-8">
+      <GitHubResumeAuditor
+        key={`${initialGithubUrl}-${initialPrivateWork ? "private" : "public"}`}
+        initialGithubUrl={initialGithubUrl}
+        initialPrivateWork={initialPrivateWork}
+        sidePanel={
+          showScorecard ? (
+            <VerificationDossierPanel scorecard={scorecard} className="h-full" />
+          ) : undefined
+        }
+        scoreSummary={null}
+        onAuditPersisted={(record) => {
+          setShowScorecard(true);
+          setScorecard(record);
+        }}
+      />
+    </div>
   );
 }

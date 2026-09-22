@@ -47,6 +47,7 @@ type DashboardNavContextValue = {
   userId: string | null;
   userAvatarUrl: string | null;
   userInitials: string;
+  userDisplayName: string;
   authLoading: boolean;
   contentReady: boolean;
   setContentReady: (ready: boolean) => void;
@@ -70,6 +71,7 @@ const DashboardNavContext = createContext<DashboardNavContextValue | null>(null)
 function getUserHeaderIdentity(user: User): {
   avatarUrl: string | null;
   initials: string;
+  displayName: string;
 } {
   const meta = user.user_metadata ?? {};
   const avatarUrl =
@@ -89,8 +91,12 @@ function getUserHeaderIdentity(user: User): {
       .join("")
       .slice(0, 2)
       .toUpperCase() || "U";
+  const displayName =
+    name.split("@")[0]?.trim() ||
+    (typeof meta.name === "string" && meta.name.trim()) ||
+    "User";
 
-  return { avatarUrl, initials };
+  return { avatarUrl, initials, displayName };
 }
 
 function readClientTabParam(): string | null {
@@ -162,6 +168,7 @@ function DashboardNavProviderImpl({
   const [userId, setUserId] = useState<string | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   const [userInitials, setUserInitials] = useState("U");
+  const [userDisplayName, setUserDisplayName] = useState("User");
   const [authLoading, setAuthLoading] = useState(true);
   const [contentReady, setContentReadyState] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -296,6 +303,7 @@ function DashboardNavProviderImpl({
           setUserId(null);
           setUserAvatarUrl(null);
           setUserInitials("U");
+          setUserDisplayName("User");
           setAccountRole(null);
           setIsVerifiedEmployer(false);
           return;
@@ -305,6 +313,7 @@ function DashboardNavProviderImpl({
         setUserId(user.id);
         setUserAvatarUrl(identity.avatarUrl);
         setUserInitials(identity.initials);
+        setUserDisplayName(identity.displayName);
         setAuthModalOpen(false);
 
         let profile: { role?: string | null; is_verified?: boolean | null } | null =
@@ -418,6 +427,7 @@ function DashboardNavProviderImpl({
       userId,
       userAvatarUrl,
       userInitials,
+      userDisplayName,
       authLoading,
       contentReady,
       setContentReady,
@@ -443,6 +453,7 @@ function DashboardNavProviderImpl({
       userId,
       userAvatarUrl,
       userInitials,
+      userDisplayName,
       authLoading,
       contentReady,
       setContentReady,

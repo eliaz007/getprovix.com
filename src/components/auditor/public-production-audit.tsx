@@ -26,9 +26,11 @@ import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBa
 import GuestAuthModal from "@/components/GuestAuthModal";
 import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
 import {
+  INACCESSIBLE_PUBLIC_REPO_MESSAGE,
   isInaccessiblePublicAudit,
   isPrivateOrNotFoundAuditResponse,
 } from "@/lib/inaccessible-public-audit";
+import Toast from "@/components/Toast";
 import {
   getGitHubUrlValidationMessage,
   hasUsableGitHubAuditTarget,
@@ -123,6 +125,10 @@ export default function PublicProductionAudit({
   const [result, setResult] = useState<AuditResult | null>(null);
   const [claim, setClaim] = useState<ProductionAuditClaim | null>(null);
   const [inaccessibleRepo, setInaccessibleRepo] = useState(false);
+  const [inaccessibleWarning, setInaccessibleWarning] = useState<string | null>(
+    null
+  );
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [limitReached, setLimitReached] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -192,6 +198,8 @@ export default function PublicProductionAudit({
     setResult(null);
     setClaim(null);
     setInaccessibleRepo(false);
+    setInaccessibleWarning(null);
+    setToastMessage(null);
     startStageProgress();
 
     try {
@@ -215,13 +223,18 @@ export default function PublicProductionAudit({
       try {
         data = (await readJsonResponse(response)) as typeof data;
       } catch {
-        if (response.status === 404 || response.status === 403) {
+        if (
+          response.status === 401 ||
+          response.status === 403 ||
+          response.status === 404
+        ) {
           setInaccessibleRepo(true);
+          setInaccessibleWarning(INACCESSIBLE_PUBLIC_REPO_MESSAGE);
+          setToastMessage(INACCESSIBLE_PUBLIC_REPO_MESSAGE);
           setResult(null);
           setClaim(null);
           openAuthModal({
-            description:
-              "This repository looks private or enterprise-protected. Sign in or create an account to continue with a private architecture write-up.",
+            description: INACCESSIBLE_PUBLIC_REPO_MESSAGE,
             nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
             intent: PRIVATE_AUDIT_INTENT,
           });
@@ -235,7 +248,11 @@ export default function PublicProductionAudit({
         isInaccessiblePublicAudit({ status: response.status, result: data })
       ) {
         setLimitReached(Boolean(data.limit_reached));
+        const warning =
+          data.error?.trim() || INACCESSIBLE_PUBLIC_REPO_MESSAGE;
         setInaccessibleRepo(true);
+        setInaccessibleWarning(warning);
+        setToastMessage(warning);
         setResult(null);
         setClaim(null);
         try {
@@ -243,16 +260,14 @@ export default function PublicProductionAudit({
           const { data: sessionData } = await supabase.auth.getUser();
           if (!sessionData.user) {
             openAuthModal({
-              description:
-                "This repository looks private or enterprise-protected. Sign in or create an account to continue with a private architecture write-up.",
+              description: warning,
               nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
               intent: PRIVATE_AUDIT_INTENT,
             });
           }
         } catch {
           openAuthModal({
-            description:
-              "This repository looks private or enterprise-protected. Sign in or create an account to continue with a private architecture write-up.",
+            description: warning,
             nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
             intent: PRIVATE_AUDIT_INTENT,
           });
@@ -357,6 +372,8 @@ export default function PublicProductionAudit({
     setResult(null);
     setClaim(null);
     setInaccessibleRepo(false);
+    setInaccessibleWarning(null);
+    setToastMessage(null);
     setError(null);
     autoStartedRef.current = "";
     inFlightRef.current = false;
@@ -370,8 +387,7 @@ export default function PublicProductionAudit({
 
   const requireAuthForPrivateRepo = () => {
     openAuthModal({
-      description:
-        "Private and enterprise repositories need an account so you can submit an architecture write-up from the candidate dashboard.",
+      description: INACCESSIBLE_PUBLIC_REPO_MESSAGE,
       nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
       intent: PRIVATE_AUDIT_INTENT,
     });
@@ -394,6 +410,14 @@ export default function PublicProductionAudit({
   useEffect(() => {
     onHasResultsChange?.(hasResults);
   }, [hasResults, onHasResultsChange]);
+
+  useEffect(() => {
+    if (!toastMessage) {
+      return;
+    }
+    const timer = window.setTimeout(() => setToastMessage(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [toastMessage]);
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
@@ -428,6 +452,12 @@ export default function PublicProductionAudit({
           <p role="alert" className="mt-3 text-left text-sm text-red-300">
             {githubValidationMessage}
           </p>
+        ) : null}
+        {inaccessibleWarning ? (
+          <PrivateRepositoryBanner
+            variant="inline"
+            message={inaccessibleWarning}
+          />
         ) : null}
       </form>
 
@@ -510,6 +540,7 @@ export default function PublicProductionAudit({
       {!loading && inaccessibleRepo ? (
         <PrivateRepositoryBanner
           variant="public"
+          message={inaccessibleWarning ?? INACCESSIBLE_PUBLIC_REPO_MESSAGE}
           onTryAnotherRepo={resetForAnotherRepo}
           onRequireAuth={requireAuthForPrivateRepo}
         />
@@ -609,6 +640,8 @@ export default function PublicProductionAudit({
         nextPath={authNextPath}
         loginHref={`/login?intent=${encodeURIComponent(authIntent)}&next=${encodeURIComponent(authNextPath)}`}
       />
+
+      <Toast message={toastMessage} variant="error" />
     </div>
   );
 }
