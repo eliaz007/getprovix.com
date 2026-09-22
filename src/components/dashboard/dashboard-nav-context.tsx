@@ -19,7 +19,6 @@ import {
   EMPLOYER_DASHBOARD_PATH,
   isEmployerAllowedDashboardRequest,
   normalizeAccountKind,
-  ROLE_ONBOARDING_PATH,
 } from "@/lib/account-role";
 import { isAdminUser } from "@/lib/admin-access";
 import {
@@ -360,7 +359,7 @@ function DashboardNavProviderImpl({
 
         const assignedRole = normalizeAccountKind(profile?.role);
         if (!assignedRole && !isAdminUser(user)) {
-          router.replace(ROLE_ONBOARDING_PATH);
+          router.replace("/onboarding");
           return;
         }
 

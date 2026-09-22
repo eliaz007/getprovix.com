@@ -139,13 +139,15 @@ export async function updateSession(request: NextRequest) {
       request.nextUrl.search
     );
     const onRoleOnboarding = isRoleOnboardingPath(pathname);
+    const onOnboardingFlow =
+      pathname === "/onboarding" || pathname.startsWith("/onboarding/");
     const needsRole =
       isHome ||
       isLogin ||
       isEmployer ||
       employerRequest ||
       isAuditorPath(pathname) ||
-      onRoleOnboarding ||
+      onOnboardingFlow ||
       (isProtectedRoute && !isLogin);
 
     let role: ReturnType<typeof normalizeAccountKind> = null;
@@ -178,7 +180,7 @@ export async function updateSession(request: NextRequest) {
       if (
         !role &&
         !isAdminUser(user) &&
-        !onRoleOnboarding &&
+        !onOnboardingFlow &&
         !isLogin &&
         (isProtectedRoute || isHome)
       ) {

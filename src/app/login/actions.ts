@@ -5,10 +5,7 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
 import {
   loadProfileAccountKind,
-  persistAccountRole,
-  persistEmployerAccount,
   resolvePostAuthDestination,
-  signupMetadataForKind,
 } from "@/lib/account-role";
 import { getStandardEmailValidationMessage } from "@/lib/validate-email";
 import { createClient } from "@/utils/supabase/server";
@@ -68,7 +65,6 @@ export async function signUpWithEmail(
   email: string,
   password: string,
   rawData: {
-    role: "candidate" | "business";
     first_name: string;
     last_name: string;
   }
@@ -87,10 +83,10 @@ export async function signUpWithEmail(
       email,
       password,
       options: {
-        data: signupMetadataForKind(rawData.role, {
+        data: {
           first_name: rawData.first_name,
           last_name: rawData.last_name,
-        }),
+        },
       },
     });
 
@@ -106,27 +102,6 @@ export async function signUpWithEmail(
         authError = authFailure(signInError);
       }
     }
-
-    if (!authError) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user && rawData.role === "business") {
-        await persistEmployerAccount(
-          supabase,
-          user.id,
-          user.email ?? email
-        );
-      } else if (user && rawData.role === "candidate") {
-        await persistAccountRole(
-          supabase,
-          user.id,
-          "candidate",
-          user.email ?? email
-        );
-      }
-    }
   } catch (err) {
     if (isRedirectError(err)) {
       throw err;
@@ -139,9 +114,5 @@ export async function signUpWithEmail(
   }
 
   revalidatePath("/", "layout");
-  redirect(
-    resolvePostAuthDestination({
-      role: rawData.role === "business" ? "employer" : "candidate",
-    })
-  );
+  redirect("/onboarding");
 }

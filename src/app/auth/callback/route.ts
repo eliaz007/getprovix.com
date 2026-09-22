@@ -5,7 +5,6 @@ import { isAdminUser } from "@/lib/admin-access";
 import {
   normalizeAccountKind,
   resolvePostAuthDestination,
-  ROLE_ONBOARDING_PATH,
 } from "@/lib/account-role";
 import { EMPLOYER_SIGNUP_COOKIE } from "@/lib/google-auth";
 
@@ -213,7 +212,7 @@ export async function GET(request: NextRequest) {
   const assignedRole = normalizeAccountKind(role);
   const destination =
     !assignedRole && !isAdminUser(user)
-      ? ROLE_ONBOARDING_PATH
+      ? "/onboarding"
       : resolvePostAuthDestination({
           role: assignedRole,
           requestedNext: nextParam,
