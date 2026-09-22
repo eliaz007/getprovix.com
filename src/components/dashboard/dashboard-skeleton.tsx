@@ -78,37 +78,35 @@ export function DashboardContentSkeleton() {
 export default function DashboardSkeleton() {
   return (
     <div
-      className="flex h-screen flex-col overflow-hidden bg-background text-textMain"
+      className="flex min-h-screen bg-[#0B0B0D] text-textMain"
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
       <span className="sr-only">Loading dashboard</span>
 
-      <header className="sticky top-0 z-50 w-full border-b border-white/[0.07] bg-[#0c0c10]/80 backdrop-blur-xl">
-        <div className="relative mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
-          <div className="flex shrink-0 items-center gap-2.5">
-            <Pulse className="h-7 w-7 shrink-0 rounded-lg bg-white/10" />
-            <Pulse className="hidden h-3 w-16 rounded bg-white/10 sm:block" />
-          </div>
-          <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block">
-            <div className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-[#14141b]/90 p-1">
-              <Pulse className="h-7 w-20 rounded-full bg-white/10" />
-              <Pulse className="h-7 w-24 rounded-full bg-white/10" />
-              <Pulse className="h-7 w-16 rounded-full bg-white/10" />
-              <Pulse className="h-7 w-16 rounded-full bg-white/10" />
-            </div>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <Pulse className="hidden h-5 w-20 rounded-full bg-white/10 sm:block" />
-            <Pulse className="h-8 w-8 rounded-full bg-white/10" />
-            <Pulse className="h-8 w-8 rounded-[22%] bg-white/10" />
-          </div>
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-white/[0.08] bg-[#0E0E12] p-5 md:flex">
+        <div className="flex items-center gap-3">
+          <Pulse className="h-8 w-8 rounded-[22%] bg-white/10" />
+          <Pulse className="h-3 w-20 rounded bg-white/10" />
         </div>
-      </header>
+        <Pulse className="mt-2 h-5 w-28 rounded-md bg-white/5" />
+        <div className="mt-6 space-y-2">
+          <Pulse className="h-3 w-16 rounded bg-white/5" />
+          <Pulse className="h-8 w-full rounded-lg bg-white/5" />
+          <Pulse className="h-8 w-full rounded-lg bg-white/5" />
+          <Pulse className="h-8 w-full rounded-lg bg-white/5" />
+          <Pulse className="mt-4 h-3 w-16 rounded bg-white/5" />
+          <Pulse className="h-8 w-full rounded-lg bg-white/5" />
+          <Pulse className="h-8 w-full rounded-lg bg-white/5" />
+        </div>
+        <div className="mt-auto border-t border-white/[0.06] pt-4">
+          <Pulse className="h-8 w-full rounded-md bg-white/5" />
+        </div>
+      </aside>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="mx-auto w-full max-w-6xl px-4 py-8">
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div className="mx-auto w-full max-w-6xl p-8">
           <DashboardContentSkeleton />
         </div>
       </div>

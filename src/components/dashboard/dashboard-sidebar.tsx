@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { ShieldCheck, Terminal } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  Send,
+  ShieldCheck,
+  Terminal,
+  Briefcase,
+  type LucideIcon,
+} from "lucide-react";
 import {
   dashboardTabHref,
   isAuditorPath,
@@ -13,127 +20,30 @@ import {
   isOpportunitiesPath,
   type DashboardTab,
 } from "@/lib/dashboard-account";
-import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 
-const ALIGN_X = "px-2.5";
-const navListClass = "m-0 flex list-none flex-col gap-0.5 p-0";
-const navItemShellClass = "order-none w-full shrink-0";
-const sectionHeaderClass = `${ALIGN_X} text-[10px] font-mono uppercase tracking-widest text-zinc-500 font-semibold mb-1.5 block`;
+type NavItemDef =
+  | {
+      key: string;
+      label: string;
+      icon: LucideIcon;
+      kind: "tab";
+      tab: DashboardTab;
+    }
+  | {
+      key: string;
+      label: string;
+      icon: LucideIcon;
+      kind: "href";
+      href: string;
+      isActive: (pathname: string) => boolean;
+    };
 
-/** Approx. zinc-850 — between zinc-800 and zinc-900 (not in default Tailwind). */
-const ACTIVE_PILL =
-  "bg-[#1f1f22]/90 text-zinc-100 border border-zinc-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]";
-const INACTIVE_ITEM = "text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-zinc-900/60";
-
-function navItemClass(isActive: boolean) {
-  return `w-full text-left ${ALIGN_X} py-1.5 rounded-md text-xs font-medium flex items-center gap-2.5 transition-all cursor-pointer border ${
-    isActive ? ACTIVE_PILL : INACTIVE_ITEM
-  }`;
-}
-
-type NavVisibility = {
-  isBusinessAccount: boolean;
-  isEmployeeAccount: boolean;
-  isGuest: boolean;
-  showTalentPoolNav: boolean;
+type NavGroup = {
+  id: string;
+  title: string;
+  items: NavItemDef[];
 };
-
-const CANDIDATE_PRIMARY_NAV = [
-  {
-    key: "my_profile",
-    tab: "my_profile" as const,
-    label: "My Profile",
-    icon: "User" as const,
-  },
-  {
-    key: "opportunities",
-    tab: "opportunities" as const,
-    label: "Provix Talent Network",
-    icon: "Compass" as const,
-  },
-  {
-    key: "intro_requests",
-    tab: "intro_requests" as const,
-    label: "Intro Requests",
-    icon: "Mail" as const,
-  },
-] as const;
-
-const CAREER_ACCELERATOR_NAV = [
-  {
-    key: "github-auditor",
-    href: "/dashboard/auditor",
-    label: "Code & Resume Auditor",
-  },
-  {
-    key: "interview-prep",
-    href: "/dashboard/interview-prep",
-    label: "Interview Simulator",
-  },
-] as const;
-
-const EMPLOYEE_HUB_NAV = [
-  {
-    key: "opportunity_radar",
-    tab: "opportunity_radar" as const,
-    label: "Provix Talent Network",
-    icon: "Radar" as const,
-  },
-  {
-    key: "applications",
-    tab: "applications" as const,
-    label: "Applications",
-    icon: "Document" as const,
-  },
-] as const;
-
-const EMPLOYER_HUB_NAV = [
-  {
-    key: "my_profile",
-    tab: "my_profile" as const,
-    label: "Company Profile",
-    icon: "User" as const,
-  },
-  {
-    key: "applicants",
-    tab: "applicants" as const,
-    label: "Applicants",
-    icon: "Briefcase" as const,
-  },
-] as const;
-
-const EMPLOYER_CONSOLE_NAV = [
-  {
-    key: "talent",
-    tab: "talent" as const,
-    label: "Provix Talent Network",
-    icon: "Users" as const,
-  },
-  {
-    key: "evaluator",
-    tab: "evaluator" as const,
-    label: "AI Screen Candidate",
-    icon: "Document" as const,
-  },
-  {
-    key: "auditor",
-    tab: "auditor" as const,
-    label: "Code & Resume Auditor",
-    icon: "Shield" as const,
-  },
-] as const;
-
-function isPrimaryNavVisible(
-  key: (typeof CANDIDATE_PRIMARY_NAV)[number]["key"],
-  visibility: NavVisibility
-) {
-  if (key === "my_profile") {
-    return true;
-  }
-
-  return !visibility.isBusinessAccount;
-}
 
 function isNavTabActive(
   tab: DashboardTab,
@@ -157,220 +67,347 @@ function isNavTabActive(
   return isDashboardRootPath(pathname) && activeTab === tab;
 }
 
-function NavIcon({
-  name,
-  active = false,
-}: {
-  name:
-    | "User"
-    | "Compass"
-    | "Mail"
-    | "Radar"
-    | "Document"
-    | "Users"
-    | "Shield"
-    | "Briefcase";
-  active?: boolean;
-}) {
-  const tone = active ? "text-zinc-200" : "text-zinc-400";
+function navItemClass(isActive: boolean) {
+  const base =
+    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs font-mono transition-colors cursor-pointer";
+  if (isActive) {
+    return `${base} border border-white/[0.08] bg-white/[0.04] font-medium text-zinc-100`;
+  }
+  return `${base} border border-transparent text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200`;
+}
 
-  if (name === "Shield") {
-    return (
-      <span
-        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${tone}`}
-      >
-        <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-      </span>
-    );
+function buildCandidateGroups(): NavGroup[] {
+  return [
+    {
+      id: "platform",
+      title: "PLATFORM",
+      items: [
+        {
+          key: "overview",
+          label: "Overview",
+          icon: LayoutDashboard,
+          kind: "tab",
+          tab: "my_profile",
+        },
+        {
+          key: "auditor",
+          label: "Auditor",
+          icon: ShieldCheck,
+          kind: "href",
+          href: "/dashboard/auditor",
+          isActive: isAuditorPath,
+        },
+        {
+          key: "simulator",
+          label: "Simulator",
+          icon: Terminal,
+          kind: "href",
+          href: "/dashboard/simulator",
+          isActive: isInterviewPrepPath,
+        },
+      ],
+    },
+    {
+      id: "matching",
+      title: "MATCHING",
+      items: [
+        {
+          key: "talent",
+          label: "Talent Network",
+          icon: Users,
+          kind: "tab",
+          tab: "opportunities",
+        },
+        {
+          key: "intros",
+          label: "Intro Requests",
+          icon: Send,
+          kind: "tab",
+          tab: "intro_requests",
+        },
+      ],
+    },
+  ];
+}
+
+function buildEmployerGroups(showTalentPool: boolean): NavGroup[] {
+  const platform: NavItemDef[] = [
+    {
+      key: "overview",
+      label: "Overview",
+      icon: LayoutDashboard,
+      kind: "tab",
+      tab: "my_profile",
+    },
+    {
+      key: "applicants",
+      label: "Applicants",
+      icon: Briefcase,
+      kind: "tab",
+      tab: "applicants",
+    },
+  ];
+
+  const groups: NavGroup[] = [
+    { id: "platform", title: "PLATFORM", items: platform },
+  ];
+
+  if (showTalentPool) {
+    groups.push({
+      id: "matching",
+      title: "MATCHING",
+      items: [
+        {
+          key: "talent",
+          label: "Talent Network",
+          icon: Users,
+          kind: "tab",
+          tab: "talent",
+        },
+        {
+          key: "evaluator",
+          label: "AI Screen",
+          icon: Terminal,
+          kind: "tab",
+          tab: "evaluator",
+        },
+        {
+          key: "auditor",
+          label: "Auditor",
+          icon: ShieldCheck,
+          kind: "tab",
+          tab: "auditor",
+        },
+      ],
+    });
   }
 
-  const Icon = DashboardIcons[name];
+  return groups;
+}
+
+function buildEmployeeGroups(): NavGroup[] {
+  return [
+    {
+      id: "matching",
+      title: "MATCHING",
+      items: [
+        {
+          key: "talent",
+          label: "Talent Network",
+          icon: Users,
+          kind: "tab",
+          tab: "opportunity_radar",
+        },
+        {
+          key: "applications",
+          label: "Applications",
+          icon: Send,
+          kind: "tab",
+          tab: "applications",
+        },
+      ],
+    },
+  ];
+}
+
+function SidebarBrand({ badge }: { badge: string }) {
   return (
-    <span
-      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${tone}`}
-    >
-      <Icon />
-    </span>
+    <div>
+      <Link
+        href="/"
+        className="flex items-center gap-3 transition-opacity hover:opacity-90"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand/provix-mark.jpg"
+          alt=""
+          className="h-8 w-8 rounded-[22%] object-cover"
+        />
+        <span className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-zinc-100">
+          PROVIX
+        </span>
+      </Link>
+      <span className="mt-2 inline-block rounded-md border border-white/[0.05] bg-white/[0.02] px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+        {badge}
+      </span>
+    </div>
   );
 }
 
-function ToolIcon({
-  kind,
-  active,
+function NavItemRow({
+  item,
+  isActive,
 }: {
-  kind: "auditor" | "interview";
-  active: boolean;
-}) {
-  const tone = active ? "text-zinc-200" : "text-zinc-400";
-  const Icon = kind === "auditor" ? ShieldCheck : Terminal;
-  return <Icon className={`h-4 w-4 shrink-0 ${tone}`} aria-hidden="true" />;
-}
-
-function DashboardTabLink({
-  tab,
-  label,
-  iconName,
-}: {
-  tab: DashboardTab;
-  label: string;
-  iconName:
-    | "User"
-    | "Compass"
-    | "Mail"
-    | "Radar"
-    | "Document"
-    | "Users"
-    | "Shield"
-    | "Briefcase";
+  item: NavItemDef;
+  isActive: boolean;
 }) {
   const pathname = usePathname();
   const {
-    activeTab,
     setActiveTab,
     setMobileNavOpen,
     isGuest,
     isBusinessAccount,
     requireAuth,
   } = useDashboardNav();
-  const isActive = isNavTabActive(tab, pathname, activeTab);
-  const href =
-    tab === "my_profile" && isBusinessAccount
-      ? "/dashboard?tab=my_profile"
-      : dashboardTabHref(tab);
-  const icon = <NavIcon name={iconName} active={isActive} />;
 
-  const selectTab = () => {
-    setActiveTab(tab);
-    setMobileNavOpen(false);
-  };
+  const Icon = item.icon;
+  const className = navItemClass(isActive);
 
-  let control: ReactNode;
+  const leading = isActive ? (
+    <span
+      aria-hidden
+      className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]"
+    />
+  ) : (
+    <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+  );
 
-  if (tab === "opportunities") {
-    control = (
-      <Link
-        href={dashboardTabHref(tab)}
-        onClick={() => setMobileNavOpen(false)}
-        className={navItemClass(isActive)}
-      >
-        {icon}
-        <span className="truncate">{label}</span>
-      </Link>
-    );
-  } else if (isGuest) {
-    control = (
+  const label = <span className="truncate">{item.label}</span>;
+
+  const closeMobile = () => setMobileNavOpen(false);
+
+  if (isGuest) {
+    return (
       <button
         type="button"
         onClick={() => {
-          setMobileNavOpen(false);
+          closeMobile();
           requireAuth();
         }}
-        className={navItemClass(isActive)}
+        className={className}
+        aria-current={isActive ? "page" : undefined}
       >
-        {icon}
-        <span className="truncate">{label}</span>
+        {leading}
+        {label}
       </button>
     );
-  } else if (isDashboardRootPath(pathname)) {
-    control = (
-      <button
-        type="button"
-        onClick={selectTab}
-        className={navItemClass(isActive)}
+  }
+
+  if (item.kind === "href") {
+    return (
+      <Link
+        href={item.href}
+        onClick={closeMobile}
+        className={className}
+        aria-current={isActive ? "page" : undefined}
       >
-        {icon}
-        <span className="truncate">{label}</span>
-      </button>
-    );
-  } else {
-    control = (
-      <Link href={href} onClick={selectTab} className={navItemClass(isActive)}>
-        {icon}
-        <span className="truncate">{label}</span>
+        {leading}
+        {label}
       </Link>
     );
   }
 
-  return <li className={navItemShellClass}>{control}</li>;
-}
+  const tabHref =
+    item.tab === "my_profile" && isBusinessAccount
+      ? "/dashboard?tab=my_profile"
+      : dashboardTabHref(item.tab);
 
-function ProtectedNavLink({
-  href,
-  label,
-  icon,
-  isActive,
-}: {
-  href: string;
-  label: ReactNode;
-  icon: ReactNode;
-  isActive: boolean;
-}) {
-  const { isGuest, requireAuth, setMobileNavOpen } = useDashboardNav();
+  const selectTab = () => {
+    setActiveTab(item.tab);
+    closeMobile();
+  };
 
-  const control = isGuest ? (
-    <button
-      type="button"
-      onClick={() => {
-        setMobileNavOpen(false);
-        requireAuth();
-      }}
-      className={navItemClass(isActive)}
-    >
-      {icon}
-      <span className="truncate">{label}</span>
-    </button>
-  ) : (
-    <Link
-      href={href}
-      onClick={() => setMobileNavOpen(false)}
-      className={navItemClass(isActive)}
-    >
-      {icon}
-      <span className="truncate">{label}</span>
-    </Link>
-  );
+  if (item.tab === "opportunities") {
+    return (
+      <Link
+        href={dashboardTabHref(item.tab)}
+        onClick={closeMobile}
+        className={className}
+        aria-current={isActive ? "page" : undefined}
+      >
+        {leading}
+        {label}
+      </Link>
+    );
+  }
 
-  return <li className={navItemShellClass}>{control}</li>;
-}
+  if (isDashboardRootPath(pathname)) {
+    return (
+      <button
+        type="button"
+        onClick={selectTab}
+        className={className}
+        aria-current={isActive ? "page" : undefined}
+      >
+        {leading}
+        {label}
+      </button>
+    );
+  }
 
-function SidebarBrand() {
   return (
     <Link
-      href="/"
-      className={`mb-5 flex items-center gap-2.5 ${ALIGN_X} py-1.5 transition-opacity hover:opacity-90`}
+      href={tabHref}
+      onClick={selectTab}
+      className={className}
+      aria-current={isActive ? "page" : undefined}
     >
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-900 text-[11px] font-bold text-white">
-        P
-      </span>
-      <span className="text-xs font-bold tracking-widest text-zinc-100">
-        PROVIX
-      </span>
+      {leading}
+      {label}
     </Link>
   );
 }
 
-function SidebarUserFooter() {
+function SidebarNavGroups({ groups }: { groups: NavGroup[] }) {
+  const pathname = usePathname();
+  const { activeTab } = useDashboardNav();
+
+  return (
+    <nav aria-label="Dashboard" className="mt-6 flex flex-col gap-1">
+      {groups.map((group) => (
+        <div key={group.id} className="mb-4 last:mb-0">
+          <p className="px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-600">
+            {group.title}
+          </p>
+          <ul className="m-0 flex list-none flex-col gap-1 p-0">
+            {group.items.map((item) => {
+              const isActive =
+                item.kind === "href"
+                  ? item.isActive(pathname)
+                  : isNavTabActive(item.tab, pathname, activeTab);
+
+              return (
+                <li key={item.key}>
+                  <NavItemRow item={item} isActive={isActive} />
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+function SidebarFooter() {
   const {
     isGuest,
     authLoading,
     userAvatarUrl,
     userInitials,
     userDisplayName,
-    isVerifiedEmployer,
     requireAuth,
     setMobileNavOpen,
   } = useDashboardNav();
 
-  if (isGuest && !authLoading) {
+  if (authLoading) {
     return (
-      <div className="mt-auto border-t border-zinc-800 pt-4">
+      <div className="mt-auto flex items-center justify-between border-t border-white/[0.06] pt-4 font-mono text-xs">
+        <span className="h-8 w-full animate-pulse rounded-md bg-white/[0.04]" />
+      </div>
+    );
+  }
+
+  if (isGuest) {
+    return (
+      <div className="mt-auto border-t border-white/[0.06] pt-4">
         <button
           type="button"
           onClick={() => {
             setMobileNavOpen(false);
             requireAuth();
           }}
-          className="w-full cursor-pointer rounded-md bg-zinc-100 px-2.5 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white"
+          className="w-full cursor-pointer rounded-lg bg-[#F4F4F6] px-3 py-2 font-mono text-xs font-semibold text-[#0B0B0D] shadow-sm transition-colors hover:bg-white"
         >
           Sign In
         </button>
@@ -378,161 +415,61 @@ function SidebarUserFooter() {
     );
   }
 
-  if (isGuest || authLoading) {
-    return null;
-  }
-
-  const statusLabel = isVerifiedEmployer ? "Vetted" : "Available";
+  const handle = userDisplayName.trim().startsWith("@")
+    ? userDisplayName.trim()
+    : `@${userDisplayName.trim().toLowerCase().replace(/\s+/g, "") || "user"}`;
 
   return (
-    <div className="mt-auto border-t border-zinc-800 pt-4">
-      <div className={`flex items-center gap-2.5 ${ALIGN_X}`}>
+    <div className="mt-auto flex items-center justify-between gap-3 border-t border-white/[0.06] pt-4 font-mono text-xs">
+      <div className="flex min-w-0 items-center gap-2.5">
         {userAvatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={userAvatarUrl}
             alt=""
-            className="h-7 w-7 shrink-0 rounded-md object-cover ring-1 ring-zinc-700/60"
+            className="h-7 w-7 shrink-0 rounded-full object-cover"
           />
         ) : (
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-800 text-[10px] font-semibold text-zinc-200 ring-1 ring-zinc-700/60">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-[10px] font-semibold text-zinc-300">
             {userInitials}
           </span>
         )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium text-zinc-200">
-            {userDisplayName}
-          </p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-zinc-500">
-            <span
-              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                isVerifiedEmployer ? "bg-emerald-400" : "bg-zinc-500"
-              }`}
-              aria-hidden
-            />
-            {statusLabel}
-          </p>
-        </div>
+        <span className="truncate text-zinc-300">{handle}</span>
       </div>
+      <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-zinc-400">
+        <span
+          aria-hidden
+          className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]"
+        />
+        Live
+      </span>
     </div>
   );
 }
 
 export default function DashboardSidebar() {
-  const pathname = usePathname();
-  const {
-    isBusinessAccount,
-    isEmployeeAccount,
-    isGuest,
-    showTalentPoolNav,
-  } = useDashboardNav();
+  const { isBusinessAccount, isEmployeeAccount, showTalentPoolNav } =
+    useDashboardNav();
 
-  const visibility: NavVisibility = {
-    isBusinessAccount,
-    isEmployeeAccount,
-    isGuest,
-    showTalentPoolNav,
-  };
+  const groups = isBusinessAccount
+    ? buildEmployerGroups(showTalentPoolNav)
+    : isEmployeeAccount
+      ? buildEmployeeGroups()
+      : buildCandidateGroups();
 
-  const showCandidateAccelerator =
-    isGuest || (!isBusinessAccount && !isEmployeeAccount);
-
-  const primaryItems = isBusinessAccount
-    ? EMPLOYER_HUB_NAV
-    : CANDIDATE_PRIMARY_NAV.filter((item) =>
-        isPrimaryNavVisible(item.key, visibility)
-      );
+  const badge = isBusinessAccount
+    ? "Employer Workspace"
+    : isEmployeeAccount
+      ? "Employee Workspace"
+      : "Candidate Workspace";
 
   return (
-    <div className="flex min-h-full flex-col justify-between bg-zinc-950 p-3">
-      <div>
-        <SidebarBrand />
-
-        <div>
-          <span className={sectionHeaderClass}>
-            {isBusinessAccount
-              ? "Organization"
-              : isEmployeeAccount
-                ? "Employee"
-                : "General"}
-          </span>
-          <ul className={navListClass}>
-            {primaryItems.map((item) => (
-              <DashboardTabLink
-                key={item.key}
-                tab={item.tab}
-                label={item.label}
-                iconName={item.icon}
-              />
-            ))}
-          </ul>
-        </div>
-
-        {showCandidateAccelerator && (
-          <div className="mt-5">
-            <span className={sectionHeaderClass}>Tools</span>
-            <ul className={navListClass}>
-              {CAREER_ACCELERATOR_NAV.map((item) => {
-                const isActive =
-                  item.key === "github-auditor"
-                    ? isAuditorPath(pathname)
-                    : isInterviewPrepPath(pathname);
-                return (
-                  <ProtectedNavLink
-                    key={item.key}
-                    href={item.href}
-                    isActive={isActive}
-                    icon={
-                      <ToolIcon
-                        kind={
-                          item.key === "github-auditor"
-                            ? "auditor"
-                            : "interview"
-                        }
-                        active={isActive}
-                      />
-                    }
-                    label={item.label}
-                  />
-                );
-              })}
-            </ul>
-          </div>
-        )}
-
-        {isEmployeeAccount && (
-          <div className="mt-5">
-            <span className={sectionHeaderClass}>Network</span>
-            <ul className={navListClass}>
-              {EMPLOYEE_HUB_NAV.map((item) => (
-                <DashboardTabLink
-                  key={item.key}
-                  tab={item.tab}
-                  label={item.label}
-                  iconName={item.icon}
-                />
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {showTalentPoolNav && (
-          <div className="mt-5">
-            <span className={sectionHeaderClass}>Evaluation</span>
-            <ul className={navListClass}>
-              {EMPLOYER_CONSOLE_NAV.map((item) => (
-                <DashboardTabLink
-                  key={item.key}
-                  tab={item.tab}
-                  label={item.label}
-                  iconName={item.icon}
-                />
-              ))}
-            </ul>
-          </div>
-        )}
+    <div className="flex h-full min-h-0 w-64 shrink-0 flex-col justify-between border-r border-white/[0.08] bg-[#0E0E12] p-5">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <SidebarBrand badge={badge} />
+        <SidebarNavGroups groups={groups} />
       </div>
-
-      <SidebarUserFooter />
+      <SidebarFooter />
     </div>
   );
 }
