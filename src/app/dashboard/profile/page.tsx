@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import DashboardPage from "../page";
+import { DashboardContentGate } from "@/components/dashboard/dashboard-nav-context";
 
 export default function ProfilePage() {
   useEffect(() => {
@@ -11,5 +12,10 @@ export default function ProfilePage() {
     };
   }, []);
 
-  return <DashboardPage />;
+  return (
+    <>
+      <DashboardContentGate ready />
+      <DashboardPage />
+    </>
+  );
 }

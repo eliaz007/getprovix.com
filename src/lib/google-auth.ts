@@ -1,5 +1,4 @@
 import { createClient } from "@/utils/supabase/client";
-import { buildOAuthCallbackUrl } from "@/lib/auth-callback-url";
 
 export const EMPLOYER_SIGNUP_COOKIE = "provix_signup_role";
 
@@ -14,10 +13,11 @@ export function clearEmployerSignupIntent() {
 export async function handleGoogleSignIn(nextPath?: string, accountKind?: "employer" | "candidate") {
   const supabase = createClient();
   const origin = window.location.origin;
-  const redirectTo =
+  const next =
     nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")
-      ? `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
-      : buildOAuthCallbackUrl();
+      ? nextPath
+      : "/dashboard";
+  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
   if (accountKind === "employer") {
     rememberEmployerSignupIntent();

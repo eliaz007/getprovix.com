@@ -33,6 +33,7 @@ import {
   type DashboardTab,
 } from "@/lib/dashboard-account";
 import { createClient } from "@/utils/supabase/client";
+import { readBrowserSession } from "@/lib/supabaseClient";
 import {
   parseAvailabilityStatus,
   type AvailabilityStatus,
@@ -75,7 +76,7 @@ type DashboardNavContextValue = {
   setOnOpenJobApplicants: (handler: ((jobId: string) => void) | null) => void;
 };
 
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000;
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 1500;
 
 const DashboardNavContext = createContext<DashboardNavContextValue | null>(null);
 
@@ -326,131 +327,142 @@ function DashboardNavProviderImpl({
 
   useEffect(() => {
     let active = true;
+    let authLoadingCleared = false;
     const supabase = createClient();
-    const timeoutId = window.setTimeout(() => {
-      if (active) {
-        setAuthLoading(false);
+
+    const clearAuthLoading = () => {
+      if (!active || authLoadingCleared) {
+        return;
       }
-    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
+      authLoadingCleared = true;
+      window.clearTimeout(timeoutId);
+      setAuthLoading(false);
+    };
 
-    const bootstrapSession = async () => {
-      console.time("dashboard-layout:bootstrap-total");
-      try {
-        console.time("dashboard-layout:auth-check");
-        let user: Awaited<
-          ReturnType<typeof supabase.auth.getUser>
-        >["data"]["user"] = null;
-        try {
-          const authResult = await supabase.auth.getUser();
-          user = authResult.data.user;
-        } finally {
-          console.timeEnd("dashboard-layout:auth-check");
-        }
+    const timeoutId = window.setTimeout(clearAuthLoading, AUTH_BOOTSTRAP_TIMEOUT_MS);
 
-        if (!active) {
-          return;
-        }
+    const applyUser = (user: User | null) => {
+      if (!user) {
+        setUserId(null);
+        setUserAvatarUrl(null);
+        setUserDisplayName(null);
+        setAccountRole(null);
+        setIsVerifiedEmployer(false);
+        setAvailabilityStatus(null);
+        return;
+      }
 
-        if (!user) {
-          setUserId(null);
-          setUserAvatarUrl(null);
-          setUserDisplayName(null);
-          setAccountRole(null);
-          setIsVerifiedEmployer(false);
-          setAvailabilityStatus(null);
-          return;
-        }
+      const identity = getUserHeaderIdentity(user);
+      setUserId(user.id);
+      setUserAvatarUrl(identity.avatarUrl);
+      setUserInitials(identity.initials);
+      setUserDisplayNameState(identity.displayName);
+      setAuthModalOpen(false);
+    };
 
-        const identity = getUserHeaderIdentity(user);
-        setUserId(user.id);
-        setUserAvatarUrl(identity.avatarUrl);
-        setUserInitials(identity.initials);
-        setUserDisplayNameState(identity.displayName);
-        setAuthModalOpen(false);
+    const loadProfile = async (user: User) => {
+      let profile: {
+        role?: string | null;
+        is_verified?: boolean | null;
+        availability_status?: string | null;
+        full_name?: string | null;
+      } | null = null;
+      console.time("dashboard-layout:profile-fetch");
+      const byId = await supabase
+        .from("profiles")
+        .select("role, is_verified, availability_status, full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      console.timeEnd("dashboard-layout:profile-fetch");
 
-        let profile: {
-          role?: string | null;
-          is_verified?: boolean | null;
-          availability_status?: string | null;
-          full_name?: string | null;
-        } | null = null;
-        console.time("dashboard-layout:profile-fetch");
-        const byId = await supabase
+      profile = byId.data;
+
+      if (!profile) {
+        console.time("dashboard-layout:profile-fetch-by-user-id");
+        const byUserId = await supabase
           .from("profiles")
           .select("role, is_verified, availability_status, full_name")
-          .eq("id", user.id)
+          .eq("user_id", user.id)
           .maybeSingle();
-        console.timeEnd("dashboard-layout:profile-fetch");
+        console.timeEnd("dashboard-layout:profile-fetch-by-user-id");
+        profile = byUserId.data;
 
-        profile = byId.data;
-
-        if (!profile) {
-          console.time("dashboard-layout:profile-fetch-by-user-id");
-          const byUserId = await supabase
+        if (!profile && (byId.error || byUserId.error)) {
+          console.time("dashboard-layout:profile-fetch-fallback");
+          const fallbackById = await supabase
             .from("profiles")
-            .select("role, is_verified, availability_status, full_name")
-            .eq("user_id", user.id)
+            .select("role")
+            .eq("id", user.id)
             .maybeSingle();
-          console.timeEnd("dashboard-layout:profile-fetch-by-user-id");
-          profile = byUserId.data;
-
-          if (!profile && (byId.error || byUserId.error)) {
-            console.time("dashboard-layout:profile-fetch-fallback");
-            const fallbackById = await supabase
+          profile = fallbackById.data;
+          if (!profile) {
+            const fallbackByUserId = await supabase
               .from("profiles")
               .select("role")
-              .eq("id", user.id)
+              .eq("user_id", user.id)
               .maybeSingle();
-            profile = fallbackById.data;
-            if (!profile) {
-              const fallbackByUserId = await supabase
-                .from("profiles")
-                .select("role")
-                .eq("user_id", user.id)
-                .maybeSingle();
-              profile = fallbackByUserId.data;
-            }
-            console.timeEnd("dashboard-layout:profile-fetch-fallback");
+            profile = fallbackByUserId.data;
           }
+          console.timeEnd("dashboard-layout:profile-fetch-fallback");
         }
+      }
 
-        setIsVerifiedEmployer(profile?.is_verified === true);
-        setAvailabilityStatus(parseAvailabilityStatus(profile?.availability_status));
-        const namedIdentity = getUserHeaderIdentity(user, profile?.full_name);
-        setUserDisplayNameState(namedIdentity.displayName);
-        setUserInitials(namedIdentity.initials);
+      if (!active) {
+        return;
+      }
+
+      setIsVerifiedEmployer(profile?.is_verified === true);
+      setAvailabilityStatus(parseAvailabilityStatus(profile?.availability_status));
+      const namedIdentity = getUserHeaderIdentity(user, profile?.full_name);
+      setUserDisplayNameState(namedIdentity.displayName);
+      setUserInitials(namedIdentity.initials);
+
+      const assignedRole = normalizeAccountKind(profile?.role);
+      if (!assignedRole && !isAdminUser(user)) {
+        router.replace(ROLE_ONBOARDING_PATH);
+        return;
+      }
+
+      setAccountRole(assignedRole);
+    };
+
+    const readSession = async () => {
+      console.time("dashboard-layout:bootstrap-total");
+      console.time("dashboard-layout:auth-check");
+      try {
+        const {
+          data: { session },
+        } = await readBrowserSession(supabase);
 
         if (!active) {
           return;
         }
 
-        const assignedRole = normalizeAccountKind(profile?.role);
-        if (!assignedRole && !isAdminUser(user)) {
-          router.replace(ROLE_ONBOARDING_PATH);
-          return;
-        }
+        const user = session?.user ?? null;
+        applyUser(user);
+        clearAuthLoading();
 
-        setAccountRole(assignedRole);
+        if (user) {
+          await loadProfile(user);
+        }
       } catch (error) {
         console.error("Dashboard nav session bootstrap failed:", error);
-        if (active) {
-          setUserId(null);
-          setUserAvatarUrl(null);
-          setUserDisplayName(null);
-          setAccountRole(null);
-          setIsVerifiedEmployer(false);
-          setAvailabilityStatus(null);
-        }
+        clearAuthLoading();
       } finally {
+        console.timeEnd("dashboard-layout:auth-check");
         console.timeEnd("dashboard-layout:bootstrap-total");
-        if (active) {
-          window.clearTimeout(timeoutId);
-          setAuthLoading(false);
-        }
+        clearAuthLoading();
       }
     };
 
-    void bootstrapSession();
+    const readSessionIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        void readSession();
+      }
+    };
+
+    readSessionIfVisible();
+    document.addEventListener("visibilitychange", readSessionIfVisible);
 
     const {
       data: { subscription },
@@ -458,14 +470,17 @@ function DashboardNavProviderImpl({
       if (!active) {
         return;
       }
+      // Never wait on this listener to clear authLoading — INITIAL_SESSION
+      // can stall behind a stuck Web Lock on mobile.
       if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
-        void bootstrapSession();
+        void readSession();
       }
     });
 
     return () => {
       active = false;
       window.clearTimeout(timeoutId);
+      document.removeEventListener("visibilitychange", readSessionIfVisible);
       subscription.unsubscribe();
     };
     // Intentionally omit `pathname`: re-bootstrapping auth on every client

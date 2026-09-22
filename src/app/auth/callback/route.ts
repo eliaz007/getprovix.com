@@ -1,5 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
-import type { EmailOtpType } from "@supabase/supabase-js";
+import type { EmailOtpType, User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { isAdminUser } from "@/lib/admin-access";
 import {
@@ -132,20 +132,20 @@ export async function GET(request: NextRequest) {
 
   let authenticated = false;
   let authErrorMessage: string | null = null;
-  let sessionUserId: string | null = null;
+  let sessionUser: User | null = null;
 
   if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
       authErrorMessage = error.message;
-    } else if (!data.session?.user?.id) {
+    } else if (!data.session?.user) {
       authErrorMessage = "Authentication callback did not return a session.";
     } else {
-      // Flush any deferred auth-subscriber cookie writes before we redirect.
+      // Flush deferred cookie writes from the exchange before we redirect.
       await Promise.resolve();
       authenticated = true;
-      sessionUserId = data.session.user.id;
+      sessionUser = data.session.user;
     }
   } else if (tokenHash && type) {
     const { data, error } = await supabase.auth.verifyOtp({
@@ -154,16 +154,16 @@ export async function GET(request: NextRequest) {
     });
     if (error) {
       authErrorMessage = error.message;
-    } else if (!data.session?.user?.id && !data.user?.id) {
+    } else if (!data.session?.user && !data.user) {
       authErrorMessage = "OTP verification did not return a session.";
     } else {
       await Promise.resolve();
       authenticated = true;
-      sessionUserId = data.session?.user?.id ?? data.user?.id ?? null;
+      sessionUser = data.session?.user ?? data.user ?? null;
     }
   }
 
-  if (!authenticated) {
+  if (!authenticated || !sessionUser) {
     const loginUrl = new URL("/login", origin);
     loginUrl.searchParams.set(
       "error",
@@ -172,22 +172,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(loginUrl.toString());
   }
 
-  // Re-read the user only after the exchange has resolved and cookies are queued.
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    const loginUrl = new URL("/login", origin);
-    loginUrl.searchParams.set(
-      "error",
-      userError?.message ?? "Session was not available after authentication."
-    );
-    return NextResponse.redirect(loginUrl.toString());
-  }
-
-  const userId = sessionUserId ?? user.id;
+  const userId = sessionUser.id;
 
   let role: string | null = null;
 
@@ -211,13 +196,20 @@ export async function GET(request: NextRequest) {
   }
 
   const assignedRole = normalizeAccountKind(role);
+  const requestedNext =
+    nextParam &&
+    nextParam.startsWith("/") &&
+    !nextParam.startsWith("//") &&
+    !nextParam.includes("\\")
+      ? nextParam
+      : "/dashboard";
   const destination =
-    !assignedRole && !isAdminUser(user)
+    !assignedRole && !isAdminUser(sessionUser)
       ? ROLE_ONBOARDING_PATH
       : resolvePostAuthDestination({
           role: assignedRole,
-          requestedNext: nextParam,
-          isAdmin: isAdminUser(user),
+          requestedNext,
+          isAdmin: isAdminUser(sessionUser),
         });
 
   const nextResponse = redirectWithSessionCookies(

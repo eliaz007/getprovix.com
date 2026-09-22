@@ -61,6 +61,14 @@ function redirectWithSessionCookies(
 }
 
 export async function updateSession(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Let the callback route exchange the OAuth code and set cookies itself.
+  // A getUser() here races the code exchange and can drop a first-login session.
+  if (pathname === "/auth/callback" || pathname.startsWith("/auth/callback/")) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -100,8 +108,6 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const { pathname } = request.nextUrl;
 
   // API routes must always return JSON. A redirect to the marketing page
   // follows to HTML, and response.json() then throws on "<!DOCTYPE".

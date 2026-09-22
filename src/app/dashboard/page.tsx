@@ -90,7 +90,7 @@ import {
   persistCandidatePoolVisibility,
   persistCandidateProfile,
 } from "@/lib/persist-candidate-profile";
-import { createClient } from "@/utils/supabase/client";
+import { createClient, readBrowserSession } from "@/utils/supabase/client";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
@@ -810,7 +810,14 @@ async function ensureUserProfile(
   return (insertResult.data as ProfileRecord | null) ?? null;
 }
 
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000;
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 1500;
+
+function settledValue<T>(
+  result: PromiseSettledResult<T>,
+  fallback: T
+): T {
+  return result.status === "fulfilled" ? result.value : fallback;
+}
 
 function displayNameFromSources(
   profile: ProfileRecord | null,
@@ -1010,53 +1017,126 @@ export default function DashboardPage() {
         let session: Awaited<
           ReturnType<typeof supabase.auth.getSession>
         >["data"]["session"] = null;
-        let authedUser: Awaited<
-          ReturnType<typeof supabase.auth.getUser>
-        >["data"]["user"] = null;
-        let userError: Awaited<
-          ReturnType<typeof supabase.auth.getUser>
-        >["error"] = null;
         try {
-          const sessionResult = await supabase.auth.getSession();
+          const sessionResult = await readBrowserSession(supabase);
           session = sessionResult.data.session;
-          const userResult = await supabase.auth.getUser();
-          authedUser = userResult.data.user;
-          userError = userResult.error;
         } finally {
           console.timeEnd("dashboard-profile:auth-check");
         }
 
         if (!isMounted) return;
 
-        if (
-          userError &&
-          userError.name !== "AuthSessionMissingError" &&
-          !/session missing/i.test(userError.message)
-        ) {
-          console.error("Dashboard session check failed:", userError.message, {
-            code: userError.code,
-          });
-        }
-
-        const sessionUser = authedUser ?? session?.user ?? null;
+        const sessionUser = session?.user ?? null;
+        setAuthChecked(true);
+        setLoadingProfile(false);
 
         if (!sessionUser) {
-          setAuthChecked(true);
-          setLoadingProfile(false);
           return;
         }
 
         setUser(sessionUser);
 
-        console.time("dashboard-profile:profile-fetch");
-        let profileRow: Awaited<ReturnType<typeof ensureUserProfile>> = null;
-        try {
-          profileRow = await ensureUserProfile(supabase, sessionUser);
-        } finally {
-          console.timeEnd("dashboard-profile:profile-fetch");
-        }
+        const [profileResult, verifiedResult, applicationsResult, auditResult, introResult] =
+          await Promise.allSettled([
+            (async () => {
+              console.time("dashboard-profile:profile-fetch");
+              try {
+                return await ensureUserProfile(supabase, sessionUser);
+              } catch {
+                return null;
+              } finally {
+                console.timeEnd("dashboard-profile:profile-fetch");
+              }
+            })(),
+            (async () => {
+              console.time("dashboard-profile:employer-verified");
+              try {
+                return await employerIsVerifiedInDatabase(
+                  supabase,
+                  sessionUser.id
+                );
+              } catch {
+                return false;
+              } finally {
+                console.timeEnd("dashboard-profile:employer-verified");
+              }
+            })(),
+            (async () => {
+              console.time("dashboard-profile:job-applications");
+              try {
+                return await supabase
+                  .from("job_applications")
+                  .select("job_id, created_at, jobs(title, company, salary_range, location)")
+                  .eq("candidate_id", sessionUser.id)
+                  .order("created_at", { ascending: false });
+              } catch (error) {
+                return {
+                  data: null,
+                  error:
+                    error instanceof Error
+                      ? error
+                      : { message: "Could not load job applications." },
+                };
+              } finally {
+                console.timeEnd("dashboard-profile:job-applications");
+              }
+            })(),
+            (async () => {
+              console.time("dashboard-profile:audit-query");
+              try {
+                return await claimPendingProductionAudit();
+              } catch {
+                return null;
+              } finally {
+                console.timeEnd("dashboard-profile:audit-query");
+              }
+            })(),
+            (async () => {
+              const columnSets: string[] = [
+                CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS,
+                CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS_FALLBACK,
+              ];
+              for (const columns of columnSets) {
+                console.time("dashboard-profile:intro-requests");
+                try {
+                  const { data, error } = await supabase
+                    .from("intro_requests")
+                    .select(columns as "*")
+                    .eq("candidate_id", sessionUser.id)
+                    .order("created_at", { ascending: false })
+                    .returns<CandidateIntroRequestRow[]>();
+                  if (!error) {
+                    return { data: data ?? [], error: null };
+                  }
+                  if (!isSupabaseSchemaError(error)) {
+                    return { data: [] as CandidateIntroRequestRow[], error };
+                  }
+                } catch (error) {
+                  return { data: [] as CandidateIntroRequestRow[], error };
+                } finally {
+                  console.timeEnd("dashboard-profile:intro-requests");
+                }
+              }
+              return {
+                data: [] as CandidateIntroRequestRow[],
+                error: { message: "Could not load intro requests." },
+              };
+            })(),
+          ]);
 
         if (!isMounted) return;
+
+        const profileRow = settledValue(profileResult, null);
+        const verifiedInDb = settledValue(verifiedResult, false);
+        const applicationPayload = settledValue(applicationsResult, {
+          data: null,
+          error: { message: "Could not load job applications." },
+        });
+        const claimedAudit = settledValue(auditResult, null);
+        const introPayload = settledValue(introResult, {
+          data: [] as CandidateIntroRequestRow[],
+          error: { message: "Could not load intro requests." },
+        });
 
         if (
           !normalizeAccountKind(profileRow?.role) &&
@@ -1097,12 +1177,6 @@ export default function DashboardPage() {
           }
         }
 
-        console.time("dashboard-profile:employer-verified");
-        const verifiedInDb = await employerIsVerifiedInDatabase(
-          supabase,
-          sessionUser.id
-        );
-        console.timeEnd("dashboard-profile:employer-verified");
         if (profileWithRole) {
           profileWithRole = {
             ...profileWithRole,
@@ -1233,22 +1307,16 @@ export default function DashboardPage() {
           }
         }
 
-        console.time("dashboard-profile:job-applications");
-        const { data: applicationRows, error: applicationsError } = await supabase
-          .from("job_applications")
-          .select("job_id, created_at, jobs(title, company, salary_range, location)")
-          .eq("candidate_id", sessionUser.id)
-          .order("created_at", { ascending: false });
-        console.timeEnd("dashboard-profile:job-applications");
-
         if (!isMounted) return;
 
+        const applicationRows = applicationPayload.data ?? [];
+        const applicationsError = applicationPayload.error;
         if (applicationsError) {
           console.error("Failed to fetch job applications:", applicationsError);
         } else {
-          setAppliedJobIds((applicationRows ?? []).map((row) => row.job_id));
+          setAppliedJobIds(applicationRows.map((row) => row.job_id));
           setAppliedJobs(
-            (applicationRows ?? []).map((row) => {
+            applicationRows.map((row) => {
               const job = row.jobs as {
                 title?: string | null;
                 company?: string | null;
@@ -1269,6 +1337,46 @@ export default function DashboardPage() {
                 ),
               };
             })
+          );
+        }
+
+        if (!introPayload.error) {
+          setCandidateIntroRequests(introPayload.data ?? []);
+          setCandidateIntroError(null);
+        } else if (
+          introPayload.error &&
+          typeof introPayload.error === "object" &&
+          "code" in introPayload.error &&
+          isSupabaseSchemaError(introPayload.error)
+        ) {
+          setCandidateIntroError("Could not load intro requests. Please try again.");
+        } else if (introPayload.error) {
+          console.error("Candidate intro request fetch error:", introPayload.error);
+          setCandidateIntroError("Could not load intro requests. Please try again.");
+        }
+
+        if (claimedAudit) {
+          setDbProfile((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  production_score: claimedAudit.productionScore,
+                  audit_breakdown: claimedAudit.breakdown,
+                  is_audit_verified: true,
+                  is_publicly_visible: claimedAudit.isPubliclyVisible,
+                  ...(claimedAudit.isPubliclyVisible
+                    ? { is_visible_in_pool: true }
+                    : {}),
+                }
+              : prev
+          );
+          if (claimedAudit.isPubliclyVisible) {
+            setIsVisibleInPool(true);
+          }
+          showToast(
+            claimedAudit.isPubliclyVisible
+              ? "Scorecard published to the talent roster."
+              : "Private diagnostic saved to your dashboard."
           );
         }
       } catch (err) {
@@ -3988,11 +4096,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   );
 
   const isStandaloneGuest = Boolean(!user && !dashboardNav);
-  const roleReady = authChecked && !loadingProfile && (!user || Boolean(profileRole));
-  // Tab-specific fetches (e.g. jobs) must NOT gate the shell — that flashed the
-  // full-screen skeleton on every sidebar tab click. Opportunities/radar already
-  // handle jobsLoading inline.
-  const showBootstrapSkeleton = !roleReady || loadingProfile;
+  const roleReady = authChecked;
+  // Do not wait for profileRole, getUser(), or auth listeners — those can hang
+  // behind a mobile Web Lock until the tab is backgrounded.
+  const showBootstrapSkeleton = !authChecked;
 
   return (
     <>

@@ -17,7 +17,7 @@ export function buildOAuthCallbackUrl(): string {
   );
 
   if (!canReturn) {
-    return `${origin}/auth/callback`;
+    return `${origin}/auth/callback?next=${encodeURIComponent("/dashboard")}`;
   }
 
   return `${origin}/auth/callback?next=${encodeURIComponent(pathname)}`;
