@@ -8,35 +8,13 @@ export function ProvixLogo({
   return (
     <div className="flex items-center gap-3">
       <div className="relative flex items-center justify-center">
-        <svg
-          viewBox="0 0 36 36"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className={className}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand/provix-mark.jpg"
+          alt=""
           aria-hidden="true"
-        >
-          {/* Tile background */}
-          <rect
-            width="36"
-            height="36"
-            rx="8"
-            fill="#101014"
-            stroke="rgba(245,158,11,0.3)"
-            strokeWidth="1"
-          />
-
-          {/* Geometric 'P' path */}
-          <path
-            d="M12 25V11H19.5C22.5 11 24.5 13 24.5 16C24.5 19 22.5 21 19.5 21H12"
-            stroke="#F59E0B"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {/* Accent dot */}
-          <circle cx="18.5" cy="16" r="1.5" fill="#FCD34D" />
-        </svg>
+          className={`rounded-[22%] object-cover ${className}`}
+        />
       </div>
 
       {showText && (

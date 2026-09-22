@@ -102,7 +102,7 @@ export default function DashboardSkeleton() {
           <div className="flex items-center gap-2.5">
             <Pulse className="hidden h-5 w-20 rounded-full bg-white/10 sm:block" />
             <Pulse className="h-8 w-8 rounded-full bg-white/10" />
-            <Pulse className="h-8 w-8 rounded-full bg-white/10" />
+            <Pulse className="h-8 w-8 rounded-[22%] bg-white/10" />
           </div>
         </div>
       </header>

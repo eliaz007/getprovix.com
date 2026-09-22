@@ -23,6 +23,7 @@ import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 type IslandItem = {
   key: string;
   label: string;
+  shortLabel: string;
   href: string;
   icon: typeof LayoutDashboard;
   isActive: (pathname: string, activeTab: DashboardTab) => boolean;
@@ -32,6 +33,7 @@ const CANDIDATE_ISLAND: IslandItem[] = [
   {
     key: "overview",
     label: "Overview",
+    shortLabel: "Overview",
     href: "/dashboard",
     icon: LayoutDashboard,
     isActive: (pathname, activeTab) =>
@@ -40,6 +42,7 @@ const CANDIDATE_ISLAND: IslandItem[] = [
   {
     key: "talent",
     label: "Talent Network",
+    shortLabel: "Talent",
     href: "/dashboard/talent",
     icon: Users,
     isActive: (pathname, activeTab) =>
@@ -51,6 +54,7 @@ const CANDIDATE_ISLAND: IslandItem[] = [
   {
     key: "intros",
     label: "Intro Requests",
+    shortLabel: "Intros",
     href: "/dashboard/requests",
     icon: Send,
     isActive: (pathname, activeTab) =>
@@ -61,6 +65,7 @@ const CANDIDATE_ISLAND: IslandItem[] = [
   {
     key: "auditor",
     label: "Auditor",
+    shortLabel: "Auditor",
     href: "/dashboard/auditor",
     icon: ShieldCheck,
     isActive: (pathname) => isAuditorPath(pathname),
@@ -68,6 +73,7 @@ const CANDIDATE_ISLAND: IslandItem[] = [
   {
     key: "simulator",
     label: "Simulator",
+    shortLabel: "Simulator",
     href: "/dashboard/simulator",
     icon: Terminal,
     isActive: (pathname) =>
@@ -81,6 +87,7 @@ const EMPLOYER_ISLAND: IslandItem[] = [
   {
     key: "overview",
     label: "Overview",
+    shortLabel: "Overview",
     href: "/dashboard?tab=my_profile",
     icon: LayoutDashboard,
     isActive: (pathname, activeTab) =>
@@ -89,6 +96,7 @@ const EMPLOYER_ISLAND: IslandItem[] = [
   {
     key: "applicants",
     label: "Applicants",
+    shortLabel: "Applicants",
     href: "/dashboard?tab=applicants",
     icon: Send,
     isActive: (pathname, activeTab) =>
@@ -97,6 +105,7 @@ const EMPLOYER_ISLAND: IslandItem[] = [
   {
     key: "talent",
     label: "Talent Network",
+    shortLabel: "Talent",
     href: "/dashboard?tab=talent",
     icon: Users,
     isActive: (pathname, activeTab) =>
@@ -105,6 +114,7 @@ const EMPLOYER_ISLAND: IslandItem[] = [
   {
     key: "auditor",
     label: "Auditor",
+    shortLabel: "Auditor",
     href: "/dashboard/auditor",
     icon: ShieldCheck,
     isActive: (pathname, activeTab) =>
@@ -117,6 +127,7 @@ const EMPLOYEE_ISLAND: IslandItem[] = [
   {
     key: "talent",
     label: "Talent Network",
+    shortLabel: "Talent",
     href: "/dashboard?tab=opportunity_radar",
     icon: Users,
     isActive: (pathname, activeTab) =>
@@ -125,6 +136,7 @@ const EMPLOYEE_ISLAND: IslandItem[] = [
   {
     key: "applications",
     label: "Applications",
+    shortLabel: "Apps",
     href: "/dashboard?tab=applications",
     icon: Send,
     isActive: (pathname, activeTab) =>
@@ -134,11 +146,28 @@ const EMPLOYEE_ISLAND: IslandItem[] = [
 
 function islandItemClass(isActive: boolean) {
   const base =
-    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap";
+    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] sm:text-xs font-medium transition-all whitespace-nowrap";
   if (isActive) {
     return `${base} border border-purple-500/40 bg-purple-500/15 text-white shadow-[0_0_12px_rgba(168,85,247,0.25)]`;
   }
   return `${base} border border-transparent text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200`;
+}
+
+function ProvixMark({
+  className = "h-8 w-8",
+  alt = "Provix",
+}: {
+  className?: string;
+  alt?: string;
+}) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/brand/provix-mark.jpg"
+      alt={alt}
+      className={`rounded-[22%] object-cover ${className}`}
+    />
+  );
 }
 
 function BrandMark() {
@@ -147,12 +176,7 @@ function BrandMark() {
       href="/"
       className="flex shrink-0 items-center gap-2.5 transition-opacity hover:opacity-90"
     >
-      <span
-        aria-hidden
-        className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 via-violet-500 to-fuchsia-600 text-[11px] font-bold text-white shadow-[0_0_16px_rgba(168,85,247,0.35)]"
-      >
-        P
-      </span>
+      <ProvixMark className="h-7 w-7" alt="" />
       <span className="hidden text-sm font-bold tracking-widest text-zinc-100 sm:inline">
         PROVIX
       </span>
@@ -208,18 +232,12 @@ function RoleBadge() {
   );
 }
 
-function UserAvatar() {
-  const {
-    isGuest,
-    authLoading,
-    userAvatarUrl,
-    userInitials,
-    requireAuth,
-  } = useDashboardNav();
+function TopRightBrandButton() {
+  const { isGuest, authLoading, requireAuth } = useDashboardNav();
 
   if (authLoading) {
     return (
-      <span className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-zinc-800" />
+      <span className="h-8 w-8 shrink-0 animate-pulse rounded-[22%] bg-zinc-800" />
     );
   }
 
@@ -239,18 +257,9 @@ function UserAvatar() {
     <Link
       href="/dashboard/profile"
       aria-label="Open your profile"
-      className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/[0.1] bg-[#14141b] text-[10px] font-bold text-zinc-100 transition-colors hover:border-purple-500/40"
+      className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[22%] border border-amber-500/25 transition-opacity hover:opacity-90"
     >
-      {userAvatarUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={userAvatarUrl}
-          alt=""
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        userInitials
-      )}
+      <ProvixMark className="h-8 w-8" alt="" />
     </Link>
   );
 }
@@ -261,14 +270,12 @@ function IslandNav({
   activeTab,
   isGuest,
   requireAuth,
-  compact = false,
 }: {
   items: IslandItem[];
   pathname: string;
   activeTab: DashboardTab;
   isGuest: boolean;
   requireAuth: () => boolean;
-  compact?: boolean;
 }) {
   return (
     <div className="flex items-center gap-0.5 rounded-full border border-white/[0.08] bg-[#14141b]/90 p-1 shadow-inner backdrop-blur-md">
@@ -280,9 +287,8 @@ function IslandNav({
         const content = (
           <>
             <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            {!compact ? (
-              <span className="hidden lg:inline">{item.label}</span>
-            ) : null}
+            <span className="sm:hidden">{item.shortLabel}</span>
+            <span className="hidden sm:inline">{item.label}</span>
           </>
         );
 
@@ -347,7 +353,7 @@ export default function DashboardTopNav() {
 
         <nav
           aria-label="Dashboard"
-          className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block"
+          className="absolute left-1/2 top-1/2 hidden max-w-[min(100%,42rem)] -translate-x-1/2 -translate-y-1/2 md:block"
         >
           <IslandNav
             items={items}
@@ -369,7 +375,6 @@ export default function DashboardTopNav() {
               activeTab={activeTab}
               isGuest={isGuest}
               requireAuth={requireAuth}
-              compact
             />
           </div>
         </nav>
@@ -391,7 +396,7 @@ export default function DashboardTopNav() {
               <Settings className="h-4 w-4" aria-hidden />
             </Link>
           ) : null}
-          <UserAvatar />
+          <TopRightBrandButton />
         </div>
       </div>
     </header>
