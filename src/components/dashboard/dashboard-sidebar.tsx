@@ -9,6 +9,11 @@ import {
   ShieldCheck,
   Terminal,
   Briefcase,
+  Bookmark,
+  Building2,
+  GitBranch,
+  Settings,
+  Search,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -36,7 +41,7 @@ type NavItemDef =
       icon: LucideIcon;
       kind: "href";
       href: string;
-      isActive: (pathname: string) => boolean;
+      isActive: (pathname: string, activeTab: DashboardTab) => boolean;
     };
 
 type NavGroup = {
@@ -44,6 +49,10 @@ type NavGroup = {
   title: string;
   items: NavItemDef[];
 };
+
+function isEmployerPath(pathname: string) {
+  return pathname === "/employer" || pathname.startsWith("/employer/");
+}
 
 function isNavTabActive(
   tab: DashboardTab,
@@ -68,12 +77,10 @@ function isNavTabActive(
 }
 
 function navItemClass(isActive: boolean) {
-  const base =
-    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs font-mono transition-colors cursor-pointer";
   if (isActive) {
-    return `${base} border border-white/[0.08] bg-white/[0.04] font-medium text-zinc-100`;
+    return "flex w-full items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 font-mono text-xs font-medium text-zinc-100 transition-colors cursor-pointer";
   }
-  return `${base} border border-transparent text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200`;
+  return "flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2 font-mono text-xs text-zinc-400 transition-colors hover:bg-white/[0.03] hover:text-zinc-200 cursor-pointer";
 }
 
 function buildCandidateGroups(): NavGroup[] {
@@ -95,7 +102,7 @@ function buildCandidateGroups(): NavGroup[] {
           icon: ShieldCheck,
           kind: "href",
           href: "/dashboard/auditor",
-          isActive: isAuditorPath,
+          isActive: (pathname) => isAuditorPath(pathname),
         },
         {
           key: "simulator",
@@ -103,7 +110,7 @@ function buildCandidateGroups(): NavGroup[] {
           icon: Terminal,
           kind: "href",
           href: "/dashboard/simulator",
-          isActive: isInterviewPrepPath,
+          isActive: (pathname) => isInterviewPrepPath(pathname),
         },
       ],
     },
@@ -130,59 +137,89 @@ function buildCandidateGroups(): NavGroup[] {
   ];
 }
 
-function buildEmployerGroups(showTalentPool: boolean): NavGroup[] {
-  const platform: NavItemDef[] = [
+function buildEmployerGroups(): NavGroup[] {
+  return [
     {
-      key: "overview",
-      label: "Overview",
-      icon: LayoutDashboard,
-      kind: "tab",
-      tab: "my_profile",
-    },
-    {
-      key: "applicants",
-      label: "Applicants",
-      icon: Briefcase,
-      kind: "tab",
-      tab: "applicants",
-    },
-  ];
-
-  const groups: NavGroup[] = [
-    { id: "platform", title: "PLATFORM", items: platform },
-  ];
-
-  if (showTalentPool) {
-    groups.push({
-      id: "matching",
-      title: "MATCHING",
+      id: "talent-discovery",
+      title: "TALENT DISCOVERY",
       items: [
         {
-          key: "talent",
-          label: "Talent Network",
-          icon: Users,
-          kind: "tab",
-          tab: "talent",
+          key: "candidates",
+          label: "Candidates / Search",
+          icon: Search,
+          kind: "href",
+          href: "/employer/talent",
+          isActive: (pathname, activeTab) =>
+            pathname === "/employer/talent" ||
+            pathname.startsWith("/employer/talent/") ||
+            pathname === "/search" ||
+            pathname.startsWith("/search/") ||
+            (isDashboardRootPath(pathname) && activeTab === "talent"),
         },
         {
-          key: "evaluator",
-          label: "AI Screen",
-          icon: Terminal,
-          kind: "tab",
-          tab: "evaluator",
+          key: "shortlisted",
+          label: "Shortlisted",
+          icon: Bookmark,
+          kind: "href",
+          href: "/employer/saved",
+          isActive: (pathname, activeTab) =>
+            pathname === "/employer/saved" ||
+            pathname.startsWith("/employer/saved/") ||
+            (isDashboardRootPath(pathname) && activeTab === "evaluator"),
         },
         {
-          key: "auditor",
-          label: "Auditor",
-          icon: ShieldCheck,
-          kind: "tab",
-          tab: "auditor",
+          key: "outbound",
+          label: "Outbound Requests",
+          icon: Send,
+          kind: "href",
+          href: "/employer/requests",
+          isActive: (pathname, activeTab) =>
+            pathname === "/employer/requests" ||
+            pathname.startsWith("/employer/requests/") ||
+            pathname === "/employer/outreach" ||
+            pathname.startsWith("/employer/outreach/") ||
+            (isDashboardRootPath(pathname) && activeTab === "applicants"),
         },
       ],
-    });
-  }
-
-  return groups;
+    },
+    {
+      id: "organization",
+      title: "ORGANIZATION",
+      items: [
+        {
+          key: "company",
+          label: "Company Profile",
+          icon: Building2,
+          kind: "href",
+          href: "/employer/profile",
+          isActive: (pathname, activeTab) =>
+            pathname === "/employer/profile" ||
+            pathname.startsWith("/employer/profile/") ||
+            (isDashboardRootPath(pathname) && activeTab === "my_profile"),
+        },
+        {
+          key: "pipeline",
+          label: "Hiring Pipeline",
+          icon: GitBranch,
+          kind: "href",
+          href: "/employer/pipeline",
+          isActive: (pathname) =>
+            pathname === "/employer/pipeline" ||
+            pathname.startsWith("/employer/pipeline/"),
+        },
+        {
+          key: "settings",
+          label: "Billing / Settings",
+          icon: Settings,
+          kind: "href",
+          href: "/employer/settings",
+          isActive: (pathname) =>
+            pathname === "/employer/settings" ||
+            pathname.startsWith("/employer/settings/"),
+        },
+      ],
+    },
+  ];
 }
 
 function buildEmployeeGroups(): NavGroup[] {
@@ -201,7 +238,7 @@ function buildEmployeeGroups(): NavGroup[] {
         {
           key: "applications",
           label: "Applications",
-          icon: Send,
+          icon: Briefcase,
           kind: "tab",
           tab: "applications",
         },
@@ -210,7 +247,13 @@ function buildEmployeeGroups(): NavGroup[] {
   ];
 }
 
-function SidebarBrand({ badge }: { badge: string }) {
+function SidebarBrand({
+  badge,
+  amberBadge = false,
+}: {
+  badge: string;
+  amberBadge?: boolean;
+}) {
   return (
     <div>
       <Link
@@ -227,7 +270,13 @@ function SidebarBrand({ badge }: { badge: string }) {
           PROVIX
         </span>
       </Link>
-      <span className="mt-2 inline-block rounded-md border border-white/[0.05] bg-white/[0.02] px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+      <span
+        className={
+          amberBadge
+            ? "mt-2 inline-block rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-amber-400/90"
+            : "mt-2 inline-block rounded-md border border-white/[0.05] bg-white/[0.02] px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-zinc-500"
+        }
+      >
         {badge}
       </span>
     </div>
@@ -253,16 +302,19 @@ function NavItemRow({
   const Icon = item.icon;
   const className = navItemClass(isActive);
 
-  const leading = isActive ? (
+  const body = (
+    <span className="flex min-w-0 items-center gap-3">
+      <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+      <span className="truncate">{item.label}</span>
+    </span>
+  );
+
+  const trailing = isActive ? (
     <span
       aria-hidden
       className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]"
     />
-  ) : (
-    <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-  );
-
-  const label = <span className="truncate">{item.label}</span>;
+  ) : null;
 
   const closeMobile = () => setMobileNavOpen(false);
 
@@ -277,8 +329,8 @@ function NavItemRow({
         className={className}
         aria-current={isActive ? "page" : undefined}
       >
-        {leading}
-        {label}
+        {body}
+        {trailing}
       </button>
     );
   }
@@ -291,8 +343,8 @@ function NavItemRow({
         className={className}
         aria-current={isActive ? "page" : undefined}
       >
-        {leading}
-        {label}
+        {body}
+        {trailing}
       </Link>
     );
   }
@@ -315,13 +367,13 @@ function NavItemRow({
         className={className}
         aria-current={isActive ? "page" : undefined}
       >
-        {leading}
-        {label}
+        {body}
+        {trailing}
       </Link>
     );
   }
 
-  if (isDashboardRootPath(pathname)) {
+  if (isDashboardRootPath(pathname) && !isEmployerPath(pathname)) {
     return (
       <button
         type="button"
@@ -329,8 +381,8 @@ function NavItemRow({
         className={className}
         aria-current={isActive ? "page" : undefined}
       >
-        {leading}
-        {label}
+        {body}
+        {trailing}
       </button>
     );
   }
@@ -342,8 +394,8 @@ function NavItemRow({
       className={className}
       aria-current={isActive ? "page" : undefined}
     >
-      {leading}
-      {label}
+      {body}
+      {trailing}
     </Link>
   );
 }
@@ -363,7 +415,7 @@ function SidebarNavGroups({ groups }: { groups: NavGroup[] }) {
             {group.items.map((item) => {
               const isActive =
                 item.kind === "href"
-                  ? item.isActive(pathname)
+                  ? item.isActive(pathname, activeTab)
                   : isNavTabActive(item.tab, pathname, activeTab);
 
               return (
@@ -448,17 +500,20 @@ function SidebarFooter() {
 }
 
 export default function DashboardSidebar() {
-  const { isBusinessAccount, isEmployeeAccount, showTalentPoolNav } =
-    useDashboardNav();
+  const pathname = usePathname();
+  const { isBusinessAccount, isEmployeeAccount } = useDashboardNav();
 
-  const groups = isBusinessAccount
-    ? buildEmployerGroups(showTalentPoolNav)
+  const onEmployerSurface =
+    isBusinessAccount || isEmployerPath(pathname);
+
+  const groups = onEmployerSurface
+    ? buildEmployerGroups()
     : isEmployeeAccount
       ? buildEmployeeGroups()
       : buildCandidateGroups();
 
-  const badge = isBusinessAccount
-    ? "Employer Workspace"
+  const badge = onEmployerSurface
+    ? "EMPLOYER CONSOLE"
     : isEmployeeAccount
       ? "Employee Workspace"
       : "Candidate Workspace";
@@ -466,7 +521,7 @@ export default function DashboardSidebar() {
   return (
     <div className="flex h-full min-h-0 w-64 shrink-0 flex-col justify-between border-r border-white/[0.08] bg-[#0E0E12] p-5">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <SidebarBrand badge={badge} />
+        <SidebarBrand badge={badge} amberBadge={onEmployerSurface} />
         <SidebarNavGroups groups={groups} />
       </div>
       <SidebarFooter />

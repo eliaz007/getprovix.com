@@ -2,8 +2,8 @@ import type { User } from "@supabase/supabase-js";
 
 export type AccountKind = "employer" | "candidate";
 
-/** Employer hiring home: vetted talent pipeline, not the candidate profile. */
-export const EMPLOYER_DASHBOARD_PATH = "/dashboard?tab=talent";
+/** Employer hiring home: talent discovery console. */
+export const EMPLOYER_DASHBOARD_PATH = "/employer/talent";
 
 /** Post-auth role picker for GitHub/Google users whose profiles.role is unset. */
 export const ROLE_ONBOARDING_PATH = "/onboarding/role";
@@ -119,6 +119,10 @@ export function isEmployerAllowedDashboardRequest(
     return true;
   }
 
+  if (pathname === "/search" || pathname.startsWith("/search/")) {
+    return true;
+  }
+
   if (
     pathname === "/dashboard/auditor" ||
     pathname.startsWith("/dashboard/auditor/")
@@ -145,6 +149,10 @@ export function isEmployerDashboardRequest(
   search = ""
 ): boolean {
   if (pathname === "/employer" || pathname.startsWith("/employer/")) {
+    return true;
+  }
+
+  if (pathname === "/search" || pathname.startsWith("/search/")) {
     return true;
   }
 

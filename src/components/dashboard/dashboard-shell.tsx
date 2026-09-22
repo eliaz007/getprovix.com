@@ -110,8 +110,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             initials={userInitials}
           />
 
-          <main className="relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#0B0B0D] p-8">
-            <div className="mx-auto w-full max-w-6xl">
+          <main className="relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#0B0B0D] p-8 text-zinc-100">
+            <div className="mx-auto w-full max-w-6xl text-zinc-100">
               {!isGuest &&
               isBusinessAccount &&
               !isVerifiedEmployer &&
