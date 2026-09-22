@@ -85,21 +85,23 @@ export default function DashboardSkeleton() {
     >
       <span className="sr-only">Loading dashboard</span>
 
-      <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#0B0B0D]/80 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <Pulse className="h-6 w-6 shrink-0 rounded-md bg-white/10" />
+      <header className="sticky top-0 z-50 w-full border-b border-white/[0.07] bg-[#0c0c10]/80 backdrop-blur-xl">
+        <div className="relative mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
+          <div className="flex shrink-0 items-center gap-2.5">
+            <Pulse className="h-7 w-7 shrink-0 rounded-lg bg-white/10" />
             <Pulse className="hidden h-3 w-16 rounded bg-white/10 sm:block" />
-            <span className="mx-2 hidden h-4 w-px bg-zinc-800 sm:block" />
-            <div className="flex items-center gap-4">
-              <Pulse className="h-3 w-14 rounded bg-white/10" />
-              <Pulse className="h-3 w-20 rounded bg-white/10" />
-              <Pulse className="hidden h-3 w-16 rounded bg-white/10 sm:block" />
-              <Pulse className="hidden h-3 w-12 rounded bg-white/10 md:block" />
+          </div>
+          <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block">
+            <div className="flex items-center gap-1 rounded-full border border-white/[0.08] bg-[#14141b]/90 p-1">
+              <Pulse className="h-7 w-20 rounded-full bg-white/10" />
+              <Pulse className="h-7 w-24 rounded-full bg-white/10" />
+              <Pulse className="h-7 w-16 rounded-full bg-white/10" />
+              <Pulse className="h-7 w-16 rounded-full bg-white/10" />
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <Pulse className="hidden h-5 w-16 rounded-full bg-white/10 sm:block" />
+          <div className="flex items-center gap-2.5">
+            <Pulse className="hidden h-5 w-20 rounded-full bg-white/10 sm:block" />
+            <Pulse className="h-8 w-8 rounded-full bg-white/10" />
             <Pulse className="h-8 w-8 rounded-full bg-white/10" />
           </div>
         </div>

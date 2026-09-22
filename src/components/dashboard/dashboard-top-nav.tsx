@@ -1,13 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import {
+  LayoutDashboard,
+  Users,
+  Send,
+  ShieldCheck,
+  Terminal,
+  Settings,
+} from "lucide-react";
 import { usePathname } from "next/navigation";
 import EmployerNotificationBell from "@/components/EmployerNotificationBell";
 import {
-  dashboardTabHref,
   isAuditorPath,
-  isDashboardAuditorPath,
   isDashboardRootPath,
   isInterviewPrepPath,
   isOpportunitiesPath,
@@ -15,186 +20,190 @@ import {
 } from "@/lib/dashboard-account";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 
-type NavLinkDef =
-  | {
-      key: string;
-      label: string;
-      kind: "tab";
-      tab: DashboardTab;
-    }
-  | {
-      key: string;
-      label: string;
-      kind: "href";
-      href: string;
-      isActive: (pathname: string) => boolean;
-    };
+type IslandItem = {
+  key: string;
+  label: string;
+  href: string;
+  icon: typeof LayoutDashboard;
+  isActive: (pathname: string, activeTab: DashboardTab) => boolean;
+};
 
-function isNavTabActive(
-  tab: DashboardTab,
-  pathname: string,
-  activeTab: DashboardTab
-) {
-  if (tab === "opportunities") {
-    return (
+const CANDIDATE_ISLAND: IslandItem[] = [
+  {
+    key: "overview",
+    label: "Overview",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    isActive: (pathname, activeTab) =>
+      isDashboardRootPath(pathname) && activeTab === "my_profile",
+  },
+  {
+    key: "talent",
+    label: "Talent Network",
+    href: "/dashboard/talent",
+    icon: Users,
+    isActive: (pathname, activeTab) =>
       isOpportunitiesPath(pathname) ||
-      (isDashboardRootPath(pathname) && activeTab === tab)
-    );
-  }
+      pathname === "/dashboard/talent" ||
+      pathname.startsWith("/dashboard/talent/") ||
+      (isDashboardRootPath(pathname) && activeTab === "opportunities"),
+  },
+  {
+    key: "intros",
+    label: "Intro Requests",
+    href: "/dashboard/requests",
+    icon: Send,
+    isActive: (pathname, activeTab) =>
+      pathname === "/dashboard/requests" ||
+      pathname.startsWith("/dashboard/requests/") ||
+      (isDashboardRootPath(pathname) && activeTab === "intro_requests"),
+  },
+  {
+    key: "auditor",
+    label: "Auditor",
+    href: "/dashboard/auditor",
+    icon: ShieldCheck,
+    isActive: (pathname) => isAuditorPath(pathname),
+  },
+  {
+    key: "simulator",
+    label: "Simulator",
+    href: "/dashboard/simulator",
+    icon: Terminal,
+    isActive: (pathname) =>
+      isInterviewPrepPath(pathname) ||
+      pathname === "/dashboard/simulator" ||
+      pathname.startsWith("/dashboard/simulator/"),
+  },
+];
 
-  if (tab === "auditor") {
-    return (
-      isDashboardAuditorPath(pathname) ||
-      (isDashboardRootPath(pathname) && activeTab === tab)
-    );
-  }
+const EMPLOYER_ISLAND: IslandItem[] = [
+  {
+    key: "overview",
+    label: "Overview",
+    href: "/dashboard?tab=my_profile",
+    icon: LayoutDashboard,
+    isActive: (pathname, activeTab) =>
+      isDashboardRootPath(pathname) && activeTab === "my_profile",
+  },
+  {
+    key: "applicants",
+    label: "Applicants",
+    href: "/dashboard?tab=applicants",
+    icon: Send,
+    isActive: (pathname, activeTab) =>
+      isDashboardRootPath(pathname) && activeTab === "applicants",
+  },
+  {
+    key: "talent",
+    label: "Talent Network",
+    href: "/dashboard?tab=talent",
+    icon: Users,
+    isActive: (pathname, activeTab) =>
+      isDashboardRootPath(pathname) && activeTab === "talent",
+  },
+  {
+    key: "auditor",
+    label: "Auditor",
+    href: "/dashboard/auditor",
+    icon: ShieldCheck,
+    isActive: (pathname, activeTab) =>
+      isAuditorPath(pathname) ||
+      (isDashboardRootPath(pathname) && activeTab === "auditor"),
+  },
+];
 
-  return isDashboardRootPath(pathname) && activeTab === tab;
-}
+const EMPLOYEE_ISLAND: IslandItem[] = [
+  {
+    key: "talent",
+    label: "Talent Network",
+    href: "/dashboard?tab=opportunity_radar",
+    icon: Users,
+    isActive: (pathname, activeTab) =>
+      isDashboardRootPath(pathname) && activeTab === "opportunity_radar",
+  },
+  {
+    key: "applications",
+    label: "Applications",
+    href: "/dashboard?tab=applications",
+    icon: Send,
+    isActive: (pathname, activeTab) =>
+      isDashboardRootPath(pathname) && activeTab === "applications",
+  },
+];
 
-function navLinkClass(isActive: boolean) {
+function islandItemClass(isActive: boolean) {
   const base =
-    "relative inline-flex h-14 shrink-0 items-center text-xs sm:text-sm font-medium transition-colors whitespace-nowrap";
+    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap";
   if (isActive) {
-    return `${base} text-zinc-100 font-semibold`;
+    return `${base} border border-purple-500/40 bg-purple-500/15 text-white shadow-[0_0_12px_rgba(168,85,247,0.25)]`;
   }
-  return `${base} text-zinc-400 hover:text-zinc-200`;
+  return `${base} border border-transparent text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200`;
 }
 
-function TopNavLink({
-  isActive,
-  children,
-  onClick,
-  href,
-}: {
-  isActive: boolean;
-  children: ReactNode;
-  onClick?: () => void;
-  href?: string;
-}) {
-  const className = navLinkClass(isActive);
-
-  const indicator = isActive ? (
-    <span
-      aria-hidden
-      className="absolute bottom-0 inset-x-0 h-[2px] bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
-    />
-  ) : null;
-
-  if (href) {
-    return (
-      <Link href={href} onClick={onClick} className={className}>
-        {children}
-        {indicator}
-      </Link>
-    );
-  }
-
+function BrandMark() {
   return (
-    <button type="button" onClick={onClick} className={`${className} cursor-pointer`}>
-      {children}
-      {indicator}
-    </button>
+    <Link
+      href="/"
+      className="flex shrink-0 items-center gap-2.5 transition-opacity hover:opacity-90"
+    >
+      <span
+        aria-hidden
+        className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 via-violet-500 to-fuchsia-600 text-[11px] font-bold text-white shadow-[0_0_16px_rgba(168,85,247,0.35)]"
+      >
+        P
+      </span>
+      <span className="hidden text-sm font-bold tracking-widest text-zinc-100 sm:inline">
+        PROVIX
+      </span>
+    </Link>
   );
 }
 
-function buildCandidateLinks(): NavLinkDef[] {
-  return [
-    { key: "overview", label: "Overview", kind: "tab", tab: "my_profile" },
-    {
-      key: "talent",
-      label: "Talent Network",
-      kind: "tab",
-      tab: "opportunities",
-    },
-    {
-      key: "intros",
-      label: "Intro Requests",
-      kind: "tab",
-      tab: "intro_requests",
-    },
-    {
-      key: "auditor",
-      label: "Auditor",
-      kind: "href",
-      href: "/dashboard/auditor",
-      isActive: isAuditorPath,
-    },
-    {
-      key: "simulator",
-      label: "Simulator",
-      kind: "href",
-      href: "/dashboard/interview-prep",
-      isActive: isInterviewPrepPath,
-    },
-  ];
-}
+function RoleBadge() {
+  const {
+    isGuest,
+    authLoading,
+    isBusinessAccount,
+    isVerifiedEmployer,
+  } = useDashboardNav();
 
-function buildEmployeeLinks(): NavLinkDef[] {
-  return [
-    {
-      key: "network",
-      label: "Talent Network",
-      kind: "tab",
-      tab: "opportunity_radar",
-    },
-    {
-      key: "applications",
-      label: "Applications",
-      kind: "tab",
-      tab: "applications",
-    },
-  ];
-}
-
-function buildEmployerLinks(showTalentPool: boolean): NavLinkDef[] {
-  const links: NavLinkDef[] = [
-    { key: "overview", label: "Overview", kind: "tab", tab: "my_profile" },
-    { key: "applicants", label: "Applicants", kind: "tab", tab: "applicants" },
-  ];
-
-  if (showTalentPool) {
-    links.push(
-      { key: "talent", label: "Talent Network", kind: "tab", tab: "talent" },
-      {
-        key: "evaluator",
-        label: "AI Screen",
-        kind: "tab",
-        tab: "evaluator",
-      },
-      { key: "auditor", label: "Auditor", kind: "tab", tab: "auditor" }
+  if (authLoading) {
+    return (
+      <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold tracking-wide text-zinc-500">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-600" />
+        Loading
+      </span>
     );
   }
-
-  return links;
-}
-
-function StatusBadge() {
-  const { isGuest, isVerifiedEmployer, isBusinessAccount } = useDashboardNav();
 
   if (isGuest) {
     return null;
   }
 
-  if (isBusinessAccount && isVerifiedEmployer) {
+  if (isBusinessAccount) {
     return (
-      <span className="hidden sm:inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-400">
-        Verified
-      </span>
-    );
-  }
-
-  if (!isBusinessAccount) {
-    return (
-      <span className="hidden sm:inline-flex items-center rounded-full border border-zinc-700/60 bg-zinc-900/80 px-2 py-0.5 text-[10px] font-medium tracking-wide text-zinc-400">
-        Member
+      <span
+        className={`hidden sm:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-wide ${
+          isVerifiedEmployer
+            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+            : "border-purple-500/30 bg-purple-500/10 text-purple-200"
+        }`}
+      >
+        <span
+          className={`h-1.5 w-1.5 animate-pulse rounded-full ${
+            isVerifiedEmployer ? "bg-emerald-400" : "bg-purple-400"
+          }`}
+        />
+        Employer
       </span>
     );
   }
 
   return (
-    <span className="hidden sm:inline-flex items-center rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-400">
-      Unverified
+    <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-emerald-300">
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+      Developer
     </span>
   );
 }
@@ -219,7 +228,7 @@ function UserAvatar() {
       <button
         type="button"
         onClick={() => requireAuth()}
-        className="cursor-pointer rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition-colors hover:bg-zinc-800"
+        className="cursor-pointer rounded-full border border-white/[0.08] bg-[#14141b] px-3 py-1.5 text-xs font-semibold text-zinc-100 transition-colors hover:bg-white/[0.06]"
       >
         Sign In
       </button>
@@ -228,11 +237,12 @@ function UserAvatar() {
 
   return (
     <Link
-      href="/dashboard"
+      href="/dashboard/profile"
       aria-label="Open your profile"
-      className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-700/80 bg-zinc-900 text-[10px] font-bold text-zinc-100 transition-colors hover:border-zinc-500"
+      className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/[0.1] bg-[#14141b] text-[10px] font-bold text-zinc-100 transition-colors hover:border-purple-500/40"
     >
       {userAvatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={userAvatarUrl}
           alt=""
@@ -245,11 +255,72 @@ function UserAvatar() {
   );
 }
 
+function IslandNav({
+  items,
+  pathname,
+  activeTab,
+  isGuest,
+  requireAuth,
+  compact = false,
+}: {
+  items: IslandItem[];
+  pathname: string;
+  activeTab: DashboardTab;
+  isGuest: boolean;
+  requireAuth: () => boolean;
+  compact?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-full border border-white/[0.08] bg-[#14141b]/90 p-1 shadow-inner backdrop-blur-md">
+      {items.map((item) => {
+        const Icon = item.icon;
+        const active = item.isActive(pathname, activeTab);
+        const className = islandItemClass(active);
+
+        const content = (
+          <>
+            <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {!compact ? (
+              <span className="hidden lg:inline">{item.label}</span>
+            ) : null}
+          </>
+        );
+
+        if (isGuest) {
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => requireAuth()}
+              className={`${className} cursor-pointer`}
+              aria-current={active ? "page" : undefined}
+              title={item.label}
+            >
+              {content}
+            </button>
+          );
+        }
+
+        return (
+          <Link
+            key={item.key}
+            href={item.href}
+            className={className}
+            aria-current={active ? "page" : undefined}
+            title={item.label}
+          >
+            {content}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DashboardTopNav() {
   const pathname = usePathname();
   const {
     activeTab,
-    setActiveTab,
     isGuest,
     isBusinessAccount,
     isEmployeeAccount,
@@ -259,128 +330,67 @@ export default function DashboardTopNav() {
     requireAuth,
   } = useDashboardNav();
 
-  const links = isBusinessAccount
-    ? buildEmployerLinks(showTalentPoolNav)
+  const items = isBusinessAccount
+    ? showTalentPoolNav
+      ? EMPLOYER_ISLAND
+      : EMPLOYER_ISLAND.filter(
+          (item) => item.key === "overview" || item.key === "applicants"
+        )
     : isEmployeeAccount
-      ? buildEmployeeLinks()
-      : buildCandidateLinks();
-
-  const selectTab = (tab: DashboardTab) => {
-    if (isGuest) {
-      requireAuth();
-      return;
-    }
-    setActiveTab(tab);
-  };
+      ? EMPLOYEE_ISLAND
+      : CANDIDATE_ISLAND;
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#0B0B0D]/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:gap-6 sm:px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
-          <Link
-            href="/"
-            className="flex shrink-0 items-center gap-2.5 transition-opacity hover:opacity-90"
-          >
-            <span className="flex h-6 w-6 items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-900 text-[11px] font-bold text-white">
-              P
-            </span>
-            <span className="hidden text-xs font-bold tracking-widest text-zinc-100 sm:inline">
-              PROVIX
-            </span>
-          </Link>
+    <header className="sticky top-0 z-50 w-full border-b border-white/[0.07] bg-[#0c0c10]/80 backdrop-blur-xl">
+      <div className="relative mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:gap-4 sm:px-6">
+        <BrandMark />
 
-          <span
-            className="mx-2 hidden h-4 w-px shrink-0 bg-zinc-800 sm:block"
-            aria-hidden
+        <nav
+          aria-label="Dashboard"
+          className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 md:block"
+        >
+          <IslandNav
+            items={items}
+            pathname={pathname}
+            activeTab={activeTab}
+            isGuest={isGuest}
+            requireAuth={requireAuth}
           />
+        </nav>
 
-          <nav
-            aria-label="Dashboard"
-            className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto sm:gap-4 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          >
-            {links.map((item) => {
-              if (item.kind === "href") {
-                const active = item.isActive(pathname);
-                return (
-                  <TopNavLink
-                    key={item.key}
-                    href={isGuest ? undefined : item.href}
-                    isActive={active}
-                    onClick={
-                      isGuest
-                        ? () => requireAuth()
-                        : undefined
-                    }
-                  >
-                    {item.label}
-                  </TopNavLink>
-                );
-              }
+        <nav
+          aria-label="Dashboard mobile"
+          className="min-w-0 flex-1 overflow-x-auto md:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <div className="mx-auto w-max">
+            <IslandNav
+              items={items}
+              pathname={pathname}
+              activeTab={activeTab}
+              isGuest={isGuest}
+              requireAuth={requireAuth}
+              compact
+            />
+          </div>
+        </nav>
 
-              const active = isNavTabActive(item.tab, pathname, activeTab);
-              const href =
-                item.tab === "my_profile" && isBusinessAccount
-                  ? "/dashboard?tab=my_profile"
-                  : dashboardTabHref(item.tab);
-
-              if (item.tab === "opportunities") {
-                return (
-                  <TopNavLink
-                    key={item.key}
-                    href={dashboardTabHref(item.tab)}
-                    isActive={active}
-                  >
-                    {item.label}
-                  </TopNavLink>
-                );
-              }
-
-              if (isGuest) {
-                return (
-                  <TopNavLink
-                    key={item.key}
-                    isActive={active}
-                    onClick={() => requireAuth()}
-                  >
-                    {item.label}
-                  </TopNavLink>
-                );
-              }
-
-              if (isDashboardRootPath(pathname)) {
-                return (
-                  <TopNavLink
-                    key={item.key}
-                    isActive={active}
-                    onClick={() => selectTab(item.tab)}
-                  >
-                    {item.label}
-                  </TopNavLink>
-                );
-              }
-
-              return (
-                <TopNavLink
-                  key={item.key}
-                  href={href}
-                  isActive={active}
-                  onClick={() => selectTab(item.tab)}
-                >
-                  {item.label}
-                </TopNavLink>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
           {!isGuest && isBusinessAccount ? (
             <EmployerNotificationBell
               userId={userId}
               onOpenJobApplicants={(jobId) => onOpenJobApplicants?.(jobId)}
             />
           ) : null}
-          <StatusBadge />
+          <RoleBadge />
+          {!isGuest ? (
+            <Link
+              href="/dashboard/settings"
+              aria-label="Open settings"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-[#14141b]/80 text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-zinc-200"
+            >
+              <Settings className="h-4 w-4" aria-hidden />
+            </Link>
+          ) : null}
           <UserAvatar />
         </div>
       </div>

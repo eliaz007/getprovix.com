@@ -153,6 +153,7 @@ const PUBLIC_EXACT_PATHS = new Set([
   "/opengraph-image",
   "/robots.txt",
   "/sitemap.xml",
+  "/nav-island-preview",
 ]);
 
 const PUBLIC_PREFIXES = [
@@ -185,6 +186,8 @@ export function isProtectedAppPath(pathname: string): boolean {
 export function isInterviewPrepPath(pathname: string): boolean {
   return (
     pathname === "/dashboard/interview-prep" ||
-    pathname === "/dashboard/interview-simulator"
+    pathname === "/dashboard/interview-simulator" ||
+    pathname === "/dashboard/simulator" ||
+    pathname.startsWith("/dashboard/simulator/")
   );
 }
