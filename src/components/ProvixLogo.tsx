@@ -6,7 +6,7 @@ export function ProvixLogo({
   showText?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2.5">
       <div className="relative flex items-center justify-center">
         <svg
           viewBox="0 0 36 36"
@@ -40,7 +40,7 @@ export function ProvixLogo({
       </div>
 
       {showText && (
-        <span className="text-xl font-bold tracking-wider text-textMain">PROVIX</span>
+        <span className="text-base font-semibold tracking-tight text-white">PROVIX</span>
       )}
     </div>
   );

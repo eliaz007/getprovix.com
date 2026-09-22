@@ -17,31 +17,53 @@ export default function AuditsPageClient({
   initialPrivateWork?: boolean;
 }) {
   const [scorecard, setScorecard] = useState<ProductionAuditRecord | null>(null);
-  const [showScorecard, setShowScorecard] = useState(false);
+  const [showScorecard, setShowScorecard] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
+    const withTimeout = async <T,>(
+      promise: PromiseLike<T>,
+      ms = 4000
+    ): Promise<T> => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          Promise.resolve(promise),
+          new Promise<T>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(new Error("Auditor profile lookup timed out"));
+            }, ms);
+          }),
+        ]);
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      }
+    };
+
     const load = async () => {
       try {
         const supabase = createClient();
-        const { data } = await supabase.auth.getUser();
+        const { data } = await withTimeout(supabase.auth.getUser());
         if (!data.user) {
           if (!cancelled) {
-            setShowScorecard(false);
             setScorecard(null);
           }
           return;
         }
 
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select(
-            "production_score, audit_breakdown, is_audit_verified, is_publicly_visible, role"
-          )
-          .or(`id.eq.${data.user.id},user_id.eq.${data.user.id}`)
-          .limit(1)
-          .maybeSingle();
+        const { data: profile } = await withTimeout(
+          supabase
+            .from("profiles")
+            .select(
+              "production_score, audit_breakdown, is_audit_verified, is_publicly_visible, role"
+            )
+            .or(`id.eq.${data.user.id},user_id.eq.${data.user.id}`)
+            .limit(1)
+            .maybeSingle()
+        );
 
         if (cancelled) {
           return;
@@ -50,14 +72,15 @@ export default function AuditsPageClient({
         const role = typeof profile?.role === "string" ? profile.role : null;
         if (role === "employer" || role === "business") {
           setShowScorecard(false);
+          setScorecard(null);
           return;
         }
 
         setShowScorecard(true);
-        setScorecard(parseProductionAuditFromProfileRow(profile));
+        setScorecard(parseProductionAuditFromProfileRow(profile ?? null));
       } catch {
         if (!cancelled) {
-          setShowScorecard(false);
+          setScorecard(null);
         }
       }
     };

@@ -137,7 +137,7 @@ const SECTION_LABEL =
 
 const TONE_PILL: Record<ChecklistTone, string> = {
   pass: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
-  warn: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+  warn: "bg-violet-500/10 text-violet-400 border border-violet-500/20",
   fail: "bg-red-500/10 text-red-400 border border-red-500/20",
 };
 
@@ -150,8 +150,8 @@ const TONE_STYLES: Record<
     status: "text-emerald-300",
   },
   warn: {
-    iconWrap: "border-amber-500/30 bg-amber-500/10 text-amber-400",
-    status: "text-amber-300",
+    iconWrap: "border-violet-500/30 bg-violet-500/10 text-violet-400",
+    status: "text-violet-300",
   },
   fail: {
     iconWrap: "border-rose-500/30 bg-rose-500/10 text-rose-400",
@@ -396,7 +396,7 @@ function highlightCode(
           const value = keyMatch[4];
           if (/^\s*\d+\s*$/.test(value)) {
             nodes.push(
-              <span key={`${index}-n`} className="text-amber-300">
+              <span key={`${index}-n`} className="text-violet-300">
                 {value}
               </span>
             );
@@ -454,7 +454,7 @@ function highlightCode(
             );
           } else if (/^(true|false|null|undefined)$/.test(part)) {
             nodes.push(
-              <span key={`${index}-lit-${partIndex}`} className="text-amber-300">
+              <span key={`${index}-lit-${partIndex}`} className="text-violet-300">
                 {part}
               </span>
             );
@@ -847,7 +847,7 @@ function TechnicalScreenGenerator({ prompts }: { prompts: ScreenPrompt[] }) {
           <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
             Technical Screen Generator
           </h3>
-          <span className="inline-flex shrink-0 items-center rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-mono font-medium text-amber-400">
+          <span className="inline-flex shrink-0 items-center rounded border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-[11px] font-mono font-medium text-violet-400">
             RAMP-UP: SUPERVISION REQUIRED (3-4 Wk Ramp-Up)
           </span>
         </div>
@@ -1121,8 +1121,8 @@ function AuditResultsFallback({
   message: string;
 }) {
   return (
-    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 sm:p-5 space-y-3">
-      <div className="text-[10px] uppercase font-bold tracking-wider text-amber-400">
+    <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-4 sm:p-5 space-y-3">
+      <div className="text-[10px] uppercase font-bold tracking-wider text-violet-400">
         Executive Dossier Unavailable
       </div>
       <p className="text-sm text-zinc-300 leading-relaxed">{message}</p>
@@ -1308,7 +1308,7 @@ function AuditResultsPanelView({
 
       {!employerView ? (
         <section>
-          <div className={`${SECTION_LABEL} mb-3 text-amber-400`}>
+          <div className={`${SECTION_LABEL} mb-3 text-violet-400`}>
             Actionable Fixes
           </div>
           {actionableFixes.length > 0 ? (
@@ -1406,7 +1406,7 @@ function AuditResultsPanelView({
 
           {visibleRedFlags.length > 0 ? (
             <div>
-              <div className={`${SECTION_LABEL} mb-3 text-amber-400`}>
+              <div className={`${SECTION_LABEL} mb-3 text-violet-400`}>
                 Detected Red Flags / Missing Proof-of-Work
               </div>
               <ul className="space-y-2">
@@ -1416,7 +1416,7 @@ function AuditResultsPanelView({
                     className="flex items-start gap-2 text-sm leading-relaxed text-zinc-400"
                   >
                     <AlertTriangle
-                      className="mt-0.5 h-4 w-4 shrink-0 text-amber-400"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-violet-400"
                       aria-hidden
                     />
                     <span>{item}</span>

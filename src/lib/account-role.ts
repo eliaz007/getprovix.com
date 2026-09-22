@@ -5,6 +5,9 @@ export type AccountKind = "employer" | "candidate";
 /** Employer hiring home: vetted talent pipeline, not the candidate profile. */
 export const EMPLOYER_DASHBOARD_PATH = "/dashboard?tab=talent";
 
+/** Candidate dashboard home. */
+export const CANDIDATE_DASHBOARD_PATH = "/dashboard/profile";
+
 /** Post-auth role picker for GitHub/Google users whose profiles.role is unset. */
 export const ROLE_ONBOARDING_PATH = "/onboarding/role";
 
@@ -172,7 +175,8 @@ export function isCandidateShellPath(pathname: string, search = ""): boolean {
     pathname.startsWith("/auditor/") ||
     pathname === "/dashboard/pitch-studio" ||
     pathname === "/dashboard/interview-prep" ||
-    pathname === "/dashboard/interview-simulator"
+    pathname === "/dashboard/interview-simulator" ||
+    pathname === "/dashboard/profile"
   ) {
     return true;
   }
@@ -205,7 +209,7 @@ export function resolvePostAuthDestination(input: {
   const employer = kind === "employer";
   const defaultDestination = employer
     ? EMPLOYER_DASHBOARD_PATH
-    : "/dashboard";
+    : CANDIDATE_DASHBOARD_PATH;
 
   if (
     !requestedUrl ||
@@ -223,7 +227,7 @@ export function resolvePostAuthDestination(input: {
     !employer &&
     isEmployerDashboardRequest(requestedUrl.pathname, requestedUrl.search)
   ) {
-    return "/dashboard";
+    return CANDIDATE_DASHBOARD_PATH;
   }
 
   return `${requestedUrl.pathname}${requestedUrl.search}`;

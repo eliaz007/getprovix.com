@@ -74,7 +74,7 @@ function FindingList({
     tone === "pass"
       ? "text-emerald-400"
       : tone === "warn"
-        ? "text-amber-400"
+        ? "text-violet-400"
         : "text-neutral-400";
 
   return (
@@ -468,7 +468,7 @@ export default function PublicProductionAudit({
       {limitReached ? (
         <div
           role="status"
-          className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+          className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-3 text-sm text-violet-200"
         >
           {DAILY_LIMIT_UI_MESSAGE}
         </div>

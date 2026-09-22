@@ -53,11 +53,11 @@ const GLASS_CARD =
 const FIELD_LABEL =
   "mb-2 block text-[11px] font-semibold uppercase tracking-wider text-zinc-500";
 const TERMINAL_INPUT =
-  "w-full bg-[#070709] border border-white/[0.09] text-zinc-100 rounded-lg px-3.5 py-2.5 font-mono text-sm placeholder:text-zinc-600 focus:border-amber-500/60 focus:ring-1 focus:ring-amber-500/20 focus:outline-none transition-all";
+  "w-full bg-[#070709] border border-white/[0.09] text-zinc-100 rounded-lg px-3.5 py-2.5 font-mono text-sm placeholder:text-zinc-600 focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/20 focus:outline-none transition-all";
 const PRIMARY_CTA =
   "w-full cursor-pointer bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] font-semibold py-2.5 px-4 rounded-lg text-sm shadow-[0_1px_2px_rgba(0,0,0,0.5)] flex items-center justify-center gap-2 transition-all disabled:cursor-not-allowed disabled:opacity-50";
 const EYEBROW_BADGE =
-  "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-widest uppercase bg-amber-500/10 text-amber-300 border border-amber-500/25 mb-3";
+  "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-widest uppercase bg-violet-500/10 text-violet-300 border border-violet-500/25 mb-3";
 
 export default function GitHubResumeAuditor({
   initialGithubUrl = "",
@@ -544,7 +544,7 @@ export default function GitHubResumeAuditor({
                 type="checkbox"
                 checked={isPrivateWork}
                 onChange={(e) => setIsPrivateWork(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-white/[0.12] bg-[#070709] text-amber-500 focus:ring-amber-500/30"
+                className="mt-0.5 h-4 w-4 rounded border-white/[0.12] bg-[#070709] text-violet-500 focus:ring-violet-500/30"
               />
               <span className="text-xs leading-relaxed text-zinc-500">
                 This work is private or enterprise — I do not have a public
@@ -580,7 +580,7 @@ export default function GitHubResumeAuditor({
             <div className="border-t border-white/[0.08] pt-4">
               <ExternalProjectsForm onProjectsChange={setExternalProjects} />
               {!hasUsableExternalProjects(externalProjects) ? (
-                <p className="mt-3 text-xs text-amber-300/90">
+                <p className="mt-3 text-xs text-violet-300/90">
                   Save at least one project artifact above so the auditor can
                   review your private or enterprise work instead of a public repo.
                 </p>
@@ -622,7 +622,7 @@ export default function GitHubResumeAuditor({
           {limitReached && (
             <div
               role="status"
-              className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+              className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-3 text-sm text-violet-200"
             >
               {DAILY_LIMIT_UI_MESSAGE}
             </div>

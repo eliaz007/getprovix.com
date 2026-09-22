@@ -648,7 +648,7 @@ export default function GeminiDeepScreening({
             here when complete.
           </p>
           {errorMessage ? (
-            <p className="text-[11px] text-amber-200 leading-relaxed">{errorMessage}</p>
+            <p className="text-[11px] text-violet-200 leading-relaxed">{errorMessage}</p>
           ) : null}
         </div>
       )}
@@ -656,14 +656,14 @@ export default function GeminiDeepScreening({
       {errorMessage && !loading && (
         <div
           role="status"
-          className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 space-y-3"
+          className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-4 space-y-3"
         >
-          <p className="text-xs text-amber-100 leading-relaxed">{errorMessage}</p>
+          <p className="text-xs text-violet-100 leading-relaxed">{errorMessage}</p>
           <button
             type="button"
             onClick={() => void runDeepScreening()}
             disabled={loading}
-            className="w-full bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/25 text-amber-100 font-semibold py-2 rounded-lg text-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/25 text-violet-100 font-semibold py-2 rounded-lg text-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Retry Live Audit
           </button>
@@ -700,8 +700,8 @@ export default function GeminiDeepScreening({
 
           {!hasAuditedCodebase ? (
             <>
-              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-zinc-300">
-                <span className="font-semibold text-amber-400 block mb-1">
+              <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-4 text-xs text-zinc-300">
+                <span className="font-semibold text-violet-400 block mb-1">
                   Codebase Not Connected
                 </span>
                 Deep architectural audits, CI/CD verification, and AST analysis
@@ -801,14 +801,14 @@ export default function GeminiDeepScreening({
           {result.github_audit?.fetch_warnings &&
             result.github_audit.fetch_warnings.length > 0 && (
               <div>
-                <div className="text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-2">
+                <div className="text-[10px] uppercase font-bold text-violet-400 tracking-wider mb-2">
                   GitHub Fetch Warnings
                 </div>
                 <ul className="space-y-1.5">
                   {result.github_audit.fetch_warnings.map((warning, index) => (
                     <li
                       key={`gh-warning-${index}`}
-                      className="text-xs text-amber-200 leading-relaxed bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2"
+                      className="text-xs text-violet-200 leading-relaxed bg-violet-500/5 border border-violet-500/15 rounded-lg px-3 py-2"
                     >
                       {warning}
                     </li>

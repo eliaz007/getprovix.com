@@ -7,6 +7,7 @@ import {
   isPublicRoute,
 } from "@/lib/dashboard-account";
 import {
+  CANDIDATE_DASHBOARD_PATH,
   EMPLOYER_DASHBOARD_PATH,
   isEmployerAllowedDashboardRequest,
   isEmployerDashboardRequest,
@@ -191,7 +192,7 @@ export async function updateSession(request: NextRequest) {
 
       if (role && onRoleOnboarding) {
         const destination = new URL(
-          role === "employer" ? EMPLOYER_DASHBOARD_PATH : "/dashboard",
+          role === "employer" ? EMPLOYER_DASHBOARD_PATH : CANDIDATE_DASHBOARD_PATH,
           request.url
         );
         return redirectWithSessionCookies(
@@ -254,8 +255,22 @@ export async function updateSession(request: NextRequest) {
         return redirectWithSessionCookies(
           request,
           supabaseResponse,
-          "/dashboard"
+          CANDIDATE_DASHBOARD_PATH
         );
+      }
+
+      if (
+        role === "candidate" &&
+        pathname === "/dashboard"
+      ) {
+        const tab = request.nextUrl.searchParams.get("tab")?.trim() ?? "";
+        if (!tab || tab === "overview" || tab === "my_profile") {
+          return redirectWithSessionCookies(
+            request,
+            supabaseResponse,
+            CANDIDATE_DASHBOARD_PATH
+          );
+        }
       }
     }
   }
@@ -276,7 +291,11 @@ export async function updateSession(request: NextRequest) {
       return supabaseResponse;
     }
 
-    return redirectWithSessionCookies(request, supabaseResponse, "/dashboard");
+    return redirectWithSessionCookies(
+      request,
+      supabaseResponse,
+      CANDIDATE_DASHBOARD_PATH
+    );
   }
 
   return supabaseResponse;

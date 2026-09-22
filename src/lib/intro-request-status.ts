@@ -121,6 +121,6 @@ export function getIntroStatusBadgeClass(status: IntroPipelineStatus): string {
     case "passed":
       return "text-slate-400 bg-slate-500/10 border-slate-600/40";
     default:
-      return "text-amber-400 bg-amber-500/10 border-amber-500/30";
+      return "text-violet-400 bg-violet-500/10 border-violet-500/30";
   }
 }

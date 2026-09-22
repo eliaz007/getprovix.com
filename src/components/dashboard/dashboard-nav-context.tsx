@@ -33,11 +33,19 @@ import {
   type DashboardTab,
 } from "@/lib/dashboard-account";
 import { createClient } from "@/utils/supabase/client";
+import {
+  parseAvailabilityStatus,
+  type AvailabilityStatus,
+} from "@/lib/availability-status";
+
+export type ProfileStudioSection = "profile" | "proof_of_work" | "settings";
 
 type DashboardNavContextValue = {
   activeTab: DashboardTab;
   setActiveTab: (tab: DashboardTab) => void;
   setDefaultTab: (tab: DashboardTab) => void;
+  profileStudioSection: ProfileStudioSection;
+  setProfileStudioSection: (section: ProfileStudioSection) => void;
   mobileNavOpen: boolean;
   setMobileNavOpen: (open: boolean) => void;
   accountRole: string | null;
@@ -48,6 +56,9 @@ type DashboardNavContextValue = {
   userAvatarUrl: string | null;
   userInitials: string;
   userDisplayName: string;
+  setUserDisplayName: (name: string | null) => void;
+  availabilityStatus: AvailabilityStatus | null;
+  setAvailabilityStatus: (status: AvailabilityStatus | null) => void;
   authLoading: boolean;
   contentReady: boolean;
   setContentReady: (ready: boolean) => void;
@@ -68,7 +79,34 @@ const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000;
 
 const DashboardNavContext = createContext<DashboardNavContextValue | null>(null);
 
-function getUserHeaderIdentity(user: User): {
+function initialsFromDisplayName(displayName: string): string {
+  const parts = displayName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const first = parts[0]?.[0] ?? "";
+    const last = parts[parts.length - 1]?.[0] ?? "";
+    return `${first}${last}`.toUpperCase();
+  }
+
+  return (parts[0] ?? "DE").slice(0, 2).toUpperCase();
+}
+
+function resolveUserDisplayName(
+  profileFullName?: string | null,
+  user?: User | null
+): string {
+  const meta = user?.user_metadata ?? {};
+  return (
+    (typeof profileFullName === "string" && profileFullName.trim()) ||
+    (typeof meta.full_name === "string" && meta.full_name.trim()) ||
+    (typeof meta.name === "string" && meta.name.trim()) ||
+    "Developer"
+  );
+}
+
+function getUserHeaderIdentity(
+  user: User,
+  profileFullName?: string | null
+): {
   avatarUrl: string | null;
   initials: string;
   displayName: string;
@@ -78,25 +116,13 @@ function getUserHeaderIdentity(user: User): {
     (typeof meta.avatar_url === "string" && meta.avatar_url.trim()) ||
     (typeof meta.picture === "string" && meta.picture.trim()) ||
     null;
-  const name =
-    (typeof meta.full_name === "string" && meta.full_name.trim()) ||
-    (typeof meta.name === "string" && meta.name.trim()) ||
-    user.email?.trim() ||
-    "";
-  const initials =
-    name
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((part) => part[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase() || "U";
-  const displayName =
-    name.split("@")[0]?.trim() ||
-    (typeof meta.name === "string" && meta.name.trim()) ||
-    "User";
+  const displayName = resolveUserDisplayName(profileFullName, user);
 
-  return { avatarUrl, initials, displayName };
+  return {
+    avatarUrl,
+    initials: initialsFromDisplayName(displayName),
+    displayName,
+  };
 }
 
 function readClientTabParam(): string | null {
@@ -159,6 +185,8 @@ function DashboardNavProviderImpl({
   const [userTab, setUserTab] = useState<DashboardTab | null>(
     () => urlTab ?? (isDashboardRootPath(pathname) ? tabHold.current : null)
   );
+  const [profileStudioSection, setProfileStudioSection] =
+    useState<ProfileStudioSection>("profile");
   const [seenPathname, setSeenPathname] = useState(pathname);
   const userSelectedTabRef = useRef(Boolean(urlTab));
   const didStripTabQueryRef = useRef(false);
@@ -167,8 +195,15 @@ function DashboardNavProviderImpl({
   const [isVerifiedEmployer, setIsVerifiedEmployer] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
-  const [userInitials, setUserInitials] = useState("U");
-  const [userDisplayName, setUserDisplayName] = useState("User");
+  const [userInitials, setUserInitials] = useState("DE");
+  const [userDisplayName, setUserDisplayNameState] = useState("Developer");
+  const setUserDisplayName = useCallback((name: string | null) => {
+    const displayName = resolveUserDisplayName(name, null);
+    setUserDisplayNameState(displayName);
+    setUserInitials(initialsFromDisplayName(displayName));
+  }, []);
+  const [availabilityStatus, setAvailabilityStatus] =
+    useState<AvailabilityStatus | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [contentReady, setContentReadyState] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -220,8 +255,17 @@ function DashboardNavProviderImpl({
     setUserTab(tab);
   }, [tabHold]);
 
+  const contentReadyCountRef = useRef(0);
   const setContentReady = useCallback((ready: boolean) => {
-    setContentReadyState(ready);
+    if (ready) {
+      contentReadyCountRef.current += 1;
+      setContentReadyState(true);
+      return;
+    }
+    contentReadyCountRef.current = Math.max(0, contentReadyCountRef.current - 1);
+    if (contentReadyCountRef.current === 0) {
+      setContentReadyState(false);
+    }
   }, []);
 
   const requireAuth = useCallback(() => {
@@ -247,7 +291,7 @@ function DashboardNavProviderImpl({
     setUserTab(urlTab);
 
     // Keep employer hub tabs in the URL so refresh does not fall back to the
-    // candidate profile studio. Candidate default (my_profile) still strips.
+    // candidate profile. Bare candidate /dashboard is redirected in middleware.
     if (isEmployerRole(accountRole) || urlTab !== "my_profile") {
       return;
     }
@@ -302,10 +346,10 @@ function DashboardNavProviderImpl({
         if (!user) {
           setUserId(null);
           setUserAvatarUrl(null);
-          setUserInitials("U");
-          setUserDisplayName("User");
+          setUserDisplayName(null);
           setAccountRole(null);
           setIsVerifiedEmployer(false);
+          setAvailabilityStatus(null);
           return;
         }
 
@@ -313,14 +357,18 @@ function DashboardNavProviderImpl({
         setUserId(user.id);
         setUserAvatarUrl(identity.avatarUrl);
         setUserInitials(identity.initials);
-        setUserDisplayName(identity.displayName);
+        setUserDisplayNameState(identity.displayName);
         setAuthModalOpen(false);
 
-        let profile: { role?: string | null; is_verified?: boolean | null } | null =
-          null;
+        let profile: {
+          role?: string | null;
+          is_verified?: boolean | null;
+          availability_status?: string | null;
+          full_name?: string | null;
+        } | null = null;
         const byId = await supabase
           .from("profiles")
-          .select("role, is_verified")
+          .select("role, is_verified, availability_status, full_name")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -329,7 +377,7 @@ function DashboardNavProviderImpl({
         if (!profile) {
           const byUserId = await supabase
             .from("profiles")
-            .select("role, is_verified")
+            .select("role, is_verified, availability_status, full_name")
             .eq("user_id", user.id)
             .maybeSingle();
           profile = byUserId.data;
@@ -353,6 +401,10 @@ function DashboardNavProviderImpl({
         }
 
         setIsVerifiedEmployer(profile?.is_verified === true);
+        setAvailabilityStatus(parseAvailabilityStatus(profile?.availability_status));
+        const namedIdentity = getUserHeaderIdentity(user, profile?.full_name);
+        setUserDisplayNameState(namedIdentity.displayName);
+        setUserInitials(namedIdentity.initials);
 
         if (!active) {
           return;
@@ -370,9 +422,10 @@ function DashboardNavProviderImpl({
         if (active) {
           setUserId(null);
           setUserAvatarUrl(null);
-          setUserInitials("U");
+          setUserDisplayName(null);
           setAccountRole(null);
           setIsVerifiedEmployer(false);
+          setAvailabilityStatus(null);
         }
       } finally {
         if (active) {
@@ -418,6 +471,8 @@ function DashboardNavProviderImpl({
       activeTab,
       setActiveTab,
       setDefaultTab,
+      profileStudioSection,
+      setProfileStudioSection,
       mobileNavOpen,
       setMobileNavOpen,
       accountRole,
@@ -428,6 +483,9 @@ function DashboardNavProviderImpl({
       userAvatarUrl,
       userInitials,
       userDisplayName,
+      setUserDisplayName,
+      availabilityStatus,
+      setAvailabilityStatus,
       authLoading,
       contentReady,
       setContentReady,
@@ -447,6 +505,7 @@ function DashboardNavProviderImpl({
       activeTab,
       setActiveTab,
       setDefaultTab,
+      profileStudioSection,
       mobileNavOpen,
       accountRole,
       isVerifiedEmployer,
@@ -454,6 +513,7 @@ function DashboardNavProviderImpl({
       userAvatarUrl,
       userInitials,
       userDisplayName,
+      availabilityStatus,
       authLoading,
       contentReady,
       setContentReady,
@@ -484,21 +544,30 @@ export function useDashboardNav() {
   return context;
 }
 
-/** Hold the dashboard chrome until this route's first paint of real content. */
+/** Mark this route as painted. Multiple gates can be mounted; unmounting one
+ *  must not flip the shared flag if another route is still ready. */
 export function DashboardContentGate({ ready }: { ready: boolean }) {
   const { setContentReady } = useDashboardNav();
+  const contributedRef = useRef(false);
 
-  // Set ready without an intermediate `false` when the prop toggles — cleanup
-  // on `[ready]` previously flashed the full-shell skeleton on every change.
   useLayoutEffect(() => {
-    if (ready) {
+    if (ready && !contributedRef.current) {
+      contributedRef.current = true;
       setContentReady(true);
+      return;
+    }
+    if (!ready && contributedRef.current) {
+      contributedRef.current = false;
+      setContentReady(false);
     }
   }, [ready, setContentReady]);
 
   useLayoutEffect(() => {
     return () => {
-      setContentReady(false);
+      if (contributedRef.current) {
+        contributedRef.current = false;
+        setContentReady(false);
+      }
     };
   }, [setContentReady]);
 

@@ -380,8 +380,8 @@ export default function InterviewPrepPage() {
                   })}
                 </div>
 
-                <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
-                  <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-amber-400 tracking-wider mb-2">
+                <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-4">
+                  <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-violet-400 tracking-wider mb-2">
                     <AlertTriangle className="w-3.5 h-3.5" aria-hidden />
                     Top Technical Trap / Pitfall
                   </div>

@@ -10,10 +10,8 @@ import {
 import { isDashboardRootPath } from "@/lib/dashboard-account";
 
 /**
- * Nested AI tool routes (Pitch Studio, Auditor, Interview Simulator) never
- * mount the root `/dashboard` page ContentGate. When leaving `/dashboard`,
- * that gate's cleanup sets `contentReady=false` and the shell skeleton
- * deadlocks unless a nested route marks ready again.
+ * Nested AI tool routes never mount the root `/dashboard` page ContentGate.
+ * Mark them ready here so route transitions do not wait on the profile page.
  */
 function DashboardRouteReady({ children }: { children: ReactNode }) {
   const pathname = usePathname();

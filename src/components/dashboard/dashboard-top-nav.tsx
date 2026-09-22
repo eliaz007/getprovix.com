@@ -8,6 +8,7 @@ import {
   dashboardTabHref,
   isAuditorPath,
   isDashboardAuditorPath,
+  isDashboardProfilePath,
   isDashboardRootPath,
   isInterviewPrepPath,
   isOpportunitiesPath,
@@ -49,6 +50,13 @@ function isNavTabActive(
     );
   }
 
+  if (tab === "my_profile") {
+    return (
+      isDashboardProfilePath(pathname) ||
+      (isDashboardRootPath(pathname) && activeTab === tab)
+    );
+  }
+
   return isDashboardRootPath(pathname) && activeTab === tab;
 }
 
@@ -56,7 +64,7 @@ function navLinkClass(isActive: boolean) {
   const base =
     "relative inline-flex h-14 shrink-0 items-center text-xs sm:text-sm font-medium transition-colors whitespace-nowrap";
   if (isActive) {
-    return `${base} text-zinc-100 font-semibold after:absolute after:bottom-0 after:inset-x-0 after:h-[2px] after:bg-amber-400 after:shadow-[0_0_10px_rgba(245,158,11,0.5)]`;
+    return `${base} text-zinc-100 font-semibold after:absolute after:bottom-0 after:inset-x-0 after:h-[2px] after:bg-violet-400 after:shadow-[0_0_10px_rgba(139,92,246,0.5)]`;
   }
   return `${base} text-zinc-400 hover:text-zinc-200`;
 }
@@ -91,18 +99,18 @@ function TopNavLink({
 
 function buildCandidateLinks(): NavLinkDef[] {
   return [
-    { key: "overview", label: "Overview", kind: "tab", tab: "my_profile" },
-    {
-      key: "talent",
-      label: "Talent Network",
-      kind: "tab",
-      tab: "opportunities",
-    },
+    { key: "profile", label: "Profile", kind: "tab", tab: "my_profile" },
     {
       key: "intros",
       label: "Intro Requests",
       kind: "tab",
       tab: "intro_requests",
+    },
+    {
+      key: "talent",
+      label: "Talent Network",
+      kind: "tab",
+      tab: "opportunities",
     },
     {
       key: "auditor",
@@ -184,7 +192,7 @@ function StatusBadge() {
   }
 
   return (
-    <span className="hidden sm:inline-flex items-center rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-400">
+    <span className="hidden sm:inline-flex items-center rounded-full border border-violet-500/25 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-violet-400">
       Unverified
     </span>
   );
@@ -275,7 +283,7 @@ export default function DashboardTopNav() {
             <span className="flex h-6 w-6 items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-900 text-[11px] font-bold text-white">
               P
             </span>
-            <span className="hidden text-xs font-bold tracking-widest text-zinc-100 sm:inline">
+            <span className="hidden text-base font-semibold tracking-tight text-white sm:inline">
               PROVIX
             </span>
           </Link>

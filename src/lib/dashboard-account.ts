@@ -36,14 +36,23 @@ export function canAccessTalentPool(
   return isVerifiedEmployerFlag(isVerified);
 }
 
+export const CANDIDATE_PROFILE_PATH = "/dashboard/profile";
+
 export function isDashboardRootPath(pathname: string): boolean {
   return pathname === "/dashboard";
+}
+
+export function isDashboardProfilePath(pathname: string): boolean {
+  return pathname === CANDIDATE_PROFILE_PATH;
 }
 
 export function defaultDashboardTabForRole(
   role: string | null | undefined
 ): DashboardTab {
-  return isEmployerRole(role) ? "talent" : "my_profile";
+  if (isEmployerRole(role)) {
+    return "talent";
+  }
+  return "my_profile";
 }
 
 export function dashboardTabHref(tab: DashboardTab): string {
@@ -51,7 +60,7 @@ export function dashboardTabHref(tab: DashboardTab): string {
     return "/opportunities";
   }
   if (tab === "my_profile") {
-    return "/dashboard";
+    return CANDIDATE_PROFILE_PATH;
   }
   return `/dashboard?tab=${encodeURIComponent(tab)}`;
 }
@@ -89,6 +98,9 @@ export function resolveDashboardTabFromLocation(
   }
   if (isAuditorPath(pathname)) {
     return "auditor";
+  }
+  if (isDashboardProfilePath(pathname)) {
+    return "my_profile";
   }
   if (!isDashboardRootPath(pathname)) {
     return null;

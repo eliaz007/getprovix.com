@@ -18,11 +18,11 @@ export default function PrivateRepositoryBanner({
     return (
       <div
         role="alert"
-        className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm leading-relaxed text-amber-100"
+        className="mt-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-2.5 text-sm leading-relaxed text-violet-100"
       >
         <p className="inline-flex items-start gap-2">
           <Lock
-            className="mt-0.5 h-4 w-4 shrink-0 text-amber-300"
+            className="mt-0.5 h-4 w-4 shrink-0 text-violet-300"
             aria-hidden
           />
           <span>{message}</span>
@@ -35,16 +35,16 @@ export default function PrivateRepositoryBanner({
     return (
       <section
         role="alert"
-        className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 text-left"
+        className="rounded-2xl border border-violet-500/30 bg-violet-500/10 p-6 text-left"
       >
-        <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-amber-300">
+        <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-violet-300">
           <Lock className="h-4 w-4" aria-hidden />
           Repository access
         </p>
         <h3 className="mt-3 text-xl font-bold tracking-tight text-textMain">
           Public repository required
         </h3>
-        <p className="mt-3 text-sm leading-relaxed text-amber-50/90">
+        <p className="mt-3 text-sm leading-relaxed text-violet-50/90">
           {message}
         </p>
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -70,16 +70,16 @@ export default function PrivateRepositoryBanner({
   return (
     <section
       role="alert"
-      className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"
+      className="rounded-2xl border border-violet-500/30 bg-violet-500/10 p-5"
     >
-      <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-amber-300">
+      <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-violet-300">
         <Lock className="h-4 w-4" aria-hidden />
         Repository access
       </p>
       <h3 className="mt-3 text-lg font-bold tracking-tight text-textMain">
         Public repository required
       </h3>
-      <p className="mt-3 text-sm leading-relaxed text-amber-50/90">{message}</p>
+      <p className="mt-3 text-sm leading-relaxed text-violet-50/90">{message}</p>
       <p className="mt-3 text-sm leading-relaxed text-textMuted">
         Your existing scoreboard was left unchanged. Enable private or enterprise
         work and add an architecture write-up to evaluate NDA-protected projects

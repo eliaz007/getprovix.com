@@ -9,12 +9,9 @@ import { OAuthSignInButtons } from "@/components/OAuthSignInButtons";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { getPostLoginPath } from "@/lib/admin-access";
 import {
-  EMPLOYER_DASHBOARD_PATH,
   isEmployerSignup,
   loadProfileAccountKind,
-  persistEmployerAccount,
   resolvePostAuthDestination,
-  signupMetadataForKind,
   signupRoleFromSearch,
 } from "@/lib/account-role";
 import {
@@ -38,51 +35,6 @@ const AUTH_INPUT_CLASS =
 
 const AUTH_PRIMARY_BUTTON_CLASS =
   "inline-flex w-full items-center justify-center rounded-md bg-brand text-white px-4 py-2.5 text-sm font-medium transition-colors hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
-
-function AccountKindToggle({
-  value,
-  onChange,
-  disabled = false,
-}: {
-  value: SignUpType;
-  onChange: (value: SignUpType) => void;
-  disabled?: boolean;
-}) {
-  const options = [
-    { id: "candidate" as const, label: "Developer" },
-    { id: "business" as const, label: "Employer" },
-  ];
-
-  return (
-    <div
-      role="tablist"
-      aria-label="Account type"
-      className="mx-auto grid w-full grid-cols-2 gap-1 rounded-full border border-border bg-background p-1"
-    >
-      {options.map((option) => {
-        const isActive = value === option.id;
-        return (
-          <button
-            key={option.id}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onChange(option.id)}
-            disabled={disabled}
-            tabIndex={disabled ? -1 : 0}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
-              isActive
-                ? "bg-white/10 text-white border border-border"
-                : "border border-transparent text-textMuted hover:text-textMain"
-            }`}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function tabButtonClass(isActive: boolean) {
   return `py-2 rounded-md text-sm font-medium tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
@@ -145,7 +97,6 @@ async function destinationAfterAuth(
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("sign-in");
-  const [signUpType, setSignUpType] = useState<SignUpType>("candidate");
   const [email, setEmail] = useState("");
   const [resetEmail, setResetEmail] = useState("");
   const [resetEmailError, setResetEmailError] = useState<string | null>(null);
@@ -164,14 +115,9 @@ export default function LoginPage() {
     const search = window.location.search;
     const params = new URLSearchParams(search);
     if (params.get("intent")?.trim() === CLAIM_AUDIT_INTENT) {
-      setSignUpType("candidate");
       setMode("sign-up");
       setIsClaimAudit(true);
-    } else if (signupRoleFromSearch(search) === "employer") {
-      setSignUpType("business");
-      setMode("sign-up");
-    } else if (signupRoleFromSearch(search) === "developer") {
-      setSignUpType("candidate");
+    } else if (signupRoleFromSearch(search)) {
       setMode("sign-up");
     }
     const authError = params.get("error")?.trim();
@@ -337,10 +283,10 @@ export default function LoginPage() {
       email: trimmedEmail,
       password,
       options: {
-        data: signupMetadataForKind(signUpType, {
+        data: {
           first_name: firstName,
           last_name: lastName,
-        }),
+        },
       },
     });
 
@@ -348,14 +294,6 @@ export default function LoginPage() {
       setError(signUpError.message);
       setLoading(false);
       return;
-    }
-
-    if (data.session?.user && signUpType === "business") {
-      await persistEmployerAccount(
-        supabase,
-        data.session.user.id,
-        data.session.user.email ?? trimmedEmail
-      );
     }
 
     if (!data.session) {
@@ -366,7 +304,7 @@ export default function LoginPage() {
     }
 
     try {
-      await redirectAfterAuth(data.session?.user ?? null, signUpType);
+      await redirectAfterAuth(data.session?.user ?? null);
     } catch (redirectError) {
       console.error("Post-signup redirect failed:", redirectError);
       setError("Account created, but we could not redirect you. Please refresh and try again.");
@@ -381,9 +319,6 @@ export default function LoginPage() {
       </div>
     );
   }
-
-  const isEmployer = signUpType === "business";
-  const isBusinessSignUp = mode === "sign-up" && isEmployer;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
@@ -409,9 +344,7 @@ export default function LoginPage() {
                 ? "Sign in or create an account to attach this production score to your anonymous developer profile. GitHub is the fastest way."
                 : mode === "sign-in"
                   ? "Sign in to access your account"
-                  : isBusinessSignUp
-                    ? "Create an employer account. Personal email is welcome."
-                    : "Create an account to get started"}
+                  : "Create an account to get started"}
           </p>
 
           {error && (
@@ -428,10 +361,6 @@ export default function LoginPage() {
           {!showResetPassword && (
             <>
               <OAuthSignInButtons
-                accountKind={
-                  isBusinessSignUp ? "employer" : undefined
-                }
-                nextPath={isBusinessSignUp ? EMPLOYER_DASHBOARD_PATH : undefined}
                 onError={(message) => {
                   setMessage(null);
                   setError(message || null);
@@ -448,7 +377,7 @@ export default function LoginPage() {
           )}
 
           {!showResetPassword && (
-            <div className="grid grid-cols-2 gap-1 rounded-md border border-border p-1 mb-6">
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-md border border-border p-1">
               <button
                 type="button"
                 onClick={() => switchMode("sign-in")}
@@ -523,25 +452,6 @@ export default function LoginPage() {
             </form>
           ) : (
             <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
-              <div
-                className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
-                  mode === "sign-up"
-                    ? "grid-rows-[1fr] opacity-100"
-                    : "-mb-4 grid-rows-[0fr] opacity-0 pointer-events-none"
-                }`}
-                aria-hidden={mode !== "sign-up"}
-              >
-                <div className="overflow-hidden">
-                  <p className="mb-2 text-center text-[10px] font-bold uppercase tracking-widest text-textMuted">
-                    I am a
-                  </p>
-                  <AccountKindToggle
-                    value={signUpType}
-                    onChange={setSignUpType}
-                    disabled={mode !== "sign-up"}
-                  />
-                </div>
-              </div>
               {mode === "sign-up" && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
@@ -581,7 +491,7 @@ export default function LoginPage() {
 
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="email" className="text-sm font-semibold text-textMain">
-                  {isBusinessSignUp ? "Work Email" : "Email"}
+                  Email
                 </label>
                 <input
                   id="email"

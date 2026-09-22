@@ -98,6 +98,7 @@ import {
   DEFAULT_AVAILABILITY_STATUS,
   getAvailabilityBadgeClass,
   normalizeAvailabilityStatus,
+  parseAvailabilityStatus,
   type AvailabilityStatus,
 } from "@/lib/availability-status";
 import {
@@ -846,6 +847,10 @@ export default function DashboardPage() {
   const navSetOnOpenJobApplicants = dashboardNav?.setOnOpenJobApplicants;
   const navRequireAuth = dashboardNav?.requireAuth;
   const navSetAuthModalOpen = dashboardNav?.setAuthModalOpen;
+  const profileStudioSection = dashboardNav?.profileStudioSection ?? "profile";
+  const setNavProfileStudioSection = dashboardNav?.setProfileStudioSection;
+  const navSetAvailabilityStatus = dashboardNav?.setAvailabilityStatus;
+  const navSetUserDisplayName = dashboardNav?.setUserDisplayName;
 
   const setActiveTab = useCallback(
     (tab: DashboardTab) => {
@@ -1138,6 +1143,14 @@ export default function DashboardPage() {
         setPortfolioUrl(loadedPortfolioUrl);
         setExperienceLevel(loadedExperienceLevel as ExperienceLevel);
         setAvailabilityStatus(loadedAvailabilityStatus);
+        navSetAvailabilityStatus?.(
+          parseAvailabilityStatus(profileWithRole?.availability_status)
+        );
+        navSetUserDisplayName?.(
+          profileWithRole?.full_name?.trim() ||
+            loadedName.trim() ||
+            null
+        );
         setWorkPreference(loadedWorkPreference);
         setCandidateTimezone(loadedCandidateTimezone);
 
@@ -1958,6 +1971,60 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     );
   }, [isBusinessAccount]);
 
+  useEffect(() => {
+    if (!dashboardNav) {
+      return;
+    }
+
+    if (isBusinessAccount) {
+      if (profileStudioSection === "settings") {
+        setProfileSubMenu("settings");
+        return;
+      }
+      setProfileSubMenu((current) =>
+        current === "activeListings" ? current : "companyInfo"
+      );
+      return;
+    }
+
+    if (profileStudioSection === "proof_of_work") {
+      setProfileSubMenu("portfolio");
+      return;
+    }
+
+    if (profileStudioSection === "settings") {
+      setProfileSubMenu("settings");
+      return;
+    }
+
+    setProfileSubMenu((current) =>
+      current === "academics" ? current : "overview"
+    );
+  }, [dashboardNav, isBusinessAccount, profileStudioSection]);
+
+  const selectProfileSubMenu = (
+    submenu:
+      | "overview"
+      | "academics"
+      | "portfolio"
+      | "settings"
+      | "companyInfo"
+      | "activeListings"
+  ) => {
+    setProfileSubMenu(submenu);
+    if (submenu === "portfolio") {
+      setNavProfileStudioSection?.("proof_of_work");
+      return;
+    }
+    if (submenu === "settings") {
+      setNavProfileStudioSection?.("settings");
+      return;
+    }
+    if (submenu === "overview" || submenu === "academics") {
+      setNavProfileStudioSection?.("profile");
+    }
+  };
+
   // --- CANDIDATE PROFILE STUDIO STATE (persisted to Supabase) ---
   const [title, setTitle] = useState("");
   const [bio, setBio] = useState("");
@@ -2377,6 +2444,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       }));
       setPortfolioUrl(normalizedPortfolioUrl);
       setAvailabilityStatus(normalizedAvailability);
+      navSetAvailabilityStatus?.(normalizedAvailability);
+      navSetUserDisplayName?.(profileData.name);
       setIsVisibleInPool(effectiveVisibleInPool);
       void publishTalentPoolVisibility(supabase, {
         profileId: session.user.id,
@@ -3515,7 +3584,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     if (score === "Moderate Leverage") {
       return "bg-brandGlow text-brand border-brand/20";
     }
-    return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+    return "bg-violet-500/10 text-violet-400 border-violet-500/20";
   };
 
   const toggleDocumentChecked = (document: string) => {
@@ -3812,7 +3881,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     <div>
       <div className="mt-8 pt-8 border-t border-border">
         <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
-          Candidate Dashboard
+          Workspace
         </span>
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           <li className="order-none w-full shrink-0">
@@ -3822,18 +3891,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               className={guestNavClass(false)}
             >
               <Icons.User />
-              My Profile
+              Profile
             </button>
-          </li>
-          <li className="order-none w-full shrink-0">
-            <Link
-              href="/opportunities"
-              onClick={() => setGuestMobileNavOpen(false)}
-              className={guestNavClass(false)}
-            >
-              <Icons.Compass />
-              Provix Talent Network
-            </Link>
           </li>
           <li className="order-none w-full shrink-0">
             <button
@@ -3845,23 +3904,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               Intro Requests
             </button>
           </li>
+          <li className="order-none w-full shrink-0">
+            <Link
+              href="/opportunities"
+              onClick={() => setGuestMobileNavOpen(false)}
+              className={guestNavClass(false)}
+            >
+              <Icons.Compass />
+              Talent Network
+            </Link>
+          </li>
         </ul>
       </div>
       <div className="mt-8 pt-8 border-t border-border">
         <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
-          Career Accelerator
+          Tools
         </span>
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
-          <li className="order-none w-full shrink-0">
-            <button
-              type="button"
-              onClick={() => handleGuestNavClick()}
-              className={guestNavClass(false)}
-            >
-              <FileText className="w-4 h-4 shrink-0" aria-hidden="true" />
-              Pitch Studio
-            </button>
-          </li>
           <li className="order-none w-full shrink-0">
             <Link
               href="/audits"
@@ -3869,7 +3928,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               className={guestNavClass(false)}
             >
               <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
-              Code & Resume Auditor
+              Code Auditor
             </Link>
           </li>
           <li className="order-none w-full shrink-0">
@@ -4022,7 +4081,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
-                      Profile Studio
+                      {isBusinessAccount ? "Company Profile" : "Profile"}
                     </h1>
                     {!isBusinessAccount ? (
                       <VerifiedOnProvixPill verified={candidateVerifiedOnProvix} />
@@ -4031,7 +4090,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-zinc-400">
                     {isBusinessAccount
                       ? "Manage your company profile, hiring requirements, and account settings."
-                      : "Manage your technical profile, specializations, and verified work."}
+                      : "Manage your verified repositories, tech stack, and inbound visibility."}
                   </p>
                 </div>
                 {!isBusinessAccount && (
@@ -4070,7 +4129,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <>
                     <button
                       type="button"
-                      onClick={() => setProfileSubMenu("overview")}
+                      onClick={() => selectProfileSubMenu("overview")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
  profileSubMenu === "overview"
  ? "text-brand border-b-2 border-brand"
@@ -4081,7 +4140,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setProfileSubMenu("academics")}
+                      onClick={() => selectProfileSubMenu("academics")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
  profileSubMenu === "academics"
  ? "text-brand border-b-2 border-brand"
@@ -4092,7 +4151,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setProfileSubMenu("portfolio")}
+                      onClick={() => selectProfileSubMenu("portfolio")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
  profileSubMenu === "portfolio"
  ? "text-brand border-b-2 border-brand"
@@ -4105,7 +4164,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 )}
                 <button
                   type="button"
-                  onClick={() => setProfileSubMenu("settings")}
+                  onClick={() => selectProfileSubMenu("settings")}
                   className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
  profileSubMenu === "settings"
  ? "text-brand border-b-2 border-brand"
@@ -4672,11 +4731,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </div>
                           <select
                             value={availabilityStatus}
-                            onChange={(e) =>
-                              setAvailabilityStatus(
-                                e.target.value as AvailabilityStatus
-                              )
-                            }
+                            onChange={(e) => {
+                              const nextStatus = e.target
+                                .value as AvailabilityStatus;
+                              setAvailabilityStatus(nextStatus);
+                              navSetAvailabilityStatus?.(nextStatus);
+                            }}
                             className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
                           >
                             {AVAILABILITY_STATUS_OPTIONS.map((option) => (
@@ -4957,7 +5017,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
  : essayReview.overallScore >= 6
  ? "bg-brandGlow text-brand border-brand/25"
- : "bg-amber-500/10 text-amber-400 border-amber-500/25"
+ : "bg-violet-500/10 text-violet-400 border-violet-500/25"
  }`}
                         >
                           {essayReview.overallScore}
@@ -4987,8 +5047,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       )}
 
                       {essayReview.improvements.length > 0 && (
-                        <div className="rounded-xl bg-background border border-amber-500/20 p-4">
-                          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block mb-2">
+                        <div className="rounded-xl bg-background border border-violet-500/20 p-4">
+                          <span className="text-[10px] font-bold text-violet-400 uppercase tracking-widest block mb-2">
                             Areas to Improve
                           </span>
                           <ul className="space-y-1.5">
@@ -4997,7 +5057,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 key={item}
                                 className="text-xs text-textMuted leading-relaxed flex gap-2"
                               >
-                                <span className="text-amber-400 shrink-0">→</span>
+                                <span className="text-violet-400 shrink-0">→</span>
                                 <span>{item}</span>
                               </li>
                             ))}
@@ -5614,18 +5674,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                       </ul>
                                     </div>
                                     {school.profileRedFlags.length > 0 && (
-                                      <div className="md:col-span-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 block mb-2">
+                                      <div className="md:col-span-2 rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-violet-300 block mb-2">
                                           Profile Red Flags
                                         </span>
                                         <ul className="space-y-1.5">
                                           {school.profileRedFlags.map((flag) => (
                                             <li
                                               key={`${school.name}-${flag}`}
-                                              className="text-xs text-amber-100/90 leading-relaxed flex items-start gap-2"
+                                              className="text-xs text-violet-100/90 leading-relaxed flex items-start gap-2"
                                             >
                                               <AlertTriangle
-                                                className="w-3 h-3 mt-0.5 shrink-0 text-amber-400"
+                                                className="w-3 h-3 mt-0.5 shrink-0 text-violet-400"
                                                 aria-hidden
                                               />
                                               <span>{flag}</span>
@@ -6000,7 +6060,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
  : application.status === "Submitted"
  ? "bg-brandGlow text-brand border border-brand/20"
  : application.status === "Under Review"
- ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+ ? "bg-violet-500/10 text-violet-400 border border-violet-500/20"
  : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
  }`}
                       >
@@ -6532,7 +6592,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           availabilityStatus === "Available Now"
                             ? "text-emerald-400"
                             : availabilityStatus === "Interviewing"
-                              ? "text-amber-400"
+                              ? "text-violet-400"
                               : "text-textMuted"
                         }
                       >

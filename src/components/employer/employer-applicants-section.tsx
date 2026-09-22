@@ -210,7 +210,7 @@ export default function EmployerApplicantsSection({
           <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
             New to review
           </span>
-          <span className="text-3xl font-mono font-extrabold tabular-nums text-amber-300">
+          <span className="text-3xl font-mono font-extrabold tabular-nums text-violet-300">
             {newCount}
           </span>
         </div>
@@ -405,7 +405,7 @@ export default function EmployerApplicantsSection({
                     ) : null}
                     {applicant.missingSkills.length > 0 ? (
                       <p>
-                        <span className="text-amber-300/90 font-medium">Gaps: </span>
+                        <span className="text-violet-300/90 font-medium">Gaps: </span>
                         {applicant.missingSkills.join(", ")}
                       </p>
                     ) : null}

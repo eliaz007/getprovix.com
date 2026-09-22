@@ -9,10 +9,10 @@ export default function ScoreMeter({ score, className = "" }: ScoreMeterProps) {
   const clamped = clampScore0to100(score);
   const fillTone =
     clamped >= 75
-      ? "bg-emerald-500"
+      ? "bg-violet-400"
       : clamped >= 60
-        ? "bg-amber-500"
-        : "bg-rose-500";
+        ? "bg-violet-500/70"
+        : "bg-zinc-600";
 
   return (
     <div

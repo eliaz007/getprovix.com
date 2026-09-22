@@ -25,8 +25,12 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-6xl flex-col px-6 pb-20 pt-16 sm:pt-24">
-        <section className="hero-fade-in mx-auto max-w-4xl text-center">
+      <main className="relative mx-auto flex max-w-6xl flex-col overflow-x-clip px-6 pb-20 pt-16 sm:pt-24">
+        <section className="hero-fade-in relative mx-auto max-w-4xl text-center">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute top-10 left-1/2 -z-10 h-[450px] w-[720px] -translate-x-1/2 rounded-full bg-radial-[ellipse_at_center] from-violet-600/28 via-indigo-600/12 via-40% to-transparent to-70% blur-[140px]"
+          />
           <p className="mb-5 font-mono text-[11px] font-medium uppercase tracking-widest text-cyan-400">
             Don’t explain your code. Prove it.
           </p>
