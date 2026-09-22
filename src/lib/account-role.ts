@@ -203,7 +203,7 @@ export function resolvePostAuthDestination(input: {
 
   const kind = normalizeAccountKind(input.role);
   if (!kind) {
-    return ROLE_ONBOARDING_PATH;
+    return "/onboarding";
   }
 
   const requested = sanitizeInternalPath(input.requestedNext);

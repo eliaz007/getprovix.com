@@ -9,12 +9,8 @@ import { OAuthSignInButtons } from "@/components/OAuthSignInButtons";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { getPostLoginPath } from "@/lib/admin-access";
 import {
-  EMPLOYER_DASHBOARD_PATH,
-  isEmployerSignup,
   loadProfileAccountKind,
-  persistEmployerAccount,
   resolvePostAuthDestination,
-  signupMetadataForKind,
   signupRoleFromSearch,
 } from "@/lib/account-role";
 import {
@@ -31,58 +27,14 @@ import { createClient } from "@/utils/supabase/client";
 const supabase = createClient();
 
 type AuthMode = "sign-in" | "sign-up";
-type SignUpType = "candidate" | "business";
+
+const ONBOARDING_PATH = "/onboarding";
 
 const AUTH_INPUT_CLASS =
   "w-full bg-background border border-border rounded-md px-4 py-2.5 text-textMain placeholder:text-textMuted placeholder:opacity-100 caret-white focus:outline-none focus:border-border transition-colors";
 
 const AUTH_PRIMARY_BUTTON_CLASS =
   "inline-flex w-full items-center justify-center rounded-md bg-brand text-white shadow-sm px-4 py-2.5 text-sm font-medium transition-colors hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
-
-function AccountKindToggle({
-  value,
-  onChange,
-  disabled = false,
-}: {
-  value: SignUpType;
-  onChange: (value: SignUpType) => void;
-  disabled?: boolean;
-}) {
-  const options = [
-    { id: "candidate" as const, label: "Developer" },
-    { id: "business" as const, label: "Employer" },
-  ];
-
-  return (
-    <div
-      role="tablist"
-      aria-label="Account type"
-      className="mx-auto grid w-full grid-cols-2 gap-1 rounded-full border border-border bg-background p-1"
-    >
-      {options.map((option) => {
-        const isActive = value === option.id;
-        return (
-          <button
-            key={option.id}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onChange(option.id)}
-            disabled={disabled}
-            tabIndex={disabled ? -1 : 0}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
-              isActive
-                ? "bg-white/10 text-white border border-border"
-                : "border border-transparent text-textMuted hover:text-textMain"
-            }`}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function tabButtonClass(isActive: boolean) {
   return `py-2 rounded-md text-sm font-medium tracking-tight transition-colors duration-200 ease-out cursor-pointer ${
@@ -103,10 +55,7 @@ function BackToHomeLink({ className = "" }: { className?: string }) {
   );
 }
 
-function appendAuthQuery(
-  path: string,
-  search: string
-): string {
+function appendAuthQuery(path: string, search: string): string {
   const params = new URLSearchParams(search);
   const verified = params.get("employer_verified");
   const verifyError = params.get("verify_error");
@@ -122,19 +71,14 @@ function appendAuthQuery(
   return `${url.pathname}${url.search}`;
 }
 
-async function destinationAfterAuth(
+async function destinationAfterSignIn(
   user: User,
-  search: string,
-  signupKind?: SignUpType
+  search: string
 ): Promise<string> {
   const profileKind = await loadProfileAccountKind(supabase, user.id);
-  const role =
-    signupKind === "business"
-      ? "employer"
-      : profileKind;
   const params = new URLSearchParams(search);
   const destination = resolvePostAuthDestination({
-    role,
+    role: profileKind,
     requestedNext: params.get("next"),
     isAdmin: getPostLoginPath(user) === "/admin",
   });
@@ -142,10 +86,19 @@ async function destinationAfterAuth(
   return appendAuthQuery(destination, search);
 }
 
+function signupUserMetadata(input: {
+  first_name: string;
+  last_name: string;
+}): Record<string, string> {
+  return {
+    first_name: input.first_name,
+    last_name: input.last_name,
+  };
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("sign-in");
-  const [signUpType, setSignUpType] = useState<SignUpType>("candidate");
   const [email, setEmail] = useState("");
   const [resetEmail, setResetEmail] = useState("");
   const [resetEmailError, setResetEmailError] = useState<string | null>(null);
@@ -164,14 +117,10 @@ export default function LoginPage() {
     const search = window.location.search;
     const params = new URLSearchParams(search);
     if (params.get("intent")?.trim() === CLAIM_AUDIT_INTENT) {
-      setSignUpType("candidate");
       setMode("sign-up");
       setIsClaimAudit(true);
-    } else if (signupRoleFromSearch(search) === "employer") {
-      setSignUpType("business");
-      setMode("sign-up");
-    } else if (signupRoleFromSearch(search) === "developer") {
-      setSignUpType("candidate");
+    } else if (signupRoleFromSearch(search)) {
+      // Landing CTAs may open signup; role is chosen later in onboarding.
       setMode("sign-up");
     }
     const authError = params.get("error")?.trim();
@@ -237,7 +186,9 @@ export default function LoginPage() {
     setMessage(null);
   };
 
-  const handleResetPasswordSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleResetPasswordSubmit = async (
+    e: React.FormEvent<HTMLFormElement>
+  ) => {
     e.preventDefault();
     setError(null);
     setMessage(null);
@@ -271,19 +222,23 @@ export default function LoginPage() {
     setMessage("Check your email for a password reset link.");
   };
 
-  const redirectAfterAuth = async (
-    user: User | null | undefined,
-    signupKind?: SignUpType
-  ) => {
+  const redirectAfterSignIn = async (user: User | null | undefined) => {
     await supabase.auth.getSession();
-    if (user && signupKind !== "business" && !isEmployerSignup(user)) {
+    if (user) {
       await claimPendingProductionAudit();
     }
     const destination = user
-      ? await destinationAfterAuth(user, window.location.search, signupKind)
+      ? await destinationAfterSignIn(user, window.location.search)
       : getPostLoginPath(user);
     router.refresh();
     router.push(destination);
+  };
+
+  const redirectAfterSignUp = async () => {
+    await supabase.auth.getSession();
+    await claimPendingProductionAudit();
+    router.refresh();
+    router.push(appendAuthQuery(ONBOARDING_PATH, window.location.search));
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -324,10 +279,12 @@ export default function LoginPage() {
       }
 
       try {
-        await redirectAfterAuth(data.session?.user ?? null);
+        await redirectAfterSignIn(data.session?.user ?? null);
       } catch (redirectError) {
         console.error("Post-login redirect failed:", redirectError);
-        setError("Signed in, but we could not redirect you. Please refresh and try again.");
+        setError(
+          "Signed in, but we could not redirect you. Please refresh and try again."
+        );
         setLoading(false);
       }
       return;
@@ -337,9 +294,9 @@ export default function LoginPage() {
       email: trimmedEmail,
       password,
       options: {
-        data: signupMetadataForKind(signUpType, {
-          first_name: firstName,
-          last_name: lastName,
+        data: signupUserMetadata({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
         }),
       },
     });
@@ -350,14 +307,6 @@ export default function LoginPage() {
       return;
     }
 
-    if (data.session?.user && signUpType === "business") {
-      await persistEmployerAccount(
-        supabase,
-        data.session.user.id,
-        data.session.user.email ?? trimmedEmail
-      );
-    }
-
     if (!data.session) {
       setLoading(false);
       setMessage("Check your email to confirm your account.");
@@ -366,10 +315,12 @@ export default function LoginPage() {
     }
 
     try {
-      await redirectAfterAuth(data.session?.user ?? null, signUpType);
+      await redirectAfterSignUp();
     } catch (redirectError) {
       console.error("Post-signup redirect failed:", redirectError);
-      setError("Account created, but we could not redirect you. Please refresh and try again.");
+      setError(
+        "Account created, but we could not redirect you. Please refresh and try again."
+      );
       setLoading(false);
     }
   };
@@ -381,9 +332,6 @@ export default function LoginPage() {
       </div>
     );
   }
-
-  const isEmployer = signUpType === "business";
-  const isBusinessSignUp = mode === "sign-up" && isEmployer;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">
@@ -409,9 +357,7 @@ export default function LoginPage() {
                 ? "Sign in or create an account to attach this production score to your anonymous developer profile. GitHub is the fastest way."
                 : mode === "sign-in"
                   ? "Sign in to access your account"
-                  : isBusinessSignUp
-                    ? "Create an employer account. Personal email is welcome."
-                    : "Create an account to get started"}
+                  : "Create an account to get started"}
           </p>
 
           {error && (
@@ -428,13 +374,9 @@ export default function LoginPage() {
           {!showResetPassword && (
             <>
               <OAuthSignInButtons
-                accountKind={
-                  isBusinessSignUp ? "employer" : undefined
-                }
-                nextPath={isBusinessSignUp ? EMPLOYER_DASHBOARD_PATH : undefined}
-                onError={(message) => {
+                onError={(oauthMessage) => {
                   setMessage(null);
-                  setError(message || null);
+                  setError(oauthMessage || null);
                 }}
               />
               <div className="my-6 flex items-center gap-3">
@@ -473,7 +415,10 @@ export default function LoginPage() {
               noValidate
             >
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="resetEmail" className="text-sm font-semibold text-textMain">
+                <label
+                  htmlFor="resetEmail"
+                  className="text-sm font-semibold text-textMain"
+                >
                   Email
                 </label>
                 <input
@@ -492,8 +437,8 @@ export default function LoginPage() {
                   }}
                   aria-invalid={Boolean(resetEmailError)}
                   className={`${AUTH_INPUT_CLASS} ${
- resetEmailError ? "border-red-500/50" : ""
- }`}
+                    resetEmailError ? "border-red-500/50" : ""
+                  }`}
                 />
                 {resetEmailError && (
                   <p className="text-sm text-red-400">{resetEmailError}</p>
@@ -522,30 +467,18 @@ export default function LoginPage() {
               </button>
             </form>
           ) : (
-            <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
-              <div
-                className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
-                  mode === "sign-up"
-                    ? "grid-rows-[1fr] opacity-100"
-                    : "-mb-4 grid-rows-[0fr] opacity-0 pointer-events-none"
-                }`}
-                aria-hidden={mode !== "sign-up"}
-              >
-                <div className="overflow-hidden">
-                  <p className="mb-2 text-center text-[10px] font-bold uppercase tracking-widest text-textMuted">
-                    I am a
-                  </p>
-                  <AccountKindToggle
-                    value={signUpType}
-                    onChange={setSignUpType}
-                    disabled={mode !== "sign-up"}
-                  />
-                </div>
-              </div>
+            <form
+              className="flex flex-col gap-4"
+              onSubmit={handleSubmit}
+              noValidate
+            >
               {mode === "sign-up" && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
-                    <label htmlFor="firstName" className="text-sm font-semibold text-textMain">
+                    <label
+                      htmlFor="firstName"
+                      className="text-sm font-semibold text-textMain"
+                    >
                       First Name
                     </label>
                     <input
@@ -561,7 +494,10 @@ export default function LoginPage() {
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label htmlFor="lastName" className="text-sm font-semibold text-textMain">
+                    <label
+                      htmlFor="lastName"
+                      className="text-sm font-semibold text-textMain"
+                    >
                       Last Name
                     </label>
                     <input
@@ -580,8 +516,11 @@ export default function LoginPage() {
               )}
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="email" className="text-sm font-semibold text-textMain">
-                  {isBusinessSignUp ? "Work Email" : "Email"}
+                <label
+                  htmlFor="email"
+                  className="text-sm font-semibold text-textMain"
+                >
+                  Email
                 </label>
                 <input
                   id="email"
@@ -597,7 +536,10 @@ export default function LoginPage() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="password" className="text-sm font-semibold text-textMain">
+                <label
+                  htmlFor="password"
+                  className="text-sm font-semibold text-textMain"
+                >
                   Password
                 </label>
                 <div className="relative">
@@ -605,7 +547,9 @@ export default function LoginPage() {
                     id="password"
                     type={showPassword ? "text" : "password"}
                     name="password"
-                    autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+                    autoComplete={
+                      mode === "sign-in" ? "current-password" : "new-password"
+                    }
                     placeholder="••••••••"
                     required
                     minLength={6}

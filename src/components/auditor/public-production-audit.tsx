@@ -422,8 +422,7 @@ export default function PublicProductionAudit({
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
       <form onSubmit={onSubmit} className="w-full">
-        <div className="relative flex flex-col gap-2 overflow-hidden rounded-xl border border-white/[0.08] bg-[#131316]/85 p-1.5 shadow-2xl backdrop-blur-xl transition-colors hover:border-violet-500/25 sm:flex-row sm:items-stretch">
-          <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-violet-600/5 blur-2xl" />
+        <div className="relative flex flex-col gap-2 overflow-hidden rounded-xl border border-white/[0.08] bg-[#0E0E12] p-1.5 sm:flex-row sm:items-stretch">
           <label htmlFor="public-audit-repo" className="sr-only">
             GitHub Profile or Repo URL
           </label>
@@ -438,7 +437,7 @@ export default function PublicProductionAudit({
             onChange={(event) => setRepoUrl(event.target.value)}
             placeholder="Paste GitHub Profile or Repo URL"
             aria-invalid={Boolean(githubValidationMessage)}
-            className="relative min-h-12 min-w-0 flex-1 rounded-lg border border-transparent bg-[#070709] px-4 py-3 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 outline-none transition-colors duration-200 focus:border-brand focus:ring-1 focus:ring-brand/20 sm:text-[15px]"
+            className="relative min-h-12 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-4 py-3 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 outline-none transition-colors duration-200 focus:border-brand focus:ring-1 focus:ring-brand/20 sm:text-[15px]"
           />
           <button
             type="submit"

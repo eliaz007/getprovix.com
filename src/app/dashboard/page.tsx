@@ -52,7 +52,6 @@ import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast"
 import { buildAlliterativeAliasIdentity } from "@/lib/alias-generator";
 import {
   normalizeAccountKind,
-  ROLE_ONBOARDING_PATH,
 } from "@/lib/account-role";
 import { isAdminUser } from "@/lib/admin-access";
 import {
@@ -1039,7 +1038,7 @@ export default function DashboardPage() {
           !normalizeAccountKind(profileRow?.role) &&
           !isAdminUser(sessionUser)
         ) {
-          window.location.replace(ROLE_ONBOARDING_PATH);
+          window.location.replace("/onboarding");
           return;
         }
 

@@ -39,12 +39,15 @@ export default function RoleOnboardingPage() {
         .eq("id", data.user.id)
         .maybeSingle();
 
+      const role =
+        typeof profile?.role === "string" ? profile.role : null;
       const destination = resolvePostAuthDestination({
-        role: typeof profile?.role === "string" ? profile.role : null,
+        role,
         isAdmin: isAdminUser(data.user),
       });
 
-      if (destination !== "/onboarding/role") {
+      // Stay here when role is still unset (`/onboarding` → role picker).
+      if (destination !== "/onboarding" && destination !== "/onboarding/role") {
         router.replace(destination);
         return;
       }
