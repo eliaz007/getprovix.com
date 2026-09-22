@@ -143,12 +143,12 @@ export default function RoleOnboardingPage() {
             type="button"
             disabled={busy}
             onClick={() => void chooseRole("employer")}
-            className="group flex h-full cursor-pointer flex-col rounded-2xl border border-zinc-800 bg-zinc-900/80 p-8 text-left transition-colors duration-200 hover:border-purple-400/35 hover:bg-zinc-900 disabled:cursor-wait"
+            className="group flex h-full cursor-pointer flex-col rounded-2xl border border-white/[0.08] bg-[#131316]/85 p-8 text-left shadow-2xl backdrop-blur-xl transition-colors duration-200 hover:border-violet-500/35 disabled:cursor-wait"
           >
-            <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-purple-400/25 bg-zinc-950 text-[#c084fc]">
+            <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-violet-500/25 bg-[#070709] text-violet-300">
               <Building2 className="h-5 w-5" aria-hidden="true" />
             </div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-[#c084fc]">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-violet-300">
               For Founders
             </p>
             <h2 className="mt-3 text-2xl font-bold tracking-tight text-textMain">
@@ -160,7 +160,7 @@ export default function RoleOnboardingPage() {
               against verified GitHub artifacts and repository integrity
               signals.
             </p>
-            <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors duration-200 group-hover:from-purple-400 group-hover:to-indigo-500">
+            <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 py-3 text-sm font-semibold tracking-tight text-white shadow-sm transition-all duration-200 hover:bg-brandHover">
               {saving === "employer" ? "Saving..." : "Enter Employer Console"}
               {saving === "employer" ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -174,12 +174,12 @@ export default function RoleOnboardingPage() {
             type="button"
             disabled={busy}
             onClick={() => void chooseRole("candidate")}
-            className="group flex h-full cursor-pointer flex-col rounded-2xl border border-zinc-800 bg-zinc-900/80 p-8 text-left transition-colors duration-200 hover:border-cyan-400/35 hover:bg-zinc-900 disabled:cursor-wait"
+            className="group flex h-full cursor-pointer flex-col rounded-2xl border border-white/[0.08] bg-[#131316]/85 p-8 text-left shadow-2xl backdrop-blur-xl transition-colors duration-200 hover:border-violet-500/35 disabled:cursor-wait"
           >
-            <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-400/25 bg-zinc-950 text-[#22d3ee]">
+            <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-violet-500/25 bg-[#070709] text-violet-300">
               <Code2 className="h-5 w-5" aria-hidden="true" />
             </div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-[#22d3ee]">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-violet-300">
               For Developers
             </p>
             <h2 className="mt-3 text-2xl font-bold tracking-tight text-textMain">
@@ -191,7 +191,7 @@ export default function RoleOnboardingPage() {
               employers what you have actually shipped — not what a resume
               claims.
             </p>
-            <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-cyan-500 px-4 py-3 text-sm font-semibold tracking-tight text-slate-950 transition-colors duration-200 group-hover:bg-cyan-400">
+            <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 py-3 text-sm font-semibold tracking-tight text-white shadow-sm transition-all duration-200 hover:bg-brandHover">
               {saving === "candidate" ? "Saving..." : "Open Candidate Dashboard"}
               {saving === "candidate" ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />

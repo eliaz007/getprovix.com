@@ -155,7 +155,7 @@ export function getCandidateIntroStatusBadgeClass(
     case "dismissed":
       return "bg-zinc-500/10 text-zinc-400 border-zinc-600/40";
     default:
-      return "bg-amber-500/10 text-amber-400 border-amber-500/25";
+      return "bg-violet-500/10 text-violet-400 border-violet-500/25";
   }
 }
 

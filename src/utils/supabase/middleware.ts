@@ -240,7 +240,21 @@ export async function updateSession(request: NextRequest) {
         );
       }
 
-      if (isEmployerAccount && (isHome || isEmployer || isAuditorPath(pathname))) {
+      if (isEmployerAccount && (isHome || isAuditorPath(pathname))) {
+        const destination = new URL(EMPLOYER_DASHBOARD_PATH, request.url);
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          destination.pathname,
+          destination.search
+        );
+      }
+
+      // Bare /employer → talent home (nested /employer/* pages stay put).
+      if (
+        isEmployerAccount &&
+        (pathname === "/employer" || pathname === "/employer/")
+      ) {
         const destination = new URL(EMPLOYER_DASHBOARD_PATH, request.url);
         return redirectWithSessionCookies(
           request,

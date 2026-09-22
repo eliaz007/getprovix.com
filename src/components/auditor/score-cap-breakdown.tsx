@@ -39,11 +39,11 @@ export default function ScoreCapBreakdown({
 
   return (
     <div
-      className={`rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 space-y-3 ${className}`.trim()}
+      className={`rounded-xl border border-violet-500/25 bg-violet-500/5 p-4 space-y-3 ${className}`.trim()}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[10px] uppercase font-bold text-amber-300 tracking-wider mb-1">
+          <div className="text-[10px] uppercase font-bold text-violet-300 tracking-wider mb-1">
             Score cap audit trail
           </div>
           {audit.clipped ? (
@@ -51,21 +51,21 @@ export default function ScoreCapBreakdown({
               {audit.uncappedScore}
               <span className="text-textMuted font-medium"> → </span>
               {audit.cappedScore}
-              <span className="text-amber-200"> (−{audit.pointsDeducted})</span>
+              <span className="text-violet-200"> (−{audit.pointsDeducted})</span>
             </p>
           ) : (
             <p className="text-sm text-textMain font-semibold tabular-nums">
               Max allowed {audit.ceiling}/100
             </p>
           )}
-          <p className="text-[11px] text-amber-100/80 leading-relaxed mt-1">
+          <p className="text-[11px] text-violet-100/80 leading-relaxed mt-1">
             {audit.clipped
               ? `Filesystem proof removed ${audit.pointsDeducted} point${audit.pointsDeducted === 1 ? "" : "s"} and capped the score at ${audit.ceiling}. README and write-ups cannot raise it.`
               : `The returned score is already at or below the ${audit.ceiling} filesystem ceiling. Point values below show how that ceiling is allocated across missing artifacts.`}
           </p>
         </div>
         <AlertTriangle
-          className="w-4 h-4 text-amber-400 shrink-0 mt-0.5"
+          className="w-4 h-4 text-violet-400 shrink-0 mt-0.5"
           aria-hidden
         />
       </div>
@@ -103,7 +103,7 @@ export default function ScoreCapBreakdown({
               <p className="text-xs font-semibold text-textMain leading-snug">
                 {deduction.label}
               </p>
-              <span className="shrink-0 text-xs font-mono font-bold tabular-nums text-amber-300">
+              <span className="shrink-0 text-xs font-mono font-bold tabular-nums text-violet-300">
                 −{deduction.points}
               </span>
             </div>

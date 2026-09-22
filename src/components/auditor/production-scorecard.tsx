@@ -49,7 +49,7 @@ function getMetricTone(score: number): string {
     return "text-emerald-400";
   }
   if (score >= 60) {
-    return "text-amber-400";
+    return "text-violet-400";
   }
   if (score > 0) {
     return "text-orange-300";

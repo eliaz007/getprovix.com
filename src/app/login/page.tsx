@@ -37,7 +37,7 @@ const AUTH_INPUT_CLASS =
   "w-full bg-background border border-border rounded-md px-4 py-2.5 text-textMain placeholder:text-textMuted placeholder:opacity-100 caret-white focus:outline-none focus:border-border transition-colors";
 
 const AUTH_PRIMARY_BUTTON_CLASS =
-  "inline-flex w-full items-center justify-center rounded-md bg-brand text-white px-4 py-2.5 text-sm font-medium transition-colors hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+  "inline-flex w-full items-center justify-center rounded-md bg-brand text-white shadow-sm px-4 py-2.5 text-sm font-medium transition-colors hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 
 function AccountKindToggle({
   value,

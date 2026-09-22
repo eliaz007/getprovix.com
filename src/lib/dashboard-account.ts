@@ -185,6 +185,8 @@ export function isProtectedAppPath(pathname: string): boolean {
 export function isInterviewPrepPath(pathname: string): boolean {
   return (
     pathname === "/dashboard/interview-prep" ||
-    pathname === "/dashboard/interview-simulator"
+    pathname === "/dashboard/interview-simulator" ||
+    pathname === "/dashboard/simulator" ||
+    pathname.startsWith("/dashboard/simulator/")
   );
 }

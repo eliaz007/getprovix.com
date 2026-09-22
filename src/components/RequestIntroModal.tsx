@@ -170,7 +170,7 @@ export default function RequestIntroModal({
               value={companyName}
               onChange={(event) => setCompanyName(event.target.value)}
               required
-              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+              className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
             />
           </div>
 
@@ -183,7 +183,7 @@ export default function RequestIntroModal({
               value={workEmail}
               onChange={(event) => setWorkEmail(event.target.value)}
               required
-              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+              className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
             />
           </div>
 
@@ -197,7 +197,7 @@ export default function RequestIntroModal({
               onChange={(event) => setRoleTitle(event.target.value)}
               placeholder="e.g. Full-Stack Engineer"
               required
-              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+              className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
             />
           </div>
 
@@ -209,7 +209,7 @@ export default function RequestIntroModal({
               value={compBand}
               onChange={(event) => setCompBand(event.target.value as CompBand)}
               required
-              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
+              className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
             >
               <option value="" disabled>
                 Select compensation band

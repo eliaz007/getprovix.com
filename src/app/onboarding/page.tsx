@@ -55,7 +55,7 @@ function OnboardingSkeleton() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card interactive={false} className="p-8 max-w-md w-full">
         <div className="flex flex-col items-center gap-4 mb-8">
-          <div className="h-8 w-8 rounded-full border-2 border-border border-t-indigo-500 animate-spin" />
+          <div className="h-8 w-8 rounded-full border-2 border-border border-t-violet-500 animate-spin" />
           <p className="text-sm text-textMuted">Loading your onboarding...</p>
         </div>
         <div className="space-y-3">

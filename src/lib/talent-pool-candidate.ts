@@ -338,7 +338,7 @@ export function getIntegrityScoreClass(score: number): string {
     return "text-emerald-400 border-emerald-500/30 bg-emerald-500/10";
   }
   if (score >= 60) {
-    return "text-amber-400 border-amber-500/30 bg-amber-500/10";
+    return "text-violet-400 border-violet-500/30 bg-violet-500/10";
   }
   return "text-red-400 border-red-500/30 bg-red-500/10";
 }

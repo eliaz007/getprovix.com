@@ -169,7 +169,7 @@ export function buildCandidateIntroRequestEmailHtml(input: {
 
   return `
     <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #111827; max-width: 640px; margin: 0 auto; padding: 24px;">
-      <p style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #6366f1; font-weight: 700; margin: 0 0 12px;">
+      <p style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #7c3aed; font-weight: 700; margin: 0 0 12px;">
         Provix Intro Request
       </p>
       <h1 style="font-size: 24px; margin: 0 0 16px;">
@@ -197,7 +197,7 @@ export function buildCandidateIntroRequestEmailHtml(input: {
         </tr>
       </table>
       <div style="display: flex; gap: 12px; margin: 0 0 20px;">
-        <a href="${safeAcceptUrl}" style="display: inline-block; background: #4f46e5; color: #ffffff; text-decoration: none; font-weight: 700; padding: 12px 20px; border-radius: 12px;">
+        <a href="${safeAcceptUrl}" style="display: inline-block; background: #7c3aed; color: #ffffff; text-decoration: none; font-weight: 700; padding: 12px 20px; border-radius: 12px;">
           Accept Intro
         </a>
         <a href="${safeDeclineUrl}" style="display: inline-block; background: #111827; color: #ffffff; text-decoration: none; font-weight: 700; padding: 12px 20px; border-radius: 12px;">
@@ -296,7 +296,7 @@ export function buildIntroEmailHtml(input: {
 
   return `
     <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #111827; max-width: 640px; margin: 0 auto; padding: 24px;">
-      <p style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #6366f1; font-weight: 700; margin: 0 0 12px;">
+      <p style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #7c3aed; font-weight: 700; margin: 0 0 12px;">
         Provix Warm Intro
       </p>
       <h1 style="font-size: 24px; margin: 0 0 16px;">

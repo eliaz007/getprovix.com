@@ -5,7 +5,7 @@ import type { ProductionAuditRecord } from "@/lib/production-audit";
 import { clampScore0to100 } from "@/lib/score-scale";
 
 const GLASS_CARD =
-  "bg-[#131316]/90 border border-white/[0.08] backdrop-blur-xl rounded-xl shadow-2xl p-6 sm:p-7";
+  "bg-[#131316]/85 border border-white/[0.08] backdrop-blur-xl rounded-xl shadow-2xl p-6 sm:p-7";
 
 function platformRankLabel(score: number): string {
   if (score >= 90) return "TOP 5% OF PLATFORM";
@@ -30,7 +30,7 @@ function cicdLabel(ciScore: number): string {
 function badgeTone(ok: boolean): string {
   return ok
     ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
-    : "border-amber-500/25 bg-amber-500/10 text-amber-300";
+    : "border-violet-500/25 bg-violet-500/10 text-violet-300";
 }
 
 export default function VerificationDossierPanel({
@@ -60,7 +60,7 @@ export default function VerificationDossierPanel({
         >
           Verification Dossier
         </span>
-        <span className="inline-flex items-center rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wide text-amber-300">
+        <span className="inline-flex items-center rounded-full border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wide text-violet-300">
           {platformRankLabel(score)}
         </span>
       </div>

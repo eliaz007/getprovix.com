@@ -205,8 +205,8 @@ export default function SkillPicker({
       <div className="relative z-20 overflow-visible">
         <div
           className={cn(
-            "flex min-h-12 flex-wrap items-center gap-1.5 rounded-xl border border-zinc-800 bg-background px-3 py-2 transition-colors",
-            "focus-within:border-zinc-600 focus-within:ring-1 focus-within:ring-zinc-500/40",
+            "flex min-h-12 flex-wrap items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#070709] px-3 py-2 transition-colors",
+            "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand/20",
             inputDisabled && "cursor-not-allowed"
           )}
           onClick={() => {
@@ -218,7 +218,7 @@ export default function SkillPicker({
           {selected.map((skill) => (
             <span
               key={skill}
-              className="inline-flex max-w-full items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900/80 py-1 pl-2 pr-1 text-xs font-semibold text-textMain"
+              className="inline-flex max-w-full items-center gap-1 rounded-md border border-white/[0.07] bg-[#1A1A1E] py-1 pl-2 pr-1 text-xs font-semibold text-zinc-300 transition-colors hover:border-violet-500/30"
             >
               <span className="truncate">{skill}</span>
               <button
@@ -229,7 +229,7 @@ export default function SkillPicker({
                   event.stopPropagation();
                   removeSkill(skill);
                 }}
-                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-textMain disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <X className="h-3 w-3" aria-hidden="true" />
               </button>
@@ -279,7 +279,7 @@ export default function SkillPicker({
             ref={listboxRef}
             id={listboxId}
             role="listbox"
-            className="absolute top-full left-0 right-0 z-50 mt-1.5 max-h-48 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900 py-1 shadow-xl"
+            className="absolute top-full left-0 right-0 z-50 mt-1.5 max-h-48 overflow-y-auto rounded-lg border border-white/[0.08] bg-[#131316] py-1 shadow-2xl backdrop-blur-xl"
           >
             {menuItems.map((item, index) => {
               const isActive = index === highlightIndex;
@@ -300,8 +300,8 @@ export default function SkillPicker({
                     onClick={() => addSkill(item.value)}
                     className={cn(
                       "w-full cursor-pointer px-3 py-2 text-left text-sm text-zinc-200",
-                      "hover:bg-zinc-800/80 focus-visible:bg-zinc-800/80 focus-visible:outline-none",
-                      isActive && "bg-zinc-800/80",
+                      "hover:bg-[#1A1A1E] focus-visible:bg-[#1A1A1E] focus-visible:outline-none",
+                      isActive && "bg-[#1A1A1E]",
                       isCreate && "font-medium"
                     )}
                   >

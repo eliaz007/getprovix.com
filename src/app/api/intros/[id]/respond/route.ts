@@ -39,7 +39,7 @@ function buildRespondHtml(input: {
       .wrap { max-width: 560px; margin: 48px auto; padding: 32px; background: #111111; border: 1px solid #334155; border-radius: 20px; }
       h1 { font-size: 24px; margin: 0 0 12px; color: #fff; }
       p { line-height: 1.6; color: #94a3b8; }
-      a { display: inline-block; margin-top: 20px; background: #4f46e5; color: #fff; text-decoration: none; font-weight: 700; padding: 12px 18px; border-radius: 12px; }
+      a { display: inline-block; margin-top: 20px; background: #7c3aed; color: #fff; text-decoration: none; font-weight: 700; padding: 12px 18px; border-radius: 12px; }
     </style>
   </head>
   <body>

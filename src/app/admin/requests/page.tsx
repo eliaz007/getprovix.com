@@ -661,7 +661,7 @@ export default function AdminIntroRequestsPage() {
                 onClick={() => setPipelineTab(tab.id)}
                 className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${
                   isActive
-                    ? "bg-brand text-white"
+                    ? "bg-brand text-white shadow-sm"
                     : "bg-panel text-textMuted hover:text-textMain hover:bg-panel"
                 }`}
               >
@@ -686,7 +686,7 @@ export default function AdminIntroRequestsPage() {
                   ? "Search candidate, company, or email..."
                   : "Search job title or company..."
               }
-              className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+              className="w-full bg-[#070709] border border-white/[0.08] rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
             />
           </div>
 
@@ -701,7 +701,7 @@ export default function AdminIntroRequestsPage() {
                     onClick={() => setStatusFilter(tab.id)}
                     className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
                       isActive
-                        ? "bg-brand text-white"
+                        ? "bg-brand text-white shadow-sm"
                         : "bg-panel text-textMuted hover:text-textMain hover:bg-panel"
                     }`}
                   >
@@ -714,7 +714,7 @@ export default function AdminIntroRequestsPage() {
         </div>
 
         {schemaWarning && (
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
+          <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-sm text-violet-200">
             {schemaWarning}
           </div>
         )}
@@ -987,7 +987,7 @@ export default function AdminIntroRequestsPage() {
                                 )
                               }
                               disabled={isUpdating}
-                              className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-textMain focus:outline-none focus:border-brand"
+                              className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
                             >
                               {INTRO_PIPELINE_STATUSES.map((status) => (
                                 <option key={status.value} value={status.value}>
@@ -1014,7 +1014,7 @@ export default function AdminIntroRequestsPage() {
                                   }
                                   placeholder="e.g. 85000"
                                   disabled={isUpdating}
-                                  className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                                  className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
                                 />
                               </div>
                             )}

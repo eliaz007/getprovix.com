@@ -77,7 +77,7 @@ export default function CandidateIntroRequestsPanel({
           <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
             Pending Review
           </span>
-          <span className="text-3xl font-extrabold text-amber-400">
+          <span className="text-3xl font-extrabold text-violet-400">
             {loading ? "—" : pendingCount}
           </span>
         </div>
@@ -111,7 +111,7 @@ export default function CandidateIntroRequestsPanel({
           onClick={() => setInboxFilter("inbox")}
           className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
  inboxFilter === "inbox"
- ? "bg-brand text-white"
+ ? "bg-brand text-white shadow-sm"
  : "text-textMuted hover:text-textMain"
  }`}
         >
@@ -125,7 +125,7 @@ export default function CandidateIntroRequestsPanel({
           onClick={() => setInboxFilter("dismissed")}
           className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
  inboxFilter === "dismissed"
- ? "bg-brand text-white"
+ ? "bg-brand text-white shadow-sm"
  : "text-textMuted hover:text-textMain"
  }`}
         >

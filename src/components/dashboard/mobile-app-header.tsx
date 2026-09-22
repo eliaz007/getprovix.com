@@ -58,7 +58,7 @@ export default function MobileAppHeader({
           <Link
             href="/dashboard"
             aria-label="Open your profile"
-            className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-border bg-panel text-[11px] font-bold text-textMain hover:border-indigo-400 transition-colors duration-200 ease-out"
+            className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-border bg-panel text-[11px] font-bold text-textMain hover:border-violet-400 transition-colors duration-200 ease-out"
           >
             {avatarUrl ? (
               <img

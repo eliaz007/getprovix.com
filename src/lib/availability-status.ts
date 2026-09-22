@@ -27,7 +27,7 @@ export function getAvailabilityBadgeClass(availability: string): string {
   }
 
   if (availability === "Interviewing") {
-    return "bg-amber-500/10 text-amber-400 border border-amber-500/20";
+    return "bg-violet-500/10 text-violet-400 border border-violet-500/20";
   }
 
   return "bg-slate-800 text-slate-500 border border-slate-700/50";

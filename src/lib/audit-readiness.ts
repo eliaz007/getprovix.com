@@ -43,8 +43,8 @@ export function getReadinessBadge(score: number): ReadinessBadge {
   if (clamped >= 60) {
     return {
       label: "Competent / Intermediate",
-      className: "text-amber-300 bg-amber-500/10 border-amber-500/30",
-      meterClassName: "text-amber-400",
+      className: "text-violet-300 bg-violet-500/10 border-violet-500/30",
+      meterClassName: "text-violet-400",
     };
   }
 

@@ -15,7 +15,6 @@ export function ProvixLogo({
           className={className}
           aria-hidden="true"
         >
-          {/* Tile background */}
           <rect
             width="36"
             height="36"
@@ -24,8 +23,6 @@ export function ProvixLogo({
             stroke="#27272A"
             strokeWidth="1"
           />
-
-          {/* Geometric 'P' path */}
           <path
             d="M12 25V11H19.5C22.5 11 24.5 13 24.5 16C24.5 19 22.5 21 19.5 21H12"
             stroke="#6366F1"
@@ -33,8 +30,6 @@ export function ProvixLogo({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-
-          {/* Accent dot */}
           <circle cx="18.5" cy="16" r="1.5" fill="#38BDF8" />
         </svg>
       </div>

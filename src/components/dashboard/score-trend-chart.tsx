@@ -511,8 +511,8 @@ export default function ScoreTrendChart({
             >
               <defs>
                 <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.22" />
-                  <stop offset="100%" stopColor="#F59E0B" stopOpacity="0" />
+                  <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.2" />
+                  <stop offset="100%" stopColor="#7c3aed" stopOpacity="0" />
                 </linearGradient>
                 <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
                   <feGaussianBlur stdDeviation="2.5" result="blur" />
@@ -559,7 +559,7 @@ export default function ScoreTrendChart({
                   <path
                     d={linePath}
                     fill="none"
-                    stroke="#F59E0B"
+                    stroke="#7c3aed"
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -572,7 +572,7 @@ export default function ScoreTrendChart({
                   x2={VIEW_WIDTH - PAD.right}
                   y1={mapped[0].y}
                   y2={mapped[0].y}
-                  stroke="#F59E0B"
+                  stroke="#7c3aed"
                   strokeDasharray="4 6"
                   strokeOpacity="0.45"
                 />
@@ -593,8 +593,8 @@ export default function ScoreTrendChart({
                       cx={point.x}
                       cy={point.y}
                       r={active ? 4.5 : 3.25}
-                      fill={active ? "#FDE68A" : "#0B0B0D"}
-                      stroke="#F59E0B"
+                      fill={active ? "#ddd6fe" : "#0B0B0D"}
+                      stroke="#7c3aed"
                       strokeWidth="2"
                       className="pointer-events-none"
                     />
@@ -631,7 +631,7 @@ export default function ScoreTrendChart({
                     x2={hovered.x}
                     y1={PAD.top}
                     y2={VIEW_HEIGHT - PAD.bottom}
-                    stroke="#F59E0B"
+                    stroke="#7c3aed"
                     strokeOpacity="0.35"
                     strokeDasharray="3 4"
                   />

@@ -137,7 +137,7 @@ const SECTION_LABEL =
 
 const TONE_PILL: Record<ChecklistTone, string> = {
   pass: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
-  warn: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+  warn: "bg-violet-500/10 text-violet-400 border border-violet-500/20",
   fail: "bg-red-500/10 text-red-400 border border-red-500/20",
 };
 
@@ -150,8 +150,8 @@ const TONE_STYLES: Record<
     status: "text-emerald-300",
   },
   warn: {
-    iconWrap: "border-amber-500/30 bg-amber-500/10 text-amber-400",
-    status: "text-amber-300",
+    iconWrap: "border-violet-500/30 bg-violet-500/10 text-violet-400",
+    status: "text-violet-300",
   },
   fail: {
     iconWrap: "border-rose-500/30 bg-rose-500/10 text-rose-400",
@@ -396,7 +396,7 @@ function highlightCode(
           const value = keyMatch[4];
           if (/^\s*\d+\s*$/.test(value)) {
             nodes.push(
-              <span key={`${index}-n`} className="text-amber-300">
+              <span key={`${index}-n`} className="text-violet-300">
                 {value}
               </span>
             );
@@ -416,7 +416,7 @@ function highlightCode(
         } else if (/^\s*-\s/.test(remaining)) {
           const dashMatch = remaining.match(/^(\s*-\s)(.*)$/);
           nodes.push(
-            <span key={`${index}-d`} className="text-indigo-300">
+            <span key={`${index}-d`} className="text-violet-300">
               {dashMatch?.[1]}
             </span>,
             <span key={`${index}-dv`} className="text-zinc-200">
@@ -454,7 +454,7 @@ function highlightCode(
             );
           } else if (/^(true|false|null|undefined)$/.test(part)) {
             nodes.push(
-              <span key={`${index}-lit-${partIndex}`} className="text-amber-300">
+              <span key={`${index}-lit-${partIndex}`} className="text-violet-300">
                 {part}
               </span>
             );
@@ -519,9 +519,9 @@ function CodeSnippet({
   content,
 }: RemediationDrawer) {
   return (
-    <div className="space-y-3 border-t border-indigo-500/20 px-3 py-3">
+    <div className="space-y-3 border-t border-violet-500/20 px-3 py-3">
       <div>
-        <p className="font-mono text-[11px] text-indigo-300 truncate">{filePath}</p>
+        <p className="font-mono text-[11px] text-violet-300 truncate">{filePath}</p>
         <p className="mt-1.5 text-xs text-zinc-400 leading-relaxed">{directions}</p>
       </div>
       <div className="overflow-hidden rounded-lg border border-zinc-800 bg-black/70">
@@ -841,13 +841,13 @@ function TechnicalScreenGenerator({ prompts }: { prompts: ScreenPrompt[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   return (
-    <section className="rounded-2xl border border-indigo-500/30 bg-zinc-900/80 p-4 sm:p-5 shadow-lg shadow-indigo-500/5 space-y-4">
+    <section className="rounded-2xl border border-violet-500/25 bg-zinc-900/80 p-4 sm:p-5 shadow-lg shadow-violet-500/5 space-y-4">
       <div className="mb-4 w-full">
         <div className="flex w-full items-center justify-between gap-4">
           <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
             Technical Screen Generator
           </h3>
-          <span className="inline-flex shrink-0 items-center rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-mono font-medium text-amber-400">
+          <span className="inline-flex shrink-0 items-center rounded border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-[11px] font-mono font-medium text-violet-400">
             RAMP-UP: SUPERVISION REQUIRED (3-4 Wk Ramp-Up)
           </span>
         </div>
@@ -899,7 +899,7 @@ function TechnicalScreenGenerator({ prompts }: { prompts: ScreenPrompt[] }) {
                   />
                 </button>
                 {isOpen ? (
-                  <div className="space-y-3 border-t border-indigo-500/20 px-3 py-3">
+                  <div className="space-y-3 border-t border-violet-500/20 px-3 py-3">
                     <div>
                       <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 mb-1">
                         Question
@@ -984,10 +984,10 @@ function EmployerActionToolbar({
       <button
         type="button"
         onClick={() => void onCopyBrief()}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-600 py-3.5 px-6 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 cursor-pointer"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand py-3.5 px-6 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brandHover cursor-pointer"
       >
         {copied ? (
-          <Check className="h-4 w-4 text-emerald-200" aria-hidden />
+          <Check className="h-4 w-4 text-emerald-600" aria-hidden />
         ) : (
           <Copy className="h-4 w-4" aria-hidden />
         )}
@@ -1121,8 +1121,8 @@ function AuditResultsFallback({
   message: string;
 }) {
   return (
-    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 sm:p-5 space-y-3">
-      <div className="text-[10px] uppercase font-bold tracking-wider text-amber-400">
+    <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-4 sm:p-5 space-y-3">
+      <div className="text-[10px] uppercase font-bold tracking-wider text-violet-400">
         Executive Dossier Unavailable
       </div>
       <p className="text-sm text-zinc-300 leading-relaxed">{message}</p>
@@ -1308,7 +1308,7 @@ function AuditResultsPanelView({
 
       {!employerView ? (
         <section>
-          <div className={`${SECTION_LABEL} mb-3 text-amber-400`}>
+          <div className={`${SECTION_LABEL} mb-3 text-violet-400`}>
             Actionable Fixes
           </div>
           {actionableFixes.length > 0 ? (
@@ -1344,7 +1344,7 @@ function AuditResultsPanelView({
           <AuditChecksList checks={result?.checks ?? []} />
 
           <div className="space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-3">
-            <div className={`${SECTION_LABEL} text-cyan-300`}>
+            <div className={`${SECTION_LABEL} text-violet-300`}>
               Filesystem paths &amp; AST evidence
             </div>
             <ProofPathList
@@ -1406,7 +1406,7 @@ function AuditResultsPanelView({
 
           {visibleRedFlags.length > 0 ? (
             <div>
-              <div className={`${SECTION_LABEL} mb-3 text-amber-400`}>
+              <div className={`${SECTION_LABEL} mb-3 text-violet-400`}>
                 Detected Red Flags / Missing Proof-of-Work
               </div>
               <ul className="space-y-2">
@@ -1416,7 +1416,7 @@ function AuditResultsPanelView({
                     className="flex items-start gap-2 text-sm leading-relaxed text-zinc-400"
                   >
                     <AlertTriangle
-                      className="mt-0.5 h-4 w-4 shrink-0 text-amber-400"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-violet-400"
                       aria-hidden
                     />
                     <span>{item}</span>
