@@ -78,9 +78,9 @@ function isNavTabActive(
 
 function navItemClass(isActive: boolean) {
   if (isActive) {
-    return "flex w-full items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 font-mono text-xs font-medium text-zinc-100 transition-colors cursor-pointer";
+    return "flex w-full cursor-pointer items-center justify-between rounded-lg bg-white/[0.05] px-3 py-2 font-sans text-sm font-medium tracking-normal text-white transition-colors";
   }
-  return "flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2 font-mono text-xs text-zinc-400 transition-colors hover:bg-white/[0.03] hover:text-zinc-200 cursor-pointer";
+  return "flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 font-sans text-sm font-medium tracking-normal text-zinc-400 transition-colors hover:bg-white/[0.02] hover:text-zinc-200";
 }
 
 function buildCandidateGroups(): NavGroup[] {
@@ -286,8 +286,8 @@ function SidebarBrand({
       <span
         className={
           consoleBadge
-            ? "mt-2 inline-block rounded-md border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-violet-300"
-            : "mt-2 inline-block rounded-md border border-white/[0.05] bg-white/[0.02] px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-zinc-500"
+            ? "mt-2 inline-flex w-fit items-center rounded-md border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider text-violet-300"
+            : "mt-2 inline-flex w-fit items-center rounded-md border border-white/[0.06] bg-white/[0.03] px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider text-zinc-400"
         }
       >
         {badge}
@@ -325,7 +325,7 @@ function NavItemRow({
   const trailing = isActive ? (
     <span
       aria-hidden
-      className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.8)]"
+      className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.6)]"
     />
   ) : null;
 
@@ -418,13 +418,13 @@ function SidebarNavGroups({ groups }: { groups: NavGroup[] }) {
   const { activeTab } = useDashboardNav();
 
   return (
-    <nav aria-label="Dashboard" className="mt-6 flex flex-col gap-1">
+    <nav aria-label="Dashboard" className="flex flex-col">
       {groups.map((group) => (
-        <div key={group.id} className="mb-4 last:mb-0">
-          <p className="px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-zinc-600">
+        <div key={group.id}>
+          <p className="mb-1.5 mt-6 block px-3 font-mono text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
             {group.title}
           </p>
-          <ul className="m-0 flex list-none flex-col gap-1 p-0">
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
             {group.items.map((item) => {
               const isActive =
                 item.kind === "href"
