@@ -1004,15 +1004,27 @@ export default function DashboardPage() {
     }, AUTH_BOOTSTRAP_TIMEOUT_MS);
 
     (async () => {
+      console.time("dashboard-profile:bootstrap-total");
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        const {
-          data: { user: authedUser },
-          error: userError,
-        } = await supabase.auth.getUser();
+        console.time("dashboard-profile:auth-check");
+        let session: Awaited<
+          ReturnType<typeof supabase.auth.getSession>
+        >["data"]["session"] = null;
+        let authedUser: Awaited<
+          ReturnType<typeof supabase.auth.getUser>
+        >["data"]["user"] = null;
+        let userError: Awaited<
+          ReturnType<typeof supabase.auth.getUser>
+        >["error"] = null;
+        try {
+          const sessionResult = await supabase.auth.getSession();
+          session = sessionResult.data.session;
+          const userResult = await supabase.auth.getUser();
+          authedUser = userResult.data.user;
+          userError = userResult.error;
+        } finally {
+          console.timeEnd("dashboard-profile:auth-check");
+        }
 
         if (!isMounted) return;
 
@@ -1036,7 +1048,13 @@ export default function DashboardPage() {
 
         setUser(sessionUser);
 
-        const profileRow = await ensureUserProfile(supabase, sessionUser);
+        console.time("dashboard-profile:profile-fetch");
+        let profileRow: Awaited<ReturnType<typeof ensureUserProfile>> = null;
+        try {
+          profileRow = await ensureUserProfile(supabase, sessionUser);
+        } finally {
+          console.timeEnd("dashboard-profile:profile-fetch");
+        }
 
         if (!isMounted) return;
 
@@ -1060,12 +1078,14 @@ export default function DashboardPage() {
             profileWithRole.id
           );
 
+          console.time("dashboard-profile:profile-slug");
           const { data: slugRow, error: slugError } = await supabase
             .from("profiles")
             .update({ profile_slug })
             .eq("id", profileWithRole.id)
             .select("*")
             .maybeSingle();
+          console.timeEnd("dashboard-profile:profile-slug");
 
           if (!slugError && slugRow) {
             profileWithRole = {
@@ -1077,10 +1097,12 @@ export default function DashboardPage() {
           }
         }
 
+        console.time("dashboard-profile:employer-verified");
         const verifiedInDb = await employerIsVerifiedInDatabase(
           supabase,
           sessionUser.id
         );
+        console.timeEnd("dashboard-profile:employer-verified");
         if (profileWithRole) {
           profileWithRole = {
             ...profileWithRole,
@@ -1211,11 +1233,13 @@ export default function DashboardPage() {
           }
         }
 
+        console.time("dashboard-profile:job-applications");
         const { data: applicationRows, error: applicationsError } = await supabase
           .from("job_applications")
           .select("job_id, created_at, jobs(title, company, salary_range, location)")
           .eq("candidate_id", sessionUser.id)
           .order("created_at", { ascending: false });
+        console.timeEnd("dashboard-profile:job-applications");
 
         if (!isMounted) return;
 
@@ -1251,6 +1275,7 @@ export default function DashboardPage() {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Dashboard profile load threw:", message, err);
       } finally {
+        console.timeEnd("dashboard-profile:bootstrap-total");
         if (isMounted) {
           window.clearTimeout(timeoutId);
           setAuthChecked(true);
@@ -1548,10 +1573,12 @@ export default function DashboardPage() {
   const fetchIntroUnlocks = useCallback(async (userId: string) => {
     const supabase = createClient();
     try {
+      console.time("dashboard-profile:intro-unlocks");
       const { data, error } = await supabase
         .from("intro_requests")
         .select("candidate_id, status")
         .eq("user_id", userId);
+      console.timeEnd("dashboard-profile:intro-unlocks");
 
       if (error) {
         console.error("Intro unlock fetch error:", error);
@@ -1577,12 +1604,14 @@ export default function DashboardPage() {
 
       let loaded = false;
       for (const columns of columnSets) {
+        console.time("dashboard-profile:intro-requests");
         const { data, error } = await supabase
           .from("intro_requests")
           .select(columns as "*")
           .eq("candidate_id", userId)
           .order("created_at", { ascending: false })
           .returns<CandidateIntroRequestRow[]>();
+        console.timeEnd("dashboard-profile:intro-requests");
 
         if (!error) {
           setCandidateIntroRequests(data ?? []);
@@ -1919,7 +1948,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
     let cancelled = false;
 
-    void claimPendingProductionAudit().then((claimed) => {
+    console.time("dashboard-profile:audit-query");
+    void claimPendingProductionAudit()
+      .finally(() => {
+        console.timeEnd("dashboard-profile:audit-query");
+      })
+      .then((claimed) => {
       if (!claimed || cancelled) {
         return;
       }
@@ -3608,17 +3642,24 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     setEmployerAuditResult(null);
 
     try {
-      const response = await fetch("/api/audit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetRole: evalRole.trim() || undefined,
-          resumeSummary: evalAccomplishments.trim(),
-          compensationLevel: evalMajor.trim() || undefined,
-        }),
-      });
+      console.time("dashboard-profile:audit-api");
+      let response: Response;
+      let data: AuditResult & { error?: string };
+      try {
+        response = await fetch("/api/audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetRole: evalRole.trim() || undefined,
+            resumeSummary: evalAccomplishments.trim(),
+            compensationLevel: evalMajor.trim() || undefined,
+          }),
+        });
 
-      const data = (await readJsonResponse(response)) as AuditResult & { error?: string };
+        data = (await readJsonResponse(response)) as AuditResult & { error?: string };
+      } finally {
+        console.timeEnd("dashboard-profile:audit-api");
+      }
 
       if (!response.ok) {
         throw new Error(data.error ?? `Audit failed (${response.status})`);

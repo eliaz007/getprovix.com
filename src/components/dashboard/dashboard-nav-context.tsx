@@ -334,10 +334,18 @@ function DashboardNavProviderImpl({
     }, AUTH_BOOTSTRAP_TIMEOUT_MS);
 
     const bootstrapSession = async () => {
+      console.time("dashboard-layout:bootstrap-total");
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        console.time("dashboard-layout:auth-check");
+        let user: Awaited<
+          ReturnType<typeof supabase.auth.getUser>
+        >["data"]["user"] = null;
+        try {
+          const authResult = await supabase.auth.getUser();
+          user = authResult.data.user;
+        } finally {
+          console.timeEnd("dashboard-layout:auth-check");
+        }
 
         if (!active) {
           return;
@@ -366,23 +374,28 @@ function DashboardNavProviderImpl({
           availability_status?: string | null;
           full_name?: string | null;
         } | null = null;
+        console.time("dashboard-layout:profile-fetch");
         const byId = await supabase
           .from("profiles")
           .select("role, is_verified, availability_status, full_name")
           .eq("id", user.id)
           .maybeSingle();
+        console.timeEnd("dashboard-layout:profile-fetch");
 
         profile = byId.data;
 
         if (!profile) {
+          console.time("dashboard-layout:profile-fetch-by-user-id");
           const byUserId = await supabase
             .from("profiles")
             .select("role, is_verified, availability_status, full_name")
             .eq("user_id", user.id)
             .maybeSingle();
+          console.timeEnd("dashboard-layout:profile-fetch-by-user-id");
           profile = byUserId.data;
 
           if (!profile && (byId.error || byUserId.error)) {
+            console.time("dashboard-layout:profile-fetch-fallback");
             const fallbackById = await supabase
               .from("profiles")
               .select("role")
@@ -397,6 +410,7 @@ function DashboardNavProviderImpl({
                 .maybeSingle();
               profile = fallbackByUserId.data;
             }
+            console.timeEnd("dashboard-layout:profile-fetch-fallback");
           }
         }
 
@@ -428,6 +442,7 @@ function DashboardNavProviderImpl({
           setAvailabilityStatus(null);
         }
       } finally {
+        console.timeEnd("dashboard-layout:bootstrap-total");
         if (active) {
           window.clearTimeout(timeoutId);
           setAuthLoading(false);
