@@ -634,7 +634,7 @@ export default function GeminiDeepScreening({
  isComplete
  ? "text-emerald-200"
  : isActive
- ? "text-indigo-100"
+ ? "text-amber-100"
  : "text-textMuted"
  }`}
                 >
@@ -709,7 +709,7 @@ export default function GeminiDeepScreening({
               </div>
 
               <div>
-                <div className="text-[10px] uppercase font-bold text-purple-300 tracking-wider mb-2">
+                <div className="text-[10px] uppercase font-bold text-amber-300 tracking-wider mb-2">
                   Employer Interview Cheat Sheet
                 </div>
                 <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-xs text-zinc-400 text-center">
@@ -747,7 +747,7 @@ export default function GeminiDeepScreening({
               <AuditChecksList checks={result.checks} />
 
               <div>
-                <div className="text-[10px] uppercase font-bold text-purple-300 tracking-wider mb-2">
+                <div className="text-[10px] uppercase font-bold text-amber-300 tracking-wider mb-2">
                   Employer Interview Cheat Sheet
                 </div>
                 <div className="space-y-3">

@@ -416,7 +416,7 @@ function highlightCode(
         } else if (/^\s*-\s/.test(remaining)) {
           const dashMatch = remaining.match(/^(\s*-\s)(.*)$/);
           nodes.push(
-            <span key={`${index}-d`} className="text-indigo-300">
+            <span key={`${index}-d`} className="text-amber-300">
               {dashMatch?.[1]}
             </span>,
             <span key={`${index}-dv`} className="text-zinc-200">
@@ -448,7 +448,7 @@ function highlightCode(
             )
           ) {
             nodes.push(
-              <span key={`${index}-kw-${partIndex}`} className="text-violet-300">
+              <span key={`${index}-kw-${partIndex}`} className="text-amber-300">
                 {part}
               </span>
             );
@@ -519,9 +519,9 @@ function CodeSnippet({
   content,
 }: RemediationDrawer) {
   return (
-    <div className="space-y-3 border-t border-indigo-500/20 px-3 py-3">
+    <div className="space-y-3 border-t border-amber-500/20 px-3 py-3">
       <div>
-        <p className="font-mono text-[11px] text-indigo-300 truncate">{filePath}</p>
+        <p className="font-mono text-[11px] text-amber-300 truncate">{filePath}</p>
         <p className="mt-1.5 text-xs text-zinc-400 leading-relaxed">{directions}</p>
       </div>
       <div className="overflow-hidden rounded-lg border border-zinc-800 bg-black/70">
@@ -841,7 +841,7 @@ function TechnicalScreenGenerator({ prompts }: { prompts: ScreenPrompt[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   return (
-    <section className="rounded-2xl border border-indigo-500/30 bg-zinc-900/80 p-4 sm:p-5 shadow-lg shadow-indigo-500/5 space-y-4">
+    <section className="rounded-2xl border border-amber-500/25 bg-zinc-900/80 p-4 sm:p-5 shadow-lg shadow-amber-500/5 space-y-4">
       <div className="mb-4 w-full">
         <div className="flex w-full items-center justify-between gap-4">
           <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
@@ -899,7 +899,7 @@ function TechnicalScreenGenerator({ prompts }: { prompts: ScreenPrompt[] }) {
                   />
                 </button>
                 {isOpen ? (
-                  <div className="space-y-3 border-t border-indigo-500/20 px-3 py-3">
+                  <div className="space-y-3 border-t border-amber-500/20 px-3 py-3">
                     <div>
                       <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 mb-1">
                         Question
@@ -984,10 +984,10 @@ function EmployerActionToolbar({
       <button
         type="button"
         onClick={() => void onCopyBrief()}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-600 py-3.5 px-6 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 cursor-pointer"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#F4F4F6] py-3.5 px-6 text-sm font-semibold text-[#0B0B0D] shadow-sm transition-all hover:bg-white cursor-pointer"
       >
         {copied ? (
-          <Check className="h-4 w-4 text-emerald-200" aria-hidden />
+          <Check className="h-4 w-4 text-emerald-600" aria-hidden />
         ) : (
           <Copy className="h-4 w-4" aria-hidden />
         )}
@@ -1344,7 +1344,7 @@ function AuditResultsPanelView({
           <AuditChecksList checks={result?.checks ?? []} />
 
           <div className="space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-3">
-            <div className={`${SECTION_LABEL} text-cyan-300`}>
+            <div className={`${SECTION_LABEL} text-amber-300`}>
               Filesystem paths &amp; AST evidence
             </div>
             <ProofPathList

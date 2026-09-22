@@ -3766,7 +3766,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           disabled={!canSaveProfile}
           className={`w-full sm:flex-1 font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
  canSaveProfile
- ? "bg-brand hover:bg-brandHover text-white cursor-pointer"
+ ? "bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm cursor-pointer"
  : "bg-panel text-textMuted cursor-not-allowed"
  }`}
         >
@@ -3917,7 +3917,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               <button
                 type="button"
                 onClick={() => requireAuth()}
-                className="mt-8 w-full bg-brand hover:bg-brandHover text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
+                className="mt-8 w-full bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
               >
                 Sign In
               </button>
@@ -4048,8 +4048,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       onClick={() => setProfileSubMenu("companyInfo")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
  profileSubMenu === "companyInfo"
- ? "text-brand border-b-2 border-brand"
- : "text-textMuted hover:text-textMuted"
+ ? "text-amber-300 border-b-2 border-amber-400"
+ : "text-zinc-400 hover:text-zinc-200"
  }`}
                     >
                       Company Info
@@ -4059,8 +4059,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       onClick={() => setProfileSubMenu("activeListings")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
  profileSubMenu === "activeListings"
- ? "text-brand border-b-2 border-brand"
- : "text-textMuted hover:text-textMuted"
+ ? "text-amber-300 border-b-2 border-amber-400"
+ : "text-zinc-400 hover:text-zinc-200"
  }`}
                     >
                       Active Listings
@@ -4073,8 +4073,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       onClick={() => setProfileSubMenu("overview")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
  profileSubMenu === "overview"
- ? "text-brand border-b-2 border-brand"
- : "text-textMuted hover:text-textMuted"
+ ? "text-amber-300 border-b-2 border-amber-400"
+ : "text-zinc-400 hover:text-zinc-200"
  }`}
                     >
                       Overview & Bio
@@ -4084,8 +4084,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       onClick={() => setProfileSubMenu("academics")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
  profileSubMenu === "academics"
- ? "text-brand border-b-2 border-brand"
- : "text-textMuted hover:text-textMuted"
+ ? "text-amber-300 border-b-2 border-amber-400"
+ : "text-zinc-400 hover:text-zinc-200"
  }`}
                     >
                       Academics
@@ -4095,8 +4095,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       onClick={() => setProfileSubMenu("portfolio")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
  profileSubMenu === "portfolio"
- ? "text-brand border-b-2 border-brand"
- : "text-textMuted hover:text-textMuted"
+ ? "text-amber-300 border-b-2 border-amber-400"
+ : "text-zinc-400 hover:text-zinc-200"
  }`}
                     >
                       Proof of Work
@@ -4108,8 +4108,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   onClick={() => setProfileSubMenu("settings")}
                   className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
  profileSubMenu === "settings"
- ? "text-brand border-b-2 border-brand"
- : "text-textMuted hover:text-textMuted"
+ ? "text-amber-300 border-b-2 border-amber-400"
+ : "text-zinc-400 hover:text-zinc-200"
  }`}
                 >
                   Account Settings
@@ -4117,11 +4117,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               </div>
 
               {/* SUB-MENU CONTENT PANELS */}
-              <div className="card-edge bg-panel rounded-2xl border border-border p-8">
+              <div className="rounded-xl border border-white/[0.08] bg-[#131316]/85 p-8 shadow-2xl backdrop-blur-xl">
                 {profileSubMenu === "companyInfo" && isBusinessAccount && (
                   <div className="space-y-6">
-                    <div className="flex items-center gap-5 pb-6 border-b border-border">
-                      <div className="w-16 h-16 rounded-2xl bg-brand/20 border border-brand/40 flex items-center justify-center text-xl font-bold text-brand">
+                    <div className="flex items-center gap-5 pb-6 border-b border-white/[0.08]">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-amber-500/30 bg-gradient-to-b from-[#1C1C22] to-[#101014] font-mono text-xl font-bold text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.15)]">
                         {businessProfileData?.businessName?.trim()?.charAt(0) || "?"}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -4148,7 +4148,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           })
                         }
                         placeholder="Acme Inc."
-                        className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
+                        className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                       />
                     </div>
 
@@ -4167,7 +4167,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             })
                           }
                           placeholder="you@company.com"
-                          className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain font-mono focus:outline-none focus:border-brand"
+                          className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                         />
                         <p className="mt-1.5 text-[11px] text-textMuted">
                           Corporate domain required. Use Get Verified to confirm this inbox — saving the profile does not unlock hiring tools.
@@ -4186,7 +4186,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               phone: e.target.value,
                             })
                           }
-                          className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain font-mono focus:outline-none focus:border-brand"
+                          className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                         />
                       </div>
                     </div>
@@ -4204,7 +4204,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             industry: e.target.value,
                           })
                         }
-                        className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain font-mono focus:outline-none focus:border-brand"
+                        className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 font-mono focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                       />
                     </div>
 
@@ -4221,7 +4221,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             companyBio: e.target.value,
                           })
                         }
-                        className="w-full bg-background border border-border rounded-xl p-3.5 text-sm text-textMain focus:outline-none focus:border-brand resize-none leading-relaxed"
+                        className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 resize-none leading-relaxed"
                       />
                     </div>
 
@@ -4249,7 +4249,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         <button
                           type="button"
                           onClick={openPostJobModal}
-                          className="bg-brand hover:bg-brandHover text-white text-[11px] font-bold px-3.5 py-2 rounded-lg transition-all cursor-pointer"
+                          className="bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm text-[11px] font-bold px-3.5 py-2 rounded-lg transition-all cursor-pointer"
                         >
                           + Post New Job
                         </button>
@@ -4329,7 +4329,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         </>
                       ) : (
                         <>
-                          <div className="w-16 h-16 rounded-2xl bg-brand/20 border border-brand/40 flex items-center justify-center text-xl font-bold text-brand">
+                          <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-amber-500/30 bg-gradient-to-b from-[#1C1C22] to-[#101014] font-mono text-xl font-bold text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.15)]">
                             {profileData?.name?.charAt(0) || "?"}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -4369,7 +4369,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         onChange={(e) =>
                           setExperienceLevel(e.target.value as ExperienceLevel)
                         }
-                        className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
+                        className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                       >
                         {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
                           <option key={option} value={option}>
@@ -4391,7 +4391,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         onChange={(e) =>
                           setBio(limitCandidateBio(e.target.value))
                         }
-                        className="w-full bg-background border border-border rounded-xl p-3.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none leading-relaxed"
+                        className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 resize-none leading-relaxed"
                       />
                       <p
                         aria-live="polite"
@@ -4416,8 +4416,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       />
                     </div>
 
-                    <div className="rounded-lg border border-neutral-800 bg-[#0d0f17] p-4">
-                      <p className="mb-3 font-mono text-[11px] uppercase tracking-wider text-neutral-500">
+                    <div className="rounded-lg border border-white/[0.06] bg-[#0B0B0E]/70 p-4">
+                      <p className="mb-3 font-mono text-[11px] uppercase tracking-wider text-zinc-500">
                         // Academic Snapshot
                       </p>
                       {isSelfTaught ? (
@@ -4428,7 +4428,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             entry.fieldOfStudy.trim() ||
                             entry.graduationYear.trim()
                         ) ? (
-                        <ul className="divide-y divide-neutral-800/70">
+                        <ul className="divide-y divide-white/[0.06]">
                           {educationEntries
                             .filter(
                               (entry) =>
@@ -4454,13 +4454,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                       {entry.institution.trim() || "Untitled program"}
                                     </p>
                                     {entry.graduationYear.trim() ? (
-                                      <span className="shrink-0 rounded border border-neutral-800 bg-neutral-900 px-2 py-0.5 font-mono text-xs text-neutral-400">
+                                      <span className="shrink-0 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 font-mono text-xs text-amber-300">
                                         {entry.graduationYear.trim()}
                                       </span>
                                     ) : null}
                                   </div>
                                   {subtitle ? (
-                                    <p className="mt-1 text-xs text-neutral-400">
+                                    <p className="mt-1 text-xs text-zinc-400">
                                       {subtitle}
                                     </p>
                                   ) : null}
@@ -4469,7 +4469,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             })}
                         </ul>
                       ) : (
-                        <p className="text-xs text-neutral-400">
+                        <p className="text-xs text-zinc-400">
                           Education is optional. Add programs in Academics if you
                           want them listed.
                         </p>
@@ -4595,7 +4595,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             projects: e.target.value,
                           })
                         }
-                        className="w-full bg-background border border-border rounded-xl p-3.5 text-sm text-textMain focus:outline-none focus:border-brand resize-none leading-relaxed"
+                        className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 resize-none leading-relaxed"
                       />
                     </div>
 
@@ -4623,7 +4623,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               onChange={(e) =>
                                 setWorkPreference(e.target.value as WorkPreference)
                               }
-                              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
+                              className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                             >
                               {WORK_PREFERENCE_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>
@@ -4649,7 +4649,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   e.target.value as CandidateTimezone
                                 )
                               }
-                              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
+                              className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                             >
                               {TIMEZONE_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>
@@ -4677,7 +4677,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 e.target.value as AvailabilityStatus
                               )
                             }
-                            className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
+                            className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                           >
                             {AVAILABILITY_STATUS_OPTIONS.map((option) => (
                               <option key={option} value={option}>
@@ -4859,7 +4859,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={essayTargetSchool}
                       onChange={(e) => setEssayTargetSchool(e.target.value)}
                       placeholder="e.g. Stanford University"
-                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
 
@@ -4872,7 +4872,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={essayPrompt}
                       onChange={(e) => setEssayPrompt(e.target.value)}
                       placeholder="Paste the essay prompt you're responding to..."
-                      className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 resize-none transition-all"
                     />
                   </div>
 
@@ -4890,7 +4890,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={essayText}
                       onChange={(e) => setEssayText(e.target.value)}
                       placeholder="Paste your essay draft here..."
-                      className="w-full bg-background border border-border rounded-xl px-4 py-4 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-4 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 resize-none transition-all"
                     />
                   </div>
 
@@ -4902,10 +4902,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     }
                     className={`w-full font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
  evaluatingEssay
- ? "bg-brand/80 text-textMain cursor-wait animate-pulse"
+ ? "bg-[#E4E4E7] text-[#0B0B0D] cursor-wait animate-pulse"
  : !essayPrompt.trim() || !essayText.trim()
  ? "bg-panel text-textMuted cursor-not-allowed"
- : "bg-brand text-textMain cursor-pointer"
+ : "bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm cursor-pointer"
  }`}
                   >
                     {evaluatingEssay ? (
@@ -5078,7 +5078,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={collegeName}
                       onChange={(e) => setCollegeName(e.target.value)}
                       placeholder="e.g. NYU, Stanford University"
-                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
 
@@ -5091,7 +5091,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={currentOffer}
                       onChange={(e) => setCurrentOffer(e.target.value)}
                       placeholder="e.g. $12,000 grant + $5,500 loans"
-                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
 
@@ -5102,7 +5102,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     <select
                       value={appealReason}
                       onChange={(e) => setAppealReason(e.target.value)}
-                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand transition-all cursor-pointer"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all cursor-pointer"
                     >
                       <option value="Competing Offer">Competing Offer</option>
                       <option value="Financial Hardship">Financial Hardship</option>
@@ -5119,7 +5119,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={contextDetails}
                       onChange={(e) => setContextDetails(e.target.value)}
                       placeholder="Describe changed circumstances, competing offers, family income updates, or merit achievements..."
-                      className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 resize-none transition-all"
                     />
                   </div>
 
@@ -5133,10 +5133,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     }
                     className={`w-full font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
  generatingAid
- ? "bg-brand/80 text-textMain cursor-wait animate-pulse"
+ ? "bg-[#E4E4E7] text-[#0B0B0D] cursor-wait animate-pulse"
  : !collegeName.trim() || !contextDetails.trim()
  ? "bg-panel text-textMuted cursor-not-allowed"
- : "bg-brand text-textMain cursor-pointer"
+ : "bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm cursor-pointer"
  }`}
                   >
                     {generatingAid ? (
@@ -5225,7 +5225,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   type="checkbox"
                                   checked={!!checkedDocuments[document]}
                                   onChange={() => toggleDocumentChecked(document)}
-                                  className="mt-0.5 h-4 w-4 rounded border-border bg-background text-indigo-500 focus:ring-brand/30 focus:ring-offset-0 cursor-pointer"
+                                  className="mt-0.5 h-4 w-4 rounded border-border bg-background text-amber-500 focus:ring-brand/30 focus:ring-offset-0 cursor-pointer"
                                 />
                                 <span
                                   className={`text-xs leading-relaxed transition-colors ${
@@ -5322,7 +5322,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={fitGpa}
                       onChange={(e) => setFitGpa(e.target.value)}
                       placeholder="e.g. 3.8"
-                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
 
@@ -5335,7 +5335,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={fitMajor}
                       onChange={(e) => setFitMajor(e.target.value)}
                       placeholder="e.g. Computer Science"
-                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
 
@@ -5348,7 +5348,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={fitTestScores}
                       onChange={(e) => setFitTestScores(e.target.value)}
                       placeholder="e.g. SAT 1450 / ACT 32"
-                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
 
@@ -5361,7 +5361,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={fitLocationPreference}
                       onChange={(e) => setFitLocationPreference(e.target.value)}
                       placeholder="e.g. West Coast, Northeast"
-                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
 
@@ -5374,7 +5374,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={fitBudgetPreference}
                       onChange={(e) => setFitBudgetPreference(e.target.value)}
                       placeholder="e.g. Under $30k net cost"
-                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
 
@@ -5386,10 +5386,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     }
                     className={`w-full font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
  generatingCollegeFit
- ? "bg-brand/80 text-textMain cursor-wait animate-pulse"
+ ? "bg-[#E4E4E7] text-[#0B0B0D] cursor-wait animate-pulse"
  : !fitGpa.trim() || !fitMajor.trim()
  ? "bg-panel text-textMuted cursor-not-allowed"
- : "bg-brand text-textMain cursor-pointer"
+ : "bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm cursor-pointer"
  }`}
                   >
                     {generatingCollegeFit ? (
@@ -5480,7 +5480,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
  isComplete
  ? "text-emerald-200"
  : isActive
- ? "text-indigo-100"
+ ? "text-amber-100"
  : "text-textMuted"
  }`}
                               >
@@ -5718,7 +5718,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={radarSearch}
                       onChange={(e) => setRadarSearch(e.target.value)}
                       placeholder="Search by role title..."
-                      className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
                   <button
@@ -5735,7 +5735,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <select
                     value={radarExperienceFilter}
                     onChange={(e) => setRadarExperienceFilter(e.target.value)}
-                    className="shrink-0 bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand transition-all cursor-pointer"
+                    className="shrink-0 bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all cursor-pointer"
                   >
                     <option value="all">All Experience Levels</option>
                     <option value="Entry-Level">Entry-Level</option>
@@ -5921,7 +5921,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
  alreadyInterested
  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-not-allowed"
- : "bg-brand hover:bg-brandHover text-white"
+ : "bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm"
  }`}
                           >
                             {alreadyInterested ? (
@@ -5968,7 +5968,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <button
                     type="button"
                     onClick={() => setActiveTab("opportunity_radar")}
-                    className="bg-brand hover:bg-brandHover text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-all cursor-pointer"
+                    className="bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm text-xs font-bold px-4 py-2.5 rounded-lg transition-all cursor-pointer"
                   >
                     Open Provix Talent Network
                   </button>
@@ -5996,7 +5996,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       <span
                         className={`self-start md:self-center px-3 py-1.5 rounded-full text-[10px] font-bold shrink-0 ${
  application.status === "Interest Expressed"
- ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+ ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
  : application.status === "Submitted"
  ? "bg-brandGlow text-brand border border-brand/20"
  : application.status === "Under Review"
@@ -6054,7 +6054,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <button
                     type="button"
                     onClick={openPostJobModal}
-                    className="bg-brand hover:bg-brandHover text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer shrink-0"
+                    className="bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer shrink-0"
                   >
                     + Post New Job
                   </button>
@@ -6116,7 +6116,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     <select
                       value={experienceFilter}
                       onChange={(e) => setExperienceFilter(e.target.value)}
-                      className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                     >
                       <option value="all">All Levels</option>
                       {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
@@ -6134,7 +6134,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     <select
                       value={roleTypeFilter}
                       onChange={(e) => setRoleTypeFilter(e.target.value)}
-                      className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                     >
                       <option value="all">All Roles</option>
                       <option value="Engineering">Engineering</option>
@@ -6151,7 +6151,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     <select
                       value={availabilityFilter}
                       onChange={(e) => setAvailabilityFilter(e.target.value)}
-                      className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                     >
                       <option value="all">Any Status</option>
                       <option value="Available Now">Available Now</option>
@@ -6185,7 +6185,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={talentSearch}
                       onChange={(e) => setTalentSearch(e.target.value)}
                       placeholder="Search by role or tech stack (e.g. Next.js, Python)..."
-                      className="w-full bg-panel border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+                      className="w-full bg-panel border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
 
@@ -6343,7 +6343,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               <button
                                 type="button"
                                 onClick={() => openIntroModal(col)}
-                                className="flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer bg-brand hover:bg-brandHover text-white"
+                                className="flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm"
                               >
                                 Connect
                               </button>
@@ -6368,11 +6368,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                 <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-7 space-y-5">
-                  <input type="text" placeholder="Candidate Target Role" value={evalRole} onChange={(e) => setEvalRole(e.target.value)} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand" />
-                  <input type="text" placeholder="Education / Major (Optional)" value={evalMajor} onChange={(e) => setEvalMajor(e.target.value)} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand" />
-                  <textarea rows={5} placeholder="Paste Proof of Work or Resume details here..." value={evalAccomplishments} onChange={(e) => setEvalAccomplishments(e.target.value)} className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-textMain resize-none focus:outline-none focus:border-brand" />
+                  <input type="text" placeholder="Candidate Target Role" value={evalRole} onChange={(e) => setEvalRole(e.target.value)} className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20" />
+                  <input type="text" placeholder="Education / Major (Optional)" value={evalMajor} onChange={(e) => setEvalMajor(e.target.value)} className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20" />
+                  <textarea rows={5} placeholder="Paste Proof of Work or Resume details here..." value={evalAccomplishments} onChange={(e) => setEvalAccomplishments(e.target.value)} className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 resize-none focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20" />
                   
-                  <button onClick={evaluateCandidate} disabled={evaluatingPoW || !evalAccomplishments} className="w-full bg-brand text-white hover:bg-brandHover font-bold py-3.5 rounded-xl text-xs transition-all">
+                  <button onClick={evaluateCandidate} disabled={evaluatingPoW || !evalAccomplishments} className="w-full bg-[#F4F4F6] text-[#0B0B0D] hover:bg-white shadow-sm font-bold py-3.5 rounded-xl text-xs transition-all">
                     {evaluatingPoW ? "Processing..." : "Generate Candidate Brief"}
                   </button>
                 </div>
@@ -6583,7 +6583,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       navigator.clipboard.writeText(linkToCopy);
                       showToast("Link copied to clipboard!");
                     }}
-                    className="bg-brand hover:bg-brandHover text-white font-semibold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap"
+                    className="bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm font-semibold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap"
                   >
                     Copy Link
                   </button>
@@ -6630,7 +6630,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     onChange={(e) => setNewJobTitle(e.target.value)}
                     placeholder="Senior Frontend Engineer"
                     required
-                    className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                    className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                   />
                 </div>
 
@@ -6644,7 +6644,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     onChange={(e) => setNewJobCompany(e.target.value)}
                     placeholder="Your company"
                     required
-                    className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                    className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                   />
                 </div>
 
@@ -6659,7 +6659,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       onChange={(e) => setNewJobLocation(e.target.value)}
                       placeholder="Remote · US"
                       required
-                      className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                      className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                     />
                   </div>
                   <div>
@@ -6676,7 +6676,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         onChange={(e) => setNewJobSalaryRange(e.target.value)}
                         placeholder="80,000 - 100,000 / yr"
                         required
-                        className="w-full bg-background border border-border rounded-xl py-3 pr-3 pl-7 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                        className="w-full bg-[#070709] border border-white/[0.08] text-zinc-100 rounded-xl placeholder:text-zinc-600 py-3 pr-3 pl-7 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                       />
                     </div>
                     <p className="text-[11px] text-textMuted mt-2">
@@ -6695,7 +6695,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     onChange={(e) => setNewJobRequiredSkills(e.target.value)}
                     placeholder="Agile, system design, 3+ years backend"
                     required
-                    className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                    className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                   />
                   <p className="text-[11px] text-textMuted mt-2">
                     Comma-separated methodologies, experience, or general
@@ -6715,7 +6715,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     value={newJobTechStack}
                     onChange={(e) => setNewJobTechStack(e.target.value)}
                     placeholder="React, TypeScript, Next.js"
-                    className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                    className="w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                   />
                   <p className="text-[11px] text-textMuted mt-2">
                     Optional. Comma-separated tools, languages, and frameworks.
@@ -6738,7 +6738,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <button
                     type="submit"
                     disabled={isCreatingJob}
-                    className="flex-1 bg-brand hover:bg-brandHover text-white font-bold py-3 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="flex-1 bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm font-bold py-3 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {isCreatingJob ? "Posting..." : "Post Job"}
                   </button>

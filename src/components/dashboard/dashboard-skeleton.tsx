@@ -85,7 +85,7 @@ export default function DashboardSkeleton() {
     >
       <span className="sr-only">Loading dashboard</span>
 
-      <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#0B0B0D]/85 backdrop-blur-md">
+      <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#0B0B0D]/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <Pulse className="h-6 w-6 shrink-0 rounded-md bg-white/10" />

@@ -13,12 +13,12 @@ const CHECK_STYLES: Record<
     body: "bg-brandGlow border-brand/20",
   },
   architecture_review: {
-    title: "text-purple-300",
-    body: "bg-purple-500/5 border-purple-500/10",
+    title: "text-amber-300",
+    body: "bg-amber-500/5 border-amber-500/10",
   },
   api_resiliency: {
-    title: "text-cyan-300",
-    body: "bg-cyan-500/5 border-cyan-500/10",
+    title: "text-amber-200",
+    body: "bg-amber-500/5 border-amber-500/15",
   },
 };
 

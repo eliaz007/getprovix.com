@@ -96,7 +96,7 @@ export function getFitVerdictBadgeClass(verdict: FitVerdict): string {
     case "Strong Fit":
       return "bg-emerald-500/10 text-emerald-400 border-emerald-500/25";
     case "Moderate Fit":
-      return "bg-indigo-500/10 text-indigo-400 border-indigo-500/25";
+      return "bg-amber-500/10 text-amber-400 border-amber-500/25";
     case "Growth Fit":
       return "bg-amber-500/10 text-amber-400 border-amber-500/25";
   }

@@ -18,7 +18,7 @@ export function buildEmployerVerificationEmailHtml(input: {
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #111827;">
-      <p style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #4f46e5; font-weight: 700;">
+      <p style="font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #F59E0B; font-weight: 700;">
         Provix Employer Verification
       </p>
       <h1 style="font-size: 22px; margin: 8px 0 16px;">Confirm your work email</h1>
@@ -27,7 +27,7 @@ export function buildEmployerVerificationEmailHtml(input: {
         Provix Talent Network, AI screening, and job posting tools.
       </p>
       <p style="margin: 28px 0;">
-        <a href="${confirmUrl}" style="display: inline-block; background: #4f46e5; color: #ffffff; text-decoration: none; font-weight: 700; padding: 12px 20px; border-radius: 10px;">
+        <a href="${confirmUrl}" style="display: inline-block; background: #F59E0B; color: #ffffff; text-decoration: none; font-weight: 700; padding: 12px 20px; border-radius: 10px;">
           Get Verified
         </a>
       </p>

@@ -158,7 +158,7 @@ export default function PitchStudioPage() {
                 value={targetCompany}
                 onChange={(e) => setTargetCompany(e.target.value)}
                 placeholder="Acme AI"
-                className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
               />
             </div>
 
@@ -171,7 +171,7 @@ export default function PitchStudioPage() {
                 value={targetContactRole}
                 onChange={(e) => setTargetContactRole(e.target.value)}
                 placeholder="Founder / Head of Engineering"
-                className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
               />
             </div>
 
@@ -184,7 +184,7 @@ export default function PitchStudioPage() {
                 value={roleApplyingFor}
                 onChange={(e) => setRoleApplyingFor(e.target.value)}
                 placeholder="Full-Stack Engineer"
-                className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
               />
             </div>
 
@@ -197,7 +197,7 @@ export default function PitchStudioPage() {
                 value={coreValueProp}
                 onChange={(e) => setCoreValueProp(e.target.value)}
                 placeholder="Built a Next.js SaaS with 500 users, cut onboarding time 40%, and shipped auth + billing in 3 weeks..."
-                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-textMain placeholder:text-textMuted resize-none focus:outline-none focus:border-brand leading-relaxed"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 placeholder:text-textMuted resize-none focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 leading-relaxed"
               />
             </div>
 
@@ -210,7 +210,7 @@ export default function PitchStudioPage() {
                 onChange={(e) =>
                   setTone(e.target.value as (typeof TONE_OPTIONS)[number])
                 }
-                className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
               >
                 {TONE_OPTIONS.map((option) => (
                   <option key={option} value={option}>
@@ -288,7 +288,7 @@ export default function PitchStudioPage() {
  isComplete
  ? "text-emerald-200"
  : isActive
- ? "text-indigo-100"
+ ? "text-amber-100"
  : "text-textMuted"
  }`}
                         >

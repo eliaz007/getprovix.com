@@ -56,7 +56,7 @@ function navLinkClass(isActive: boolean) {
   const base =
     "relative inline-flex h-14 shrink-0 items-center text-xs sm:text-sm font-medium transition-colors whitespace-nowrap";
   if (isActive) {
-    return `${base} text-zinc-100 font-semibold after:absolute after:bottom-0 after:inset-x-0 after:h-[2px] after:bg-amber-400 after:shadow-[0_0_10px_rgba(245,158,11,0.5)]`;
+    return `${base} text-zinc-100 font-semibold`;
   }
   return `${base} text-zinc-400 hover:text-zinc-200`;
 }
@@ -74,10 +74,18 @@ function TopNavLink({
 }) {
   const className = navLinkClass(isActive);
 
+  const indicator = isActive ? (
+    <span
+      aria-hidden
+      className="absolute bottom-0 inset-x-0 h-[2px] bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.5)]"
+    />
+  ) : null;
+
   if (href) {
     return (
       <Link href={href} onClick={onClick} className={className}>
         {children}
+        {indicator}
       </Link>
     );
   }
@@ -85,6 +93,7 @@ function TopNavLink({
   return (
     <button type="button" onClick={onClick} className={`${className} cursor-pointer`}>
       {children}
+      {indicator}
     </button>
   );
 }
@@ -265,7 +274,7 @@ export default function DashboardTopNav() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#0B0B0D]/85 backdrop-blur-md">
+    <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#0B0B0D]/80 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:gap-6 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
           <Link

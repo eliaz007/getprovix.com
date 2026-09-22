@@ -12,7 +12,7 @@ import {
 } from "@/lib/candidate-education";
 
 const inputClass =
-  "w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand";
+  "w-full bg-[#070709] border border-white/[0.08] rounded-xl p-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20";
 
 const labelClass =
   "block text-[11px] font-bold text-textMuted mb-2 uppercase";

@@ -198,7 +198,7 @@ export default function PricingPage() {
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="Your company name"
-                className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-[border-color,box-shadow] duration-150 ease-out"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-[border-color,box-shadow] duration-150 ease-out"
               />
             </div>
             <div>
@@ -219,7 +219,7 @@ export default function PricingPage() {
                   }
                 }}
                 placeholder="hiring@company.com"
-                className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-[border-color,box-shadow] duration-150 ease-out"
+                className="w-full bg-[#070709] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-[border-color,box-shadow] duration-150 ease-out"
               />
             </div>
           </div>

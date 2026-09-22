@@ -511,7 +511,7 @@ export default function ScoreTrendChart({
             >
               <defs>
                 <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.22" />
+                  <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.2" />
                   <stop offset="100%" stopColor="#F59E0B" stopOpacity="0" />
                 </linearGradient>
                 <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">

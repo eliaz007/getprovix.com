@@ -49,13 +49,13 @@ const AUDIT_STAGES = [
 ] as const;
 
 const GLASS_CARD =
-  "bg-[#131316]/90 border border-white/[0.08] backdrop-blur-xl rounded-xl shadow-2xl p-6 sm:p-7";
+  "bg-[#131316]/85 border border-white/[0.08] backdrop-blur-xl rounded-xl shadow-2xl p-6 sm:p-7";
 const FIELD_LABEL =
   "mb-2 block text-[11px] font-semibold uppercase tracking-wider text-zinc-500";
 const TERMINAL_INPUT =
-  "w-full bg-[#070709] border border-white/[0.09] text-zinc-100 rounded-lg px-3.5 py-2.5 font-mono text-sm placeholder:text-zinc-600 focus:border-amber-500/60 focus:ring-1 focus:ring-amber-500/20 focus:outline-none transition-all";
+  "w-full bg-[#070709] border border-white/[0.08] text-zinc-100 rounded-lg px-3.5 py-2.5 font-mono text-sm placeholder:text-zinc-600 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 focus:outline-none transition-all";
 const PRIMARY_CTA =
-  "w-full cursor-pointer bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] font-semibold py-2.5 px-4 rounded-lg text-sm shadow-[0_1px_2px_rgba(0,0,0,0.5)] flex items-center justify-center gap-2 transition-all disabled:cursor-not-allowed disabled:opacity-50";
+  "w-full cursor-pointer bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] font-semibold py-2.5 px-4 rounded-lg text-sm shadow-sm flex items-center justify-center gap-2 transition-all disabled:cursor-not-allowed disabled:opacity-50";
 const EYEBROW_BADGE =
   "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-widest uppercase bg-amber-500/10 text-amber-300 border border-amber-500/25 mb-3";
 

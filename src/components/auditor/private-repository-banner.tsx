@@ -51,7 +51,7 @@ export default function PrivateRepositoryBanner({
           <button
             type="button"
             onClick={onRequireAuth}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-brand text-white px-4 py-3 text-sm font-bold tracking-tight transition-colors duration-200 hover:bg-brandHover cursor-pointer sm:flex-1"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-[#F4F4F6] text-[#0B0B0D] shadow-sm px-4 py-3 text-sm font-bold tracking-tight transition-colors duration-200 hover:bg-brandHover cursor-pointer sm:flex-1"
           >
             Sign in or create an account
           </button>

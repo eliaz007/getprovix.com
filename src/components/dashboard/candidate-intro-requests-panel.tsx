@@ -111,7 +111,7 @@ export default function CandidateIntroRequestsPanel({
           onClick={() => setInboxFilter("inbox")}
           className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
  inboxFilter === "inbox"
- ? "bg-brand text-white"
+ ? "bg-[#F4F4F6] text-[#0B0B0D] shadow-sm"
  : "text-textMuted hover:text-textMain"
  }`}
         >
@@ -125,7 +125,7 @@ export default function CandidateIntroRequestsPanel({
           onClick={() => setInboxFilter("dismissed")}
           className={`flex-1 sm:flex-none px-4 py-2.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
  inboxFilter === "dismissed"
- ? "bg-brand text-white"
+ ? "bg-[#F4F4F6] text-[#0B0B0D] shadow-sm"
  : "text-textMuted hover:text-textMain"
  }`}
         >
@@ -268,7 +268,7 @@ export default function CandidateIntroRequestsPanel({
                             type="button"
                             onClick={() => void onRespond(request.id, "accept")}
                             disabled={isResponding}
-                            className="text-[11px] font-bold px-4 py-2 rounded-lg bg-brand hover:bg-brandHover text-white transition-all cursor-pointer disabled:opacity-60"
+                            className="text-[11px] font-bold px-4 py-2 rounded-lg bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm transition-all cursor-pointer disabled:opacity-60"
                           >
                             {isResponding ? "Saving..." : "Accept Intro"}
                           </button>

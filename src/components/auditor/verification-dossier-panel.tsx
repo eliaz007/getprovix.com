@@ -5,7 +5,7 @@ import type { ProductionAuditRecord } from "@/lib/production-audit";
 import { clampScore0to100 } from "@/lib/score-scale";
 
 const GLASS_CARD =
-  "bg-[#131316]/90 border border-white/[0.08] backdrop-blur-xl rounded-xl shadow-2xl p-6 sm:p-7";
+  "bg-[#131316]/85 border border-white/[0.08] backdrop-blur-xl rounded-xl shadow-2xl p-6 sm:p-7";
 
 function platformRankLabel(score: number): string {
   if (score >= 90) return "TOP 5% OF PLATFORM";

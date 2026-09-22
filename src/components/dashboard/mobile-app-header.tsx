@@ -50,7 +50,7 @@ export default function MobileAppHeader({
           <button
             type="button"
             onClick={onSignIn}
-            className="bg-brand hover:bg-brandHover text-white text-xs font-bold tracking-tight px-4 py-2 rounded-md transition-colors duration-200 ease-out cursor-pointer"
+            className="bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm text-xs font-bold tracking-tight px-4 py-2 rounded-md transition-colors duration-200 ease-out cursor-pointer"
           >
             {signInLabel}
           </button>
@@ -58,7 +58,7 @@ export default function MobileAppHeader({
           <Link
             href="/dashboard"
             aria-label="Open your profile"
-            className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-border bg-panel text-[11px] font-bold text-textMain hover:border-indigo-400 transition-colors duration-200 ease-out"
+            className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-border bg-panel text-[11px] font-bold text-textMain hover:border-amber-400 transition-colors duration-200 ease-out"
           >
             {avatarUrl ? (
               <img

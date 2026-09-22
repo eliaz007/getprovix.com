@@ -7,7 +7,7 @@ import {
 import { createClient } from "@/utils/supabase/server";
 
 const linkClassName =
-  "rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-semibold text-textMain transition-colors duration-200 hover:bg-white/5";
+  "rounded-lg bg-[#F4F4F6] px-4 py-2 text-sm font-semibold text-[#0B0B0D] shadow-sm transition-all duration-200 hover:bg-white";
 
 export default async function MarketingAuthLink() {
   const supabase = await createClient();

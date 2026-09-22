@@ -422,8 +422,8 @@ export default function PublicProductionAudit({
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
       <form onSubmit={onSubmit} className="w-full">
-        <div className="relative flex flex-col gap-2 overflow-hidden rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-1.5 transition-colors hover:border-neutral-700/80 sm:flex-row sm:items-stretch">
-          <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-violet-600/5 blur-2xl" />
+        <div className="relative flex flex-col gap-2 overflow-hidden rounded-xl border border-white/[0.08] bg-[#131316]/85 p-1.5 shadow-2xl backdrop-blur-xl transition-colors hover:border-amber-500/25 sm:flex-row sm:items-stretch">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-amber-500/[0.06] blur-2xl" />
           <label htmlFor="public-audit-repo" className="sr-only">
             GitHub Profile or Repo URL
           </label>
@@ -438,12 +438,12 @@ export default function PublicProductionAudit({
             onChange={(event) => setRepoUrl(event.target.value)}
             placeholder="Paste GitHub Profile or Repo URL"
             aria-invalid={Boolean(githubValidationMessage)}
-            className="relative min-h-12 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-4 py-3 font-mono text-sm text-white placeholder:text-neutral-500 outline-none transition-colors duration-200 focus:border-cyan-500/20 sm:text-[15px]"
+            className="relative min-h-12 min-w-0 flex-1 rounded-lg border border-transparent bg-[#070709] px-4 py-3 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 outline-none transition-colors duration-200 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 sm:text-[15px]"
           />
           <button
             type="submit"
             disabled={loading || limitReached}
-            className="relative inline-flex min-h-12 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-violet-600 px-5 text-sm font-medium tracking-tight text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="relative inline-flex min-h-12 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-[#F4F4F6] px-5 text-sm font-semibold tracking-tight text-[#0B0B0D] shadow-sm transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Running Audit..." : "Run Production Audit"}
           </button>
@@ -475,7 +475,7 @@ export default function PublicProductionAudit({
       ) : null}
 
       {loading ? (
-        <section className="rounded-2xl border border-neutral-800/80 bg-[#0d0f17] p-6">
+        <section className="rounded-xl border border-white/[0.08] bg-[#131316]/85 p-6 shadow-2xl backdrop-blur-xl">
           <p className="text-sm font-bold text-textMain">Running production audit</p>
           <p className="mt-1 text-xs text-textMuted">
             Provix is inspecting CI/CD, test density, and error boundaries.
@@ -548,7 +548,7 @@ export default function PublicProductionAudit({
 
       {!loading && result && claim && breakdown && !inaccessibleRepo ? (
         <div className="space-y-4 text-left">
-          <section className="rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-4">
+          <section className="rounded-xl border border-white/[0.08] bg-[#131316]/85 p-4 shadow-2xl backdrop-blur-xl">
             <div className="flex items-center justify-between gap-3">
               <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
@@ -585,7 +585,7 @@ export default function PublicProductionAudit({
             </div>
           </section>
 
-          <section className="rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-4">
+          <section className="rounded-xl border border-white/[0.08] bg-[#131316]/85 p-4 shadow-2xl backdrop-blur-xl">
             <h3 className="text-sm font-bold tracking-tight text-textMain">
               Findings
             </h3>

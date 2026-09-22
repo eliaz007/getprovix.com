@@ -224,7 +224,7 @@ export default function OpportunitiesJobFeed({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search roles, companies, or skills..."
-              className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
+              className="w-full bg-[#070709] border border-white/[0.08] rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
             />
           </div>
           <button
@@ -410,7 +410,7 @@ export default function OpportunitiesJobFeed({
                     className={`text-[11px] font-bold tracking-tight px-4 py-2 rounded-md transition-colors duration-200 ease-out flex items-center gap-1.5 ${
  alreadyApplied
  ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 cursor-not-allowed"
- : "bg-brand hover:bg-brandHover text-white cursor-pointer"
+ : "bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] shadow-sm cursor-pointer"
  }`}
                   >
                     {alreadyApplied ? (

@@ -115,7 +115,7 @@ export function getIntroStatusBadgeClass(status: IntroPipelineStatus): string {
     case "approved_intro_sent":
       return "text-emerald-400 bg-emerald-500/10 border-emerald-500/30";
     case "interviewing":
-      return "text-indigo-300 bg-indigo-500/10 border-indigo-500/30";
+      return "text-amber-300 bg-amber-500/10 border-amber-500/25";
     case "hired":
       return "text-emerald-300 bg-emerald-500/15 border-emerald-500/40";
     case "passed":
