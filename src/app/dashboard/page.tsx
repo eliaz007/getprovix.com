@@ -1340,18 +1340,29 @@ export default function DashboardPage() {
           );
         }
 
-        if (!introPayload.error) {
+        const introError = introPayload.error;
+        const introSchemaError =
+          introError && typeof introError === "object" && introError !== null
+            ? {
+                code:
+                  "code" in introError && typeof introError.code === "string"
+                    ? introError.code
+                    : undefined,
+                message:
+                  "message" in introError &&
+                  typeof introError.message === "string"
+                    ? introError.message
+                    : undefined,
+              }
+            : null;
+
+        if (!introError) {
           setCandidateIntroRequests(introPayload.data ?? []);
           setCandidateIntroError(null);
-        } else if (
-          introPayload.error &&
-          typeof introPayload.error === "object" &&
-          "code" in introPayload.error &&
-          isSupabaseSchemaError(introPayload.error)
-        ) {
+        } else if (isSupabaseSchemaError(introSchemaError)) {
           setCandidateIntroError("Could not load intro requests. Please try again.");
-        } else if (introPayload.error) {
-          console.error("Candidate intro request fetch error:", introPayload.error);
+        } else {
+          console.error("Candidate intro request fetch error:", introError);
           setCandidateIntroError("Could not load intro requests. Please try again.");
         }
 
