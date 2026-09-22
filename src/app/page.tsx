@@ -29,7 +29,7 @@ export default function Home() {
         <section className="hero-fade-in relative mx-auto max-w-4xl text-center">
           <div
             aria-hidden
-            className="pointer-events-none absolute left-1/2 top-[-10%] -z-10 h-[280px] w-[min(100%,640px)] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(245,158,11,0.18)_0%,transparent_68%)] blur-2xl"
+            className="pointer-events-none absolute left-1/2 top-[-18%] -z-10 h-[340px] w-[min(100%,720px)] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(245,158,11,0.22)_0%,rgba(245,158,11,0.08)_38%,transparent_70%)] blur-3xl"
           />
           <p className="mb-5 inline-flex items-center rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 font-mono text-[11px] font-medium uppercase tracking-widest text-amber-300">
             Don’t explain your code. Prove it.
