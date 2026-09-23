@@ -39,6 +39,7 @@ import {
   unverifiedOwnershipUsername,
 } from "@/lib/inaccessible-public-audit";
 import Toast from "@/components/Toast";
+import { AUTH_SESSION_TIMEOUT_MS } from "@/lib/auth-session-timeout";
 import { canBypassProvixTokenChallenge } from "@/lib/provix-token";
 import {
   getGitHubUrlValidationMessage,
@@ -53,6 +54,30 @@ const AUDIT_STAGES = [
   "Architecture Review (Check 2)...",
   "API & Data Resiliency Check (Check 3)...",
 ] as const;
+
+type AuditorSessionSnapshot = {
+  user: User | null;
+  githubVerified: boolean;
+};
+
+function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Auditor session lookup timed out"));
+    }, ms);
+
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
 
 function SubMetric({ label, score }: { label: string; score: number }) {
   return (
@@ -150,6 +175,7 @@ export default function PublicProductionAudit({
   const stageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStartedRef = useRef("");
   const inFlightRef = useRef(false);
+  const sessionPromiseRef = useRef<Promise<AuditorSessionSnapshot> | null>(null);
   const [sessionUser, setSessionUser] = useState<User | null>(null);
   const [profileGithubVerified, setProfileGithubVerified] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
@@ -209,6 +235,50 @@ export default function PublicProductionAudit({
     }, 1400);
   };
 
+  const ensureSession = () => {
+    if (!sessionPromiseRef.current) {
+      sessionPromiseRef.current = withTimeout(
+        (async (): Promise<AuditorSessionSnapshot> => {
+          const supabase = createClient();
+          const { data: sessionData } = await supabase.auth.getUser();
+          const user = sessionData.user ?? null;
+          if (!user) {
+            return { user: null, githubVerified: false };
+          }
+
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("github_verified")
+            .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+            .limit(1)
+            .maybeSingle();
+
+          return {
+            user,
+            githubVerified: profile?.github_verified === true,
+          };
+        })(),
+        AUTH_SESSION_TIMEOUT_MS
+      )
+        .then((snapshot) => {
+          setSessionUser(snapshot.user);
+          setProfileGithubVerified(snapshot.githubVerified);
+          setSessionReady(true);
+          return snapshot;
+        })
+        .catch((err) => {
+          console.error("Could not load public auditor session:", err);
+          sessionPromiseRef.current = null;
+          setSessionUser(null);
+          setProfileGithubVerified(false);
+          setSessionReady(true);
+          return { user: null, githubVerified: false } satisfies AuditorSessionSnapshot;
+        });
+    }
+
+    return sessionPromiseRef.current;
+  };
+
   const runAudit = async (url: string) => {
     const trimmed = url.trim();
     if (inFlightRef.current || limitReached || auditLocked) {
@@ -224,16 +294,46 @@ export default function PublicProductionAudit({
     }
 
     inFlightRef.current = true;
-    setLoading(true);
     setError(null);
     setResult(null);
     setClaim(null);
     setRepoAccessStatus(null);
     setAccessUsername(null);
     setToastMessage(null);
-    startStageProgress();
 
     try {
+      const session = await ensureSession();
+      const parsedSessionRepo = parseGitHubUrl(trimmed);
+      const sessionOwnershipUrl =
+        parsedSessionRepo?.repo != null
+          ? `https://github.com/${parsedSessionRepo.owner}/${parsedSessionRepo.repo}`
+          : "";
+      const sessionNeedsChallenge =
+        Boolean(session.user) &&
+        !canBypassProvixTokenChallenge(session.user, session.githubVerified) &&
+        Boolean(sessionOwnershipUrl) &&
+        !isTokenVerified;
+
+      if (sessionNeedsChallenge) {
+        return;
+      }
+
+      try {
+        const usageResponse = await fetch("/api/audit");
+        if (usageResponse.ok) {
+          const usage = (await readJsonResponse(usageResponse)) as DailyScanUsage;
+          if (usage.limit_reached) {
+            setLimitReached(true);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Could not load auditor scan usage:", err);
+      }
+
+      setLoading(true);
+      startStageProgress();
+
       const response = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -344,65 +444,12 @@ export default function PublicProductionAudit({
   };
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadUsage = async () => {
-      try {
-        const response = await fetch("/api/audit");
-        if (!response.ok) {
-          return;
-        }
-        const data = (await readJsonResponse(response)) as DailyScanUsage;
-        if (!cancelled) {
-          setLimitReached(Boolean(data.limit_reached));
-        }
-      } catch (err) {
-        console.error("Could not load auditor scan usage:", err);
-      }
-    };
-
-    const loadSession = async () => {
-      try {
-        const supabase = createClient();
-        const { data: sessionData } = await supabase.auth.getUser();
-        if (cancelled) {
-          return;
-        }
-        const user = sessionData.user ?? null;
-        setSessionUser(user);
-        if (user) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("github_verified")
-            .or(`id.eq.${user.id},user_id.eq.${user.id}`)
-            .limit(1)
-            .maybeSingle();
-          if (!cancelled) {
-            setProfileGithubVerified(profile?.github_verified === true);
-          }
-        }
-      } catch (err) {
-        console.error("Could not load public auditor session:", err);
-      } finally {
-        if (!cancelled) {
-          setSessionReady(true);
-        }
-      }
-    };
-
-    void loadUsage();
-    void loadSession();
-
     return () => {
-      cancelled = true;
       stopStageProgress();
     };
   }, []);
 
   useEffect(() => {
-    if (!sessionReady || needsTokenChallenge) {
-      return;
-    }
     const trimmed = initialRepoUrl.trim();
     if (!hasUsableGitHubAuditTarget(trimmed)) {
       return;
@@ -412,9 +459,9 @@ export default function PublicProductionAudit({
     }
     autoStartedRef.current = trimmed;
     void runAudit(trimmed);
-    // Auto-run once per incoming repo query from the landing hero.
+    // Auto-run once per incoming repo query. Session and usage load inside runAudit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialRepoUrl, sessionReady, needsTokenChallenge]);
+  }, [initialRepoUrl]);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
