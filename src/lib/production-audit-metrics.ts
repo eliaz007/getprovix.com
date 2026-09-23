@@ -1,27 +1,42 @@
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
+  emptyArchitectureSignals,
   emptyRepoFilesystemEvidence,
   isCiWorkflowPath,
   isErrorHandlingPath,
   isNoisePath,
   isTestPath,
   parseRepoFilesystemEvidence,
+  type ArchitectureSignals,
   type RepoFilesystemEvidence,
+  type RepoKind,
 } from "@/lib/repo-filesystem";
 
 /** Weights for the production audit scorecard (must sum to 1). */
 export const PRODUCTION_METRIC_WEIGHTS = {
-  ciCdHealth: 0.3,
-  testAssertionDensity: 0.4,
-  errorBoundaries: 0.3,
+  architecture: 0.35,
+  testing: 0.25,
+  devops: 0.2,
+  resilience: 0.2,
 } as const;
 
 export type ProductionAuditMetrics = {
-  ciCdHealth: number;
-  testAssertionDensity: number;
-  errorBoundaries: number;
+  architecture: number;
+  testing: number;
+  devops: number;
+  resilience: number;
   productionScore: number;
+  /** @deprecated Alias of devops — kept for persisted / UI consumers. */
+  ciCdHealth: number;
+  /** @deprecated Alias of testing. */
+  testAssertionDensity: number;
+  /** @deprecated Alias of resilience. */
+  errorBoundaries: number;
   weights: {
+    architecture: number;
+    testing: number;
+    devops: number;
+    resilience: number;
     ciCdHealth: number;
     testAssertionDensity: number;
     errorBoundaries: number;
@@ -34,9 +49,14 @@ export type ProductionAuditMetrics = {
     githubWorkflowCount: number;
     testFileCount: number;
     errorBoundaryCount: number;
+    handlerCount: number;
+    architecturePathCount: number;
+    repoKind: RepoKind;
     ciWorkflowPaths: string[];
     testPaths: string[];
     errorBoundaryPaths: string[];
+    architecturePaths: string[];
+    architectureSignals: ArchitectureSignals;
   };
 };
 
@@ -60,13 +80,54 @@ export function isReactErrorBoundaryPath(path: string): boolean {
   return REACT_ERROR_BOUNDARY_PATH.test(path);
 }
 
+function withAliases(parts: {
+  architecture: number;
+  testing: number;
+  devops: number;
+  resilience: number;
+  productionScore: number;
+}): Pick<
+  ProductionAuditMetrics,
+  | "architecture"
+  | "testing"
+  | "devops"
+  | "resilience"
+  | "productionScore"
+  | "ciCdHealth"
+  | "testAssertionDensity"
+  | "errorBoundaries"
+  | "weights"
+> {
+  return {
+    architecture: parts.architecture,
+    testing: parts.testing,
+    devops: parts.devops,
+    resilience: parts.resilience,
+    productionScore: parts.productionScore,
+    ciCdHealth: parts.devops,
+    testAssertionDensity: parts.testing,
+    errorBoundaries: parts.resilience,
+    weights: {
+      architecture: PRODUCTION_METRIC_WEIGHTS.architecture,
+      testing: PRODUCTION_METRIC_WEIGHTS.testing,
+      devops: PRODUCTION_METRIC_WEIGHTS.devops,
+      resilience: PRODUCTION_METRIC_WEIGHTS.resilience,
+      ciCdHealth: PRODUCTION_METRIC_WEIGHTS.devops,
+      testAssertionDensity: PRODUCTION_METRIC_WEIGHTS.testing,
+      errorBoundaries: PRODUCTION_METRIC_WEIGHTS.resilience,
+    },
+  };
+}
+
 export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
   return {
-    ciCdHealth: 0,
-    testAssertionDensity: 0,
-    errorBoundaries: 0,
-    productionScore: 0,
-    weights: { ...PRODUCTION_METRIC_WEIGHTS },
+    ...withAliases({
+      architecture: 0,
+      testing: 0,
+      devops: 0,
+      resilience: 0,
+      productionScore: 0,
+    }),
     evidence: {
       inspected: false,
       truncated: false,
@@ -75,18 +136,67 @@ export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
       githubWorkflowCount: 0,
       testFileCount: 0,
       errorBoundaryCount: 0,
+      handlerCount: 0,
+      architecturePathCount: 0,
+      repoKind: "library",
       ciWorkflowPaths: [],
       testPaths: [],
       errorBoundaryPaths: [],
+      architecturePaths: [],
+      architectureSignals: emptyArchitectureSignals(),
     },
   };
 }
 
 /**
- * CI/CD Health (0-100): prefers `.github/workflows/*.yml`, with partial
+ * Architecture (0-100): structure, type safety, and modularity from the file tree.
+ */
+export function scoreArchitecture(evidence: RepoFilesystemEvidence): number {
+  if (!evidence.inspected) {
+    return 0;
+  }
+
+  const signals = evidence.architecture_signals ?? emptyArchitectureSignals();
+  let score = 0;
+
+  if (evidence.file_count > 0) {
+    score += 10;
+  }
+  if (signals.has_structure) {
+    score += 25;
+  }
+  if (signals.has_workspace) {
+    score += 15;
+  }
+  if (signals.has_type_config) {
+    score += 20;
+  } else if (signals.has_typed_source) {
+    score += 12;
+  }
+  if (signals.has_declaration) {
+    score += 8;
+  }
+  if (signals.has_manifest) {
+    score += 10;
+  }
+  if (signals.has_framework_config) {
+    score += 12;
+  }
+  if (signals.has_lint) {
+    score += 10;
+  }
+  if (evidence.file_count >= 20 && signals.has_structure) {
+    score += 10;
+  }
+
+  return clampScore0to100(score);
+}
+
+/**
+ * DevOps / CI (0-100): prefers `.github/workflows/*.yml`, with partial
  * credit for other recognized CI config files.
  */
-export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
+export function scoreDevops(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
     return 0;
   }
@@ -100,7 +210,7 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
   const otherCi = workflows.length - githubWorkflows.length;
 
   if (githubWorkflows.length === 0) {
-    return clampScore0to100(Math.min(70, 35 + otherCi * 15));
+    return clampScore0to100(35 + otherCi * 15);
   }
 
   let score = 55;
@@ -116,14 +226,15 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
   return clampScore0to100(score);
 }
 
+/** @deprecated Use scoreDevops. */
+export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
+  return scoreDevops(evidence);
+}
+
 /**
- * Test Assertion Density (0-100): approximates assertion coverage from
- * test file / directory presence relative to the inspected tree size.
- * (File-tree audits cannot count `expect()` calls without blob contents.)
+ * Testing (0-100): presence and density of unit/integration test suites.
  */
-export function scoreTestAssertionDensity(
-  evidence: RepoFilesystemEvidence
-): number {
+export function scoreTesting(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
     return 0;
   }
@@ -143,45 +254,80 @@ export function scoreTestAssertionDensity(
   return clampScore0to100(presence + volume + densityBonus);
 }
 
+/** @deprecated Use scoreTesting. */
+export function scoreTestAssertionDensity(
+  evidence: RepoFilesystemEvidence
+): number {
+  return scoreTesting(evidence);
+}
+
 /**
- * Error Boundaries (0-100): rewards React `error.tsx` / `ErrorBoundary`
- * files, with limited credit for other explicit error-handling modules.
+ * Resilience (0-100): structured error handling.
+ * Web apps: missing React error boundaries deduct here only.
+ * Libraries / backends: grade try/catch modules; do not penalize missing boundaries.
  */
-export function scoreErrorBoundaries(evidence: RepoFilesystemEvidence): number {
+export function scoreResilience(
+  evidence: RepoFilesystemEvidence,
+  repoKind: RepoKind = evidence.repo_kind ?? "library"
+): number {
   if (!evidence.inspected) {
     return 0;
   }
 
   const handlers = evidence.error_handling_paths.filter(isErrorHandlingPath);
+  const reactBoundaries = handlers.filter(isReactErrorBoundaryPath);
+  const standardHandlers = handlers.filter(
+    (path) => !isReactErrorBoundaryPath(path)
+  );
+
+  if (repoKind !== "web_app") {
+    const count = handlers.length;
+    if (count === 0) {
+      return 0;
+    }
+    if (count >= 3) {
+      return 100;
+    }
+    if (count === 2) {
+      return 85;
+    }
+    return 70;
+  }
+
   if (handlers.length === 0) {
     return 0;
   }
 
-  const reactBoundaries = handlers.filter(isReactErrorBoundaryPath);
-  const otherHandlers = handlers.length - reactBoundaries.length;
-
   if (reactBoundaries.length === 0) {
-    return clampScore0to100(Math.min(55, 25 + otherHandlers * 15));
+    return clampScore0to100(20 + standardHandlers.length * 15);
   }
 
   if (reactBoundaries.length >= 2) {
-    return clampScore0to100(100);
+    return 100;
   }
 
-  return clampScore0to100(otherHandlers > 0 ? 90 : 75);
+  return standardHandlers.length > 0 ? 90 : 75;
+}
+
+/** @deprecated Use scoreResilience. */
+export function scoreErrorBoundaries(evidence: RepoFilesystemEvidence): number {
+  return scoreResilience(evidence, evidence.repo_kind ?? "library");
 }
 
 export function weightedProductionScore(parts: {
-  ciCdHealth: number;
-  testAssertionDensity: number;
-  errorBoundaries: number;
+  architecture: number;
+  testing: number;
+  devops: number;
+  resilience: number;
 }): number {
-  const total =
-    parts.ciCdHealth * PRODUCTION_METRIC_WEIGHTS.ciCdHealth +
-    parts.testAssertionDensity * PRODUCTION_METRIC_WEIGHTS.testAssertionDensity +
-    parts.errorBoundaries * PRODUCTION_METRIC_WEIGHTS.errorBoundaries;
-
-  return clampScore0to100(total);
+  return clampScore0to100(
+    Math.round(
+      parts.architecture * PRODUCTION_METRIC_WEIGHTS.architecture +
+        parts.testing * PRODUCTION_METRIC_WEIGHTS.testing +
+        parts.devops * PRODUCTION_METRIC_WEIGHTS.devops +
+        parts.resilience * PRODUCTION_METRIC_WEIGHTS.resilience
+    )
+  );
 }
 
 export function computeProductionAuditMetrics(
@@ -193,27 +339,33 @@ export function computeProductionAuditMetrics(
     return emptyProductionAuditMetrics();
   }
 
+  const repoKind = normalized.repo_kind ?? "library";
   const ciWorkflowPaths = normalized.ci_workflow_paths.filter(isCiWorkflowPath);
   const testPaths = normalized.test_paths.filter(isTestPath);
   const errorBoundaryPaths = normalized.error_handling_paths.filter(
     (path) => isReactErrorBoundaryPath(path) || isErrorHandlingPath(path)
   );
+  const architecturePaths = normalized.architecture_paths ?? [];
 
-  const ciCdHealth = scoreCiCdHealth(normalized);
-  const testAssertionDensity = scoreTestAssertionDensity(normalized);
-  const errorBoundaries = scoreErrorBoundaries(normalized);
+  const architecture = scoreArchitecture(normalized);
+  const testing = scoreTesting(normalized);
+  const devops = scoreDevops(normalized);
+  const resilience = scoreResilience(normalized, repoKind);
   const productionScore = weightedProductionScore({
-    ciCdHealth,
-    testAssertionDensity,
-    errorBoundaries,
+    architecture,
+    testing,
+    devops,
+    resilience,
   });
 
   return {
-    ciCdHealth,
-    testAssertionDensity,
-    errorBoundaries,
-    productionScore,
-    weights: { ...PRODUCTION_METRIC_WEIGHTS },
+    ...withAliases({
+      architecture,
+      testing,
+      devops,
+      resilience,
+      productionScore,
+    }),
     evidence: {
       inspected: true,
       truncated: Boolean(normalized.truncated),
@@ -223,9 +375,15 @@ export function computeProductionAuditMetrics(
       testFileCount: testPaths.length,
       errorBoundaryCount: errorBoundaryPaths.filter(isReactErrorBoundaryPath)
         .length,
+      handlerCount: errorBoundaryPaths.length,
+      architecturePathCount: architecturePaths.length,
+      repoKind,
       ciWorkflowPaths: ciWorkflowPaths.slice(0, 8),
       testPaths: testPaths.slice(0, 8),
       errorBoundaryPaths: errorBoundaryPaths.slice(0, 8),
+      architecturePaths: architecturePaths.slice(0, 8),
+      architectureSignals:
+        normalized.architecture_signals ?? emptyArchitectureSignals(),
     },
   };
 }
@@ -306,12 +464,48 @@ export function parseProductionAuditMetrics(
       ? Math.max(0, Math.round(input))
       : 0;
 
+  const architecture = clampScore0to100(
+    record.architecture ?? record.architectureScore
+  );
+  const testing = clampScore0to100(
+    record.testing ?? record.testAssertionDensity
+  );
+  const devops = clampScore0to100(record.devops ?? record.ciCdHealth);
+  const resilience = clampScore0to100(
+    record.resilience ?? record.errorBoundaries
+  );
+  const storedScore =
+    typeof record.productionScore === "number" &&
+    Number.isFinite(record.productionScore)
+      ? clampScore0to100(record.productionScore)
+      : weightedProductionScore({
+          architecture,
+          testing,
+          devops,
+          resilience,
+        });
+
+  const storedKind = evidenceRecord?.repoKind;
+  const repoKind: RepoKind =
+    storedKind === "web_app" || storedKind === "library"
+      ? storedKind
+      : "library";
+
+  const storedSignals =
+    evidenceRecord?.architectureSignals &&
+    typeof evidenceRecord.architectureSignals === "object" &&
+    !Array.isArray(evidenceRecord.architectureSignals)
+      ? (evidenceRecord.architectureSignals as Record<string, unknown>)
+      : null;
+
   return {
-    ciCdHealth: clampScore0to100(record.ciCdHealth),
-    testAssertionDensity: clampScore0to100(record.testAssertionDensity),
-    errorBoundaries: clampScore0to100(record.errorBoundaries),
-    productionScore: clampScore0to100(record.productionScore),
-    weights: { ...PRODUCTION_METRIC_WEIGHTS },
+    ...withAliases({
+      architecture,
+      testing,
+      devops,
+      resilience,
+      productionScore: storedScore,
+    }),
     evidence: {
       inspected: evidenceRecord?.inspected === true,
       truncated: evidenceRecord?.truncated === true,
@@ -320,9 +514,25 @@ export function parseProductionAuditMetrics(
       githubWorkflowCount: asCount(evidenceRecord?.githubWorkflowCount),
       testFileCount: asCount(evidenceRecord?.testFileCount),
       errorBoundaryCount: asCount(evidenceRecord?.errorBoundaryCount),
+      handlerCount: asCount(evidenceRecord?.handlerCount),
+      architecturePathCount: asCount(evidenceRecord?.architecturePathCount),
+      repoKind,
       ciWorkflowPaths: asPaths(evidenceRecord?.ciWorkflowPaths),
       testPaths: asPaths(evidenceRecord?.testPaths),
       errorBoundaryPaths: asPaths(evidenceRecord?.errorBoundaryPaths),
+      architecturePaths: asPaths(evidenceRecord?.architecturePaths),
+      architectureSignals: storedSignals
+        ? {
+            has_type_config: storedSignals.has_type_config === true,
+            has_typed_source: storedSignals.has_typed_source === true,
+            has_declaration: storedSignals.has_declaration === true,
+            has_structure: storedSignals.has_structure === true,
+            has_workspace: storedSignals.has_workspace === true,
+            has_manifest: storedSignals.has_manifest === true,
+            has_framework_config: storedSignals.has_framework_config === true,
+            has_lint: storedSignals.has_lint === true,
+          }
+        : emptyArchitectureSignals(),
     },
   };
 }

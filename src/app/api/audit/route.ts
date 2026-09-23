@@ -44,20 +44,16 @@ import { RESUME_TEXT_LIMIT } from "@/lib/resume-file";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   blendReadinessScore,
-  MAX_COMMIT_HISTORY_PENALTY,
   normalizeCommitDates,
-  STALE_COMMIT_HISTORY_PENALTY,
 } from "@/lib/audit-readiness";
 import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
   emptyScoreCapAudit,
-  MISSING_CORE_ARTIFACT_SCORE_CAP,
   parseRepoFilesystemEvidence,
   parseScoreCapAudit,
   strongestFilesystemEvidence,
-  UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
   type RepoFilesystemEvidence,
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
@@ -98,7 +94,7 @@ export type AuditResult = {
   recommendations: string[];
   checks: AuditCheck[];
   scoreCap: ScoreCapAudit;
-  /** File-tree-derived scorecard: CI/CD, tests, error boundaries, weighted total. */
+  /** File-tree-derived scorecard: architecture, tests, DevOps, resilience. */
   metrics: ProductionAuditMetrics;
   filesystem: RepoFilesystemEvidence | null;
   commitDates: string[];
@@ -110,24 +106,27 @@ const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and
 RULES FOR YOUR AUDIT:
 1. NO BUZZWORDS: Never use words like "resiliency," "robust," "seamless," "leverage," "cutting-edge," or "paradigm." Speak in plain, direct, technical English.
 2. CITE SPECIFIC EVIDENCE: You are forbidden from claiming a code flaw or strength unless you can point to a specific file path from filesystem inspection, file type, directory pattern, commit history detail, live/documentation URL, or technical-breakdown detail you actually observed in the provided artifacts.
-3. HARSH SCORING: Grade out of 100 like a strict employer. Start at 100 and aggressively deduct points for missing production standards (e.g., missing error boundaries, lack of tests, empty READMEs, or shallow tutorial code). A score of 100 requires production-grade architecture AND file-system proof of tests, CI, and error handling. Do not apply a large History / Commit Cadence penalty. Stale, inactive, or finished repositories may lose at most ${STALE_COMMIT_HISTORY_PENALTY}–${MAX_COMMIT_HISTORY_PENALTY} points. Never deduct 25 (or similar) because the last commit is old — a completed production project with tests, CI, and error handling is not a failed repo.
-4. CONSTRUCTIVE, ACTIONABLE FIXES: Do not stop at the penalty. Pair every major deduction with a recommendation that names the exact file, nested package path, config, or command to add, the test runner or CI system to use, and what file-tree proof would lift the cap. Vague coaching ("add more tests", "improve quality") is forbidden.
+3. HARSH SCORING: Grade out of 100 like a strict employer using the four-pillar weighted model. A score of 100 requires strong architecture plus file-system proof of tests, CI, and structured error handling. Never clamp the overall score to 60 (or 50) because error handling, tests, or CI is missing — those gaps lower only their pillar. Do not deduct any numerical points for commit age or inactivity; tag the repo "active" or "stable" instead.
+4. CONSTRUCTIVE, ACTIONABLE FIXES: Do not stop at the penalty. Pair every major deduction with a recommendation that names the exact file, nested package path, config, or command to add, the test runner or CI system to use, and what file-tree proof would raise that pillar. Vague coaching ("add more tests", "improve quality") is forbidden.
 5. CODE-FIRST: Provix scores repositories and file-system artifacts, not paperwork. A missing resume or experience summary must not lower the score and must not appear in redFlags. If resumeText is empty, ignore that absence. If a resume is present, use it only to check claim-vs-code mismatches.
 6. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo or external project write-up is a basic template, you must penalize the score heavily and state the mismatch explicitly.
 7. FILE-SYSTEM EVIDENCE VS PROSE: README text, resume bullets, commit messages, and external project write-ups are claims, not proof. They must never override missing code artifacts. Treat scorePolicy.coreArtifacts and scorePolicy.missingCoreArtifacts as the authority for whether tests, CI, and error handling exist. If those lists say an artifact is present, it is present — even when the files live in a nested package or use a non-Jest runner. Do not invent files that are not listed.
-8. HARD SCORE CAPS:
-   - Apply caps only from scorePolicy.missingCoreArtifacts and scorePolicy.appliedMaxScore. Never invent a missing-test or missing-CI failure because the repo is a monorepo or the runner is not Jest.
-   - If any core technical requirement is missing from repo inspection (test suite, CI workflow, or explicit error-handling files), the score MUST be at most ${MISSING_CORE_ARTIFACT_SCORE_CAP}.
-   - If two or more core requirements are missing, or filesystem.inspected is false, the score MUST be at most ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
-   - Scores above 80 are forbidden unless filesystem.inspected is true AND scorePolicy.coreArtifacts.tests, .ci, and .error_handling are all true. Cite the listed paths as proof.
-   - Honor scorePolicy.appliedMaxScore. Never exceed it. Never raise the score because the prose sounded production-grade.
+8. FOUR-PILLAR WEIGHTED SCORE (no hard caps):
+   - Overall score = Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Each pillar is 0-100.
+   - Architecture (35%): structure, type safety, modularity.
+   - Testing (25%): unit/integration test suites in the file tree.
+   - DevOps / CI (20%): GitHub Actions or other CI workflows/configs.
+   - Resilience (20%): structured error handling / try-catch modules.
+   - Missing artifacts lower only their pillar. Never cap the total score at 60 or 50. Never invent a missing-test or missing-CI failure because the repo is a monorepo or the runner is not Jest.
+   - If scorePolicy.repoKind is "library" (library, package, or backend tool), do not penalize missing React error boundaries; grade resilience on standard try/catch and error-handler modules.
+   - If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct from resilience only.
 9. MONOREPOS AND ALTERNATIVE TEST RUNNERS: Nested packages under apps/, packages/, services/, libs/, modules/, or workspaces/ are valid production layouts. Tests, CI, and error-handling files inside those packages count. Jest, Vitest, Ava, Mocha, node:test, Pytest, Go testing, Playwright, Cypress, RSpec, JUnit, and similar runners count when their files or configs appear in filesystem.test_paths / ci_workflow_paths / error_handling_paths. Do not treat a missing repo-root /tests folder as a missing suite. If filesystem.truncated is true, do not assume nested package artifacts are absent just because they are not at the repository root; only treat an artifact as missing when scorePolicy lists it in missingCoreArtifacts.
-10. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts and cannot raise the score above the caps in rule 8. Never say the audit could not be completed solely because GitHub is private.
-11. COMMIT HISTORY / CADENCE: Cap any stale-repo, inactivity, clustered-commit, or shallow-history deduction at ${MAX_COMMIT_HISTORY_PENALTY} points (${STALE_COMMIT_HISTORY_PENALTY} for a finished but inactive project). Clustered or shallow commit windows are a warning, not a −25. When scorePolicy shows tests, CI, and error handling are present, the score should stay aligned with that production evidence rather than collapsing on commit recency.
+10. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts. Never say the audit could not be completed solely because GitHub is private.
+11. REPO ACTIVITY: Do not deduct any numerical quality points for commit age, inactivity, clustered commits, or a finished repository. You may mention an informational activity tag of "active" (recent commits) or "stable" (older / inactive). Never apply a History −25 or similar cadence penalty. When scorePolicy shows tests, CI, and error handling are present, the score should stay aligned with that production evidence.
 
 Return strict JSON only:
 {
-  "score": number (integer 0-100 after deductions from 100, already capped per rule 8),
+  "score": number (integer 0-100 after the four-pillar weighted model; never hard-capped at 60),
   "strengths": ["strength cited with a file path, file type, directory pattern, or commit-history detail", "..."],
   "redFlags": ["flaw or resume/repo mismatch cited with evidence", "..."],
   "recommendations": ["concrete file/config/command to add, including nested package paths when relevant", "...", "..."],
@@ -151,12 +150,12 @@ Return strict JSON only:
 }
 
 JSON field rules:
-- score: integer 0-100. Start at 100 and deduct. Apply the hard caps in rule 8 before returning. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling. Do not deduct for a missing resume. Do not deduct merely for a monorepo layout or a non-Jest test runner. History / commit-cadence deductions are capped at ${MAX_COMMIT_HISTORY_PENALTY} (see rule 11).
+- score: integer 0-100 from the four-pillar weighted model in rule 8. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling. Do not deduct for a missing resume. Do not deduct merely for a monorepo layout or a non-Jest test runner. Do not deduct for inactivity (rule 11).
 - strengths: 3-5 bullets. Each must cite a file path, file type, directory pattern, commit-history detail, live/documentation URL, or technical-breakdown detail from the provided artifacts. If you cannot cite it, omit it. Nested package paths and alternative test-runner files are valid citations. Do not cite README claims as proof of tests, CI, or error handling.
 - redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. If scorePolicy.missingCoreArtifacts is non-empty, say so. Do not red-flag a missing repo-root /tests folder when nested package tests or alternative runners are listed. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true. Never list a missing resume, CV, or experience summary as a red flag.
 - recommendations: exactly 3 constructive, actionable fixes. Each must name a concrete file, nested package path, config, or command, plus what evidence would lift the related penalty.
 - checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown, and must cite observed evidence. If scorePolicy says an artifact is missing, say so and deduct; if it is present in a nested package, credit it.
-  - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims. Treat README as a claim sheet, not as a substitute for files. Stale but real history is a small deduction (rule 11), not a major fail.
+  - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims. Treat README as a claim sheet, not as a substitute for files. Stale but real history is an informational "stable" tag (rule 11), not a score deduction.
   - Check 2 architecture_review: folder/module structure from the file tree or technical-breakdown architecture and whether the candidate shows real system design, not a template. Monorepo package maps count as architecture, not as a flaw.
   - Check 3 api_resiliency: API design, data handling, error handling, tests, and production standards. Pass/fail tests, CI, and error handling from scorePolicy.coreArtifacts and the listed filesystem paths, including nested packages and alternative runners.
 - No markdown, no extra keys. Never use the banned buzzwords above.`;
@@ -181,7 +180,7 @@ const AUDIT_RESPONSE_SCHEMA = {
     score: {
       type: Type.INTEGER,
       description:
-        "Overall hiring readiness score from 0 to 100 based on code artifacts. Do not lower the score for a missing resume. Must already apply file-system caps: max 60 if any core artifact is missing, max 50 if two or more are missing or the file tree was not inspected, and above 80 only with file-system proof of tests, CI, and error handling.",
+        "Overall hiring readiness score from 0 to 100 from the four-pillar weighted model (architecture 35%, testing 25%, DevOps 20%, resilience 20%). Do not lower the score for a missing resume. Do not hard-cap at 60 for missing error handling. Do not deduct for commit age.",
     },
     strengths: {
       type: Type.ARRAY,
@@ -253,13 +252,16 @@ function isMissingResumeFlag(text: string): boolean {
 function sanitizeHistoryPenaltyCopy(text: string): string {
   return text
     .replace(
-      /History\s*[:−-]?\s*−?\s*2[0-9]\b/gi,
-      `History −${MAX_COMMIT_HISTORY_PENALTY}`
+      /History\s*[:−-]?\s*−?\s*\d+\b/gi,
+      "activity: informational only"
     )
     .replace(
-      /(?:history|commit(?:\s+history)?|cadence|inactiv(?:e|ity)|stale)\b[^.]{0,80}?(?:−|-|minus\s+)\s*2[0-9]\s*(?:pts?|points?)?/gi,
+      /(?:history|commit(?:\s+history)?|cadence|inactiv(?:e|ity)|stale)\b[^.]{0,80}?(?:−|-|minus\s+)\s*\d+\s*(?:pts?|points?)?/gi,
       (match) =>
-        match.replace(/2[0-9]/, String(MAX_COMMIT_HISTORY_PENALTY))
+        match.replace(
+          /(?:−|-|minus\s+)\s*\d+\s*(?:pts?|points?)?/i,
+          " (informational, no score impact)"
+        )
     );
 }
 
@@ -500,7 +502,7 @@ function buildFallbackAudit(
       : `Pin 1-2 production repos that map directly to ${level}-level ${role} expectations.`,
     hasResume
       ? "Rewrite top resume bullets with metrics, stack tags, and links to live demos or PRs."
-      : "Add a real test file in the app package (for example packages/<app>/src/foo.test.ts, tests/test_app.py, or *_test.go), a CI workflow under .github/workflows, and an explicit error-handling module so the file tree can lift the score cap.",
+      : "Add a real test file in the app package (for example packages/<app>/src/foo.test.ts, tests/test_app.py, or *_test.go), a CI workflow under .github/workflows, and an explicit error-handling module so those pillars can rise.",
     usedExternalFallback
       ? "Add architecture notes, error handling, and test strategy to each technical breakdown so reviewers can score production standards."
       : "Add a concise README per repo covering architecture, your contributions, and setup steps."
@@ -991,9 +993,8 @@ export async function POST(request: Request) {
   result = { ...result, metrics };
 
   // When the file tree was inspected, blend the qualitative score with the
-  // deterministic production scorecard so CI/tests/error-boundary findings
-  // move the headline number — not only the cap. Stale-history qualitative
-  // scoring cannot drag a proven production repo more than a small cadence ding.
+  // deterministic four-pillar production scorecard. Inactivity is informational
+  // only and cannot drag a proven production repo.
   if (metrics.evidence.inspected) {
     const blended = blendReadinessScore({
       qualitativeScore: result.score,

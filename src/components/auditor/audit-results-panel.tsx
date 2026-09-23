@@ -49,6 +49,39 @@ const FAIL_BADGE_CLASS =
 const PASS_BADGE_CLASS =
   "border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 font-mono text-xs px-2.5 py-1 rounded-md";
 
+type RampUpStatus = {
+  label: string;
+  briefLabel: string;
+  className: string;
+};
+
+function getRampUpStatus(score: number): RampUpStatus {
+  const clamped = clampScore0to100(score);
+
+  if (clamped >= 85) {
+    return {
+      label: "INDEPENDENT CONTRIBUTOR (0 Wk Ramp-Up)",
+      briefLabel: "Independent contributor (0 wk ramp-up)",
+      className:
+        "border-emerald-500/40 bg-emerald-500/10 text-emerald-400",
+    };
+  }
+
+  if (clamped >= 70) {
+    return {
+      label: "LIGHT ONBOARDING (1-2 Wk Ramp-Up)",
+      briefLabel: "Light onboarding (1–2 wk ramp-up)",
+      className: "border-sky-500/40 bg-amber-500/10 text-amber-300",
+    };
+  }
+
+  return {
+    label: "RAMP-UP: SUPERVISION REQUIRED (3-4 Wk Ramp-Up)",
+    briefLabel: "Supervision required (3–4 wk ramp-up)",
+    className: "border-rose-500/40 bg-rose-500/10 text-rose-400",
+  };
+}
+
 type ScreenPrompt = {
   id: "ci" | "tests";
   flagLabel: string;
@@ -271,9 +304,12 @@ function buildRemediationItems(result: AuditResult): RemediationItem[] {
 
     if (!artifacts.error_handling) {
       const points = remediationPointsFor(result, "error_handling");
+      const isWebApp = result?.metrics?.evidence?.repoKind === "web_app";
       items.push({
         id: "error_handling",
-        label: `Add error boundaries (+${points} pts)`,
+        label: isWebApp
+          ? `Add error boundaries (+${points} pts)`
+          : `Add structured error handling (+${points} pts)`,
         points,
       });
     }
@@ -303,7 +339,7 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
         title: "Missing CI/CD pipeline",
         deductionLabel: `−${points} pts`,
         summary:
-          "No `.github/workflows/*.yml` detected. Shipping a GitHub Actions workflow restores the CI/CD scorecard pillar and lifts the filesystem cap.",
+          "No `.github/workflows/*.yml` detected. Shipping a GitHub Actions workflow restores the DevOps pillar.",
         template: {
           filename: ".github/workflows/ci.yml",
           language: "yaml",
@@ -334,12 +370,16 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
 
     if (!artifacts.error_handling) {
       const points = remediationPointsFor(result, "error_handling");
+      const isWebApp = result?.metrics?.evidence?.repoKind === "web_app";
       fixes.push({
         id: "error_handling",
-        title: "Missing error boundaries",
+        title: isWebApp
+          ? "Missing error boundaries"
+          : "Missing structured error handling",
         deductionLabel: `−${points} pts`,
-        summary:
-          "No `error.tsx` / ErrorBoundary modules detected. Add an App Router `error.tsx` or a React error boundary component to restore this pillar.",
+        summary: isWebApp
+          ? "No `error.tsx` / ErrorBoundary modules detected. Add an App Router `error.tsx` or a React error boundary to raise the resilience pillar — the overall score is not hard-capped."
+          : "No try/catch modules or error-handler files detected. Add a dedicated errors module or exception handler. React error boundaries are not required for libraries or backend packages.",
       });
     }
 
@@ -759,13 +799,14 @@ function formatInterviewBriefMarkdown(input: {
   prompts: ScreenPrompt[];
   redFlags: string[];
 }): string {
+  const rampUp = getRampUpStatus(input.score);
   const lines = [
     `# Technical Interview Brief`,
     ``,
     `**Repository:** ${input.repoName}`,
     `**Readiness Score:** ${input.score}/100`,
     `**Verdict:** ${input.badgeLabel}`,
-    `**Ramp-Up:** Supervision required (3–4 wk ramp-up)`,
+    `**Ramp-Up:** ${rampUp.briefLabel}`,
     ``,
   ];
 
@@ -837,8 +878,15 @@ function CopyPromptButton({
   );
 }
 
-function TechnicalScreenGenerator({ prompts }: { prompts: ScreenPrompt[] }) {
+function TechnicalScreenGenerator({
+  prompts,
+  score,
+}: {
+  prompts: ScreenPrompt[];
+  score: number;
+}) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const rampUp = getRampUpStatus(score);
 
   return (
     <section className="rounded-2xl border border-indigo-500/30 bg-zinc-900/80 p-4 sm:p-5 shadow-lg shadow-indigo-500/5 space-y-4">
@@ -847,8 +895,10 @@ function TechnicalScreenGenerator({ prompts }: { prompts: ScreenPrompt[] }) {
           <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
             Technical Screen Generator
           </h3>
-          <span className="inline-flex shrink-0 items-center rounded border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-[11px] font-mono font-medium text-violet-400">
-            RAMP-UP: SUPERVISION REQUIRED (3-4 Wk Ramp-Up)
+          <span
+            className={`inline-flex max-w-[min(100%,22rem)] shrink-0 items-center rounded border px-2.5 py-1 text-right text-[11px] font-mono font-medium ${rampUp.className}`}
+          >
+            {rampUp.label}
           </span>
         </div>
         <p className="mt-1.5 text-xs text-zinc-400 leading-relaxed">
@@ -1260,7 +1310,7 @@ function AuditResultsPanelView({
       </section>
 
       {employerView ? (
-        <TechnicalScreenGenerator prompts={screenPrompts} />
+        <TechnicalScreenGenerator prompts={screenPrompts} score={score} />
       ) : (
         <RemediationSimulator
           key={`${score}-${remediationItems.map((item) => item.id).join("-")}`}
@@ -1278,7 +1328,7 @@ function AuditResultsPanelView({
             const statusText =
               !rawStatus || /History\s*\(\s*\)/i.test(rawStatus)
                 ? item.id === "commit_cadence"
-                  ? "Verified Human Cadence"
+                  ? "active"
                   : "Unavailable"
                 : rawStatus;
             return (

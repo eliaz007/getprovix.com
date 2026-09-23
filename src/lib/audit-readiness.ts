@@ -14,6 +14,8 @@ export type ReadinessBadge = {
 
 export type ChecklistTone = "pass" | "warn" | "fail";
 
+export type RepoActivityStatus = "active" | "stable";
+
 export type ExecutiveChecklistItem = {
   id: "ci" | "error_handling" | "tests" | "commit_cadence";
   label: string;
@@ -55,12 +57,11 @@ export function getReadinessBadge(score: number): ReadinessBadge {
   };
 }
 
-/** Finished/stable repos may ding cadence, but never a quarter of the score. */
-export const STALE_COMMIT_HISTORY_PENALTY = 5;
-export const CLUSTERED_COMMIT_HISTORY_PENALTY = 8;
-export const MAX_COMMIT_HISTORY_PENALTY = 8;
+/** @deprecated Inactivity is an informational tag only — never a numeric ding. */
+export const STALE_COMMIT_HISTORY_PENALTY = 0;
+export const CLUSTERED_COMMIT_HISTORY_PENALTY = 0;
+export const MAX_COMMIT_HISTORY_PENALTY = 0;
 const STALE_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
-const CLUSTER_WINDOW_MS = 36 * 60 * 60 * 1000;
 
 export const READINESS_QUALITATIVE_WEIGHT = 0.45;
 export const READINESS_PRODUCTION_WEIGHT = 0.55;
@@ -85,36 +86,6 @@ function parseCommitTimestamps(
     .sort((left, right) => left - right);
 }
 
-function isClusteredCommitHistory(parsed: number[]): boolean {
-  if (parsed.length < 3) {
-    return true;
-  }
-
-  const uniqueDays = new Set(
-    parsed.map((value) => new Date(value).toISOString().slice(0, 10))
-  );
-
-  if (uniqueDays.size < 2) {
-    return true;
-  }
-
-  const spanMs = parsed[parsed.length - 1] - parsed[0];
-  let clusteredCount = 0;
-
-  for (let start = 0; start < parsed.length; start += 1) {
-    let end = start;
-    while (
-      end + 1 < parsed.length &&
-      parsed[end + 1] - parsed[start] <= CLUSTER_WINDOW_MS
-    ) {
-      end += 1;
-    }
-    clusteredCount = Math.max(clusteredCount, end - start + 1);
-  }
-
-  return spanMs < CLUSTER_WINDOW_MS || clusteredCount / parsed.length >= 0.7;
-}
-
 function isStaleCommitHistory(
   parsed: number[],
   now = Date.now()
@@ -126,34 +97,26 @@ function isStaleCommitHistory(
   return now - parsed[parsed.length - 1] >= STALE_AFTER_MS;
 }
 
-/** 0–8. Verified Human = 0; stale = −5; clustered/shallow = −8. Never −25. */
-export function scoreCommitHistoryPenalty(
+export function classifyRepoActivityStatus(
   commitDates: string[] | null | undefined,
   now = Date.now()
-): number {
-  const parsed = parseCommitTimestamps(commitDates);
-  let penalty = 0;
-
-  if (isClusteredCommitHistory(parsed)) {
-    penalty = Math.max(penalty, CLUSTERED_COMMIT_HISTORY_PENALTY);
-  }
-
-  if (isStaleCommitHistory(parsed, now)) {
-    penalty = Math.max(penalty, STALE_COMMIT_HISTORY_PENALTY);
-  }
-
-  return Math.min(MAX_COMMIT_HISTORY_PENALTY, penalty);
+): RepoActivityStatus {
+  return isStaleCommitHistory(parseCommitTimestamps(commitDates), now)
+    ? "stable"
+    : "active";
 }
 
-/** UI label: "History 0" | "History −5" | "History −8". Never empty or −25. */
-export function formatHistoryDeductionLabel(penalty: number): string {
-  const numeric =
-    typeof penalty === "number" && Number.isFinite(penalty) ? penalty : 0;
-  const capped = Math.min(
-    MAX_COMMIT_HISTORY_PENALTY,
-    Math.max(0, Math.round(numeric))
-  );
-  return capped === 0 ? "History 0" : `History −${capped}`;
+/** Always 0 — commit age / inactivity is informational, not a quality ding. */
+export function scoreCommitHistoryPenalty(
+  _commitDates?: string[] | null,
+  _now?: number
+): number {
+  return 0;
+}
+
+/** UI label kept for older dossiers. Inactivity no longer deducts points. */
+export function formatHistoryDeductionLabel(_penalty?: number): string {
+  return "History 0";
 }
 
 export function hasCoreProductionArtifacts(
@@ -165,26 +128,23 @@ export function hasCoreProductionArtifacts(
 }
 
 /**
- * Floor a qualitative / blended score so LLM History −25 cannot stick when
- * cadence is Verified Human (0) or only mildly stale (≤ max penalty).
+ * Inactivity never lowers the score. Floor qualitative output to the
+ * production pillar score when the model still emits a history ding.
  */
 export function applyCommitHistoryScoreFloor(
   score: number,
   productionScore: number,
-  commitDates?: string[] | null,
-  now?: number
+  _commitDates?: string[] | null,
+  _now?: number
 ): number {
-  const production = clampScore0to100(productionScore);
-  const historyPenalty = scoreCommitHistoryPenalty(commitDates, now);
   return clampScore0to100(
-    Math.max(clampScore0to100(score), production - historyPenalty)
+    Math.max(clampScore0to100(score), clampScore0to100(productionScore))
   );
 }
 
 /**
  * Blend qualitative LLM score with the file-tree production scorecard.
- * History impact is always clamped: Verified Human → 0 drag vs production;
- * stale/clustered → at most MAX_COMMIT_HISTORY_PENALTY below production.
+ * Commit age is informational only and is not subtracted here.
  */
 export function blendReadinessScore(input: {
   qualitativeScore: number;
@@ -285,31 +245,18 @@ export function classifyTestSuites(
 export function classifyCommitCadence(
   commitDates: string[] | null | undefined,
   now = Date.now()
-): { status: string; tone: ChecklistTone; penalty: number } {
-  const parsed = parseCommitTimestamps(commitDates);
-  const penalty = scoreCommitHistoryPenalty(commitDates, now);
-  const historyLabel = formatHistoryDeductionLabel(penalty);
+): {
+  status: RepoActivityStatus;
+  tone: ChecklistTone;
+  penalty: number;
+  activity: RepoActivityStatus;
+} {
+  const activity = classifyRepoActivityStatus(commitDates, now);
 
-  if (isClusteredCommitHistory(parsed)) {
-    return {
-      status: `Clustered / Shallow · ${historyLabel}`,
-      tone: "warn",
-      penalty,
-    };
-  }
-
-  if (isStaleCommitHistory(parsed, now)) {
-    return {
-      status: `Stable / Inactive · ${historyLabel}`,
-      tone: "warn",
-      penalty,
-    };
-  }
-
-  // Verified Human must mean zero history deduction — never empty "History ()".
   return {
-    status: "Verified Human Cadence",
-    tone: "pass",
+    status: activity,
+    activity,
+    tone: activity === "active" ? "pass" : "warn",
     penalty: 0,
   };
 }
@@ -344,8 +291,8 @@ export function buildExecutiveChecklist(input: {
     },
     {
       id: "commit_cadence",
-      label: "History / Commit Cadence",
-      status: cadence.status,
+      label: "Repo Activity",
+      status: cadence.activity,
       tone: cadence.tone,
     },
   ];

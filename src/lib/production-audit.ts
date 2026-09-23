@@ -22,6 +22,7 @@ export const PRIVATE_AUDITED_REPO_LABEL = "Private repository";
 export const PRODUCTION_AUDIT_UPDATED_EVENT = "provix:production-audit-updated";
 
 export type ProductionAuditBreakdown = {
+  architecture_score: number;
   ci_cd_score: number;
   test_density: number;
   error_handling: number;
@@ -87,9 +88,10 @@ export function buildProductionAuditBreakdown(input: {
 
   if (metrics.evidence.inspected) {
     return {
-      ci_cd_score: metrics.ciCdHealth,
-      test_density: metrics.testAssertionDensity,
-      error_handling: metrics.errorBoundaries,
+      architecture_score: metrics.architecture,
+      ci_cd_score: metrics.devops,
+      test_density: metrics.testing,
+      error_handling: metrics.resilience,
       audited_repo_url: input.githubUrl.trim(),
       audited_at: input.auditedAt ?? new Date().toISOString(),
     };
@@ -101,6 +103,7 @@ export function buildProductionAuditBreakdown(input: {
   const errorPresent = Boolean(input.scoreCap?.coreArtifacts.error_handling);
 
   return {
+    architecture_score: 0,
     ci_cd_score: ciPresent ? 55 : 0,
     test_density: testsPresent ? 40 : 0,
     error_handling: errorPresent ? 55 : 0,
@@ -148,6 +151,7 @@ export function parseProductionAuditBreakdown(
   }
 
   return {
+    architecture_score: clampScore0to100(record.architecture_score),
     ci_cd_score: clampScore0to100(record.ci_cd_score),
     test_density: clampScore0to100(record.test_density),
     error_handling: clampScore0to100(record.error_handling),
@@ -186,6 +190,7 @@ export function parseProductionAuditFromProfileRow(
   return {
     productionScore,
     breakdown: breakdown ?? {
+      architecture_score: 0,
       ci_cd_score: 0,
       test_density: 0,
       error_handling: 0,

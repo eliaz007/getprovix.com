@@ -102,7 +102,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           <div className="mx-auto min-h-screen w-full max-w-6xl p-8">
             {!isGuest &&
             isBusinessAccount &&
-            !isVerifiedEmployer &&
+            isVerifiedEmployer === false &&
             !authLoading ? (
               <div className="mb-6">
                 <GetVerifiedBanner userId={userId} />

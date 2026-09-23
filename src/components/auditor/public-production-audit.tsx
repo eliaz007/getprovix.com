@@ -478,7 +478,7 @@ export default function PublicProductionAudit({
         <section className="rounded-2xl border border-neutral-800/80 bg-[#0d0f17] p-6">
           <p className="text-sm font-bold text-textMain">Running production audit</p>
           <p className="mt-1 text-xs text-textMuted">
-            Provix is inspecting CI/CD, test density, and error boundaries.
+            Provix is inspecting architecture, tests, CI, and resilience.
           </p>
           <ul className="mt-5 space-y-3">
             {AUDIT_STAGES.map((stage, index) => {

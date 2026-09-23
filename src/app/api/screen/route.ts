@@ -25,17 +25,13 @@ import {
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   blendReadinessScore,
-  MAX_COMMIT_HISTORY_PENALTY,
-  STALE_COMMIT_HISTORY_PENALTY,
 } from "@/lib/audit-readiness";
 import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
   emptyScoreCapAudit,
-  MISSING_CORE_ARTIFACT_SCORE_CAP,
   parseScoreCapAudit,
-  UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import {
@@ -123,29 +119,29 @@ You receive:
 - Target job requirements
 - Optional live GitHub repository audit data (stars, forks, creation date, language, recent commits, README excerpt, and filesystem file-tree inspection)
 - Optional external_projects artifacts (project titles, live/documentation URLs, and technical breakdowns) when GitHub is private, enterprise-only, or a ghost/empty public profile
-- scorePolicy: hard numeric caps computed from the file tree. You must obey appliedMaxScore.
+- scorePolicy: four-pillar weights and repoKind from the file tree. Do not hard-cap the overall score.
 
 Perform three artifact checks plus a chronological timeline conflict check:
 - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support claimed skills. README is a claim sheet, not file-system proof.
 - Check 2 architecture_review: system design signals, folder/module structure from the file tree, and whether the candidate demonstrates architectural thinking.
 - Check 3 api_resiliency: API design, data handling, error handling, and production resiliency signals. Tests, CI workflows, and error handling pass only if filesystem.test_paths, filesystem.ci_workflow_paths, and filesystem.error_handling_paths contain real paths. If evidence is thin, say so explicitly.
-- timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history). Stale or inactive commit history is not a chronological conflict. Cap any history/cadence integrity ding at ${MAX_COMMIT_HISTORY_PENALTY} points (${STALE_COMMIT_HISTORY_PENALTY} for a finished but inactive project). Never apply a −25 History penalty.
+- timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history). Stale or inactive commit history is not a chronological conflict and must not lower integrity_score. Tag it "active" or "stable" only. Never apply a History penalty.
 - Be skeptical but fair; cite concrete file paths from filesystem inspection when available. Repo metadata and external project write-ups are secondary.
 - Do not treat GitHub handle, GitHub login, or GitHub profile name vs Provix display name/codename as a red flag, identity issue, or scoring penalty. Never add a timeline_flag or lower integrity_score because those strings do not match.
 - CODE-FIRST: A missing resume, CV, or experience summary must not lower integrity_score and must not appear in timeline_flags. Score from GitHub file-tree artifacts, commits, and project write-ups. If a resume is present, use it only to check claim-vs-code mismatches.
-- If github_audit is missing or empty and external_projects are present, evaluate those write-ups and live/docs URLs for qualitative notes instead of failing the screen for a missing public repository. Write-ups still cannot raise the score above the file-system caps.
+- If github_audit is missing or empty and external_projects are present, evaluate those write-ups and live/docs URLs for qualitative notes instead of failing the screen for a missing public repository. Write-ups still cannot invent file-system artifacts.
 
 FILE-SYSTEM EVIDENCE VS PROSE:
 - Prose descriptions, README summaries, resume bullets, and external project write-ups can never override missing code artifacts.
-- If a README says the repo has tests, CI, or error handling but the matching filesystem path list is empty, treat that artifact as missing.
-- If any core technical requirement is missing from repo inspection (test suite, CI workflow, or explicit error-handling files), integrity_score MUST be at most ${MISSING_CORE_ARTIFACT_SCORE_CAP}.
-- If two or more core requirements are missing, or filesystem.inspected is false, integrity_score MUST be at most ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
-- Scores above 80 require concrete file-system proof: inspected file tree plus non-empty test_paths, ci_workflow_paths, and error_handling_paths. Cite those paths.
-- Never exceed scorePolicy.appliedMaxScore.
+- If a README says the repo has tests, CI, or error handling but the matching filesystem path list is empty, treat that artifact as missing from its pillar only.
+- integrity_score uses the four-pillar weighted model: Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Never hard-cap the total at 60 or 50.
+- If scorePolicy.repoKind is "library", do not penalize missing React error boundaries; grade resilience on try/catch and standard error-handler modules.
+- If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct from resilience only — never cap the total score.
+- Do not deduct numerical points for commit age or inactivity.
 
 Return strict JSON only in this exact structure:
 {
-  "integrity_score": number (integer 0-100, already capped per file-system rules),
+  "integrity_score": number (integer 0-100 from the four-pillar weighted model; never hard-capped at 60),
   "timeline_flags": ["flag1", "flag2"],
   "artifact_analysis": "Concise paragraph on repository/proof-of-work authenticity (same content as Check 1).",
   "technical_depth_summary": "Concise paragraph on demonstrated technical depth vs role requirements.",
@@ -586,7 +582,6 @@ function buildFallbackScreen(
       timeline_flags.push(
         "Repository shows minimal commit history relative to claimed project ownership."
       );
-      integrity_score -= MAX_COMMIT_HISTORY_PENALTY;
     }
 
     if (githubAudit.readme_excerpt) {

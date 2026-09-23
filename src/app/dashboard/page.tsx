@@ -38,7 +38,10 @@ import SelfTaughtEngineerBadge from "@/components/SelfTaughtEngineerBadge";
 import EducationEntriesForm from "@/components/dashboard/education-entries-form";
 import { DashboardContentGate, useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import { DashboardContentSkeleton } from "@/components/dashboard/dashboard-skeleton";
-import { EmployerConsoleSkeleton } from "@/components/dashboard/employer-console-skeleton";
+import {
+  EmployerConsoleSkeleton,
+  EmployerDashboardBootSkeleton,
+} from "@/components/dashboard/employer-console-skeleton";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { ProvixLogo } from "@/components/ProvixLogo";
@@ -885,7 +888,7 @@ export default function DashboardPage() {
     [navSetAccountRole]
   );
   const setNavIsVerifiedEmployer = useCallback(
-    (verified: boolean) => {
+    (verified: boolean | null) => {
       navSetIsVerifiedEmployer?.(verified);
     },
     [navSetIsVerifiedEmployer]
@@ -939,6 +942,8 @@ export default function DashboardPage() {
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isVerified, setIsVerified] = useState<boolean | null>(null);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState<string | null>(null);
@@ -982,7 +987,7 @@ export default function DashboardPage() {
     accountRole ?? dbProfile?.role ?? dashboardNav?.accountRole ?? null;
   const isBusinessAccount = isEmployerRole(profileRole);
   const isEmployeeAccount = isEmployeeRole(profileRole);
-  const isVerifiedEmployer = dbProfile?.is_verified === true;
+  const isVerifiedEmployer = isVerified === true;
   const showTalentPoolNav = canAccessTalentPool(
     profileRole,
     isVerifiedEmployer
@@ -1000,8 +1005,11 @@ export default function DashboardPage() {
   }, [profileRole, setNavAccountRole]);
 
   useEffect(() => {
-    setNavIsVerifiedEmployer(isVerifiedEmployer);
-  }, [isVerifiedEmployer, setNavIsVerifiedEmployer]);
+    if (isLoading || isVerified === null) {
+      return;
+    }
+    setNavIsVerifiedEmployer(isVerified);
+  }, [isLoading, isVerified, setNavIsVerifiedEmployer]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -1010,6 +1018,7 @@ export default function DashboardPage() {
       if (isMounted) {
         setAuthChecked(true);
         setLoadingProfile(false);
+        setIsLoading(false);
       }
     }, AUTH_BOOTSTRAP_TIMEOUT_MS);
 
@@ -1030,8 +1039,6 @@ export default function DashboardPage() {
         if (!isMounted) return;
 
         const sessionUser = session?.user ?? null;
-        setAuthChecked(true);
-        setLoadingProfile(false);
 
         if (!sessionUser) {
           return;
@@ -1187,6 +1194,7 @@ export default function DashboardPage() {
           };
         }
 
+        setIsVerified(verifiedInDb);
         setDbProfile(profileWithRole);
         setAccountRole(resolvedRole);
 
@@ -1403,6 +1411,7 @@ export default function DashboardPage() {
           window.clearTimeout(timeoutId);
           setAuthChecked(true);
           setLoadingProfile(false);
+          setIsLoading(false);
         }
       }
     })();
@@ -4142,10 +4151,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   );
 
   const isStandaloneGuest = Boolean(!user && !dashboardNav);
-  const roleReady = authChecked;
+  const roleReady = authChecked && !isLoading;
   // Do not wait for profileRole, getUser(), or auth listeners — those can hang
   // behind a mobile Web Lock until the tab is backgrounded.
-  const showBootstrapSkeleton = !authChecked;
+  const showBootstrapSkeleton = !authChecked || isLoading;
 
   return (
     <>
@@ -4227,7 +4236,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   : "min-h-screen bg-background text-textMain p-4 pt-8 sm:p-6 sm:pt-10 md:p-12"
             }
           >
-      {!isBusinessAccount && !isEmployeeAccount && activeTab === "intro_requests" ? (
+      {isLoading ? (
+        <EmployerDashboardBootSkeleton includeSidebar={!dashboardNav} />
+      ) : !isBusinessAccount && !isEmployeeAccount && activeTab === "intro_requests" ? (
         <div className="w-full max-w-5xl mx-auto animate-fadeIn">
           <CandidateIntroRequestsPanel
             requests={candidateIntroRequests}
@@ -4267,7 +4278,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         className="w-full max-w-5xl mx-auto space-y-10 animate-fadeIn"
       >
           {isBusinessAccount &&
-            !isVerifiedEmployer &&
+            !isLoading &&
+            isVerified === false &&
             activeTab !== "my_profile" && (
               <EmployerConsoleLockedCard />
             )}
@@ -4991,7 +5003,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             </span>
                             <span className="text-sm leading-relaxed text-zinc-400">
                               Computed from your latest code integrity audit
-                              file tree (CI, tests, error boundaries).
+                              file tree (architecture, CI, tests, resilience).
                             </span>
                           </div>
                           <VerifiedCodeQualityScorecard

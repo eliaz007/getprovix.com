@@ -51,8 +51,8 @@ type DashboardNavContextValue = {
   setMobileNavOpen: (open: boolean) => void;
   accountRole: string | null;
   setAccountRole: (role: string | null) => void;
-  isVerifiedEmployer: boolean;
-  setIsVerifiedEmployer: (verified: boolean) => void;
+  isVerifiedEmployer: boolean | null;
+  setIsVerifiedEmployer: (verified: boolean | null) => void;
   userId: string | null;
   userAvatarUrl: string | null;
   userInitials: string;
@@ -196,7 +196,9 @@ function DashboardNavProviderImpl({
   const didStripTabQueryRef = useRef(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountRole, setAccountRole] = useState<string | null>(null);
-  const [isVerifiedEmployer, setIsVerifiedEmployer] = useState(false);
+  const [isVerifiedEmployer, setIsVerifiedEmployer] = useState<boolean | null>(
+    null
+  );
   const [userId, setUserId] = useState<string | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
   const [userInitials, setUserInitials] = useState("DE");
@@ -358,7 +360,7 @@ function DashboardNavProviderImpl({
         setCompanyName(null);
         setCompanyNameReady(false);
         setAccountRole(null);
-        setIsVerifiedEmployer(false);
+        setIsVerifiedEmployer(null);
         setAvailabilityStatus(null);
         return;
       }
@@ -423,7 +425,9 @@ function DashboardNavProviderImpl({
         return;
       }
 
-      setIsVerifiedEmployer(profile?.is_verified === true);
+      setIsVerifiedEmployer(
+        typeof profile?.is_verified === "boolean" ? profile.is_verified : null
+      );
       setAvailabilityStatus(parseAvailabilityStatus(profile?.availability_status));
       setCompanyName(profile?.company_name ?? null);
       setCompanyNameReady(true);

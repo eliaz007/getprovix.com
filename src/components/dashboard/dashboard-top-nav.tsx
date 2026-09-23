@@ -175,7 +175,7 @@ function StatusBadge() {
     return null;
   }
 
-  if (isBusinessAccount && isVerifiedEmployer) {
+  if (isBusinessAccount && isVerifiedEmployer === true) {
     return (
       <span className="hidden sm:inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-400">
         Verified
@@ -189,6 +189,10 @@ function StatusBadge() {
         Member
       </span>
     );
+  }
+
+  if (isVerifiedEmployer !== false) {
+    return null;
   }
 
   return (

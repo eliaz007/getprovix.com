@@ -547,19 +547,23 @@ function SidebarUserFooter() {
     ? initialsFromLabel(companyLabel)
     : userInitials;
   const statusLabel = isBusinessAccount
-    ? isVerifiedEmployer
+    ? isVerifiedEmployer === true
       ? "Verified Employer"
-      : "Unverified"
+      : isVerifiedEmployer === false
+        ? "Unverified"
+        : "Checking"
     : availabilityPresentation.label;
   const statusTitle = isBusinessAccount
-    ? isVerifiedEmployer
+    ? isVerifiedEmployer === true
       ? "Verified hiring company on Provix"
       : undefined
     : undefined;
   const dotClass = isBusinessAccount
-    ? isVerifiedEmployer
+    ? isVerifiedEmployer === true
       ? "bg-emerald-500"
-      : "bg-zinc-500"
+      : isVerifiedEmployer === false
+        ? "bg-zinc-500"
+        : "bg-zinc-600"
     : availabilityPresentation.dotClass;
 
   return (

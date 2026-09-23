@@ -11,36 +11,45 @@ const SECTION_LABEL =
   "text-[11px] font-semibold uppercase tracking-wider text-zinc-500";
 
 const METRIC_ROWS: Array<{
-  key: "ciCdHealth" | "testAssertionDensity" | "errorBoundaries";
+  key: "architecture" | "testing" | "devops" | "resilience";
   label: string;
   shortLabel: string;
   microLabel: string;
   countKey:
+    | "architecturePathCount"
     | "githubWorkflowCount"
     | "ciWorkflowCount"
     | "testFileCount"
-    | "errorBoundaryCount";
+    | "errorBoundaryCount"
+    | "handlerCount";
 }> = [
   {
-    key: "ciCdHealth",
-    label: "CI/CD",
-    shortLabel: "CI",
-    microLabel: "failing checks",
-    countKey: "githubWorkflowCount",
+    key: "architecture",
+    label: "Architecture",
+    shortLabel: "Arch",
+    microLabel: "structure gaps",
+    countKey: "architecturePathCount",
   },
   {
-    key: "testAssertionDensity",
-    label: "Tests",
+    key: "testing",
+    label: "Testing",
     shortLabel: "Tests",
-    microLabel: "flaky tests",
+    microLabel: "missing suites",
     countKey: "testFileCount",
   },
   {
-    key: "errorBoundaries",
-    label: "Errors",
-    shortLabel: "Errors",
-    microLabel: "unhandled exceptions",
-    countKey: "errorBoundaryCount",
+    key: "devops",
+    label: "DevOps",
+    shortLabel: "CI",
+    microLabel: "missing workflows",
+    countKey: "githubWorkflowCount",
+  },
+  {
+    key: "resilience",
+    label: "Resilience",
+    shortLabel: "Resilience",
+    microLabel: "unhandled errors",
+    countKey: "handlerCount",
   },
 ];
 
@@ -92,6 +101,7 @@ export default function ProductionScorecard({
   const resolved = metrics ?? emptyProductionAuditMetrics();
   const productionScore = clampScore0to100(resolved.productionScore);
   const inspected = resolved.evidence.inspected;
+  const weightSummary = `Weighted ${Math.round(resolved.weights.architecture * 100)}% architecture · ${Math.round(resolved.weights.testing * 100)}% tests · ${Math.round(resolved.weights.devops * 100)}% DevOps · ${Math.round(resolved.weights.resilience * 100)}% resilience.`;
 
   if (compact) {
     return (
@@ -115,11 +125,11 @@ export default function ProductionScorecard({
           <p className="mt-1 text-sm leading-relaxed text-zinc-400">
             {inspected
               ? `Secondary codebase index · ${resolved.evidence.fileCount} paths`
-              : "Run a GitHub audit to compute CI, tests, and error boundaries."}
+              : "Run a GitHub audit to compute architecture, tests, CI, and resilience."}
           </p>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {METRIC_ROWS.map((row) => {
             const score = clampScore0to100(resolved[row.key]);
             const found = metricCount(resolved, row.countKey);
@@ -169,9 +179,7 @@ export default function ProductionScorecard({
                   resolved.evidence.fileCount === 1 ? "" : "s"
                 }${
                   resolved.evidence.truncated ? " (truncated tree)" : ""
-                }. Weighted ${Math.round(resolved.weights.ciCdHealth * 100)}% CI/CD · ${Math.round(
-                  resolved.weights.testAssertionDensity * 100
-                )}% tests · ${Math.round(resolved.weights.errorBoundaries * 100)}% error boundaries.`
+                }. ${weightSummary}`
               : "Repository file tree was not inspected, so production metrics stay at 0."}
           </p>
         </div>
@@ -189,7 +197,7 @@ export default function ProductionScorecard({
         </div>
       </div>
 
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {METRIC_ROWS.map((row) => {
           const score = clampScore0to100(resolved[row.key]);
           const found = metricCount(resolved, row.countKey);

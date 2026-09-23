@@ -34,6 +34,54 @@ function CandidateCard() {
   );
 }
 
+export function EmployerDashboardBootSkeleton({
+  includeSidebar = false,
+}: {
+  includeSidebar?: boolean;
+}) {
+  const pulseBlock = "animate-pulse rounded-xl bg-zinc-800/60";
+
+  return (
+    <div
+      className="flex min-h-screen bg-zinc-950 text-zinc-100"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading dashboard</span>
+      {includeSidebar ? (
+        <aside className="hidden w-64 space-y-4 border-r border-zinc-800 p-4 md:block">
+          <div className="h-8 w-32 animate-pulse rounded bg-zinc-800/60" />
+          <div className="space-y-2 pt-4">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-9 animate-pulse rounded-lg bg-zinc-800/60"
+              />
+            ))}
+          </div>
+        </aside>
+      ) : null}
+      <main className="flex-1 space-y-6 p-8">
+        <div className="h-8 w-48 animate-pulse rounded bg-zinc-800/60" />
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className={`h-24 ${pulseBlock}`} />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-6 pt-4 lg:grid-cols-4">
+          <div className={`h-64 ${pulseBlock}`} />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:col-span-3">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className={`h-64 ${pulseBlock}`} />
+            ))}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 export function EmployerConsoleSkeleton() {
   return (
     <div

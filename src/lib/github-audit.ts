@@ -557,7 +557,7 @@ async function fetchRepoFilesystem(
       }
 
       warnings.push(
-        `File-tree listing for ${owner}/${repo} was truncated; nested monorepo packages and alternative test-runner paths were probed so missing-file caps are not applied from a partial tree.`
+        `File-tree listing for ${owner}/${repo} was truncated; nested monorepo packages and alternative test-runner paths were probed so pillar scores are not inferred from a partial tree.`
       );
 
       const extraPaths = await collectTruncatedTreePaths(
