@@ -5,6 +5,7 @@ import {
   isAuditorPath,
   isProtectedAppPath,
   isPublicRoute,
+  shouldSkipMiddlewareAuth,
 } from "@/lib/dashboard-account";
 import {
   CANDIDATE_DASHBOARD_PATH,
@@ -63,9 +64,10 @@ function redirectWithSessionCookies(
 export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Let the callback route exchange the OAuth code and set cookies itself.
-  // A getUser() here races the code exchange and can drop a first-login session.
-  if (pathname === "/auth/callback" || pathname.startsWith("/auth/callback/")) {
+  // Public homepage, marketing/legal pages, and static assets must not
+  // create a Supabase client or call getUser() / refresh the session.
+  // Auth runs only on protected app paths such as /dashboard and /settings.
+  if (shouldSkipMiddlewareAuth(pathname)) {
     return NextResponse.next({ request });
   }
 

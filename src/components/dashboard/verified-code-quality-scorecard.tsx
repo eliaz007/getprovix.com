@@ -11,6 +11,9 @@ import {
   formatAuditedAt,
   formatAuditedRepoLabel,
   isPrivateAuditedRepoLabel,
+  isVerifiedDossier,
+  OWNERSHIP_UNVERIFIED_LABEL,
+  OWNERSHIP_UNVERIFIED_MESSAGE,
   parseProductionAuditHistoryRow,
   PUBLIC_SCORECARD_THRESHOLD,
   type ProductionAuditHistoryEntry,
@@ -21,52 +24,13 @@ const SIGNED_IN_AUDITOR_PATH = "/dashboard/auditor";
 const PUBLIC_AUDITOR_PATH = "/audits";
 
 async function persistOwnScoreVisibility(nextVisible: boolean): Promise<void> {
-  const supabase = createClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    throw new Error("Sign in to change employer visibility.");
-  }
-
-  const payload: Record<string, boolean> = {
-    is_publicly_visible: nextVisible,
-  };
-  if (nextVisible) {
-    payload.is_visible_in_pool = true;
-  }
-
-  let { data, error } = await supabase
-    .from("profiles")
-    .update(payload)
-    .or(`id.eq.${user.id},user_id.eq.${user.id}`)
-    .select("id, is_publicly_visible")
-    .maybeSingle();
-
-  if (error && nextVisible && /is_visible_in_pool/i.test(error.message)) {
-    const retry = await supabase
-      .from("profiles")
-      .update({ is_publicly_visible: nextVisible })
-      .or(`id.eq.${user.id},user_id.eq.${user.id}`)
-      .select("id, is_publicly_visible")
-      .maybeSingle();
-    data = retry.data;
-    error = retry.error;
-  }
-
-  if (!error && data) {
-    return;
-  }
-
   const response = await fetchWithAuth("/api/profile/production-audit", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ is_publicly_visible: nextVisible }),
   });
 
-  let apiError = error?.message ?? "Could not update visibility.";
+  let apiError = "Could not update visibility.";
   try {
     const body = await readJsonResponse<{ error?: string }>(response);
     if (response.ok) {
@@ -88,9 +52,13 @@ function useEmployerScoreVisibility(
   record: ProductionAuditRecord | null,
   onVisibilityChange?: (visible: boolean) => void
 ) {
-  const hasScore = Boolean(record?.isAuditVerified);
+  const isVerified = isVerifiedDossier(record);
+  const hasScore = Boolean(
+    record &&
+      (record.breakdown.audited_repo_url || record.productionScore > 0)
+  );
   const score = record?.productionScore ?? 0;
-  const canPublish = canPublishProductionScore(score);
+  const canPublish = isVerified && canPublishProductionScore(score);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [visibilityOverride, setVisibilityOverride] = useState<boolean | null>(
@@ -108,7 +76,7 @@ function useEmployerScoreVisibility(
   }
 
   const toggleVisibility = async () => {
-    if (!hasScore || !canPublish || saving) {
+    if (!isVerified || !hasScore || !canPublish || saving) {
       return;
     }
 
@@ -134,6 +102,7 @@ function useEmployerScoreVisibility(
 
   return {
     hasScore,
+    isVerified,
     score,
     canPublish,
     visible,
@@ -183,6 +152,17 @@ function EmployerVisibilitySwitch({
 const NO_AUDIT_BADGE_CLASS =
   "border-border bg-background text-zinc-400";
 
+function OwnershipUnverifiedBadge() {
+  return (
+    <span
+      title={OWNERSHIP_UNVERIFIED_MESSAGE}
+      className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium uppercase leading-none tracking-wide text-amber-300"
+    >
+      {OWNERSHIP_UNVERIFIED_LABEL}
+    </span>
+  );
+}
+
 export function AuditStatusBanner({
   record,
   onVisibilityChange,
@@ -190,7 +170,7 @@ export function AuditStatusBanner({
   record: ProductionAuditRecord | null;
   onVisibilityChange?: (visible: boolean) => void;
 }) {
-  const { hasScore, score, canPublish, visible, saving, error, toggleVisibility } =
+  const { hasScore, isVerified, score, canPublish, visible, saving, error, toggleVisibility } =
     useEmployerScoreVisibility(record, onVisibilityChange);
 
   return (
@@ -203,18 +183,27 @@ export function AuditStatusBanner({
               /100
             </span>
           </p>
-          {hasScore ? <ProductionScoreVerifiedBadge score={score} /> : null}
+          {isVerified ? (
+            <ProductionScoreVerifiedBadge score={score} />
+          ) : hasScore ? (
+            <OwnershipUnverifiedBadge />
+          ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-sm font-medium text-zinc-400">Employers</span>
-          <EmployerVisibilitySwitch
-            checked={visible && canPublish}
-            disabled={!canPublish}
-            saving={saving}
-            onToggle={() => void toggleVisibility()}
-          />
-        </div>
+        {isVerified ? (
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-sm font-medium text-zinc-400">Employers</span>
+            <EmployerVisibilitySwitch
+              checked={visible && canPublish}
+              disabled={!canPublish}
+              saving={saving}
+              onToggle={() => void toggleVisibility()}
+            />
+          </div>
+        ) : null}
       </div>
+      {hasScore && !isVerified ? (
+        <p className="mt-1 text-sm text-zinc-400">{OWNERSHIP_UNVERIFIED_MESSAGE}</p>
+      ) : null}
       {error ? (
         <p className="mt-1 text-sm text-red-300" role="alert">
           {error}
@@ -297,7 +286,7 @@ export default function VerifiedCodeQualityScorecard({
     pathname === SIGNED_IN_AUDITOR_PATH ||
     pathname === PUBLIC_AUDITOR_PATH ||
     pathname.startsWith(`${SIGNED_IN_AUDITOR_PATH}/`);
-  const { hasScore, score, canPublish, visible, saving, error, toggleVisibility } =
+  const { hasScore, isVerified, score, canPublish, visible, saving, error, toggleVisibility } =
     useEmployerScoreVisibility(record, onVisibilityChange);
   const repo = record?.breakdown.audited_repo_url
     ? formatAuditedRepoLabel(record.breakdown.audited_repo_url)
@@ -382,11 +371,13 @@ export default function VerifiedCodeQualityScorecard({
     void loadHistory();
   }, [loadHistory, record?.productionScore, record?.breakdown.audited_at]);
 
-  const visibilityHint = !canPublish
-    ? `Needs ${PUBLIC_SCORECARD_THRESHOLD}+`
-    : visible
-      ? "Visible"
-      : "Hidden";
+  const visibilityHint = !isVerified
+    ? null
+    : !canPublish
+      ? `Needs ${PUBLIC_SCORECARD_THRESHOLD}+`
+      : visible
+        ? "Visible"
+        : "Hidden";
 
   return (
     <section
@@ -410,8 +401,10 @@ export default function VerifiedCodeQualityScorecard({
               /100
             </span>
           </p>
-          {hasScore ? (
+          {isVerified ? (
             <ProductionScoreVerifiedBadge score={score} />
+          ) : hasScore ? (
+            <OwnershipUnverifiedBadge />
           ) : (
             <span
               className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-xs font-medium leading-none ${NO_AUDIT_BADGE_CLASS}`}
@@ -420,17 +413,24 @@ export default function VerifiedCodeQualityScorecard({
             </span>
           )}
         </div>
-        <label className="flex shrink-0 items-center gap-2 text-sm text-zinc-400">
-          <span className="hidden sm:inline">Show to employers</span>
-          <span className="sm:hidden">Employers</span>
-          <EmployerVisibilitySwitch
-            checked={visible && canPublish}
-            disabled={!canPublish}
-            saving={saving}
-            onToggle={() => void toggleVisibility()}
-          />
-        </label>
+        {isVerified ? (
+          <label className="flex shrink-0 items-center gap-2 text-sm text-zinc-400">
+            <span className="hidden sm:inline">Show to employers</span>
+            <span className="sm:hidden">Employers</span>
+            <EmployerVisibilitySwitch
+              checked={visible && canPublish}
+              disabled={!canPublish}
+              saving={saving}
+              onToggle={() => void toggleVisibility()}
+            />
+          </label>
+        ) : null}
       </div>
+      {hasScore && !isVerified ? (
+        <p className="mt-1.5 text-sm text-zinc-400">
+          {OWNERSHIP_UNVERIFIED_MESSAGE}
+        </p>
+      ) : null}
 
       <div
         className={

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { User } from "@supabase/supabase-js";
 import { Check, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
 import ResumeFileUpload, {
@@ -9,8 +10,11 @@ import ResumeFileUpload, {
 import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
 import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
-import PrivateRepositoryBanner from "@/components/auditor/private-repository-banner";
 import RepoOwnershipVerifier from "@/components/auditor/repo-ownership-verifier";
+import RepoAccessStatus, {
+  VerifiedContributorMark,
+  type RepoAccessStatusKind,
+} from "@/components/auditor/repo-access-status";
 import { normalizeAuditChecks } from "@/lib/audit-checks";
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
@@ -18,13 +22,20 @@ import {
   cachePendingProductionAudit,
   clearPendingProductionAudit,
   notifyProductionAuditUpdated,
+  parseDossierVerificationStatus,
   PRIVATE_AUDITED_REPO_LABEL,
   PRIVATE_AUDIT_INTENT,
   productionAuditRecordFromClaim,
   type ProductionAuditRecord,
 } from "@/lib/production-audit";
-import { isPrivateOrNotFoundAuditResponse, INACCESSIBLE_PUBLIC_REPO_MESSAGE } from "@/lib/inaccessible-public-audit";
+import {
+  isInvalidRepoFormatResponse,
+  isPrivateOrNotFoundAuditResponse,
+  isUnverifiedOwnershipResponse,
+  unverifiedOwnershipUsername,
+} from "@/lib/inaccessible-public-audit";
 import Toast from "@/components/Toast";
+import { canBypassProvixTokenChallenge } from "@/lib/provix-token";
 import { createClient } from "@/utils/supabase/client";
 import {
   hasUsableExternalProjects,
@@ -33,6 +44,7 @@ import {
 import {
   getGitHubUrlValidationMessage,
   hasUsableGitHubAuditTarget,
+  isGitHubPlaceholderInput,
   parseGitHubUrl,
 } from "@/lib/validate-github-url";
 import {
@@ -94,11 +106,14 @@ export default function GitHubResumeAuditor({
     null
   );
   const [error, setError] = useState<string | null>(null);
-  const [inaccessibleWarning, setInaccessibleWarning] = useState<string | null>(
-    null
-  );
+  const [repoAccessStatus, setRepoAccessStatus] =
+    useState<RepoAccessStatusKind | null>(null);
+  const [accessUsername, setAccessUsername] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [limitReached, setLimitReached] = useState(false);
+  const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [profileGithubVerified, setProfileGithubVerified] = useState(false);
+  const [isTokenVerified, setIsTokenVerified] = useState(false);
   const stageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -110,7 +125,9 @@ export default function GitHubResumeAuditor({
   }, [toastMessage]);
 
   useEffect(() => {
-    setInaccessibleWarning(null);
+    setRepoAccessStatus(null);
+    setAccessUsername(null);
+    setIsTokenVerified(false);
   }, [githubUrl]);
 
   useEffect(() => {
@@ -129,6 +146,33 @@ export default function GitHubResumeAuditor({
         }
       } catch (err) {
         console.error("Could not load auditor scan usage:", err);
+      }
+    };
+
+    const loadSession = async () => {
+      try {
+        const supabase = createClient();
+        const { data: sessionData } = await supabase.auth.getUser();
+        if (cancelled) {
+          return;
+        }
+        const user = sessionData.user ?? null;
+        setSessionUser(user);
+        if (!user) {
+          setProfileGithubVerified(false);
+          return;
+        }
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("github_verified")
+          .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+          .limit(1)
+          .maybeSingle();
+        if (!cancelled) {
+          setProfileGithubVerified(profile?.github_verified === true);
+        }
+      } catch (err) {
+        console.error("Could not load auditor session:", err);
       }
     };
 
@@ -154,6 +198,7 @@ export default function GitHubResumeAuditor({
     };
 
     void loadUsage();
+    void loadSession();
     void loadStoredResume();
 
     return () => {
@@ -186,8 +231,21 @@ export default function GitHubResumeAuditor({
   const hasPrivateArtifacts =
     isPrivateWork && hasUsableExternalProjects(externalProjects);
   const canSubmit = hasValidGithubInput || hasPrivateArtifacts;
+  const githubBypass =
+    isEmployerView ||
+    canBypassProvixTokenChallenge(sessionUser, profileGithubVerified);
+  const needsTokenChallenge =
+    !githubBypass &&
+    !isPrivateWork &&
+    Boolean(sessionUser) &&
+    Boolean(ownershipRepoUrl);
+  const auditLocked = needsTokenChallenge && !isTokenVerified;
+  const invalidRepoFormat =
+    Boolean(githubUrl.trim()) &&
+    !isGitHubPlaceholderInput(githubUrl) &&
+    !hasValidGithubInput;
   const githubValidationMessage =
-    githubUrl.trim() && !hasValidGithubInput
+    githubUrl.trim() && !hasValidGithubInput && !invalidRepoFormat
       ? getGitHubUrlValidationMessage(githubUrl)
       : null;
 
@@ -211,13 +269,25 @@ export default function GitHubResumeAuditor({
   };
 
   const runAudit = async () => {
-    if (!canSubmit || loading || limitReached) {
+    if (loading || limitReached) {
+      return;
+    }
+    if (
+      githubUrl.trim() &&
+      !hasValidGithubInput &&
+      !hasPrivateArtifacts
+    ) {
+      setRepoAccessStatus("invalid_format");
+      return;
+    }
+    if (!canSubmit || auditLocked) {
       return;
     }
 
     setLoading(true);
     setError(null);
-    setInaccessibleWarning(null);
+    setRepoAccessStatus(null);
+    setAccessUsername(null);
     setToastMessage(null);
     // Keep the existing result/claim until a successful audit replaces them.
     startStageProgress();
@@ -254,22 +324,42 @@ export default function GitHubResumeAuditor({
       const data = (await readJsonResponse(response)) as AuditResult &
         DailyScanUsage & {
           error?: string;
+          message?: string;
+          owner?: string;
           isPrivateOrNotFound?: boolean;
           inaccessibleRepo?: boolean;
+          verification_status?: string;
+          ownership_verified?: boolean;
         };
+
+      if (isInvalidRepoFormatResponse(data)) {
+        setLimitReached(Boolean(data.limit_reached));
+        setRepoAccessStatus("invalid_format");
+        setResult(null);
+        setClaim(null);
+        return;
+      }
+
+      if (isUnverifiedOwnershipResponse(data)) {
+        setLimitReached(Boolean(data.limit_reached));
+        setRepoAccessStatus("unverified");
+        setAccessUsername(unverifiedOwnershipUsername(data));
+        setResult(null);
+        setClaim(null);
+        return;
+      }
 
       if (
         isPrivateOrNotFoundAuditResponse(data) ||
-        response.status === 401 ||
-        response.status === 403 ||
-        response.status === 404
+        ((response.status === 401 ||
+          response.status === 403 ||
+          response.status === 404) &&
+          !isUnverifiedOwnershipResponse(data))
       ) {
         setLimitReached(Boolean(data.limit_reached));
-        const warning =
-          data.error?.trim() || INACCESSIBLE_PUBLIC_REPO_MESSAGE;
-        setInaccessibleWarning(warning);
-        setToastMessage(warning);
-        // Do not overwrite the current dossier or clear the saved score.
+        setRepoAccessStatus("private");
+        setResult(null);
+        setClaim(null);
         return;
       }
 
@@ -283,12 +373,15 @@ export default function GitHubResumeAuditor({
       setLimitReached(Boolean(data.limit_reached));
 
       if (data.inaccessibleRepo) {
-        const warning =
-          data.error?.trim() || INACCESSIBLE_PUBLIC_REPO_MESSAGE;
-        setInaccessibleWarning(warning);
-        setToastMessage(warning);
+        setRepoAccessStatus("private");
+        setResult(null);
+        setClaim(null);
         return;
       }
+
+      setRepoAccessStatus(
+        data.ownership_verified === true ? "verified" : null
+      );
 
       const nextResult = {
         ...data,
@@ -306,20 +399,24 @@ export default function GitHubResumeAuditor({
           : githubUrl.trim() || PRIVATE_AUDITED_REPO_LABEL,
         filesystem: nextResult.filesystem,
         scoreCap: nextResult.scoreCap,
-        isPubliclyVisible: isPrivateWork ? false : undefined,
+        isPubliclyVisible: false,
       });
+      const verificationStatus = parseDossierVerificationStatus(
+        data.verification_status
+      );
       setClaim(nextClaim);
       try {
         const supabase = createClient();
         const { data: sessionData } = await supabase.auth.getUser();
         if (sessionData.user) {
           clearPendingProductionAudit();
-          const record = productionAuditRecordFromClaim({
-            ...nextClaim,
-            is_publicly_visible: isPrivateWork
-              ? false
-              : nextClaim.is_publicly_visible,
-          });
+          const record = productionAuditRecordFromClaim(
+            {
+              ...nextClaim,
+              is_publicly_visible: false,
+            },
+            verificationStatus
+          );
           notifyProductionAuditUpdated(record);
           onAuditPersisted?.(record);
         } else {
@@ -408,9 +505,6 @@ export default function GitHubResumeAuditor({
 
           {!loading && result && (
             <div className="space-y-4">
-              {inaccessibleWarning ? (
-                <PrivateRepositoryBanner variant="dashboard" message={inaccessibleWarning} />
-              ) : null}
               <AuditResultsPanel
                 result={result}
                 repoName={
@@ -429,11 +523,7 @@ export default function GitHubResumeAuditor({
             </div>
           )}
 
-          {!loading && !result && inaccessibleWarning ? (
-            <PrivateRepositoryBanner variant="dashboard" message={inaccessibleWarning} />
-          ) : null}
-
-          {!loading && !result && !error && !inaccessibleWarning && (
+          {!loading && !result && !error && !repoAccessStatus && (
             <div className="flex min-h-[200px] flex-col items-center justify-center px-4 text-center">
               <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.08] bg-zinc-950/70 text-zinc-100">
                 <ShieldCheck className="h-6 w-6 text-zinc-300" aria-hidden="true" />
@@ -468,18 +558,18 @@ export default function GitHubResumeAuditor({
               : "Deep-audit your GitHub artifacts, or private/enterprise project write-ups, against resume claims for founder-ready credibility."}
           </p>
         </div>
-        {!isEmployerView && !isPrivateWork && ownershipRepoUrl ? (
-          <div className="w-full min-w-0 lg:max-w-xl">
-            <RepoOwnershipVerifier
-              repoUrl={ownershipRepoUrl}
-              variant="banner"
-            />
-          </div>
-        ) : null}
       </div>
 
       <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
         <div className={`${GLASS_CARD} space-y-4`}>
+          {needsTokenChallenge ? (
+            <RepoOwnershipVerifier
+              repoUrl={ownershipRepoUrl}
+              userId={sessionUser?.id}
+              variant="banner"
+              onVerified={() => setIsTokenVerified(true)}
+            />
+          ) : null}
           <div>
             <label className={FIELD_LABEL}>
               Target Role / Tech Stack
@@ -502,43 +592,51 @@ export default function GitHubResumeAuditor({
                 </span>
               ) : null}
             </label>
-            <input
-              type="url"
-              inputMode="url"
-              autoComplete="url"
-              spellCheck={false}
-              value={githubUrl}
-              onChange={(e) => setGithubUrl(e.target.value)}
-              placeholder={
-                isPrivateWork
-                  ? "Optional — leave blank for private/enterprise work"
-                  : "https://github.com/your-handle or repo URL"
-              }
-              aria-invalid={Boolean(githubValidationMessage)}
-              aria-describedby={
-                githubValidationMessage ? "github-url-validation" : undefined
-              }
-              className={`${TERMINAL_INPUT} ${
-                githubValidationMessage
-                  ? "border-red-500/60 focus:border-red-400 focus:ring-red-500/20"
-                  : ""
-              }`}
-            />
+            <div className="relative">
+              <input
+                type="url"
+                inputMode="url"
+                autoComplete="url"
+                spellCheck={false}
+                value={githubUrl}
+                onChange={(e) => setGithubUrl(e.target.value)}
+                placeholder={
+                  isPrivateWork
+                    ? "Optional — leave blank for private/enterprise work"
+                    : "https://github.com/owner/repository-name"
+                }
+                aria-invalid={Boolean(githubValidationMessage)}
+                aria-describedby={
+                  githubValidationMessage ? "github-url-validation" : undefined
+                }
+                className={`${TERMINAL_INPUT} ${
+                  repoAccessStatus === "verified" ? "pr-40" : ""
+                } ${
+                  githubValidationMessage
+                    ? "border-red-500/60 focus:border-red-400 focus:ring-red-500/20"
+                    : ""
+                }`}
+              />
+              <VerifiedContributorMark
+                visible={repoAccessStatus === "verified"}
+                className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2"
+              />
+            </div>
             {githubValidationMessage ? (
               <p
                 id="github-url-validation"
                 role="alert"
-                className="mt-2 text-xs text-red-300"
+                className="mt-1.5 text-xs text-red-300"
               >
                 {githubValidationMessage}
               </p>
             ) : null}
-            {inaccessibleWarning ? (
-              <PrivateRepositoryBanner
-                variant="inline"
-                message={inaccessibleWarning}
-              />
-            ) : null}
+            <RepoAccessStatus
+              status={
+                invalidRepoFormat ? "invalid_format" : repoAccessStatus
+              }
+              username={accessUsername}
+            />
             <label className="mt-3 flex cursor-pointer items-start gap-2.5">
               <input
                 type="checkbox"
@@ -631,7 +729,7 @@ export default function GitHubResumeAuditor({
           <button
             type="button"
             onClick={() => void runAudit()}
-            disabled={loading || !canSubmit || limitReached}
+            disabled={loading || !canSubmit || limitReached || auditLocked}
             className={PRIMARY_CTA}
           >
             {loading ? (
@@ -655,7 +753,7 @@ export default function GitHubResumeAuditor({
 
       {scoreSummary}
 
-      {sidePanel && (loading || error || result || inaccessibleWarning)
+      {sidePanel && (loading || error || result)
         ? resultsPanel
         : null}
 

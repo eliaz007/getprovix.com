@@ -31,8 +31,11 @@ import { INACCESSIBLE_PUBLIC_REPO_MESSAGE } from "@/lib/inaccessible-public-audi
 import {
   AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE,
   hasUsableGitHubAuditTarget,
+  INVALID_REPO_FORMAT,
+  INVALID_REPO_FORMAT_MESSAGE,
   isGitHubPlaceholderInput,
   normalizeGitHubAuditTarget,
+  parseGitHubRepoPath,
 } from "@/lib/validate-github-url";
 import {
   consumeRateLimit,
@@ -62,11 +65,24 @@ import {
   emptyProductionAuditMetrics,
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
+import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
+import { isEmployerRole } from "@/lib/dashboard-account";
+import {
+  probeGitHubRepository,
+  REPO_NOT_FOUND_OR_PRIVATE,
+  REPO_NOT_FOUND_OR_PRIVATE_MESSAGE,
+  UNVERIFIED_OWNERSHIP,
+  UNVERIFIED_OWNERSHIP_MESSAGE,
+  verifyGitHubRepoOwnership,
+} from "@/lib/github-ownership";
+import { parseGitHubUrl } from "@/lib/validate-github-url";
+import { hasPersistedProvixTokenVerification } from "@/lib/provix-token";
 import {
   buildProductionAuditClaim,
   persistProfileProductionAudit,
   PRIVATE_AUDITED_REPO_LABEL,
+  type DossierVerificationStatus,
 } from "@/lib/production-audit";
 
 export const runtime = "nodejs";
@@ -111,15 +127,15 @@ RULES FOR YOUR AUDIT:
 5. CODE-FIRST: Provix scores repositories and file-system artifacts, not paperwork. A missing resume or experience summary must not lower the score and must not appear in redFlags. If resumeText is empty, ignore that absence. If a resume is present, use it only to check claim-vs-code mismatches.
 6. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo or external project write-up is a basic template, you must penalize the score heavily and state the mismatch explicitly.
 7. FILE-SYSTEM EVIDENCE VS PROSE: README text, resume bullets, commit messages, and external project write-ups are claims, not proof. They must never override missing code artifacts. Treat scorePolicy.coreArtifacts and scorePolicy.missingCoreArtifacts as the authority for whether tests, CI, and error handling exist. If those lists say an artifact is present, it is present — even when the files live in a nested package or use a non-Jest runner. Do not invent files that are not listed.
-8. FOUR-PILLAR WEIGHTED SCORE (no hard caps):
+8. FOUR-PILLAR WEIGHTED SCORE (proportional grades, no binary 0/100 drops):
    - Overall score = Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Each pillar is 0-100.
    - Architecture (35%): structure, type safety, modularity.
-   - Testing (25%): unit/integration test suites in the file tree.
-   - DevOps / CI (20%): GitHub Actions or other CI workflows/configs.
-   - Resilience (20%): structured error handling / try-catch modules.
-   - Missing artifacts lower only their pillar. Never cap the total score at 60 or 50. Never invent a missing-test or missing-CI failure because the repo is a monorepo or the runner is not Jest.
-   - If scorePolicy.repoKind is "library" (library, package, or backend tool), do not penalize missing React error boundaries; grade resilience on standard try/catch and error-handler modules.
-   - If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct from resilience only.
+   - Testing (25%): 0 only when no *.test.* / *.spec.* files exist. Token coverage (test/source ratio < 0.10) caps at 35. Ratio 0.10–0.30 maps to 65–75. Ratio > 0.30 with Playwright/Cypress reaches 85–100.
+   - DevOps / CI (20%): 0 only when no workflow files exist. Lint/build-only workflows score 50. Workflows that execute tests on PR score 80. Multi-stage deploy/preview pipelines score 95–100.
+   - Resilience (20%): start at 100. Web apps missing root error.tsx / ErrorBoundary lose 35. Each unhandled async/await or fetch without try/catch loses 15, max −50. Floor at 0. A single unhandled error is 85, never 0.
+   - A pillar is 0 only when the capability is genuinely absent. Superficial testing or resilience must be capped, not zeroed. Never cap the total score at 60 or 50. Never invent a missing-test or missing-CI failure because the repo is a monorepo or the runner is not Jest.
+   - If scorePolicy.repoKind is "library" (library, package, or backend tool), do not penalize missing React error boundaries; grade resilience from unhandled async/fetch only.
+   - If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct 35 from resilience only.
 9. MONOREPOS AND ALTERNATIVE TEST RUNNERS: Nested packages under apps/, packages/, services/, libs/, modules/, or workspaces/ are valid production layouts. Tests, CI, and error-handling files inside those packages count. Jest, Vitest, Ava, Mocha, node:test, Pytest, Go testing, Playwright, Cypress, RSpec, JUnit, and similar runners count when their files or configs appear in filesystem.test_paths / ci_workflow_paths / error_handling_paths. Do not treat a missing repo-root /tests folder as a missing suite. If filesystem.truncated is true, do not assume nested package artifacts are absent just because they are not at the repository root; only treat an artifact as missing when scorePolicy lists it in missingCoreArtifacts.
 10. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts. Never say the audit could not be completed solely because GitHub is private.
 11. REPO ACTIVITY: Do not deduct any numerical quality points for commit age, inactivity, clustered commits, or a finished repository. You may mention an informational activity tag of "active" (recent commits) or "stable" (older / inactive). Never apply a History −25 or similar cadence penalty. When scorePolicy shows tests, CI, and error handling are present, the score should stay aligned with that production evidence.
@@ -672,7 +688,7 @@ async function resolveAuditAccess(): Promise<
   | {
       ok: true;
       supabase: Awaited<ReturnType<typeof createClient>>;
-      user: { id: string } | null;
+      user: User | null;
       usage: DailyScanUsage;
     }
 > {
@@ -856,10 +872,25 @@ export async function POST(request: Request) {
   );
 
   const githubField = payload.githubUrl?.trim() ?? "";
+  const parsedRepoPath = parseGitHubRepoPath(githubField);
   const githubMissing =
     !githubField ||
     isGitHubPlaceholderInput(githubField) ||
-    !hasUsableGitHubAuditTarget(githubField);
+    !parsedRepoPath;
+
+  if (
+    githubField &&
+    !isGitHubPlaceholderInput(githubField) &&
+    !parsedRepoPath
+  ) {
+    return NextResponse.json(
+      {
+        error: INVALID_REPO_FORMAT,
+        message: INVALID_REPO_FORMAT_MESSAGE,
+      },
+      { status: 400 }
+    );
+  }
 
   if (githubMissing && !hasUsableExternalProjects(payload.externalProjects)) {
     return NextResponse.json(
@@ -896,9 +927,10 @@ export async function POST(request: Request) {
     }
 
     if (
+      data &&
       !payload.workIsPrivate &&
       !hasUsableGitHubAuditTarget(payload.githubUrl) &&
-      data?.portfolio_url?.trim()
+      hasUsableGitHubAuditTarget(data.portfolio_url)
     ) {
       payload.githubUrl = data.portfolio_url;
     }
@@ -916,6 +948,75 @@ export async function POST(request: Request) {
   const githubFetchUrl = publicGithub
     ? normalizeGitHubAuditTarget(payload.githubUrl)
     : "";
+
+  const usageForEarlyExit = async () =>
+    access.user
+      ? incrementDailyScanUsage(access.supabase, access.user.id, access.usage)
+      : access.usage;
+
+  if (githubFetchUrl) {
+    const parsedFetch = parseGitHubRepoPath(githubFetchUrl);
+    if (!parsedFetch?.owner?.trim() || !parsedFetch?.repo?.trim()) {
+      return NextResponse.json(
+        {
+          error: INVALID_REPO_FORMAT,
+          message: INVALID_REPO_FORMAT_MESSAGE,
+        },
+        { status: 400 }
+      );
+    }
+
+    const probe = await probeGitHubRepository(githubFetchUrl);
+    if (probe?.status === "not_found") {
+      return NextResponse.json(
+        {
+          error: REPO_NOT_FOUND_OR_PRIVATE,
+          message: REPO_NOT_FOUND_OR_PRIVATE_MESSAGE,
+          isPrivateOrNotFound: true,
+          repoUrl: githubFetchUrl,
+          inaccessibleRepo: true,
+          ...(await usageForEarlyExit()),
+        },
+        { status: 404 }
+      );
+    }
+
+    if (probe?.status === "found" && access.user) {
+      const { data: roleRow } = await access.supabase
+        .from("profiles")
+        .select("role")
+        .or(`id.eq.${access.user.id},user_id.eq.${access.user.id}`)
+        .limit(1)
+        .maybeSingle();
+      const employerViewer = isEmployerRole(
+        typeof roleRow?.role === "string" ? roleRow.role : null
+      );
+
+      if (!employerViewer) {
+        const ownership = await verifyGitHubRepoOwnership({
+          user: access.user,
+          repoUrl: githubFetchUrl,
+        });
+        const tokenVerified = await hasPersistedProvixTokenVerification(
+          access.supabase,
+          access.user.id,
+          githubFetchUrl
+        );
+        if (!ownership.verified && !tokenVerified) {
+          return NextResponse.json(
+            {
+              error: UNVERIFIED_OWNERSHIP,
+              owner: probe.owner,
+              username: ownership.username,
+              message: UNVERIFIED_OWNERSHIP_MESSAGE,
+              ...(await usageForEarlyExit()),
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
+  }
 
   let githubArtifacts: GitHubArtifactAudit | null = null;
   if (githubFetchUrl) {
@@ -1016,6 +1117,34 @@ export async function POST(request: Request) {
       )
     : access.usage;
 
+  const auditedRepoUrl = workIsPrivate
+    ? PRIVATE_AUDITED_REPO_LABEL
+    : payload.githubUrl?.trim() ||
+      githubArtifacts?.source_url ||
+      githubArtifacts?.artifacts[0]?.repo_url ||
+      PRIVATE_AUDITED_REPO_LABEL;
+  const parsedRepo = parseGitHubUrl(auditedRepoUrl);
+  const isPublicGitHubClaim = Boolean(
+    !workIsPrivate &&
+      parsedRepo?.owner &&
+      parsedRepo.repo &&
+      auditedRepoUrl !== PRIVATE_AUDITED_REPO_LABEL
+  );
+
+  let verificationStatus: DossierVerificationStatus = "unverified";
+  if (access.user && isPublicGitHubClaim) {
+    try {
+      const ownership = await verifyGitHubRepoOwnership({
+        user: access.user,
+        repoUrl: auditedRepoUrl,
+      });
+      verificationStatus = ownership.verified ? "verified" : "unverified";
+    } catch (error) {
+      console.error("[audit] ownership verification threw:", error);
+      verificationStatus = "unverified";
+    }
+  }
+
   if (
     access.user &&
     payload.playground !== true &&
@@ -1023,44 +1152,49 @@ export async function POST(request: Request) {
       (usedExternalFallback &&
         hasUsableExternalProjects(payload.externalProjects)))
   ) {
-    try {
-      await persistOwnIntegrityAudit(
-        access.supabase,
-        access.user.id,
-        result.score,
-        githubArtifacts,
-        payload.externalProjects ?? [],
-        usedExternalFallback,
-        result.scoreCap,
-        result.metrics
-      );
-    } catch (error) {
-      console.error("[audit] persist integrity audit threw:", error);
+    if (verificationStatus === "verified" || workIsPrivate) {
+      try {
+        await persistOwnIntegrityAudit(
+          access.supabase,
+          access.user.id,
+          result.score,
+          githubArtifacts,
+          payload.externalProjects ?? [],
+          usedExternalFallback,
+          result.scoreCap,
+          result.metrics
+        );
+      } catch (error) {
+        console.error("[audit] persist integrity audit threw:", error);
+      }
     }
 
     try {
       const claim = buildProductionAuditClaim({
         score: result.score,
-        githubUrl: workIsPrivate
-          ? PRIVATE_AUDITED_REPO_LABEL
-          : payload.githubUrl?.trim() ||
-            githubArtifacts?.source_url ||
-            githubArtifacts?.artifacts[0]?.repo_url ||
-            PRIVATE_AUDITED_REPO_LABEL,
+        githubUrl: auditedRepoUrl,
         filesystem,
         scoreCap: result.scoreCap,
-        isPubliclyVisible: workIsPrivate ? false : undefined,
+        isPubliclyVisible: false,
       });
       await persistProfileProductionAudit(
         access.supabase,
         access.user.id,
         claim,
-        workIsPrivate ? { isPubliclyVisible: false } : undefined
+        {
+          isPubliclyVisible: false,
+          verificationStatus,
+        }
       );
     } catch (error) {
       console.error("[audit] persist production audit threw:", error);
     }
   }
 
-  return NextResponse.json({ ...result, ...usage });
+  return NextResponse.json({
+    ...result,
+    ...usage,
+    verification_status: verificationStatus,
+    ownership_verified: verificationStatus === "verified",
+  });
 }

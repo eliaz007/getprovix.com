@@ -1,8 +1,15 @@
 import {
+  analyzeWorkflowDepth,
+  countUnhandledAsyncCalls,
+  preferSourceSamplePaths,
+} from "@/lib/audit-content-signals";
+import {
   classifyRepoFilesystem,
   CORE_ARTIFACT_PROBE_DIRS,
   discoverWorkspacePackageDirs,
   emptyRepoFilesystemEvidence,
+  isCiWorkflowPath,
+  isSourceFile,
   WORKSPACE_ROOT_DIRS,
   type RepoFilesystemEvidence,
 } from "@/lib/repo-filesystem";
@@ -506,6 +513,81 @@ async function collectTruncatedTreePaths(
   return extraPaths;
 }
 
+const MAX_WORKFLOW_SAMPLES = 3;
+const MAX_SOURCE_SAMPLES = 6;
+
+async function fetchGithubFileRaw(
+  owner: string,
+  repo: string,
+  path: string,
+  ref?: string
+): Promise<string | null> {
+  try {
+    const response = await githubFetch(githubContentsUrl(owner, repo, path, ref), {
+      headers: { Accept: "application/vnd.github.raw" },
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const text = await response.text();
+    return text.slice(0, 40_000);
+  } catch (error) {
+    console.error(
+      `[github-audit] raw file fetch failed for ${owner}/${repo}/${path}:`,
+      error
+    );
+    return null;
+  }
+}
+
+async function enrichFilesystemFromContents(
+  evidence: RepoFilesystemEvidence,
+  allPaths: string[],
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<RepoFilesystemEvidence> {
+  const workflowPaths = evidence.ci_workflow_paths
+    .filter(isCiWorkflowPath)
+    .slice(0, MAX_WORKFLOW_SAMPLES);
+  const sourcePaths = preferSourceSamplePaths(
+    allPaths.filter(isSourceFile),
+    MAX_SOURCE_SAMPLES
+  );
+
+  const [workflowTexts, sourceTexts] = await Promise.all([
+    Promise.all(
+      workflowPaths.map((path) => fetchGithubFileRaw(owner, repo, path, branch))
+    ),
+    Promise.all(
+      sourcePaths.map((path) => fetchGithubFileRaw(owner, repo, path, branch))
+    ),
+  ]);
+
+  const readableWorkflows = workflowTexts.filter(
+    (text): text is string => Boolean(text)
+  );
+  const readableSources = sourceTexts.filter(
+    (text): text is string => Boolean(text)
+  );
+
+  const contentDepth =
+    readableWorkflows.length > 0
+      ? analyzeWorkflowDepth(readableWorkflows)
+      : evidence.ci_depth;
+  const unhandled = readableSources.reduce(
+    (sum, text) => sum + countUnhandledAsyncCalls(text),
+    0
+  );
+
+  return {
+    ...evidence,
+    ci_depth: contentDepth,
+    unhandled_async_count: unhandled,
+    resilience_sampled: readableSources.length > 0,
+  };
+}
+
 async function fetchRepoFilesystem(
   owner: string,
   repo: string,
@@ -550,10 +632,17 @@ async function fetchRepoFilesystem(
         .map((entry) => entry.path as string);
 
       if (!payload.truncated) {
-        return classifyRepoFilesystem(paths, {
+        const classified = classifyRepoFilesystem(paths, {
           inspected: true,
           truncated: false,
         });
+        return enrichFilesystemFromContents(
+          classified,
+          paths,
+          owner,
+          repo,
+          branch
+        );
       }
 
       warnings.push(
@@ -568,10 +657,18 @@ async function fetchRepoFilesystem(
         warnings
       );
 
-      return classifyRepoFilesystem([...paths, ...extraPaths], {
+      const merged = [...paths, ...extraPaths];
+      const classified = classifyRepoFilesystem(merged, {
         inspected: true,
         truncated: true,
       });
+      return enrichFilesystemFromContents(
+        classified,
+        merged,
+        owner,
+        repo,
+        branch
+      );
     } catch (error) {
       console.error(
         `[github-audit] GitHub file-tree fetch failed for ${owner}/${repo}@${branch}:`,
@@ -729,41 +826,6 @@ async function fetchGitHubUser(
   }
 }
 
-async function fetchTopOwnedRepos(
-  username: string,
-  limit = 3
-): Promise<Array<{ owner: string; repo: string }>> {
-  try {
-    const response = await githubFetch(
-      `https://api.github.com/users/${username}/repos?sort=updated&per_page=8&type=owner`
-    );
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const repos = (await readJsonResponse(response)) as Array<{
-      name?: string;
-      full_name?: string;
-      fork?: boolean;
-      stargazers_count?: number;
-      pushed_at?: string | null;
-    }>;
-
-    return repos
-      .filter((repo) => repo.name && repo.fork !== true)
-      .sort((a, b) => (b.stargazers_count ?? 0) - (a.stargazers_count ?? 0))
-      .slice(0, limit)
-      .map((repo) => ({
-        owner: username,
-        repo: repo.name as string,
-      }));
-  } catch (error) {
-    console.error("[github-audit] GitHub repos list failed:", error);
-    return [];
-  }
-}
-
 export async function fetchGitHubProfileArtifacts(
   url: string
 ): Promise<GitHubArtifactAudit | null> {
@@ -779,9 +841,11 @@ export async function fetchGitHubProfileArtifacts(
       warnings.push(`Could not load GitHub profile for ${parsed.owner}.`);
     }
 
-    const targets = parsed.repo
-      ? [{ owner: parsed.owner, repo: parsed.repo }]
-      : await fetchTopOwnedRepos(parsed.owner, 3);
+    if (!parsed.repo) {
+      return null;
+    }
+
+    const targets = [{ owner: parsed.owner, repo: parsed.repo }];
 
     if (targets.length === 0) {
       warnings.push(

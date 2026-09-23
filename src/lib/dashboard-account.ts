@@ -176,6 +176,9 @@ const PUBLIC_PREFIXES = [
   "/audit/",
 ] as const;
 
+const STATIC_ASSET_PATH =
+  /^\/(?:_next\/(?:static|image)(?:\/|$)|favicon\.ico$)|\/[^/]+\.(?:avif|css|gif|ico|jpeg|jpg|js|map|png|svg|txt|webp|woff2?|xml)$/i;
+
 /** Marketing, legal, auth, and the standalone public audit. Not the app shell. */
 export function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_EXACT_PATHS.has(pathname)) {
@@ -187,6 +190,18 @@ export function isPublicRoute(pathname: string): boolean {
   }
 
   return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+export function isStaticAssetPath(pathname: string): boolean {
+  return STATIC_ASSET_PATH.test(pathname);
+}
+
+/**
+ * Homepage, marketing/legal pages, and static files must not call
+ * supabase.auth.getUser() or refresh a session in middleware/proxy.
+ */
+export function shouldSkipMiddlewareAuth(pathname: string): boolean {
+  return isStaticAssetPath(pathname) || isPublicRoute(pathname);
 }
 
 /** App-shell and other internal pages. Unsigned visitors are sent to /. */

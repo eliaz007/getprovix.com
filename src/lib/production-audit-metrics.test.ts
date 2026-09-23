@@ -5,7 +5,9 @@ import {
 } from "./audit-readiness";
 import {
   computeProductionAuditMetrics,
+  scoreDevops,
   scoreResilience,
+  scoreTesting,
   weightedProductionScore,
 } from "./production-audit-metrics";
 import {
@@ -48,7 +50,7 @@ describe("four-pillar production audit", () => {
     expect(filesystem.error_handling_paths).toHaveLength(0);
 
     const metrics = computeProductionAuditMetrics(filesystem);
-    expect(metrics.resilience).toBe(0);
+    expect(metrics.resilience).toBe(65);
     expect(metrics.architecture).toBeGreaterThan(60);
     expect(metrics.testing).toBeGreaterThan(0);
     expect(metrics.devops).toBeGreaterThan(0);
@@ -84,8 +86,8 @@ describe("four-pillar production audit", () => {
     expect(filesystem.error_handling_paths).toContain("src/errors.ts");
 
     const resilience = scoreResilience(filesystem, "library");
-    expect(resilience).toBe(70);
-    expect(scoreResilience(filesystem, "web_app")).toBeLessThan(resilience);
+    expect(resilience).toBe(100);
+    expect(scoreResilience(filesystem, "web_app")).toBe(65);
   });
 
   it("deducts missing web-app error boundaries from resilience only", () => {
@@ -115,5 +117,61 @@ describe("four-pillar production audit", () => {
         Date.parse("2026-09-22")
       )
     ).toBe("active");
+  });
+
+  it("grades testing density in proportional bands", () => {
+    const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
+      inspected: true,
+    });
+    const token = {
+      ...filesystem,
+      unit_test_file_count: 1,
+      source_file_count: 20,
+      has_e2e_tools: false,
+    };
+    const mid = {
+      ...filesystem,
+      unit_test_file_count: 3,
+      source_file_count: 15,
+      has_e2e_tools: false,
+    };
+    const dense = {
+      ...filesystem,
+      unit_test_file_count: 8,
+      source_file_count: 20,
+      has_e2e_tools: true,
+    };
+
+    expect(scoreTesting({ ...filesystem, unit_test_file_count: 0 })).toBe(0);
+    expect(scoreTesting(token)).toBeLessThanOrEqual(35);
+    expect(scoreTesting(token)).toBeGreaterThan(0);
+    expect(scoreTesting(mid)).toBeGreaterThanOrEqual(65);
+    expect(scoreTesting(mid)).toBeLessThanOrEqual(75);
+    expect(scoreTesting(dense)).toBeGreaterThanOrEqual(85);
+  });
+
+  it("grades devops by pipeline depth instead of a binary drop", () => {
+    const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
+      inspected: true,
+    });
+    expect(scoreDevops({ ...filesystem, ci_workflow_paths: [], ci_depth: "none" })).toBe(0);
+    expect(
+      scoreDevops({ ...filesystem, ci_depth: "lint_build" })
+    ).toBe(50);
+    expect(scoreDevops({ ...filesystem, ci_depth: "tests" })).toBe(80);
+    expect(scoreDevops({ ...filesystem, ci_depth: "deploy" })).toBeGreaterThanOrEqual(95);
+  });
+
+  it("applies a 15-point resilience ding for one unhandled async call", () => {
+    const filesystem = classifyRepoFilesystem(
+      [...WEB_APP_PATHS, "src/app/error.tsx"],
+      { inspected: true }
+    );
+    expect(
+      scoreResilience({ ...filesystem, unhandled_async_count: 1 }, "web_app")
+    ).toBe(85);
+    expect(
+      scoreResilience({ ...filesystem, unhandled_async_count: 4 }, "web_app")
+    ).toBe(50);
   });
 });

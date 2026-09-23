@@ -8,6 +8,7 @@ import {
 import { usePathname } from "next/navigation";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import CompanySetupModal from "@/components/dashboard/CompanySetupModal";
+import DossierClaimBanner from "@/components/dashboard/dossier-claim-banner";
 import DashboardSidebar from "@/components/dashboard/dashboard-sidebar";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import GetVerifiedBanner from "@/components/GetVerifiedBanner";
@@ -100,6 +101,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
 
         <main className="relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#0B0B0D] text-zinc-100">
           <div className="mx-auto min-h-screen w-full max-w-6xl p-8">
+            {!isBusinessAccount ? <DossierClaimBanner /> : null}
             {!isGuest &&
             isBusinessAccount &&
             isVerifiedEmployer === false &&

@@ -20,6 +20,12 @@ export const PRIVATE_AUDIT_INTENT = "private_audit";
 export const PUBLIC_SCORECARD_THRESHOLD = 75;
 export const PRIVATE_AUDITED_REPO_LABEL = "Private repository";
 export const PRODUCTION_AUDIT_UPDATED_EVENT = "provix:production-audit-updated";
+export const DOSSIER_PUBLISHED_EVENT = "provix:dossier-published";
+export const OWNERSHIP_UNVERIFIED_LABEL = "Ownership Unverified";
+export const OWNERSHIP_UNVERIFIED_MESSAGE =
+  "Only repos you have authored commits on can be displayed to employers.";
+
+export type DossierVerificationStatus = "verified" | "unverified";
 
 export type ProductionAuditBreakdown = {
   architecture_score: number;
@@ -42,7 +48,20 @@ export type ProductionAuditRecord = {
   breakdown: ProductionAuditBreakdown;
   isAuditVerified: boolean;
   isPubliclyVisible: boolean;
+  verificationStatus: DossierVerificationStatus;
 };
+
+export function parseDossierVerificationStatus(
+  value: unknown
+): DossierVerificationStatus {
+  return value === "verified" ? "verified" : "unverified";
+}
+
+export function isVerifiedDossier(
+  record: Pick<ProductionAuditRecord, "verificationStatus"> | null | undefined
+): boolean {
+  return record?.verificationStatus === "verified";
+}
 
 export type ProductionAuditHistoryEntry = {
   id: string;
@@ -69,7 +88,7 @@ export function resolvePublicScorecardVisibility(
 export function employerVisibleProductionAudit(
   record: ProductionAuditRecord | null | undefined
 ): ProductionAuditRecord | null {
-  if (!record?.isAuditVerified || !record.isPubliclyVisible) {
+  if (!isVerifiedDossier(record) || !record?.isPubliclyVisible) {
     return null;
   }
   if (!canPublishProductionScore(record.productionScore)) {
@@ -167,6 +186,7 @@ export function parseProductionAuditFromProfileRow(
         audit_breakdown?: unknown;
         is_audit_verified?: boolean | null;
         is_publicly_visible?: boolean | null;
+        verification_status?: string | null;
       }
     | null
     | undefined
@@ -186,6 +206,10 @@ export function parseProductionAuditFromProfileRow(
   }
 
   const productionScore = clampScore0to100(scoreRaw);
+  const verificationStatus = parseDossierVerificationStatus(
+    row.verification_status
+  );
+  const isAuditVerified = verificationStatus === "verified";
 
   return {
     productionScore,
@@ -197,11 +221,14 @@ export function parseProductionAuditFromProfileRow(
       audited_repo_url: "",
       audited_at: "",
     },
-    isAuditVerified: row.is_audit_verified === true,
-    isPubliclyVisible: resolvePublicScorecardVisibility(
-      productionScore,
-      row.is_publicly_visible === true
-    ),
+    isAuditVerified,
+    isPubliclyVisible:
+      isAuditVerified &&
+      resolvePublicScorecardVisibility(
+        productionScore,
+        row.is_publicly_visible === true
+      ),
+    verificationStatus,
   };
 }
 
@@ -343,13 +370,16 @@ export function isPrivateAuditedRepoLabel(url: string | null | undefined): boole
 }
 
 export function productionAuditRecordFromClaim(
-  claim: ProductionAuditClaim
+  claim: ProductionAuditClaim,
+  verificationStatus: DossierVerificationStatus = "unverified"
 ): ProductionAuditRecord {
+  const isAuditVerified = verificationStatus === "verified";
   return {
     productionScore: claim.production_score,
     breakdown: claim.audit_breakdown,
-    isAuditVerified: true,
-    isPubliclyVisible: claim.is_publicly_visible,
+    isAuditVerified,
+    isPubliclyVisible: isAuditVerified && claim.is_publicly_visible,
+    verificationStatus,
   };
 }
 
@@ -367,11 +397,18 @@ export async function persistProfileProductionAudit(
   supabase: SupabaseClient,
   userId: string,
   claim: ProductionAuditClaim,
-  options?: { isPubliclyVisible?: boolean }
-): Promise<{ error: string | null }> {
+  options?: {
+    isPubliclyVisible?: boolean;
+    enrollInTalentPool?: boolean;
+    verificationStatus?: DossierVerificationStatus;
+    attachToProfile?: boolean;
+  }
+): Promise<{ error: string | null; profileSlug?: string | null; skipped?: boolean }> {
   const { data: roleRow } = await supabase
     .from("profiles")
-    .select("id, role")
+    .select(
+      "id, role, profile_slug, verification_status, is_audit_verified, production_score, audit_breakdown, is_publicly_visible, github_verified"
+    )
     .or(`id.eq.${userId},user_id.eq.${userId}`)
     .limit(1)
     .maybeSingle();
@@ -380,21 +417,58 @@ export async function persistProfileProductionAudit(
     return { error: null };
   }
 
+  const existing = parseProductionAuditFromProfileRow(roleRow);
+  const verificationStatus = parseDossierVerificationStatus(
+    options?.verificationStatus
+  );
+  const isVerified = verificationStatus === "verified";
+  const attachToProfile = options?.attachToProfile !== false;
+
+  if (!isVerified && isVerifiedDossier(existing)) {
+    return {
+      error: null,
+      skipped: true,
+      profileSlug:
+        typeof roleRow?.profile_slug === "string"
+          ? roleRow.profile_slug.trim() || null
+          : null,
+    };
+  }
+
   const productionScore = clampScore0to100(claim.production_score);
   let payload: Record<string, unknown> = {
-    production_score: productionScore,
-    audit_breakdown: claim.audit_breakdown,
-    is_audit_verified: true,
+    is_audit_verified: isVerified,
+    verification_status: verificationStatus,
   };
 
-  const publishRequested = options?.isPubliclyVisible === true;
-  const hideRequested = options?.isPubliclyVisible === false;
-  const canPublish = canPublishProductionScore(productionScore);
+  if (attachToProfile) {
+    payload.production_score = productionScore;
+    payload.audit_score = productionScore;
+    payload.audit_breakdown = claim.audit_breakdown;
+  }
 
-  if (publishRequested && canPublish) {
+  const enrollInTalentPool = isVerified && options?.enrollInTalentPool === true;
+  const publishRequested =
+    isVerified && (options?.isPubliclyVisible === true || enrollInTalentPool);
+  const hideRequested =
+    !isVerified ||
+    (options?.isPubliclyVisible === false && !enrollInTalentPool);
+  const canPublish = isVerified && canPublishProductionScore(productionScore);
+  const githubVerified = roleRow?.github_verified === true;
+
+  if (enrollInTalentPool && canPublish) {
+    payload.is_in_talent_pool = true;
     payload.is_publicly_visible = true;
-    payload.is_visible_in_pool = true;
-    payload.visible_to_employers = true;
+    if (githubVerified) {
+      payload.is_visible_in_pool = true;
+      payload.visible_to_employers = true;
+    }
+  } else if (publishRequested && canPublish) {
+    payload.is_publicly_visible = true;
+    if (githubVerified) {
+      payload.is_visible_in_pool = true;
+      payload.visible_to_employers = true;
+    }
   } else if (hideRequested || !canPublish) {
     payload.is_publicly_visible = false;
   }
@@ -408,8 +482,16 @@ export async function persistProfileProductionAudit(
       .eq("id", profileId);
 
     if (!error) {
-      await insertProductionAuditHistory(supabase, userId, claim);
-      return { error: null };
+      if (isVerified && attachToProfile) {
+        await insertProductionAuditHistory(supabase, userId, claim);
+      }
+      return {
+        error: null,
+        profileSlug:
+          typeof roleRow?.profile_slug === "string"
+            ? roleRow.profile_slug.trim() || null
+            : null,
+      };
     }
 
     if (!isSupabaseSchemaError(error)) {
@@ -522,7 +604,9 @@ export async function persistScorecardVisibility(
 ): Promise<{ error: string | null; record: ProductionAuditRecord | null }> {
   const { data: roleRow } = await supabase
     .from("profiles")
-    .select("id, role, production_score, audit_breakdown, is_audit_verified")
+    .select(
+      "id, role, production_score, audit_breakdown, is_audit_verified, is_publicly_visible, verification_status, github_verified"
+    )
     .or(`id.eq.${userId},user_id.eq.${userId}`)
     .limit(1)
     .maybeSingle();
@@ -532,10 +616,10 @@ export async function persistScorecardVisibility(
   }
 
   const current = parseProductionAuditFromProfileRow(roleRow);
-  if (!current?.isAuditVerified) {
+  if (!current || !isVerifiedDossier(current)) {
     return {
-      error: "Run a production audit before changing scorecard visibility.",
-      record: null,
+      error: OWNERSHIP_UNVERIFIED_MESSAGE,
+      record: current,
     };
   }
 
@@ -555,7 +639,7 @@ export async function persistScorecardVisibility(
     is_publicly_visible: nextVisible,
   };
 
-  if (nextVisible) {
+  if (nextVisible && roleRow?.github_verified === true) {
     payload.is_visible_in_pool = true;
     payload.visible_to_employers = true;
   }
@@ -619,33 +703,93 @@ export async function persistScorecardVisibility(
   return { error: "Could not update scorecard visibility.", record: current };
 }
 
-export async function claimPendingProductionAudit(): Promise<ProductionAuditRecord | null> {
+export type ClaimPendingResult = {
+  record: ProductionAuditRecord | null;
+  error: string | null;
+  enrolledInTalentPool: boolean;
+  profileSlug: string | null;
+};
+
+export async function claimPendingProductionAuditResult(): Promise<ClaimPendingResult> {
   const pending = readPendingProductionAudit();
   if (!pending) {
-    return null;
+    return {
+      record: null,
+      error: null,
+      enrolledInTalentPool: false,
+      profileSlug: null,
+    };
   }
+
+  const nextClaim: ProductionAuditClaim = {
+    ...pending,
+    is_publicly_visible:
+      pending.is_publicly_visible ||
+      canPublishProductionScore(pending.production_score),
+  };
 
   try {
     const response = await fetchWithAuth("/api/profile/production-audit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(pending),
+      body: JSON.stringify(nextClaim),
     });
 
+    const payload = await readJsonResponse<{
+      error?: string;
+      enrolled_in_talent_pool?: boolean;
+      profile_slug?: string | null;
+      is_publicly_visible?: boolean;
+    }>(response);
+
     if (!response.ok) {
-      return null;
+      if (response.status === 403) {
+        clearPendingProductionAudit();
+        return {
+          record: productionAuditRecordFromClaim(nextClaim, "unverified"),
+          error:
+            payload.error?.trim() || OWNERSHIP_UNVERIFIED_MESSAGE,
+          enrolledInTalentPool: false,
+          profileSlug: null,
+        };
+      }
+      return {
+        record: null,
+        error:
+          payload.error?.trim() ||
+          "Could not claim this production audit.",
+        enrolledInTalentPool: false,
+        profileSlug: null,
+      };
     }
 
-    await readJsonResponse(response);
     clearPendingProductionAudit();
+    const enrolled = payload.enrolled_in_talent_pool === true;
+    const verificationStatus = parseDossierVerificationStatus(
+      (payload as { verification_status?: string }).verification_status ??
+        "verified"
+    );
     return {
-      productionScore: pending.production_score,
-      breakdown: pending.audit_breakdown,
-      isAuditVerified: true,
-      isPubliclyVisible: pending.is_publicly_visible,
+      record: productionAuditRecordFromClaim(nextClaim, verificationStatus),
+      error: null,
+      enrolledInTalentPool: enrolled,
+      profileSlug:
+        typeof payload.profile_slug === "string"
+          ? payload.profile_slug.trim() || null
+          : null,
     };
   } catch (error) {
     console.error("Claim production audit failed:", error);
-    return null;
+    return {
+      record: null,
+      error: "Could not claim this production audit.",
+      enrolledInTalentPool: false,
+      profileSlug: null,
+    };
   }
+}
+
+export async function claimPendingProductionAudit(): Promise<ProductionAuditRecord | null> {
+  const result = await claimPendingProductionAuditResult();
+  return result.record;
 }

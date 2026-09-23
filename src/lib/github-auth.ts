@@ -19,3 +19,19 @@ export async function handleGitHubSignIn(nextPath?: string, accountKind?: "emplo
     options: { redirectTo },
   });
 }
+
+export async function handleGitHubLinkIdentity(nextPath = "/dashboard") {
+  const supabase = createClient();
+  const origin = window.location.origin;
+  const destination =
+    nextPath.startsWith("/") && !nextPath.startsWith("//")
+      ? nextPath
+      : "/dashboard";
+
+  return supabase.auth.linkIdentity({
+    provider: "github",
+    options: {
+      redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(destination)}`,
+    },
+  });
+}

@@ -4,50 +4,25 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Copy, FileCode2, Loader2, ShieldCheck } from "lucide-react";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { readJsonResponse } from "@/lib/read-json-response";
-import { parseGitHubUrl } from "@/lib/validate-github-url";
+import {
+  buildProvixVerificationToken,
+  hasPersistedProvixTokenVerification,
+  PROVIX_FILENAME,
+} from "@/lib/provix-token";
+import { createClient } from "@/utils/supabase/client";
+import { parseGitHubRepoPath } from "@/lib/validate-github-url";
 
 export const GITHUB_CACHE_RETRY_MESSAGE =
   "GitHub's cache might take 10 seconds to update, please try again";
 
-const TOKEN_STORAGE_KEY = "provix.repoVerificationToken";
-const PROVIX_FILENAME = "provix.txt";
-
-type VerifyRepoResponse = {
+type VerifyTokenResponse = {
   error?: string;
+  success?: boolean;
   verified?: boolean;
   already_verified?: boolean;
   repo_url?: string;
   branch?: string;
 };
-
-function createVerificationToken(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID().replace(/-/g, "");
-  }
-
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function readOrCreateToken(): string {
-  try {
-    const stored = sessionStorage.getItem(TOKEN_STORAGE_KEY)?.trim();
-    if (stored) {
-      return stored;
-    }
-  } catch {
-    // sessionStorage can throw in private browsing.
-  }
-
-  const token = createVerificationToken();
-  try {
-    sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
-  } catch {
-    // Keep the in-memory token even if persistence fails.
-  }
-  return token;
-}
 
 function isGithubLookupFailure(status: number, message: string): boolean {
   if (status === 404 || status === 502 || status === 504) {
@@ -59,20 +34,24 @@ function isGithubLookupFailure(status: number, message: string): boolean {
 
 export default function RepoOwnershipVerifier({
   repoUrl,
+  userId,
   onVerified,
   variant = "card",
 }: {
   repoUrl: string;
+  userId?: string | null;
   onVerified?: (result: { repoUrl: string; branch?: string }) => void;
   variant?: "card" | "banner";
 }) {
-  const parsed = parseGitHubUrl(repoUrl);
+  const parsed = parseGitHubRepoPath(repoUrl);
   const canonicalRepoUrl =
-    parsed?.repo != null
+    parsed != null
       ? `https://github.com/${parsed.owner}/${parsed.repo}`
       : "";
 
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(() =>
+    userId ? buildProvixVerificationToken(userId) : ""
+  );
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,16 +59,42 @@ export default function RepoOwnershipVerifier({
   const [verifiedBranch, setVerifiedBranch] = useState<string | null>(null);
   const hasAttemptedFetch = useRef(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onVerifiedRef = useRef(onVerified);
+  onVerifiedRef.current = onVerified;
 
   useEffect(() => {
-    setToken(readOrCreateToken());
+    setToken(userId ? buildProvixVerificationToken(userId) : "");
 
     return () => {
       if (copyTimeoutRef.current) {
         clearTimeout(copyTimeoutRef.current);
       }
     };
-  }, []);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId || !canonicalRepoUrl) {
+      return;
+    }
+
+    let cancelled = false;
+    const supabase = createClient();
+    void hasPersistedProvixTokenVerification(
+      supabase,
+      userId,
+      canonicalRepoUrl
+    ).then((alreadyVerified) => {
+      if (cancelled || !alreadyVerified) {
+        return;
+      }
+      setVerified(true);
+      onVerifiedRef.current?.({ repoUrl: canonicalRepoUrl });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canonicalRepoUrl, userId]);
 
   useEffect(() => {
     setVerified(false);
@@ -109,7 +114,7 @@ export default function RepoOwnershipVerifier({
       if (copyTimeoutRef.current) {
         clearTimeout(copyTimeoutRef.current);
       }
-      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 1800);
     } catch (copyError) {
       console.error("[verify-repo] clipboard copy failed:", copyError);
       setError("Could not copy the token. Select it and copy manually.");
@@ -127,18 +132,19 @@ export default function RepoOwnershipVerifier({
     const isInitialFetch = !hasAttemptedFetch.current;
 
     try {
-      const response = await fetchWithAuth("/api/verify-repo", {
+      const response = await fetchWithAuth("/api/verify-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          repo_url: canonicalRepoUrl,
-          token,
+          owner: parsed?.owner,
+          repo: parsed?.repo,
+          expectedToken: token,
         }),
       });
 
-      const payload = (await readJsonResponse<VerifyRepoResponse>(response).catch(
+      const payload = (await readJsonResponse<VerifyTokenResponse>(response).catch(
         () => null
-      )) as VerifyRepoResponse | null;
+      )) as VerifyTokenResponse | null;
 
       if (response.status === 401) {
         setError("Sign in to verify repository ownership.");
@@ -147,7 +153,7 @@ export default function RepoOwnershipVerifier({
 
       hasAttemptedFetch.current = true;
 
-      if (response.ok && payload?.verified) {
+      if (response.ok && (payload?.verified || payload?.success)) {
         setVerified(true);
         setVerifiedBranch(payload.branch ?? null);
         onVerified?.({
@@ -211,6 +217,12 @@ export default function RepoOwnershipVerifier({
                   ? `Ownership verified${verifiedBranch ? ` on ${verifiedBranch}` : ""}`
                   : "Commit this token at the repo root, then verify"}
               </p>
+              {verified ? (
+                <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                  <Check className="h-3 w-3" aria-hidden />
+                  Ownership verified
+                </span>
+              ) : null}
             </div>
           </div>
 
@@ -235,7 +247,7 @@ export default function RepoOwnershipVerifier({
                 {copied ? (
                   <>
                     <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
-                    Copied
+                    Copied!
                   </>
                 ) : (
                   <>
@@ -331,7 +343,7 @@ export default function RepoOwnershipVerifier({
             {copied ? (
               <>
                 <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
-                Copied
+                Copied!
               </>
             ) : (
               <>

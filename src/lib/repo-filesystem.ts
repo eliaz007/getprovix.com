@@ -10,6 +10,8 @@ export type CoreArtifactKind = "tests" | "ci" | "error_handling";
 /** Client web shell vs library / backend / package. */
 export type RepoKind = "web_app" | "library";
 
+export type CiPipelineDepth = "none" | "lint_build" | "tests" | "deploy";
+
 export type ArchitectureSignals = {
   has_type_config: boolean;
   has_typed_source: boolean;
@@ -32,6 +34,12 @@ export type RepoFilesystemEvidence = {
   architecture_paths: string[];
   architecture_signals: ArchitectureSignals;
   repo_kind: RepoKind;
+  source_file_count: number;
+  unit_test_file_count: number;
+  has_e2e_tools: boolean;
+  ci_depth: CiPipelineDepth;
+  unhandled_async_count: number;
+  resilience_sampled: boolean;
 };
 
 export type FilesystemScorePolicy = {
@@ -205,6 +213,12 @@ export function emptyRepoFilesystemEvidence(): RepoFilesystemEvidence {
     architecture_paths: [],
     architecture_signals: emptyArchitectureSignals(),
     repo_kind: "library",
+    source_file_count: 0,
+    unit_test_file_count: 0,
+    has_e2e_tools: false,
+    ci_depth: "none",
+    unhandled_async_count: 0,
+    resilience_sampled: false,
   };
 }
 
@@ -218,6 +232,65 @@ export function isTestConfigPath(path: string): boolean {
 
 export function isSmokeOrE2eTestPath(path: string): boolean {
   return /(^|\/)(e2e|smoke)(\/|$)|smoke|playwright|cypress/i.test(path);
+}
+
+const SOURCE_FILE_EXT =
+  /\.(tsx?|jsx?|mts|cts|mjs|cjs|py|go|rs|java|kt|rb|php|cs|swift|dart)$/i;
+const UNIT_TEST_FILE =
+  /\.(tests?|spec)\.[cm]?[jt]sx?$/i;
+
+export function isSourceFile(path: string): boolean {
+  if (isNoisePath(path) || isTestPath(path) || isTestConfigPath(path)) {
+    return false;
+  }
+  return SOURCE_FILE_EXT.test(path);
+}
+
+export function isUnitTestFile(path: string): boolean {
+  if (isNoisePath(path) || isTestConfigPath(path)) {
+    return false;
+  }
+
+  return (
+    UNIT_TEST_FILE.test(path) ||
+    TEST_GO.test(path) ||
+    TEST_PY.test(path) ||
+    TEST_RUBY.test(path) ||
+    TEST_RUST.test(path) ||
+    TEST_ELIXIR.test(path) ||
+    TEST_JVM.test(path) ||
+    TEST_SWIFT.test(path) ||
+    TEST_DART.test(path) ||
+    TEST_DOTNET.test(path)
+  );
+}
+
+export function hasE2eTooling(paths: string[]): boolean {
+  return paths.some(
+    (path) =>
+      isSmokeOrE2eTestPath(path) ||
+      /(^|\/)(playwright\.config|cypress\.config)/i.test(path)
+  );
+}
+
+export function inferCiDepthFromPaths(paths: string[]): CiPipelineDepth {
+  const workflows = paths.filter(isCiWorkflowPath);
+  if (workflows.length === 0) {
+    return "none";
+  }
+
+  const joined = workflows.join(" ");
+  if (
+    /(deploy|preview|release|vercel|netlify|fly\.io|render|pages-deploy)/i.test(
+      joined
+    )
+  ) {
+    return "deploy";
+  }
+  if (/(test|e2e|playwright|cypress|vitest|jest|pytest)/i.test(joined)) {
+    return "tests";
+  }
+  return "lint_build";
 }
 
 export function isTestPath(path: string): boolean {
@@ -341,15 +414,17 @@ export function classifyRepoFilesystem(
     new Set(paths.map((path) => path.trim()).filter(Boolean))
   ).filter((path) => !isNoisePath(path));
 
+  const ciWorkflowPaths = unique
+    .filter(isCiWorkflowPath)
+    .slice(0, MAX_PATHS_PER_BUCKET);
+
   return {
     inspected: options?.inspected ?? unique.length > 0,
     truncated: Boolean(options?.truncated),
     file_count: unique.length,
     sample_paths: unique.slice(0, MAX_SAMPLE_PATHS),
     test_paths: unique.filter(isTestPath).slice(0, MAX_PATHS_PER_BUCKET),
-    ci_workflow_paths: unique
-      .filter(isCiWorkflowPath)
-      .slice(0, MAX_PATHS_PER_BUCKET),
+    ci_workflow_paths: ciWorkflowPaths,
     error_handling_paths: unique
       .filter(isErrorHandlingPath)
       .slice(0, MAX_PATHS_PER_BUCKET),
@@ -358,6 +433,12 @@ export function classifyRepoFilesystem(
       .slice(0, MAX_PATHS_PER_BUCKET),
     architecture_signals: detectArchitectureSignals(unique),
     repo_kind: detectRepoKind(unique),
+    source_file_count: unique.filter(isSourceFile).length,
+    unit_test_file_count: unique.filter(isUnitTestFile).length,
+    has_e2e_tools: hasE2eTooling(unique),
+    ci_depth: inferCiDepthFromPaths(ciWorkflowPaths),
+    unhandled_async_count: 0,
+    resilience_sampled: false,
   };
 }
 
@@ -414,6 +495,20 @@ export function parseRepoFilesystemEvidence(
       ? storedKind
       : detectRepoKind(allKnownPaths);
 
+  const asCount = (input: unknown): number =>
+    typeof input === "number" && Number.isFinite(input)
+      ? Math.max(0, Math.round(input))
+      : 0;
+
+  const storedDepth = record.ci_depth;
+  const ciDepth: CiPipelineDepth =
+    storedDepth === "lint_build" ||
+    storedDepth === "tests" ||
+    storedDepth === "deploy" ||
+    storedDepth === "none"
+      ? storedDepth
+      : inferCiDepthFromPaths(ciPaths);
+
   return {
     inspected,
     truncated: record.truncated === true,
@@ -425,6 +520,17 @@ export function parseRepoFilesystemEvidence(
     architecture_paths: architecturePaths,
     architecture_signals: architectureSignals,
     repo_kind: repoKind,
+    source_file_count:
+      asCount(record.source_file_count) ||
+      allKnownPaths.filter(isSourceFile).length,
+    unit_test_file_count:
+      asCount(record.unit_test_file_count) ||
+      allKnownPaths.filter(isUnitTestFile).length,
+    has_e2e_tools:
+      record.has_e2e_tools === true || hasE2eTooling(allKnownPaths),
+    ci_depth: ciDepth,
+    unhandled_async_count: asCount(record.unhandled_async_count),
+    resilience_sampled: record.resilience_sampled === true,
   };
 }
 

@@ -69,6 +69,7 @@ export const APPLICANT_PROFILE_COLUMNS = [
   "audit_breakdown",
   "is_audit_verified",
   "is_publicly_visible",
+  "verification_status",
 ] as const;
 
 export type ApplicantProfileRow = {
@@ -112,6 +113,7 @@ export type ApplicantProfileRow = {
   audit_breakdown?: unknown;
   is_audit_verified?: boolean | null;
   is_publicly_visible?: boolean | null;
+  verification_status?: string | null;
 };
 
 export type ApplicantReviewStatus = "new" | "intro_requested" | "rejected";

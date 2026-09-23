@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
 import {
   AlertTriangle,
   Check,
@@ -14,26 +15,35 @@ import { DAILY_LIMIT_UI_MESSAGE, type DailyScanUsage } from "@/lib/daily-scan-li
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
   buildProductionAuditClaim,
+  CLAIM_AUDIT_INTENT,
+  cachePendingProductionAudit,
   clearPendingProductionAudit,
   formatAuditedRepoLabel,
   PRIVATE_AUDIT_INTENT,
   type ProductionAuditClaim,
 } from "@/lib/production-audit";
-import TalentNetworkCta from "@/components/auditor/talent-network-cta";
-import PrivateRepositoryBanner from "@/components/auditor/private-repository-banner";
+import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
+import RepoAccessStatus, {
+  VerifiedContributorMark,
+  type RepoAccessStatusKind,
+} from "@/components/auditor/repo-access-status";
 import RepoOwnershipVerifier from "@/components/auditor/repo-ownership-verifier";
 import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
 import {
-  INACCESSIBLE_PUBLIC_REPO_MESSAGE,
   isInaccessiblePublicAudit,
+  isInvalidRepoFormatResponse,
   isPrivateOrNotFoundAuditResponse,
+  isUnverifiedOwnershipResponse,
+  unverifiedOwnershipUsername,
 } from "@/lib/inaccessible-public-audit";
 import Toast from "@/components/Toast";
+import { canBypassProvixTokenChallenge } from "@/lib/provix-token";
 import {
   getGitHubUrlValidationMessage,
   hasUsableGitHubAuditTarget,
+  isGitHubPlaceholderInput,
   parseGitHubUrl,
 } from "@/lib/validate-github-url";
 import { createClient } from "@/utils/supabase/client";
@@ -118,16 +128,15 @@ export default function PublicProductionAudit({
 }) {
   const router = useRouter();
   const [repoUrl, setRepoUrl] = useState(initialRepoUrl);
-  const [loading, setLoading] = useState(() =>
-    hasUsableGitHubAuditTarget(initialRepoUrl)
-  );
+  const [loading, setLoading] = useState(false);
   const [stageIndex, setStageIndex] = useState(0);
   const [result, setResult] = useState<AuditResult | null>(null);
   const [claim, setClaim] = useState<ProductionAuditClaim | null>(null);
-  const [inaccessibleRepo, setInaccessibleRepo] = useState(false);
-  const [inaccessibleWarning, setInaccessibleWarning] = useState<string | null>(
-    null
-  );
+  const [repoAccessStatus, setRepoAccessStatus] =
+    useState<RepoAccessStatusKind | null>(null);
+  const [accessUsername, setAccessUsername] = useState<string | null>(null);
+  const inaccessibleRepo = repoAccessStatus === "private";
+  const ownershipUnverified = repoAccessStatus === "unverified";
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [limitReached, setLimitReached] = useState(false);
@@ -141,6 +150,10 @@ export default function PublicProductionAudit({
   const stageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStartedRef = useRef("");
   const inFlightRef = useRef(false);
+  const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [profileGithubVerified, setProfileGithubVerified] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [isTokenVerified, setIsTokenVerified] = useState(false);
 
   const openAuthModal = (options: {
     description: string;
@@ -160,10 +173,24 @@ export default function PublicProductionAudit({
     parsedGithub?.repo != null
       ? `https://github.com/${parsedGithub.owner}/${parsedGithub.repo}`
       : "";
+  const invalidRepoFormat =
+    Boolean(repoUrl.trim()) &&
+    !isGitHubPlaceholderInput(repoUrl) &&
+    !hasValidGithubInput;
   const githubValidationMessage =
-    repoUrl.trim() && !hasValidGithubInput
+    repoUrl.trim() && !hasValidGithubInput && !invalidRepoFormat
       ? getGitHubUrlValidationMessage(repoUrl)
       : null;
+  const githubBypass = canBypassProvixTokenChallenge(
+    sessionUser,
+    profileGithubVerified
+  );
+  const needsTokenChallenge =
+    sessionReady &&
+    Boolean(sessionUser) &&
+    !githubBypass &&
+    Boolean(ownershipRepoUrl);
+  const auditLocked = needsTokenChallenge && !isTokenVerified;
 
   const stopStageProgress = () => {
     if (stageIntervalRef.current) {
@@ -184,11 +211,15 @@ export default function PublicProductionAudit({
 
   const runAudit = async (url: string) => {
     const trimmed = url.trim();
-    if (
-      !hasUsableGitHubAuditTarget(trimmed) ||
-      inFlightRef.current ||
-      limitReached
-    ) {
+    if (inFlightRef.current || limitReached || auditLocked) {
+      return;
+    }
+    if (!hasUsableGitHubAuditTarget(trimmed)) {
+      setRepoAccessStatus(
+        trimmed && !isGitHubPlaceholderInput(trimmed)
+          ? "invalid_format"
+          : null
+      );
       return;
     }
 
@@ -197,8 +228,8 @@ export default function PublicProductionAudit({
     setError(null);
     setResult(null);
     setClaim(null);
-    setInaccessibleRepo(false);
-    setInaccessibleWarning(null);
+    setRepoAccessStatus(null);
+    setAccessUsername(null);
     setToastMessage(null);
     startStageProgress();
 
@@ -219,6 +250,8 @@ export default function PublicProductionAudit({
           isPrivateOrNotFound?: boolean;
           repoUrl?: string;
           inaccessibleRepo?: boolean;
+          owner?: string;
+          message?: string;
         };
       try {
         data = (await readJsonResponse(response)) as typeof data;
@@ -228,19 +261,29 @@ export default function PublicProductionAudit({
           response.status === 403 ||
           response.status === 404
         ) {
-          setInaccessibleRepo(true);
-          setInaccessibleWarning(INACCESSIBLE_PUBLIC_REPO_MESSAGE);
-          setToastMessage(INACCESSIBLE_PUBLIC_REPO_MESSAGE);
+          setRepoAccessStatus("private");
           setResult(null);
           setClaim(null);
-          openAuthModal({
-            description: INACCESSIBLE_PUBLIC_REPO_MESSAGE,
-            nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
-            intent: PRIVATE_AUDIT_INTENT,
-          });
           return;
         }
         throw new Error("Audit request failed.");
+      }
+
+      if (isInvalidRepoFormatResponse(data)) {
+        setLimitReached(Boolean(data.limit_reached));
+        setRepoAccessStatus("invalid_format");
+        setResult(null);
+        setClaim(null);
+        return;
+      }
+
+      if (isUnverifiedOwnershipResponse(data)) {
+        setLimitReached(Boolean(data.limit_reached));
+        setRepoAccessStatus("unverified");
+        setAccessUsername(unverifiedOwnershipUsername(data));
+        setResult(null);
+        setClaim(null);
+        return;
       }
 
       if (
@@ -248,30 +291,9 @@ export default function PublicProductionAudit({
         isInaccessiblePublicAudit({ status: response.status, result: data })
       ) {
         setLimitReached(Boolean(data.limit_reached));
-        const warning =
-          data.error?.trim() || INACCESSIBLE_PUBLIC_REPO_MESSAGE;
-        setInaccessibleRepo(true);
-        setInaccessibleWarning(warning);
-        setToastMessage(warning);
+        setRepoAccessStatus("private");
         setResult(null);
         setClaim(null);
-        try {
-          const supabase = createClient();
-          const { data: sessionData } = await supabase.auth.getUser();
-          if (!sessionData.user) {
-            openAuthModal({
-              description: warning,
-              nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
-              intent: PRIVATE_AUDIT_INTENT,
-            });
-          }
-        } catch {
-          openAuthModal({
-            description: warning,
-            nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
-            intent: PRIVATE_AUDIT_INTENT,
-          });
-        }
         return;
       }
 
@@ -289,6 +311,11 @@ export default function PublicProductionAudit({
       }
 
       setLimitReached(Boolean(data.limit_reached));
+      setRepoAccessStatus(
+        (data as { ownership_verified?: boolean }).ownership_verified === true
+          ? "verified"
+          : null
+      );
       const nextResult = {
         ...data,
         checks: normalizeAuditChecks(data.checks),
@@ -334,7 +361,37 @@ export default function PublicProductionAudit({
       }
     };
 
+    const loadSession = async () => {
+      try {
+        const supabase = createClient();
+        const { data: sessionData } = await supabase.auth.getUser();
+        if (cancelled) {
+          return;
+        }
+        const user = sessionData.user ?? null;
+        setSessionUser(user);
+        if (user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("github_verified")
+            .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+            .limit(1)
+            .maybeSingle();
+          if (!cancelled) {
+            setProfileGithubVerified(profile?.github_verified === true);
+          }
+        }
+      } catch (err) {
+        console.error("Could not load public auditor session:", err);
+      } finally {
+        if (!cancelled) {
+          setSessionReady(true);
+        }
+      }
+    };
+
     void loadUsage();
+    void loadSession();
 
     return () => {
       cancelled = true;
@@ -343,6 +400,9 @@ export default function PublicProductionAudit({
   }, []);
 
   useEffect(() => {
+    if (!sessionReady || needsTokenChallenge) {
+      return;
+    }
     const trimmed = initialRepoUrl.trim();
     if (!hasUsableGitHubAuditTarget(trimmed)) {
       return;
@@ -354,7 +414,7 @@ export default function PublicProductionAudit({
     void runAudit(trimmed);
     // Auto-run once per incoming repo query from the landing hero.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialRepoUrl]);
+  }, [initialRepoUrl, sessionReady, needsTokenChallenge]);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -365,32 +425,6 @@ export default function PublicProductionAudit({
         scroll: false,
       });
     }
-  };
-
-  const resetForAnotherRepo = () => {
-    setRepoUrl("");
-    setResult(null);
-    setClaim(null);
-    setInaccessibleRepo(false);
-    setInaccessibleWarning(null);
-    setToastMessage(null);
-    setError(null);
-    autoStartedRef.current = "";
-    inFlightRef.current = false;
-    if (!embedded && initialRepoUrl.trim()) {
-      router.replace("/audit");
-    }
-    window.requestAnimationFrame(() => {
-      document.getElementById("public-audit-repo")?.focus();
-    });
-  };
-
-  const requireAuthForPrivateRepo = () => {
-    openAuthModal({
-      description: INACCESSIBLE_PUBLIC_REPO_MESSAGE,
-      nextPath: `/dashboard?intent=${PRIVATE_AUDIT_INTENT}`,
-      intent: PRIVATE_AUDIT_INTENT,
-    });
   };
 
   const breakdown = claim?.audit_breakdown;
@@ -404,7 +438,12 @@ export default function PublicProductionAudit({
   const recommendations = (result?.recommendations ?? []).slice(0, 3);
   const strengths = result?.strengths ?? [];
   const hasResults = Boolean(
-    !loading && result && claim && breakdown && !inaccessibleRepo
+    !loading &&
+      result &&
+      claim &&
+      breakdown &&
+      !inaccessibleRepo &&
+      !ownershipUnverified
   );
 
   useEffect(() => {
@@ -421,49 +460,66 @@ export default function PublicProductionAudit({
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
-      <form onSubmit={onSubmit} className="w-full">
+      <form onSubmit={onSubmit} className="w-full space-y-3">
+        {needsTokenChallenge ? (
+          <RepoOwnershipVerifier
+            repoUrl={ownershipRepoUrl}
+            userId={sessionUser?.id}
+            variant="banner"
+            onVerified={() => setIsTokenVerified(true)}
+          />
+        ) : null}
         <div className="relative flex flex-col gap-2 overflow-hidden rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-1.5 transition-colors hover:border-neutral-700/80 sm:flex-row sm:items-stretch">
           <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-violet-600/5 blur-2xl" />
           <label htmlFor="public-audit-repo" className="sr-only">
-            GitHub Profile or Repo URL
+            GitHub repository URL
           </label>
-          <input
-            id="public-audit-repo"
-            name="repo"
-            type="text"
-            inputMode="url"
-            autoComplete="url"
-            spellCheck={false}
-            value={repoUrl}
-            onChange={(event) => setRepoUrl(event.target.value)}
-            placeholder="Paste GitHub Profile or Repo URL"
-            aria-invalid={Boolean(githubValidationMessage)}
-            className="relative min-h-12 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-4 py-3 font-mono text-sm text-white placeholder:text-neutral-500 outline-none transition-colors duration-200 focus:border-cyan-500/20 sm:text-[15px]"
-          />
+          <div className="relative min-w-0 flex-1">
+            <input
+              id="public-audit-repo"
+              name="repo"
+              type="text"
+              inputMode="url"
+              autoComplete="url"
+              spellCheck={false}
+              value={repoUrl}
+              onChange={(event) => {
+                setRepoUrl(event.target.value);
+                setRepoAccessStatus(null);
+                setAccessUsername(null);
+                setIsTokenVerified(false);
+              }}
+              placeholder="Paste GitHub repo URL (owner/repository)"
+              aria-invalid={Boolean(githubValidationMessage)}
+              className={`relative min-h-12 w-full rounded-lg border border-transparent bg-transparent px-4 py-3 font-mono text-sm text-white placeholder:text-neutral-500 outline-none transition-colors duration-200 focus:border-cyan-500/20 sm:text-[15px] ${
+                repoAccessStatus === "verified" ? "pr-40" : ""
+              }`}
+            />
+            <VerifiedContributorMark
+              visible={repoAccessStatus === "verified"}
+              className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2"
+            />
+          </div>
           <button
             type="submit"
-            disabled={loading || limitReached}
+            disabled={loading || limitReached || auditLocked}
             className="relative inline-flex min-h-12 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-violet-600 px-5 text-sm font-medium tracking-tight text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Running Audit..." : "Run Production Audit"}
           </button>
         </div>
         {githubValidationMessage ? (
-          <p role="alert" className="mt-3 text-left text-sm text-red-300">
+          <p role="alert" className="mt-1.5 text-left text-xs text-red-300">
             {githubValidationMessage}
           </p>
         ) : null}
-        {inaccessibleWarning ? (
-          <PrivateRepositoryBanner
-            variant="inline"
-            message={inaccessibleWarning}
-          />
-        ) : null}
+        <RepoAccessStatus
+          status={
+            invalidRepoFormat ? "invalid_format" : repoAccessStatus
+          }
+          username={accessUsername}
+        />
       </form>
-
-      {!embedded && ownershipRepoUrl ? (
-        <RepoOwnershipVerifier repoUrl={ownershipRepoUrl} />
-      ) : null}
 
       {limitReached ? (
         <div
@@ -537,16 +593,12 @@ export default function PublicProductionAudit({
         </div>
       ) : null}
 
-      {!loading && inaccessibleRepo ? (
-        <PrivateRepositoryBanner
-          variant="public"
-          message={inaccessibleWarning ?? INACCESSIBLE_PUBLIC_REPO_MESSAGE}
-          onTryAnotherRepo={resetForAnotherRepo}
-          onRequireAuth={requireAuthForPrivateRepo}
-        />
-      ) : null}
-
-      {!loading && result && claim && breakdown && !inaccessibleRepo ? (
+      {!loading &&
+      result &&
+      claim &&
+      breakdown &&
+      !inaccessibleRepo &&
+      !ownershipUnverified ? (
         <div className="space-y-4 text-left">
           <section className="rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-4">
             <div className="flex items-center justify-between gap-3">
@@ -608,7 +660,18 @@ export default function PublicProductionAudit({
             </div>
           </section>
 
-          <TalentNetworkCta />
+          <ScorecardPublicationCallout
+            claim={claim}
+            onRequireAuth={(nextClaim) => {
+              cachePendingProductionAudit(nextClaim);
+              openAuthModal({
+                description:
+                  "Sign in with GitHub to verify you authored this repository and publish your dossier.",
+                nextPath: "/dashboard",
+                intent: CLAIM_AUDIT_INTENT,
+              });
+            }}
+          />
         </div>
       ) : null}
 
@@ -616,7 +679,8 @@ export default function PublicProductionAudit({
       !loading &&
       !result &&
       !error &&
-      !inaccessibleRepo ? (
+      !inaccessibleRepo &&
+      !ownershipUnverified ? (
         <section className="rounded-2xl border border-border bg-panel px-6 py-12 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-background text-brand">
             <ShieldCheck className="h-7 w-7" aria-hidden />

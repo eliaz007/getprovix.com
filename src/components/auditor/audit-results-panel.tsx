@@ -378,8 +378,8 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
           : "Missing structured error handling",
         deductionLabel: `−${points} pts`,
         summary: isWebApp
-          ? "No `error.tsx` / ErrorBoundary modules detected. Add an App Router `error.tsx` or a React error boundary to raise the resilience pillar — the overall score is not hard-capped."
-          : "No try/catch modules or error-handler files detected. Add a dedicated errors module or exception handler. React error boundaries are not required for libraries or backend packages.",
+          ? "No `error.tsx` / ErrorBoundary modules detected. That deducts 35 from the resilience pillar (not a drop to 0). Add an App Router `error.tsx` or a React error boundary; wrap remaining fetch/await calls in try/catch."
+          : "No try/catch modules or error-handler files detected. Resilience starts at 100 and only falls for unhandled async/fetch (15 points each, max 50). React error boundaries are not required for libraries or backend packages.",
       });
     }
 

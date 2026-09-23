@@ -43,6 +43,12 @@ const GITHUB_AUDIT_PLACEHOLDERS = new Set([
 export const AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE =
   "Please provide a valid GitHub repository or add a private project artifact to run an audit.";
 
+export const INVALID_REPO_FORMAT = "INVALID_REPO_FORMAT";
+export const INVALID_REPO_FORMAT_MESSAGE =
+  "INVALID_REPO_FORMAT: Please provide a full repository path (e.g., username/repository-name).";
+export const INVALID_REPO_FORMAT_HINT =
+  "⚠️ Enter a specific repository name (e.g. owner/project), not just a username or profile.";
+
 const GITHUB_URL_HINT =
   "Enter a valid GitHub URL starting with https://github.com/ (profile or owner/repo).";
 
@@ -74,6 +80,75 @@ export function isGitHubPlaceholderInput(input: string | null | undefined): bool
   }
 
   return GITHUB_AUDIT_PLACEHOLDERS.has(normalized);
+}
+
+/** Strip protocol, github.com host, and trailing slashes for slug checks. */
+export function normalizeGitHubRepoSlug(input: string): string {
+  return input
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^(www\.)?github\.com\/?/i, "")
+    .replace(/\/+$/g, "");
+}
+
+export function parseGitHubRepoPath(
+  input: string
+): { owner: string; repo: string } | null {
+  if (isGitHubPlaceholderInput(input)) {
+    return null;
+  }
+
+  const slug = normalizeGitHubRepoSlug(input);
+  if (!slug || /\s/.test(slug)) {
+    return null;
+  }
+
+  const segments = slug.split("/").filter(Boolean);
+  if (segments.length < 2) {
+    return null;
+  }
+
+  const owner = segments[0];
+  const repo = segments[1].replace(/\.git$/i, "");
+  if (
+    !owner ||
+    !repo ||
+    RESERVED_GITHUB_OWNERS.has(owner.toLowerCase()) ||
+    !GITHUB_USERNAME_PATTERN.test(owner) ||
+    repo === "." ||
+    repo === ".." ||
+    !GITHUB_REPO_PATTERN.test(repo)
+  ) {
+    return null;
+  }
+
+  return { owner, repo };
+}
+
+export function isGitHubUsernameOnlyInput(
+  input: string | null | undefined
+): boolean {
+  const trimmed = input?.trim() ?? "";
+  if (!trimmed || isGitHubPlaceholderInput(trimmed)) {
+    return false;
+  }
+
+  const slug = normalizeGitHubRepoSlug(trimmed);
+  if (!slug || /\s/.test(slug)) {
+    return false;
+  }
+
+  const segments = slug.split("/").filter(Boolean);
+  if (segments.length !== 1) {
+    return false;
+  }
+
+  const owner = segments[0];
+  return (
+    Boolean(owner) &&
+    !RESERVED_GITHUB_OWNERS.has(owner.toLowerCase()) &&
+    GITHUB_USERNAME_PATTERN.test(owner)
+  );
 }
 
 export function parseGitHubUrl(input: string): { owner: string; repo: string | null } | null {
@@ -163,7 +238,7 @@ export function hasUsableGitHubAuditTarget(
     return false;
   }
 
-  return isValidGitHubUrl(trimmed);
+  return parseGitHubRepoPath(trimmed) !== null;
 }
 
 export function getGitHubUrlValidationMessage(input: string): string | null {
@@ -192,8 +267,8 @@ export function normalizeGitHubAuditTarget(
     return "";
   }
 
-  const candidate = toGitHubUrlCandidate(trimmed);
-  return candidate ? normalizeGitHubUrl(candidate) : "";
+  const parsed = parseGitHubRepoPath(trimmed);
+  return parsed ? `https://github.com/${parsed.owner}/${parsed.repo}` : "";
 }
 
 export function githubUrlFromSearchParam(

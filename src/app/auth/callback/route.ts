@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { EMPLOYER_SIGNUP_COOKIE } from "@/lib/google-auth";
+import { syncGitHubIdentityToProfile } from "@/lib/github-identity";
 
 const cookieOptions = {
   path: "/",
@@ -97,6 +98,9 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(failedUrl);
       }
     }
+
+    const { data: userData } = await supabase.auth.getUser();
+    await syncGitHubIdentityToProfile(supabase, userData.user);
   } catch (error) {
     console.error("OAuth exchange error:", error);
     return NextResponse.redirect(failedUrl);

@@ -6,8 +6,10 @@ import {
   isErrorHandlingPath,
   isNoisePath,
   isTestPath,
+  isUnitTestFile,
   parseRepoFilesystemEvidence,
   type ArchitectureSignals,
+  type CiPipelineDepth,
   type RepoFilesystemEvidence,
   type RepoKind,
 } from "@/lib/repo-filesystem";
@@ -193,8 +195,8 @@ export function scoreArchitecture(evidence: RepoFilesystemEvidence): number {
 }
 
 /**
- * DevOps / CI (0-100): prefers `.github/workflows/*.yml`, with partial
- * credit for other recognized CI config files.
+ * DevOps / CI (0-100): 0 only when no workflow exists.
+ * lint/build only → 50; tests on PR → 80; multi-stage deploy/previews → 95–100.
  */
 export function scoreDevops(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
@@ -202,28 +204,23 @@ export function scoreDevops(evidence: RepoFilesystemEvidence): number {
   }
 
   const workflows = evidence.ci_workflow_paths.filter(isCiWorkflowPath);
+  const depth: CiPipelineDepth =
+    evidence.ci_depth ?? (workflows.length === 0 ? "none" : "lint_build");
+
   if (workflows.length === 0) {
     return 0;
   }
 
+  if (depth === "none" || depth === "lint_build") {
+    return 50;
+  }
+
+  if (depth === "tests") {
+    return 80;
+  }
+
   const githubWorkflows = workflows.filter(isGithubWorkflowPath);
-  const otherCi = workflows.length - githubWorkflows.length;
-
-  if (githubWorkflows.length === 0) {
-    return clampScore0to100(35 + otherCi * 15);
-  }
-
-  let score = 55;
-  if (githubWorkflows.length >= 2) {
-    score += 25;
-  }
-  if (githubWorkflows.length >= 3) {
-    score += 20;
-  } else if (otherCi > 0) {
-    score += Math.min(15, otherCi * 8);
-  }
-
-  return clampScore0to100(score);
+  return githubWorkflows.length >= 2 || workflows.length >= 2 ? 100 : 95;
 }
 
 /** @deprecated Use scoreDevops. */
@@ -232,26 +229,46 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
 }
 
 /**
- * Testing (0-100): presence and density of unit/integration test suites.
+ * Testing (0-100): 0 only when no *.test.* / *.spec.* files exist.
+ * Token coverage (<10%) is capped at 35. 10–30% maps to 65–75.
+ * >30% with Playwright/Cypress reaches 85–100.
  */
 export function scoreTesting(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
     return 0;
   }
 
-  const testFiles = evidence.test_paths.filter(isTestPath);
-  if (testFiles.length === 0) {
+  const testFiles =
+    typeof evidence.unit_test_file_count === "number"
+      ? evidence.unit_test_file_count
+      : evidence.test_paths.filter(isUnitTestFile).length;
+  if (testFiles === 0) {
     return 0;
   }
 
-  const fileCount = Math.max(evidence.file_count, 1);
-  const density = testFiles.length / fileCount;
+  const sourceFiles = Math.max(
+    evidence.source_file_count,
+    evidence.file_count - testFiles,
+    testFiles
+  );
+  const ratio = testFiles / sourceFiles;
+  const hasE2e = evidence.has_e2e_tools === true;
 
-  const presence = 40;
-  const volume = Math.min(35, testFiles.length * 7);
-  const densityBonus = Math.min(25, Math.round(density * 250));
+  if (ratio < 0.1) {
+    return clampScore0to100(Math.round(10 + (ratio / 0.1) * 25));
+  }
 
-  return clampScore0to100(presence + volume + densityBonus);
+  if (ratio <= 0.3) {
+    const t = (ratio - 0.1) / 0.2;
+    return clampScore0to100(Math.round(65 + t * 10));
+  }
+
+  const extra = Math.min(1, (ratio - 0.3) / 0.2);
+  if (hasE2e) {
+    return clampScore0to100(Math.round(85 + extra * 15));
+  }
+
+  return clampScore0to100(Math.round(75 + extra * 10));
 }
 
 /** @deprecated Use scoreTesting. */
@@ -262,9 +279,9 @@ export function scoreTestAssertionDensity(
 }
 
 /**
- * Resilience (0-100): structured error handling.
- * Web apps: missing React error boundaries deduct here only.
- * Libraries / backends: grade try/catch modules; do not penalize missing boundaries.
+ * Resilience (0-100): start at 100 and deduct proportionally.
+ * Missing root error boundaries in a web app: −35.
+ * Each unhandled async/fetch without try/catch: −15, max −50.
  */
 export function scoreResilience(
   evidence: RepoFilesystemEvidence,
@@ -276,37 +293,16 @@ export function scoreResilience(
 
   const handlers = evidence.error_handling_paths.filter(isErrorHandlingPath);
   const reactBoundaries = handlers.filter(isReactErrorBoundaryPath);
-  const standardHandlers = handlers.filter(
-    (path) => !isReactErrorBoundaryPath(path)
-  );
+  const missingBoundaries = reactBoundaries.length === 0;
+  const unhandled = Math.max(0, evidence.unhandled_async_count ?? 0);
 
-  if (repoKind !== "web_app") {
-    const count = handlers.length;
-    if (count === 0) {
-      return 0;
-    }
-    if (count >= 3) {
-      return 100;
-    }
-    if (count === 2) {
-      return 85;
-    }
-    return 70;
+  let score = 100;
+  if (repoKind === "web_app" && missingBoundaries) {
+    score -= 35;
   }
+  score -= Math.min(50, unhandled * 15);
 
-  if (handlers.length === 0) {
-    return 0;
-  }
-
-  if (reactBoundaries.length === 0) {
-    return clampScore0to100(20 + standardHandlers.length * 15);
-  }
-
-  if (reactBoundaries.length >= 2) {
-    return 100;
-  }
-
-  return standardHandlers.length > 0 ? 90 : 75;
+  return clampScore0to100(score);
 }
 
 /** @deprecated Use scoreResilience. */

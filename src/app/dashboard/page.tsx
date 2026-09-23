@@ -94,6 +94,16 @@ import {
   persistCandidatePoolVisibility,
   persistCandidateProfile,
 } from "@/lib/persist-candidate-profile";
+import { handleGitHubLinkIdentity } from "@/lib/github-auth";
+import {
+  githubLinkFromUser,
+  syncGitHubIdentityToProfile,
+} from "@/lib/github-identity";
+import {
+  canEnableTalentPoolVisibility,
+  TALENT_POOL_CONNECT_GITHUB_MESSAGE,
+  TALENT_POOL_SCORE_REQUIRED_MESSAGE,
+} from "@/lib/talent-pool-visibility";
 import { createClient, readBrowserSession } from "@/utils/supabase/client";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { readJsonResponse } from "@/lib/read-json-response";
@@ -178,7 +188,10 @@ import {
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import {
   claimPendingProductionAudit,
+  claimPendingProductionAuditResult,
+  DOSSIER_PUBLISHED_EVENT,
   employerVisibleProductionAudit,
+  OWNERSHIP_UNVERIFIED_MESSAGE,
   parseProductionAuditFromProfileRow,
   PRIVATE_AUDIT_INTENT,
   PRODUCTION_AUDIT_UPDATED_EVENT,
@@ -406,6 +419,10 @@ type ProfileRecord = {
   audit_breakdown?: unknown;
   is_audit_verified?: boolean | null;
   is_publicly_visible?: boolean | null;
+  verification_status?: string | null;
+  github_username?: string | null;
+  github_verified?: boolean | null;
+  audit_score?: number | null;
   daily_scans?: number | null;
   last_scan_date?: string | null;
 };
@@ -753,7 +770,15 @@ async function ensureUserProfile(
   const existing = await fetchProfileRow(supabase, user.id);
 
   if (!existing.error && existing.data) {
-    return existing.data as ProfileRecord;
+    const link = await syncGitHubIdentityToProfile(supabase, user);
+    if (!link) {
+      return existing.data as ProfileRecord;
+    }
+    return {
+      ...(existing.data as ProfileRecord),
+      github_username: link.github_username,
+      github_verified: link.github_verified,
+    };
   }
 
   if (existing.error) {
@@ -773,6 +798,7 @@ async function ensureUserProfile(
     user.email?.split("@")[0] ||
     "New User";
 
+  const githubLink = githubLinkFromUser(user);
   const extendedPayload = {
     id: user.id,
     user_id: user.id,
@@ -780,6 +806,8 @@ async function ensureUserProfile(
     role: null,
     is_visible_in_pool: false,
     is_verified: false,
+    github_username: githubLink?.github_username ?? null,
+    github_verified: githubLink?.github_verified ?? false,
   };
 
   let insertResult = await supabase
@@ -979,6 +1007,7 @@ export default function DashboardPage() {
   const [isVisibleInPool, setIsVisibleInPool] = useState(false);
   const [privateAuditorIntent, setPrivateAuditorIntent] = useState(false);
   const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
+  const [isLinkingGitHub, setIsLinkingGitHub] = useState(false);
   const [showPrivateAuditor, setShowPrivateAuditor] = useState(false);
 
   // Prefer the loaded profile role. Fall back to the nav bootstrap role so the
@@ -1379,27 +1408,35 @@ export default function DashboardPage() {
         }
 
         if (claimedAudit) {
-          setDbProfile((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  production_score: claimedAudit.productionScore,
-                  audit_breakdown: claimedAudit.breakdown,
-                  is_audit_verified: true,
-                  is_publicly_visible: claimedAudit.isPubliclyVisible,
-                  ...(claimedAudit.isPubliclyVisible
-                    ? { is_visible_in_pool: true }
-                    : {}),
-                }
-              : prev
-          );
-          if (claimedAudit.isPubliclyVisible) {
+          const verified = claimedAudit.verificationStatus === "verified";
+          setDbProfile((prev) => {
+            if (!prev) {
+              return prev;
+            }
+            if (!verified && prev.verification_status === "verified") {
+              return prev;
+            }
+            return {
+              ...prev,
+              production_score: claimedAudit.productionScore,
+              audit_breakdown: claimedAudit.breakdown,
+              is_audit_verified: verified,
+              is_publicly_visible: verified && claimedAudit.isPubliclyVisible,
+              verification_status: claimedAudit.verificationStatus ?? "unverified",
+              ...(verified && claimedAudit.isPubliclyVisible
+                ? { is_visible_in_pool: true }
+                : {}),
+            };
+          });
+          if (verified && claimedAudit.isPubliclyVisible) {
             setIsVisibleInPool(true);
           }
           showToast(
-            claimedAudit.isPubliclyVisible
-              ? "Scorecard published to the talent roster."
-              : "Private diagnostic saved to your dashboard."
+            verified
+              ? claimedAudit.isPubliclyVisible
+                ? "Scorecard published to the talent roster."
+                : "Private diagnostic saved to your dashboard."
+              : OWNERSHIP_UNVERIFIED_MESSAGE
           );
         }
       } catch (err) {
@@ -2045,25 +2082,33 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
     const onAuditUpdated = (event: Event) => {
       const detail = (event as CustomEvent<ProductionAuditRecord>).detail;
-      if (!detail?.isAuditVerified) {
+      if (!detail) {
         return;
       }
 
-      setDbProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              production_score: detail.productionScore,
-              audit_breakdown: detail.breakdown,
-              is_audit_verified: true,
-              is_publicly_visible: detail.isPubliclyVisible,
-            }
-          : prev
-      );
+      const verified = detail.verificationStatus === "verified";
+      setDbProfile((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        if (!verified && prev.verification_status === "verified") {
+          return prev;
+        }
+        return {
+          ...prev,
+          production_score: detail.productionScore,
+          audit_breakdown: detail.breakdown,
+          is_audit_verified: verified,
+          is_publicly_visible: verified && detail.isPubliclyVisible,
+          verification_status: detail.verificationStatus ?? "unverified",
+        };
+      });
       showToast(
-        detail.isPubliclyVisible
-          ? "Scorecard published to the talent roster."
-          : "Verified production score saved to your dashboard."
+        verified
+          ? detail.isPubliclyVisible
+            ? "Scorecard published to the talent roster."
+            : "Verified production score saved to your dashboard."
+          : OWNERSHIP_UNVERIFIED_MESSAGE
       );
     };
 
@@ -2081,37 +2126,67 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     let cancelled = false;
 
     console.time("dashboard-profile:audit-query");
-    void claimPendingProductionAudit()
+    void claimPendingProductionAuditResult()
       .finally(() => {
         console.timeEnd("dashboard-profile:audit-query");
       })
-      .then((claimed) => {
-      if (!claimed || cancelled) {
+      .then((result) => {
+      if (cancelled) {
         return;
       }
 
-      setDbProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              production_score: claimed.productionScore,
-              audit_breakdown: claimed.breakdown,
-              is_audit_verified: true,
-              is_publicly_visible: claimed.isPubliclyVisible,
-              ...(claimed.isPubliclyVisible
-                ? { is_visible_in_pool: true }
-                : {}),
-            }
-          : prev
-      );
-      if (claimed.isPubliclyVisible) {
+      if (result.error) {
+        showToast(result.error);
+        if (!result.record) {
+          return;
+        }
+      }
+
+      const claimed = result.record;
+      if (!claimed) {
+        return;
+      }
+
+      const verified = claimed.verificationStatus === "verified";
+
+      if (result.enrolledInTalentPool && verified) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("dossier", "published");
+        window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+        window.dispatchEvent(new Event(DOSSIER_PUBLISHED_EVENT));
+      }
+
+      setDbProfile((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        if (!verified && prev.verification_status === "verified") {
+          return prev;
+        }
+        return {
+          ...prev,
+          production_score: claimed.productionScore,
+          audit_breakdown: claimed.breakdown,
+          is_audit_verified: verified,
+          is_publicly_visible: verified && claimed.isPubliclyVisible,
+          verification_status: claimed.verificationStatus ?? "unverified",
+          ...(verified && claimed.isPubliclyVisible
+            ? { is_visible_in_pool: true }
+            : {}),
+        };
+      });
+      if (verified && claimed.isPubliclyVisible) {
         setIsVisibleInPool(true);
       }
-      showToast(
-        claimed.isPubliclyVisible
-          ? "Scorecard published to the talent roster."
-          : "Private diagnostic saved to your dashboard."
-      );
+      if (!result.error && !result.enrolledInTalentPool) {
+        showToast(
+          verified
+            ? claimed.isPubliclyVisible
+              ? "Scorecard published to the talent roster."
+              : "Private diagnostic saved to your dashboard."
+            : OWNERSHIP_UNVERIFIED_MESSAGE
+        );
+      }
     });
 
     return () => {
@@ -2338,10 +2413,16 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     if (isTogglingVisibility) return;
 
     const nextVisible = !isVisibleInPool;
-    if (nextVisible && !isValidGitHubUrl(portfolioUrl)) {
+    const githubVerified = dbProfile?.github_verified === true;
+    const canEnable = canEnableTalentPoolVisibility({
+      githubVerified,
+      scores: [dbProfile?.production_score, dbProfile?.audit_score],
+    });
+    if (nextVisible && !canEnable) {
       showToast(
-        getGitHubUrlValidationMessage(portfolioUrl) ??
-          "Add a valid GitHub profile URL before joining the Provix Talent Network."
+        githubVerified
+          ? TALENT_POOL_SCORE_REQUIRED_MESSAGE
+          : TALENT_POOL_CONNECT_GITHUB_MESSAGE
       );
       return;
     }
@@ -2399,6 +2480,28 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       showToast("Could not update Provix Talent Network visibility. Please try again.");
     } finally {
       setIsTogglingVisibility(false);
+    }
+  };
+
+  const handleLinkGitHub = async () => {
+    if (isLinkingGitHub) {
+      return;
+    }
+
+    setIsLinkingGitHub(true);
+    try {
+      const { error } = await handleGitHubLinkIdentity("/dashboard");
+      if (error) {
+        showToast(error.message);
+      }
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Could not start GitHub linking."
+      );
+    } finally {
+      setIsLinkingGitHub(false);
     }
   };
 
@@ -3883,6 +3986,20 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     audit_data: dbProfile?.audit_data,
   });
   const candidateProductionAudit = parseProductionAuditFromProfileRow(dbProfile);
+  const githubVerified = dbProfile?.github_verified === true;
+  const githubUsername = (dbProfile?.github_username ?? "")
+    .replace(/^@/, "")
+    .trim();
+  const canEnableTalentPool = canEnableTalentPoolVisibility({
+    githubVerified,
+    scores: [
+      dbProfile?.production_score,
+      dbProfile?.audit_score,
+      candidateProductionAudit?.productionScore,
+    ],
+  });
+  const visibilityToggleDisabled =
+    isTogglingVisibility || (!isVisibleInPool && !canEnableTalentPool);
 
   // --- DERIVED VALUES FOR THE SHAREABLE BUSINESS PROFILE CARD ---
   const businessInitials =
@@ -4958,27 +5075,50 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         </div>
 
                         <div className="flex items-center justify-between gap-4 p-4 bg-panel border border-border rounded-xl">
-                          <div>
+                          <div className="min-w-0 space-y-2">
                             <span className="font-bold text-xs text-textMain block">
                               Visible to Employers
                             </span>
                             <span className="text-[11px] text-textMuted">
-                              Off by default. Turn this on to opt in to the talent
-                              pool. Requires a valid GitHub profile URL.
+                              Off by default. Requires a linked GitHub account
+                              and at least one 75+ production audit.
                             </span>
+                            {githubVerified ? (
+                              <p className="text-xs font-medium text-emerald-400">
+                                ✓ Linked: @{githubUsername || "github"}
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                <p className="text-xs text-amber-200">
+                                  {TALENT_POOL_CONNECT_GITHUB_MESSAGE}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleLinkGitHub()}
+                                  disabled={isLinkingGitHub}
+                                  className="inline-flex cursor-pointer items-center rounded-lg border border-border bg-background px-3 py-1.5 text-[11px] font-semibold text-textMain transition-colors hover:bg-white/5 disabled:cursor-wait disabled:opacity-60"
+                                >
+                                  {isLinkingGitHub
+                                    ? "Redirecting..."
+                                    : "Connect GitHub"}
+                                </button>
+                              </div>
+                            )}
                           </div>
                           <button
                             type="button"
                             role="switch"
                             aria-checked={isVisibleInPool}
                             aria-label="Visible to Employers"
-                            disabled={isTogglingVisibility}
+                            disabled={visibilityToggleDisabled}
                             onClick={() => {
                               void handleVisibilityToggle();
                             }}
                             className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
- isTogglingVisibility
+ visibilityToggleDisabled
+ ? isTogglingVisibility
  ? "opacity-60 cursor-wait"
+ : "opacity-50 cursor-not-allowed"
  : "cursor-pointer"
  } ${
  isVisibleInPool ? "bg-emerald-500" : "bg-panel"
@@ -5015,13 +5155,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   ? {
                                       ...prev,
                                       is_publicly_visible: nextVisible,
-                                      ...(nextVisible
+                                      ...(nextVisible && canEnableTalentPool
                                         ? { is_visible_in_pool: true }
                                         : {}),
                                     }
                                   : prev
                               );
-                              if (nextVisible) {
+                              if (nextVisible && canEnableTalentPool) {
                                 setIsVisibleInPool(true);
                               }
                             }}
@@ -6652,17 +6792,24 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               initialPrivateWork={privateAuditorIntent}
               isEmployerView
               onAuditPersisted={(record) => {
-                setDbProfile((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        production_score: record.productionScore,
-                        audit_breakdown: record.breakdown,
-                        is_audit_verified: true,
-                        is_publicly_visible: record.isPubliclyVisible,
-                      }
-                    : prev
-                );
+                const verified = record.verificationStatus === "verified";
+                setDbProfile((prev) => {
+                  if (!prev) {
+                    return prev;
+                  }
+                  if (!verified && prev.verification_status === "verified") {
+                    return prev;
+                  }
+                  return {
+                    ...prev,
+                    production_score: record.productionScore,
+                    audit_breakdown: record.breakdown,
+                    is_audit_verified: verified,
+                    is_publicly_visible: verified && record.isPubliclyVisible,
+                    verification_status:
+                      record.verificationStatus ?? "unverified",
+                  };
+                });
               }}
             />
           )}

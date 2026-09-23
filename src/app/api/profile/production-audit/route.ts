@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireApiUser } from "@/lib/api-auth";
 import {
+  REPO_OWNERSHIP_ERROR,
+  verifyGitHubRepoOwnership,
+} from "@/lib/github-ownership";
+import {
+  PUBLIC_SCORECARD_THRESHOLD,
+  PRIVATE_AUDITED_REPO_LABEL,
+  canPublishProductionScore,
   listProductionAuditHistory,
   parseProductionAuditBreakdown,
   parseProductionAuditFromProfileRow,
@@ -10,6 +17,7 @@ import {
   resolvePublicScorecardVisibility,
   type ProductionAuditClaim,
 } from "@/lib/production-audit";
+import { parseGitHubUrl } from "@/lib/validate-github-url";
 import { clampScore0to100 } from "@/lib/score-scale";
 
 export const runtime = "nodejs";
@@ -59,7 +67,7 @@ async function getProductionAudit(request: Request) {
   const { data: profile } = await access.supabase
     .from("profiles")
     .select(
-      "production_score, audit_breakdown, is_audit_verified, is_publicly_visible, role"
+      "production_score, audit_breakdown, is_audit_verified, is_publicly_visible, verification_status, role"
     )
     .or(`id.eq.${access.user.id},user_id.eq.${access.user.id}`)
     .limit(1)
@@ -78,6 +86,7 @@ async function getProductionAudit(request: Request) {
           audit_breakdown: current.breakdown,
           is_audit_verified: current.isAuditVerified,
           is_publicly_visible: current.isPubliclyVisible,
+          verification_status: current.verificationStatus,
         }
       : null,
     history: history.map((entry) => ({
@@ -116,9 +125,53 @@ async function postProductionAudit(request: Request) {
   }
 
   const productionScore = clampScore0to100(record.production_score);
+  const repoUrl = breakdown.audited_repo_url.trim();
+  const parsedRepo = parseGitHubUrl(repoUrl);
+  const isPublicGitHubClaim = Boolean(
+    parsedRepo?.owner &&
+      parsedRepo.repo &&
+      repoUrl !== PRIVATE_AUDITED_REPO_LABEL
+  );
+
+  if (isPublicGitHubClaim) {
+    const ownership = await verifyGitHubRepoOwnership({
+      user: access.user,
+      repoUrl,
+    });
+    if (!ownership.verified) {
+      const rejectedClaim: ProductionAuditClaim = {
+        production_score: productionScore,
+        audit_breakdown: breakdown,
+        is_audit_verified: true,
+        is_publicly_visible: false,
+      };
+      await persistProfileProductionAudit(
+        access.supabase,
+        access.user.id,
+        rejectedClaim,
+        {
+          isPubliclyVisible: false,
+          enrollInTalentPool: false,
+          verificationStatus: "unverified",
+        }
+      );
+      return NextResponse.json(
+        {
+          error: REPO_OWNERSHIP_ERROR,
+          verified: false,
+          verification_status: "unverified",
+        },
+        { status: 403 }
+      );
+    }
+  }
+
+  const qualifiesForTalentPool =
+    isPublicGitHubClaim && canPublishProductionScore(productionScore);
+  const requestedVisible = parseVisibilityFlag(record.is_publicly_visible);
   const isPubliclyVisible = resolvePublicScorecardVisibility(
     productionScore,
-    parseVisibilityFlag(record.is_publicly_visible) ?? false
+    qualifiesForTalentPool ? true : requestedVisible ?? false
   );
   const claim: ProductionAuditClaim = {
     production_score: productionScore,
@@ -127,11 +180,15 @@ async function postProductionAudit(request: Request) {
     is_publicly_visible: isPubliclyVisible,
   };
 
-  const { error } = await persistProfileProductionAudit(
+  const { error, profileSlug } = await persistProfileProductionAudit(
     access.supabase,
     access.user.id,
     claim,
-    { isPubliclyVisible }
+    {
+      isPubliclyVisible,
+      enrollInTalentPool: qualifiesForTalentPool,
+      verificationStatus: isPublicGitHubClaim ? "verified" : undefined,
+    }
   );
 
   if (error) {
@@ -145,9 +202,15 @@ async function postProductionAudit(request: Request) {
 
   return NextResponse.json({
     production_score: claim.production_score,
+    audit_score: claim.production_score,
     audit_breakdown: claim.audit_breakdown,
     is_audit_verified: true,
     is_publicly_visible: claim.is_publicly_visible,
+    is_in_talent_pool: qualifiesForTalentPool,
+    verification_status: isPublicGitHubClaim ? "verified" : "unverified",
+    enrolled_in_talent_pool: qualifiesForTalentPool,
+    profile_slug: profileSlug ?? null,
+    threshold: PUBLIC_SCORECARD_THRESHOLD,
     history: history.map((entry) => ({
       id: entry.id,
       production_score: entry.productionScore,
@@ -215,5 +278,6 @@ async function patchProductionAudit(request: Request) {
     audit_breakdown: nextRecord?.breakdown ?? null,
     is_audit_verified: Boolean(nextRecord?.isAuditVerified),
     is_publicly_visible: Boolean(nextRecord?.isPubliclyVisible),
+    verification_status: nextRecord?.verificationStatus ?? "unverified",
   });
 }

@@ -16,7 +16,7 @@ import {
 } from "@/lib/account-role";
 import {
   CLAIM_AUDIT_INTENT,
-  claimPendingProductionAudit,
+  claimPendingProductionAuditResult,
 } from "@/lib/production-audit";
 import {
   buildPasswordResetRedirectUrl,
@@ -226,14 +226,23 @@ export default function LoginPage() {
     signupKind?: SignUpType
   ) => {
     await supabase.auth.getSession();
+    let claimQuery = "";
     if (user && signupKind !== "business" && !isEmployerSignup(user)) {
-      await claimPendingProductionAudit();
+      const claimed = await claimPendingProductionAuditResult();
+      if (claimed.enrolledInTalentPool) {
+        claimQuery = "dossier=published";
+      } else if (claimed.error) {
+        claimQuery = `claim_error=${encodeURIComponent(claimed.error)}`;
+      }
     }
     const destination = user
       ? await destinationAfterAuth(user, window.location.search, signupKind)
       : getPostLoginPath(user);
+    const nextDestination = claimQuery
+      ? `${destination}${destination.includes("?") ? "&" : "?"}${claimQuery}`
+      : destination;
     router.refresh();
-    router.push(destination);
+    router.push(nextDestination);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {

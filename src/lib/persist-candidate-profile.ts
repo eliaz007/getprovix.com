@@ -20,6 +20,11 @@ import {
   serializeEducationEntries,
   type EducationEntry,
 } from "@/lib/candidate-education";
+import {
+  canEnableTalentPoolVisibility,
+  TALENT_POOL_CONNECT_GITHUB_MESSAGE,
+  TALENT_POOL_SCORE_REQUIRED_MESSAGE,
+} from "@/lib/talent-pool-visibility";
 
 export type CandidateProfileSaveInput = {
   fullName: string;
@@ -238,6 +243,55 @@ export async function persistCandidatePoolVisibility(
       error: { message: "Session user does not match profile owner." },
       userMessage: "Could not update visibility for this account.",
     };
+  }
+
+  if (isVisibleInPool) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("github_verified, production_score, audit_score")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const scores = [
+      typeof profile?.production_score === "number"
+        ? profile.production_score
+        : null,
+      typeof profile?.audit_score === "number" ? profile.audit_score : null,
+    ];
+
+    if (
+      !canEnableTalentPoolVisibility({
+        githubVerified: profile?.github_verified === true,
+        scores,
+      })
+    ) {
+      let historyScore: number | null = null;
+      const history = await supabase
+        .from("production_audit_history")
+        .select("production_score")
+        .eq("user_id", userId)
+        .gte("production_score", 75)
+        .limit(1)
+        .maybeSingle();
+      if (typeof history.data?.production_score === "number") {
+        historyScore = history.data.production_score;
+      }
+
+      if (
+        !canEnableTalentPoolVisibility({
+          githubVerified: profile?.github_verified === true,
+          scores: [...scores, historyScore],
+        })
+      ) {
+        return {
+          error: { message: TALENT_POOL_CONNECT_GITHUB_MESSAGE },
+          userMessage:
+            profile?.github_verified === true
+              ? TALENT_POOL_SCORE_REQUIRED_MESSAGE
+              : TALENT_POOL_CONNECT_GITHUB_MESSAGE,
+        };
+      }
+    }
   }
 
   const payload: ProfilePayload = {

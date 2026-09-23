@@ -134,9 +134,12 @@ Perform three artifact checks plus a chronological timeline conflict check:
 FILE-SYSTEM EVIDENCE VS PROSE:
 - Prose descriptions, README summaries, resume bullets, and external project write-ups can never override missing code artifacts.
 - If a README says the repo has tests, CI, or error handling but the matching filesystem path list is empty, treat that artifact as missing from its pillar only.
-- integrity_score uses the four-pillar weighted model: Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Never hard-cap the total at 60 or 50.
-- If scorePolicy.repoKind is "library", do not penalize missing React error boundaries; grade resilience on try/catch and standard error-handler modules.
-- If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct from resilience only — never cap the total score.
+- integrity_score uses the four-pillar weighted model: Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Never hard-cap the total at 60 or 50. Never drop a pillar to 0 unless that capability is genuinely absent.
+- Testing: 0 only with no test files; ratio < 0.10 caps at 35; 0.10–0.30 maps to 65–75; > 0.30 with Playwright/Cypress is 85–100.
+- DevOps: 0 only with no workflows; lint/build-only is 50; tests on PR is 80; multi-stage deploy/previews are 95–100.
+- Resilience starts at 100. Web apps missing error.tsx / ErrorBoundary lose 35. Each unhandled async/fetch without try/catch loses 15, max −50. A single unhandled error is 85, not 0.
+- If scorePolicy.repoKind is "library", do not penalize missing React error boundaries; grade resilience from unhandled async/fetch only.
+- If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct 35 from resilience only — never cap the total score.
 - Do not deduct numerical points for commit age or inactivity.
 
 Return strict JSON only in this exact structure:
@@ -176,7 +179,7 @@ Also generate an Employer Interview Cheat Sheet:
 - Each question must include a category badge label and a concise what_to_listen_for tip for hiring managers.
 
 Rules:
-- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with file-system artifacts. Apply the hard caps above. Do not deduct points for GitHub handle / display-name mismatch. Do not deduct points for a missing resume.
+- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with file-system artifacts. Use proportional pillar grades — never binary 0/100 drops unless a capability is absent. Do not deduct points for GitHub handle / display-name mismatch. Do not deduct points for a missing resume.
 - timeline_flags: array of specific red-flag strings; empty array if none. Never include flags about GitHub handle, username, or login not matching the candidate display name or codename. Never include a missing resume, CV, or experience summary. Include missing tests/CI/error-handling files when those path lists are empty.
 - checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown. Do not mention handle-vs-name mismatch.
 - artifact_analysis should match Check 1. technical_depth_summary remains a separate overall depth paragraph.
