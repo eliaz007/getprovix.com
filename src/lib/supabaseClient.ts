@@ -1,5 +1,8 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { AUTH_SESSION_TIMEOUT_MS } from "@/lib/auth-session-timeout";
+
+export { AUTH_SESSION_TIMEOUT_MS };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -8,8 +11,6 @@ const cookieOptions = {
   path: "/",
   sameSite: "lax" as const,
 };
-
-export const AUTH_SESSION_TIMEOUT_MS = 1500;
 
 /**
  * v2.112+ is lockless by default. Do not pass `auth.lock` — that opts into the
