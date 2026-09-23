@@ -7,6 +7,7 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import GuestAuthModal from "@/components/GuestAuthModal";
+import CompanySetupModal from "@/components/dashboard/CompanySetupModal";
 import DashboardSidebar from "@/components/dashboard/dashboard-sidebar";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import GetVerifiedBanner from "@/components/GetVerifiedBanner";
@@ -118,6 +119,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         onClose={() => setAuthModalOpen(false)}
         onError={setAuthModalError}
       />
+      <CompanySetupModal />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Briefcase,
+  Building2,
   Compass,
   FileText,
   Mail,
@@ -30,6 +31,7 @@ import {
   isPendingCandidateIntroStatus,
 } from "@/lib/candidate-intro-requests";
 import { getAvailabilitySidebarPresentation } from "@/lib/availability-status";
+import { employerCompanyLabel, isMissingCompanyName } from "@/lib/company-name";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { createClient } from "@/utils/supabase/client";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
@@ -401,6 +403,82 @@ function IntroBadge({ count }: { count: number }) {
   );
 }
 
+function initialsFromLabel(label: string): string {
+  const parts = label.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const first = parts[0]?.[0] ?? "";
+    const last = parts[parts.length - 1]?.[0] ?? "";
+    return `${first}${last}`.toUpperCase();
+  }
+
+  return (parts[0] ?? "AC").slice(0, 2).toUpperCase();
+}
+
+function isUsableImageUrl(url: string | null | undefined): boolean {
+  const value = url?.trim() ?? "";
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+const avatarFallbackClass =
+  "flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-800 border border-zinc-700 text-zinc-300";
+
+function SidebarAvatar({
+  imageUrl,
+  isEmployer,
+  companyLabel,
+  initials,
+}: {
+  imageUrl: string | null;
+  isEmployer: boolean;
+  companyLabel: string;
+  initials: string;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const usableUrl = isUsableImageUrl(imageUrl) ? imageUrl : null;
+  const showImage = Boolean(usableUrl) && !imageFailed;
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
+
+  if (showImage && usableUrl) {
+    return (
+      <img
+        src={usableUrl}
+        alt=""
+        onError={() => setImageFailed(true)}
+        className="h-8 w-8 shrink-0 rounded-md object-cover border border-zinc-700"
+      />
+    );
+  }
+
+  if (isEmployer) {
+    const companyInitial = companyLabel.trim().charAt(0).toUpperCase();
+    const hasRealCompany = !isMissingCompanyName(companyLabel) && companyInitial;
+
+    return (
+      <span className={avatarFallbackClass}>
+        {hasRealCompany ? (
+          <span className="text-[11px] font-semibold">{companyInitial}</span>
+        ) : (
+          <Building2 className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+        )}
+      </span>
+    );
+  }
+
+  return <span className={avatarFallbackClass}>{initials}</span>;
+}
+
 function SidebarUserFooter() {
   const pathname = usePathname();
   const router = useRouter();
@@ -410,6 +488,7 @@ function SidebarUserFooter() {
     userAvatarUrl,
     userInitials,
     userDisplayName,
+    companyName,
     availabilityStatus,
     isVerifiedEmployer,
     isBusinessAccount,
@@ -456,11 +535,27 @@ function SidebarUserFooter() {
     return null;
   }
 
+  const companyLabel = employerCompanyLabel(companyName);
+  const recruiterName = userDisplayName.trim();
+  const showRecruiterName =
+    isBusinessAccount &&
+    recruiterName.length > 0 &&
+    recruiterName !== "Developer" &&
+    recruiterName !== companyLabel;
+  const primaryLabel = isBusinessAccount ? companyLabel : userDisplayName;
+  const avatarInitials = isBusinessAccount
+    ? initialsFromLabel(companyLabel)
+    : userInitials;
   const statusLabel = isBusinessAccount
     ? isVerifiedEmployer
-      ? "Vetted"
+      ? "Verified Employer"
       : "Unverified"
     : availabilityPresentation.label;
+  const statusTitle = isBusinessAccount
+    ? isVerifiedEmployer
+      ? "Verified hiring company on Provix"
+      : undefined
+    : undefined;
   const dotClass = isBusinessAccount
     ? isVerifiedEmployer
       ? "bg-emerald-500"
@@ -470,22 +565,25 @@ function SidebarUserFooter() {
   return (
     <div className="mt-auto border-t border-white/[0.08] pt-3">
       <div className="flex items-center gap-2.5 rounded-lg border border-white/[0.08] bg-[#131316]/90 px-2.5 py-2">
-        {userAvatarUrl ? (
-          <img
-            src={userAvatarUrl}
-            alt=""
-            className="h-8 w-8 shrink-0 rounded-md object-cover ring-1 ring-zinc-700/60"
-          />
-        ) : (
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-800 text-[10px] font-semibold text-zinc-200 ring-1 ring-zinc-700/60">
-            {userInitials}
-          </span>
-        )}
+        <SidebarAvatar
+          imageUrl={userAvatarUrl}
+          isEmployer={isBusinessAccount}
+          companyLabel={companyName ?? ""}
+          initials={avatarInitials}
+        />
         <div className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-zinc-200">
-            {userDisplayName}
+            {primaryLabel}
           </span>
-          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-zinc-400">
+          {showRecruiterName ? (
+            <span className="block truncate text-[11px] text-zinc-500">
+              {recruiterName}
+            </span>
+          ) : null}
+          <div
+            className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-zinc-400"
+            title={statusTitle}
+          >
             <span
               className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`}
               aria-hidden

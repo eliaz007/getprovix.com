@@ -10,14 +10,9 @@ export function clearEmployerSignupIntent() {
   document.cookie = `${EMPLOYER_SIGNUP_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
 }
 
-export async function handleGoogleSignIn(nextPath?: string, accountKind?: "employer" | "candidate") {
+export async function handleGoogleSignIn(_nextPath?: string, accountKind?: "employer" | "candidate") {
   const supabase = createClient();
-  const origin = window.location.origin;
-  const next =
-    nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")
-      ? nextPath
-      : "/dashboard";
-  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+  const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;
 
   if (accountKind === "employer") {
     rememberEmployerSignupIntent();

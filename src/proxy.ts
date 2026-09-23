@@ -21,7 +21,7 @@ export const config = {
      * Unsigned app-shell routes redirect to /. Signed-in visits to /
      * redirect to /dashboard. Matched /api routes never HTML-redirect.
      */
-    "/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
     "/api/intros/:path*",
     "/api/profile/:path*",
     "/api/talent-pool/:path*",

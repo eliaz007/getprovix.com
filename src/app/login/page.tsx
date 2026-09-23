@@ -125,7 +125,11 @@ export default function LoginPage() {
       return;
     }
 
-    setError(authError);
+    setError(
+      authError === "auth_failed"
+        ? "Google sign-in failed. Please try again."
+        : authError
+    );
     params.delete("error");
     const remaining = params.toString();
     window.history.replaceState(

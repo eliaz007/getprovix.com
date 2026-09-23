@@ -38,6 +38,7 @@ import SelfTaughtEngineerBadge from "@/components/SelfTaughtEngineerBadge";
 import EducationEntriesForm from "@/components/dashboard/education-entries-form";
 import { DashboardContentGate, useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 import { DashboardContentSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { EmployerConsoleSkeleton } from "@/components/dashboard/employer-console-skeleton";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { ProvixLogo } from "@/components/ProvixLogo";
@@ -141,7 +142,7 @@ import {
   type TalentPoolEducation,
   type TalentPoolProfileRow,
 } from "@/lib/talent-pool-profiles";
-import { fetchProfileForCandidateId } from "@/lib/resolve-candidate-profile";
+import { fetchProfileForCandidateId, isProfileUuid } from "@/lib/resolve-candidate-profile";
 import {
   ensureTalentPoolVisibilityChannel,
   publishTalentPoolVisibility,
@@ -858,6 +859,8 @@ export default function DashboardPage() {
   const setNavProfileStudioSection = dashboardNav?.setProfileStudioSection;
   const navSetAvailabilityStatus = dashboardNav?.setAvailabilityStatus;
   const navSetUserDisplayName = dashboardNav?.setUserDisplayName;
+  const navSetCompanyName = dashboardNav?.setCompanyName;
+  const navCompanyName = dashboardNav?.companyName;
 
   const setActiveTab = useCallback(
     (tab: DashboardTab) => {
@@ -987,7 +990,7 @@ export default function DashboardPage() {
   const [candidates, setCandidates] = useState<TalentPoolCandidate[]>([]);
   const [selectedCandidate, setSelectedCandidate] =
     useState<TalentPoolCandidate | null>(null);
-  const [talentPoolLoading, setTalentPoolLoading] = useState(false);
+  const [talentPoolLoading, setTalentPoolLoading] = useState(true);
   const [talentPoolError, setTalentPoolError] = useState<string | null>(null);
   const [talentPoolRefreshKey, setTalentPoolRefreshKey] = useState(0);
   const loadTalentPoolRef = useRef<TalentPoolLoadFn>(async () => {});
@@ -1247,6 +1250,7 @@ export default function DashboardPage() {
             loadedName.trim() ||
             null
         );
+        navSetCompanyName?.(profileWithRole?.company_name?.trim() || null);
         setWorkPreference(loadedWorkPreference);
         setCandidateTimezone(loadedCandidateTimezone);
 
@@ -2228,6 +2232,33 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   // business name, industry, work email, and phone instead of dev credentials.
   const [businessProfileData, setBusinessProfileData] = useState(EMPTY_BUSINESS_PROFILE_DATA);
   const [savedBusinessProfileData, setSavedBusinessProfileData] = useState(EMPTY_BUSINESS_PROFILE_DATA);
+
+  useEffect(() => {
+    if (!isBusinessAccount) {
+      return;
+    }
+
+    const next = navCompanyName?.trim() ?? "";
+    if (!next) {
+      return;
+    }
+
+    setBusinessProfileData((prev) =>
+      prev.businessName.trim() === next
+        ? prev
+        : { ...prev, businessName: next }
+    );
+    setSavedBusinessProfileData((prev) =>
+      prev.businessName.trim() === next
+        ? prev
+        : { ...prev, businessName: next }
+    );
+    setDbProfile((prev) =>
+      prev && prev.company_name?.trim() !== next
+        ? { ...prev, company_name: next }
+        : prev
+    );
+  }, [isBusinessAccount, navCompanyName]);
   const employerCompanyNameForMatching =
     businessProfileData?.businessName?.trim() ||
     dbProfile?.company_name?.trim() ||
@@ -2433,6 +2464,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             : prev
         );
         setSavedBusinessProfileData(businessProfileData);
+        navSetCompanyName?.(businessProfileData.businessName.trim() || null);
         showToast(
           isVerified
             ? "Profile changes saved successfully!"
@@ -2827,10 +2859,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     }
 
     const profileId = resolveTalentProfileId(selectedCandidate);
-    if (!profileId) {
+    if (!profileId || !isProfileUuid(profileId)) {
       console.warn(
-        "[talent-pool/education] skipped fetch: candidate has no profiles.id UUID",
-        { id: selectedCandidate.id, profileId: selectedCandidate.profileId }
+        "Could not load education details, using defaults"
       );
       return;
     }
@@ -2852,21 +2883,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         (async () => {
           try {
             const response = await fetchWithAuth(
-              `/api/talent-pool/education?profileId=${encodeURIComponent(profileId)}`
+              `/api/talent-pool/education?profileId=${encodeURIComponent(profileId)}`,
+              { credentials: "include" }
             );
             if (!response.ok) {
-              console.error(
-                "[talent-pool/education] API status",
-                response.status,
-                await response.text()
+              console.warn(
+                "Could not load education details, using defaults"
               );
-              return null;
+              return emptyEducation;
             }
-            const payload = (await readJsonResponse(response)) as Record<string, unknown>;
+            const payload = (await readJsonResponse(response)) as
+              | Record<string, unknown>
+              | unknown[];
+            if (!payload || Array.isArray(payload)) {
+              return emptyEducation;
+            }
             return educationFromProfileRow(payload);
-          } catch (error) {
-            console.error("Talent pool education API failed:", error);
-            return null;
+          } catch {
+            console.warn("Could not load education details, using defaults");
+            return emptyEducation;
           }
         })(),
       ]);
@@ -4209,7 +4244,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           />
         </div>
       ) : showBootstrapSkeleton ? (
-        <DashboardContentSkeleton />
+        isBusinessAccount || activeTab === "talent" ? (
+          <EmployerConsoleSkeleton />
+        ) : (
+          <DashboardContentSkeleton />
+        )
       ) : (
         <>
       {isEmployeeAccount && activeTab === "opportunity_radar" && (
@@ -6250,6 +6289,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
           {/* EMPLOYER: VETTED TALENT POOL */}
           {showTalentPoolNav && activeTab === "talent" && (
+            talentPoolLoading ? (
+              <EmployerConsoleSkeleton />
+            ) : (
             <div>
               <div className="flex items-end justify-between mb-8">
                 <div>
@@ -6292,7 +6334,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 </div>
                 <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
                   <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
-                    Saved Profiles
+                    Active Profiles
                   </span>
                   <span className="text-3xl font-mono font-extrabold tabular-nums text-textMain">
                     {savedProfilesCount}
@@ -6408,35 +6450,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     />
                   </div>
 
-                  {talentPoolLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {Array.from({ length: 3 }).map((_, index) => (
-                        <div
-                          key={index}
-                          className="card-edge bg-panel border border-border rounded-2xl p-5 animate-pulse min-h-[260px]"
-                          aria-hidden="true"
-                        >
-                          <div className="flex items-start justify-between gap-2 mb-4">
-                            <div className="w-12 h-12 rounded-full bg-panel" />
-                            <div className="space-y-2">
-                              <div className="h-5 w-20 rounded-full bg-panel" />
-                              <div className="h-5 w-16 rounded-full bg-panel/80" />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="h-4 w-32 rounded bg-panel" />
-                            <div className="h-3 w-24 rounded bg-panel/80" />
-                            <div className="h-3 w-40 rounded bg-panel" />
-                          </div>
-                          <div className="flex gap-1.5 mt-6">
-                            <div className="h-6 w-14 rounded-md bg-panel/80" />
-                            <div className="h-6 w-16 rounded-md bg-panel/80" />
-                            <div className="h-6 w-12 rounded-md bg-panel/80" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : talentPoolError ? (
+                  {talentPoolError ? (
                     <div className="card-edge bg-panel border border-red-500/20 rounded-2xl p-10 text-center">
                       <p className="text-sm font-medium text-red-200">
                         {talentPoolError}
@@ -6575,6 +6589,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 </div>
               </div>
             </div>
+            )
           )}
 
           {/* EMPLOYER: AI SCREEN CANDIDATE */}

@@ -98,18 +98,13 @@ export default function ProductionScorecard({
       <div
         className={`rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-5 backdrop-blur-sm ${className}`.trim()}
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className={SECTION_LABEL}>Production Scorecard</p>
-            <p className="mt-1 truncate text-sm text-zinc-400">
-              {inspected
-                ? `Secondary codebase index · ${resolved.evidence.fileCount} paths`
-                : "Run a GitHub audit to compute CI, tests, and error boundaries."}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1">
+        <div className="min-w-0">
+          <p className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground text-zinc-500">
+            Production Scorecard
+          </p>
+          <div className="flex items-center justify-between gap-3">
             <p
-              className={`text-right font-mono text-sm font-medium tabular-nums ${getMetricTone(
+              className={`min-w-0 font-mono text-sm font-medium tabular-nums ${getMetricTone(
                 productionScore
               )}`}
             >
@@ -117,6 +112,11 @@ export default function ProductionScorecard({
             </p>
             <ProductionScoreVerifiedBadge score={productionScore} />
           </div>
+          <p className="mt-1 text-sm leading-relaxed text-zinc-400">
+            {inspected
+              ? `Secondary codebase index · ${resolved.evidence.fileCount} paths`
+              : "Run a GitHub audit to compute CI, tests, and error boundaries."}
+          </p>
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2">

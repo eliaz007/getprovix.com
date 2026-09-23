@@ -58,6 +58,9 @@ type DashboardNavContextValue = {
   userInitials: string;
   userDisplayName: string;
   setUserDisplayName: (name: string | null) => void;
+  companyName: string | null;
+  setCompanyName: (name: string | null) => void;
+  companyNameReady: boolean;
   availabilityStatus: AvailabilityStatus | null;
   setAvailabilityStatus: (status: AvailabilityStatus | null) => void;
   authLoading: boolean;
@@ -203,6 +206,12 @@ function DashboardNavProviderImpl({
     setUserDisplayNameState(displayName);
     setUserInitials(initialsFromDisplayName(displayName));
   }, []);
+  const [companyName, setCompanyNameState] = useState<string | null>(null);
+  const [companyNameReady, setCompanyNameReady] = useState(false);
+  const setCompanyName = useCallback((name: string | null) => {
+    setCompanyNameState(name?.trim() || null);
+    setCompanyNameReady(true);
+  }, []);
   const [availabilityStatus, setAvailabilityStatus] =
     useState<AvailabilityStatus | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -346,6 +355,8 @@ function DashboardNavProviderImpl({
         setUserId(null);
         setUserAvatarUrl(null);
         setUserDisplayName(null);
+        setCompanyName(null);
+        setCompanyNameReady(false);
         setAccountRole(null);
         setIsVerifiedEmployer(false);
         setAvailabilityStatus(null);
@@ -366,11 +377,12 @@ function DashboardNavProviderImpl({
         is_verified?: boolean | null;
         availability_status?: string | null;
         full_name?: string | null;
+        company_name?: string | null;
       } | null = null;
       console.time("dashboard-layout:profile-fetch");
       const byId = await supabase
         .from("profiles")
-        .select("role, is_verified, availability_status, full_name")
+        .select("role, is_verified, availability_status, full_name, company_name")
         .eq("id", user.id)
         .maybeSingle();
       console.timeEnd("dashboard-layout:profile-fetch");
@@ -381,7 +393,7 @@ function DashboardNavProviderImpl({
         console.time("dashboard-layout:profile-fetch-by-user-id");
         const byUserId = await supabase
           .from("profiles")
-          .select("role, is_verified, availability_status, full_name")
+          .select("role, is_verified, availability_status, full_name, company_name")
           .eq("user_id", user.id)
           .maybeSingle();
         console.timeEnd("dashboard-layout:profile-fetch-by-user-id");
@@ -413,6 +425,8 @@ function DashboardNavProviderImpl({
 
       setIsVerifiedEmployer(profile?.is_verified === true);
       setAvailabilityStatus(parseAvailabilityStatus(profile?.availability_status));
+      setCompanyName(profile?.company_name ?? null);
+      setCompanyNameReady(true);
       const namedIdentity = getUserHeaderIdentity(user, profile?.full_name);
       setUserDisplayNameState(namedIdentity.displayName);
       setUserInitials(namedIdentity.initials);
@@ -514,6 +528,9 @@ function DashboardNavProviderImpl({
       userInitials,
       userDisplayName,
       setUserDisplayName,
+      companyName,
+      setCompanyName,
+      companyNameReady,
       availabilityStatus,
       setAvailabilityStatus,
       authLoading,
@@ -543,6 +560,8 @@ function DashboardNavProviderImpl({
       userAvatarUrl,
       userInitials,
       userDisplayName,
+      companyName,
+      companyNameReady,
       availabilityStatus,
       authLoading,
       contentReady,
