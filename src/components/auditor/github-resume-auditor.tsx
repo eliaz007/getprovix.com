@@ -561,7 +561,7 @@ export default function GitHubResumeAuditor({
       </div>
 
       <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
-        <div className={`${GLASS_CARD} space-y-4`}>
+        <div className={`${GLASS_CARD} min-w-0 space-y-4`}>
           {needsTokenChallenge ? (
             <RepoOwnershipVerifier
               repoUrl={ownershipRepoUrl}

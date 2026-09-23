@@ -191,100 +191,85 @@ export default function RepoOwnershipVerifier({
   if (variant === "banner") {
     return (
       <section
-        className="rounded-xl border border-brand/25 bg-brandGlow px-3 py-2.5 sm:px-4"
+        className="flex w-full flex-col justify-between gap-3 overflow-hidden rounded-xl border border-purple-500/30 bg-purple-950/20 p-3 sm:flex-row sm:items-center"
         aria-labelledby="repo-ownership-heading"
       >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
-                verified
-                  ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                  : "border-brand/30 bg-brand/15 text-brand"
-              }`}
-            >
-              <ShieldCheck className="h-4 w-4" aria-hidden />
-            </span>
-            <div className="min-w-0">
-              <p
-                id="repo-ownership-heading"
-                className="text-[11px] font-bold uppercase tracking-widest text-brand"
-              >
-                {PROVIX_FILENAME}
-              </p>
-              <p className="truncate text-xs text-textMuted">
-                {verified
-                  ? `Ownership verified${verifiedBranch ? ` on ${verifiedBranch}` : ""}`
-                  : "Commit this token at the repo root, then verify"}
-              </p>
-              {verified ? (
-                <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                  <Check className="h-3 w-3" aria-hidden />
-                  Ownership verified
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-            <label htmlFor="provix-verification-token" className="sr-only">
-              {PROVIX_FILENAME} contents
-            </label>
-            <input
-              id="provix-verification-token"
-              readOnly
-              value={token}
-              spellCheck={false}
-              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs text-textMain focus:border-brand focus:outline-none"
-            />
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void copyToken()}
-                disabled={!token}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-panel px-2.5 py-2 text-[11px] font-semibold text-textMain transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3.5 w-3.5" aria-hidden />
-                    Copy
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => void verifyOwnership()}
-                disabled={loading || verified || !token}
-                aria-busy={loading}
-                className="inline-flex items-center justify-center gap-2 rounded-md bg-brand px-3 py-2 text-[11px] font-bold tracking-tight text-white transition-colors duration-200 ease-out hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                    Verifying...
-                  </>
-                ) : verified ? (
-                  <>
-                    <Check className="h-3.5 w-3.5" aria-hidden />
-                    Verified
-                  </>
-                ) : (
-                  "Verify Ownership"
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-        {error ? (
-          <p role="alert" className="mt-2 text-xs text-violet-100">
-            {error}
+        <div className="min-w-0 flex-1">
+          <p
+            id="repo-ownership-heading"
+            className="text-[11px] font-bold uppercase tracking-widest text-purple-300"
+          >
+            {PROVIX_FILENAME}
           </p>
-        ) : null}
+          <p className="mt-0.5 truncate text-xs text-zinc-400">
+            {verified
+              ? `Ownership verified${verifiedBranch ? ` on ${verifiedBranch}` : ""}`
+              : "Commit this token at the repo root, then verify"}
+          </p>
+          {verified ? (
+            <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+              <Check className="h-3 w-3" aria-hidden />
+              Ownership verified
+            </span>
+          ) : null}
+          {error ? (
+            <p role="alert" className="mt-1.5 text-xs leading-relaxed text-red-300">
+              {error}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap">
+          <label htmlFor="provix-verification-token" className="sr-only">
+            {PROVIX_FILENAME} contents
+          </label>
+          <span
+            id="provix-verification-token"
+            title={token}
+            className="max-w-[9.5rem] truncate rounded-md border border-purple-500/25 bg-black/40 px-2 py-1.5 font-mono text-[11px] text-purple-100"
+          >
+            {token}
+          </span>
+          <button
+            type="button"
+            onClick={() => void copyToken()}
+            disabled={!token}
+            className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-1.5 text-xs font-semibold text-purple-100 transition-colors hover:bg-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {copied ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+                Copied!
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5" aria-hidden />
+                Copy
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => void verifyOwnership()}
+            disabled={loading || verified || !token}
+            aria-busy={loading}
+            className="inline-flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                Verifying...
+              </>
+            ) : verified ? (
+              <>
+                <Check className="h-3.5 w-3.5" aria-hidden />
+                Verified
+              </>
+            ) : (
+              "Verify Ownership"
+            )}
+          </button>
+        </div>
       </section>
     );
   }
