@@ -22,6 +22,7 @@ import {
 } from "@/lib/external-projects";
 import {
   fetchGitHubProfileArtifacts,
+  GithubContentReadError,
   githubArtifactAuditSucceeded,
   githubAuditHasFetchedArtifacts,
   githubAuditLooksInaccessible,
@@ -45,10 +46,7 @@ import {
 import { extractResumeTextFromFile } from "@/lib/parse-resume";
 import { RESUME_TEXT_LIMIT } from "@/lib/resume-file";
 import { clampScore0to100 } from "@/lib/score-scale";
-import {
-  blendReadinessScore,
-  normalizeCommitDates,
-} from "@/lib/audit-readiness";
+import { normalizeCommitDates } from "@/lib/audit-readiness";
 import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
@@ -65,6 +63,11 @@ import {
   emptyProductionAuditMetrics,
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
+import {
+  loadCodebaseBenchmark,
+  type CodebaseBenchmark,
+} from "@/lib/codebase-benchmark";
+import { createServiceRoleClient } from "@/lib/admin-access";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { isEmployerRole } from "@/lib/dashboard-account";
@@ -115,6 +118,8 @@ export type AuditResult = {
   filesystem: RepoFilesystemEvidence | null;
   commitDates: string[];
   inaccessibleRepo?: boolean;
+  /** Rank of this production score among completed audits. Null when the count is unavailable. */
+  benchmark?: CodebaseBenchmark | null;
 };
 
 const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws. Strict penalties are required — and every hard deduction must come with a concrete repair plan the candidate can implement.
@@ -1023,6 +1028,12 @@ export async function POST(request: Request) {
     try {
       githubArtifacts = await fetchGitHubProfileArtifacts(githubFetchUrl);
     } catch (error) {
+      if (error instanceof GithubContentReadError) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: 503 }
+        );
+      }
       console.error("[audit] GitHub artifact fetch failed:", error);
     }
   }
@@ -1093,17 +1104,11 @@ export async function POST(request: Request) {
   );
   result = { ...result, metrics };
 
-  // When the file tree was inspected, blend the qualitative score with the
-  // deterministic four-pillar production scorecard. Inactivity is informational
-  // only and cannot drag a proven production repo.
+  // Headline grade is the four-pillar file-tree index only.
+  // Gemini text stays on strengths, red flags, and recommendations.
   if (metrics.evidence.inspected) {
-    const blended = blendReadinessScore({
-      qualitativeScore: result.score,
-      productionScore: metrics.productionScore,
-      commitDates,
-    });
     result = applyFilesystemScoreCap(
-      { ...result, score: blended },
+      { ...result, score: metrics.productionScore },
       filesystem
     );
     result = { ...result, metrics };
@@ -1191,8 +1196,22 @@ export async function POST(request: Request) {
     }
   }
 
+  const benchmarkClient = createServiceRoleClient();
+  let benchmark: CodebaseBenchmark | null = null;
+  if (benchmarkClient) {
+    try {
+      benchmark = await loadCodebaseBenchmark(
+        benchmarkClient,
+        result.metrics.productionScore
+      );
+    } catch (error) {
+      console.error("[audit] codebase benchmark threw:", error);
+    }
+  }
+
   return NextResponse.json({
     ...result,
+    benchmark,
     ...usage,
     verification_status: verificationStatus,
     ownership_verified: verificationStatus === "verified",

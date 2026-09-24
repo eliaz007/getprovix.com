@@ -150,7 +150,7 @@ export function githubAuditLooksInaccessible(
 const GITHUB_FETCH_TIMEOUT_MS = 20_000;
 const GITHUB_FETCH_RETRY_COUNT = 2;
 const GITHUB_FETCH_RETRY_DELAY_MS = 500;
-const RETRYABLE_GITHUB_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const RETRYABLE_GITHUB_STATUSES = new Set([403, 408, 429, 500, 502, 503, 504]);
 
 const RESERVED_GITHUB_OWNERS = new Set([
   "orgs",
@@ -243,6 +243,29 @@ function isRetryableGithubError(error: unknown): boolean {
 
 async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryDelayMs(response: Response, attempt: number): number {
+  const header = response.headers.get("retry-after");
+  if (header) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(Math.round(seconds * 1000), 60_000);
+    }
+    const when = Date.parse(header);
+    if (Number.isFinite(when)) {
+      return Math.min(Math.max(0, when - Date.now()), 60_000);
+    }
+  }
+  return GITHUB_FETCH_RETRY_DELAY_MS * (attempt + 1);
+}
+
+/** A required workflow or source read failed. Scoring must stop instead of treating the file as missing. */
+export class GithubContentReadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GithubContentReadError";
+  }
 }
 
 type GithubHttpFailureDetails = {
@@ -422,14 +445,15 @@ async function githubFetch(
         RETRYABLE_GITHUB_STATUSES.has(response.status) &&
         attempt < GITHUB_FETCH_RETRY_COUNT
       ) {
+        const waitMs = retryDelayMs(response, attempt);
         const failure = await readGithubHttpFailure(response);
         logGithubHttpFailure(
           `retrying GitHub request after HTTP ${response.status} (attempt ${attempt + 1}/${GITHUB_FETCH_RETRY_COUNT + 1})`,
           url,
           failure,
-          { attempt: attempt + 1 }
+          { attempt: attempt + 1, waitMs }
         );
-        await delay(GITHUB_FETCH_RETRY_DELAY_MS * (attempt + 1));
+        await delay(waitMs);
         continue;
       }
 
@@ -800,24 +824,29 @@ async function fetchGithubFileRaw(
   owner: string,
   repo: string,
   path: string,
-  ref?: string
-): Promise<string | null> {
+  ref: string
+): Promise<string> {
+  const target = `${owner}/${repo}@${ref}:${path}`;
+  let response: Response;
   try {
-    const response = await githubFetch(githubContentsUrl(owner, repo, path, ref), {
+    response = await githubFetch(githubContentsUrl(owner, repo, path, ref), {
       headers: { Accept: "application/vnd.github.raw" },
     });
-    if (!response.ok) {
-      return null;
-    }
-    const text = await response.text();
-    return text.slice(0, MAX_RAW_FILE_CHARS);
   } catch (error) {
-    console.error(
-      `[github-audit] raw file fetch failed for ${owner}/${repo}/${path}:`,
-      error
+    throw new GithubContentReadError(
+      `GitHub file read failed for ${target} (${classifyGithubNetworkError(error)}). The audit was not scored, so a dropped sample cannot lower DevOps or Resilience.`
     );
-    return null;
   }
+
+  if (response.status === 403 || response.status === 429 || !response.ok) {
+    const failure = await readGithubHttpFailure(response);
+    throw new GithubContentReadError(
+      `GitHub file read failed for ${target} (HTTP ${failure.status}). The audit was not scored, so a dropped sample cannot lower DevOps or Resilience.`
+    );
+  }
+
+  const text = await response.text();
+  return text.slice(0, MAX_RAW_FILE_CHARS);
 }
 
 async function enrichFilesystemFromContents(
@@ -825,7 +854,7 @@ async function enrichFilesystemFromContents(
   allPaths: string[],
   owner: string,
   repo: string,
-  branch: string
+  commitSha: string
 ): Promise<RepoFilesystemEvidence> {
   const workflowPaths = evidence.ci_workflow_paths
     .filter(isCiWorkflowPath)
@@ -837,10 +866,12 @@ async function enrichFilesystemFromContents(
 
   const [workflowTexts, sourceTexts] = await Promise.all([
     Promise.all(
-      workflowPaths.map((path) => fetchGithubFileRaw(owner, repo, path, branch))
+      workflowPaths.map((path) =>
+        fetchGithubFileRaw(owner, repo, path, commitSha)
+      )
     ),
     Promise.all(
-      sourcePaths.map((path) => fetchGithubFileRaw(owner, repo, path, branch))
+      sourcePaths.map((path) => fetchGithubFileRaw(owner, repo, path, commitSha))
     ),
   ]);
 
@@ -866,6 +897,38 @@ async function enrichFilesystemFromContents(
     unhandled_async_count: unhandled,
     resilience_sampled: readableSources.length > 0,
   };
+}
+
+async function resolvePinnedCommitSha(
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<string | null> {
+  const refUrl = `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(branch)}`;
+  const response = await githubFetch(refUrl, {
+    headers: { Accept: "application/vnd.github+json" },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const failure = await readGithubHttpFailure(response);
+    throw new GithubContentReadError(
+      `Could not pin ${owner}/${repo}@${branch} to a commit SHA (HTTP ${failure.status}). The audit was not scored against a moving branch.`
+    );
+  }
+
+  const payload = (await readJsonResponse(response)) as { sha?: string };
+  const sha = payload.sha?.trim() ?? "";
+  if (!/^[0-9a-f]{40}$/i.test(sha)) {
+    throw new GithubContentReadError(
+      `GitHub did not return a commit SHA for ${owner}/${repo}@${branch}. The audit was not scored.`
+    );
+  }
+
+  return sha;
 }
 
 async function fetchRepoFilesystem(
@@ -894,25 +957,50 @@ async function fetchRepoFilesystem(
   );
 
   for (const branch of branches) {
-    const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
+    let commitSha: string | null;
+    try {
+      commitSha = await resolvePinnedCommitSha(owner, repo, branch);
+    } catch (error) {
+      if (error instanceof GithubContentReadError) {
+        throw error;
+      }
+      throw new GithubContentReadError(
+        `Could not pin ${owner}/${repo}@${branch} to a commit SHA (${classifyGithubNetworkError(error)}). The audit was not scored against a moving branch.`
+      );
+    }
+
+    if (!commitSha) {
+      warnings.push(
+        `No commit SHA for ${owner}/${repo}@${branch}. Trying the next branch.`
+      );
+      continue;
+    }
+
+    const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(commitSha)}?recursive=1`;
 
     try {
+      warnings.push(`Pinned audit to commit ${commitSha} (${branch}).`);
       const response = await githubFetch(treeUrl);
 
       if (!response.ok) {
         const failure = await readGithubHttpFailure(response);
         logGithubHttpFailure(
-          `GitHub file-tree fetch failed for ${owner}/${repo}@${branch}`,
+          `GitHub file-tree fetch failed for ${owner}/${repo}@${commitSha}`,
           treeUrl,
           failure,
-          { owner, repo, branch }
+          { owner, repo, branch, commitSha }
         );
+        if (failure.status === 403 || failure.status === 429) {
+          throw new GithubContentReadError(
+            `GitHub file-tree read failed for ${owner}/${repo}@${commitSha} (HTTP ${failure.status}). The audit was not scored, so a partial tree cannot lower DevOps or Resilience.`
+          );
+        }
         warnings.push(
           formatGithubHttpFailureWarning(
             "File-tree request",
             owner,
             repo,
-            branch,
+            commitSha,
             failure
           )
         );
@@ -945,7 +1033,7 @@ async function fetchRepoFilesystem(
           paths,
           owner,
           repo,
-          branch
+          commitSha
         );
       }
 
@@ -956,7 +1044,7 @@ async function fetchRepoFilesystem(
       const extraPaths = await collectTruncatedTreePaths(
         owner,
         repo,
-        branch,
+        commitSha,
         discoveryPaths,
         warnings
       );
@@ -971,23 +1059,14 @@ async function fetchRepoFilesystem(
         merged,
         owner,
         repo,
-        branch
+        commitSha
       );
     } catch (error) {
-      console.error(
-        `[github-audit] GitHub file-tree fetch threw for ${owner}/${repo}@${branch}:`,
-        {
-          url: treeUrl,
-          classification: classifyGithubNetworkError(error),
-          name: error instanceof Error ? error.name : typeof error,
-          message: error instanceof Error ? error.message : String(error),
-          error,
-        }
-      );
-      warnings.push(
-        `File-tree request threw for ${owner}/${repo}@${branch} — ${classifyGithubNetworkError(error)}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+      if (error instanceof GithubContentReadError) {
+        throw error;
+      }
+      throw new GithubContentReadError(
+        `GitHub file-tree read failed for ${owner}/${repo}@${commitSha} (${classifyGithubNetworkError(error)}). The audit was not scored, so a partial tree cannot lower DevOps or Resilience.`
       );
     }
   }
@@ -1254,6 +1333,9 @@ export async function fetchGitHubProfileArtifacts(
       fetch_warnings: warnings,
     };
   } catch (error) {
+    if (error instanceof GithubContentReadError) {
+      throw error;
+    }
     console.error("[github-audit] GitHub artifact sequence failed:", error);
     return {
       source_url: url.trim(),
@@ -1288,6 +1370,9 @@ export async function fetchGitHubAudit(
 
     return null;
   } catch (error) {
+    if (error instanceof GithubContentReadError) {
+      throw error;
+    }
     console.error("[github-audit] fetchGitHubAudit failed:", error);
     const parsed = parseGitHubUrl(repoUrl);
     return emptyGitHubAuditContext({

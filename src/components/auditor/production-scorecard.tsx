@@ -5,6 +5,10 @@ import {
   type ProductionAuditMetrics,
   emptyProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
+import {
+  formatCodebaseBenchmark,
+  type CodebaseBenchmark,
+} from "@/lib/codebase-benchmark";
 import { clampScore0to100 } from "@/lib/score-scale";
 
 const SECTION_LABEL =
@@ -91,12 +95,15 @@ type ProductionScorecardProps = {
   className?: string;
   /** Dense single-row layout for profile settings / tight result panels. */
   compact?: boolean;
+  /** Live rank against completed production audits. Hidden math stays off the compact card. */
+  benchmark?: CodebaseBenchmark | null;
 };
 
 export default function ProductionScorecard({
   metrics,
   className = "",
   compact = true,
+  benchmark = null,
 }: ProductionScorecardProps) {
   const resolved = metrics ?? emptyProductionAuditMetrics();
   const productionScore = clampScore0to100(resolved.productionScore);
@@ -171,7 +178,7 @@ export default function ProductionScorecard({
         <div>
           <div className={`${SECTION_LABEL} mb-1`}>Production Scorecard</div>
           <p className="text-sm font-semibold text-zinc-100">
-            Codebase Quality Index
+            {formatCodebaseBenchmark(benchmark)}
           </p>
           <p className="mt-1 text-sm leading-relaxed text-zinc-400">
             {inspected
@@ -202,6 +209,9 @@ export default function ProductionScorecard({
           const score = clampScore0to100(resolved[row.key]);
           const found = metricCount(resolved, row.countKey);
           const issues = inspected ? metricIssueCount(score, found) : 0;
+          const weight = resolved.weights[row.key];
+          const weightPct = Math.round(weight * 100);
+          const contribution = score * weight;
 
           return (
             <li
@@ -218,6 +228,9 @@ export default function ProductionScorecard({
                   {score}
                 </span>
               </div>
+              <p className="mt-1 font-mono text-[11px] tabular-nums text-zinc-300">
+                {score} × {weightPct}% = {contribution.toFixed(1)} pts
+              </p>
               <p className="mt-1 text-sm text-zinc-400">
                 {inspected ? `${issues} ${row.microLabel}` : "Not inspected"}
               </p>
@@ -225,6 +238,10 @@ export default function ProductionScorecard({
           );
         })}
       </ul>
+      <p className="font-mono text-[11px] tabular-nums text-zinc-500">
+        Weighted total {productionScore}/100 = round(architecture×35% + testing×25% +
+        DevOps×20% + resilience×20%)
+      </p>
     </div>
   );
 }

@@ -1306,7 +1306,72 @@ function AuditResultsPanelView({
 
         <ScoreMeter score={score} />
 
-        <ProductionScorecard metrics={metrics} compact />
+        <ProductionScorecard
+          metrics={metrics}
+          compact={false}
+          benchmark={result.benchmark}
+        />
+
+        <details className="group rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2">
+          <summary className="cursor-pointer list-none text-xs font-medium text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
+            <span className="inline-flex items-center gap-1.5">
+              <ChevronDown
+                className="h-3.5 w-3.5 transition-transform group-open:rotate-180"
+                aria-hidden
+              />
+              Scoring Methodology & AST Rules
+            </span>
+          </summary>
+          <div className="mt-3 space-y-3 text-xs leading-relaxed text-zinc-400">
+            <p>
+              The Codebase Quality Index is a weighted sum of four filesystem
+              pillars, rounded to an integer: Architecture 35%, Testing 25%,
+              DevOps 20%, Resilience 20%. Each card shows raw score × weight =
+              contribution points.
+            </p>
+            <ul className="list-disc space-y-2 pl-4">
+              <li>
+                <span className="font-medium text-zinc-300">Architecture (35%).</span>{" "}
+                Path signals only: package manifest, tsconfig or typed source,
+                declaration files, src/app or src/lib structure, workspace
+                tooling, framework config, and a linter. Missing structure
+                lowers the pillar; it does not zero the index.
+              </li>
+              <li>
+                <span className="font-medium text-zinc-300">Testing (25%).</span>{" "}
+                0 when no <span className="font-mono">*.test.*</span> or{" "}
+                <span className="font-mono">*.spec.*</span> file exists. Test
+                files divided by source files under 10% stays at or below 35.
+                10–30% maps to 65–75. Above 30% with Playwright or Cypress
+                reaches 85–100.
+              </li>
+              <li>
+                <span className="font-medium text-zinc-300">DevOps (20%).</span>{" "}
+                0 when no CI workflow exists. Workflow YAML is read for depth:
+                lint or build only scores 50, a test job scores 80, and a
+                deploy or preview stage scores 95–100.
+              </li>
+              <li>
+                <span className="font-medium text-zinc-300">Resilience (20%).</span>{" "}
+                Starts at 100. A web app with no <span className="font-mono">error.tsx</span>{" "}
+                or ErrorBoundary loses 35. Source samples are scanned for{" "}
+                <span className="font-mono">await</span>, <span className="font-mono">fetch</span>,
+                and axios calls outside a <span className="font-mono">try/catch</span>;
+                each unhandled call deducts 15, capped at 50. Libraries are not
+                required to ship React error boundaries.
+              </li>
+            </ul>
+            <p>
+              Rank copy uses completed rows in production audit history: count
+              scores strictly below this index, then{" "}
+              <span className="font-mono">
+                top % = max(1, round((total − lower) / total × 100))
+              </span>
+              . Fewer than 10 completed audits shows Verified Engineering
+              Benchmark instead of a percentile.
+            </p>
+          </div>
+        </details>
       </section>
 
       {employerView ? (

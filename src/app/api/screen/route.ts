@@ -24,9 +24,6 @@ import {
 } from "@/lib/resolve-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
-  blendReadinessScore,
-} from "@/lib/audit-readiness";
-import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
@@ -367,11 +364,7 @@ function applyScreenFilesystemCap(
   let integrity_score = capped.score;
 
   if (metrics.evidence.inspected) {
-    integrity_score = blendReadinessScore({
-      qualitativeScore: capped.score,
-      productionScore: metrics.productionScore,
-      commitDates: githubAudit?.commit_dates,
-    });
+    integrity_score = metrics.productionScore;
     const reCapped = applyFilesystemScoreCap(
       {
         score: integrity_score,
