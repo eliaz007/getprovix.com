@@ -1,7 +1,6 @@
 import {
   createBrowserSupabaseClient,
   readBrowserSession,
-  supabase,
 } from "@/lib/supabaseClient";
 
 export function createClient() {
@@ -12,4 +11,4 @@ export function createClientComponentClient() {
   return createBrowserSupabaseClient();
 }
 
-export { readBrowserSession, supabase };
+export { readBrowserSession };

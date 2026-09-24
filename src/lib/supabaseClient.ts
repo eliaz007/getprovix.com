@@ -51,5 +51,3 @@ export async function readBrowserSession(
     }),
   ]);
 }
-
-export const supabase = createBrowserSupabaseClient();

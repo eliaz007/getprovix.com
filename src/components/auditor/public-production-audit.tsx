@@ -143,12 +143,14 @@ export default function PublicProductionAudit({
   initialRepoUrl = "",
   embedded = false,
   showEmptyState = true,
+  autoFocus = false,
   onHasResultsChange,
 }: {
   initialRepoUrl?: string;
   /** Keep results on this page instead of navigating to `/audit`. */
   embedded?: boolean;
   showEmptyState?: boolean;
+  autoFocus?: boolean;
   onHasResultsChange?: (hasResults: boolean) => void;
 }) {
   const router = useRouter();
@@ -529,6 +531,7 @@ export default function PublicProductionAudit({
               inputMode="url"
               autoComplete="url"
               spellCheck={false}
+              autoFocus={autoFocus}
               value={repoUrl}
               onChange={(event) => {
                 setRepoUrl(event.target.value);
