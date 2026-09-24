@@ -245,6 +245,158 @@ async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type GithubHttpFailureDetails = {
+  status: number;
+  statusText: string;
+  message: string | null;
+  documentationUrl: string | null;
+  rateLimitLimit: string | null;
+  rateLimitRemaining: string | null;
+  rateLimitReset: string | null;
+  rateLimitResource: string | null;
+  retryAfter: string | null;
+  bodyPreview: string | null;
+};
+
+function classifyGithubHttpStatus(status: number): string {
+  switch (status) {
+    case 401:
+      return "auth issue (missing/invalid GITHUB_TOKEN or unauthorized)";
+    case 403:
+      return "forbidden (rate limit, private repo, or token scope)";
+    case 404:
+      return "not found (bad URL, missing repo, or wrong branch ref)";
+    case 429:
+      return "rate limited";
+    default:
+      return "GitHub API error";
+  }
+}
+
+function classifyGithubNetworkError(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return "unknown network/fetch failure";
+  }
+
+  const name = "name" in error ? String(error.name) : "";
+  const message = "message" in error ? String(error.message) : "";
+
+  if (
+    name === "AbortError" ||
+    name === "TimeoutError" ||
+    /timed?\s*out|timeout|aborted/i.test(message)
+  ) {
+    return `timeout/abort after ${GITHUB_FETCH_TIMEOUT_MS}ms`;
+  }
+
+  if (/econnreset|socket hang up|failed to fetch|network/i.test(message)) {
+    return "network failure talking to api.github.com";
+  }
+
+  return "fetch threw before a GitHub HTTP response";
+}
+
+async function readGithubHttpFailure(
+  response: Response
+): Promise<GithubHttpFailureDetails> {
+  const rateLimitLimit = response.headers.get("x-ratelimit-limit");
+  const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
+  const rateLimitReset = response.headers.get("x-ratelimit-reset");
+  const rateLimitResource = response.headers.get("x-ratelimit-resource");
+  const retryAfter = response.headers.get("retry-after");
+
+  let message: string | null = null;
+  let documentationUrl: string | null = null;
+  let bodyPreview: string | null = null;
+
+  try {
+    const raw = await response.text();
+    bodyPreview = raw.slice(0, 500) || null;
+
+    if (raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw) as {
+          message?: unknown;
+          documentation_url?: unknown;
+        };
+        if (typeof parsed.message === "string" && parsed.message.trim()) {
+          message = parsed.message.trim();
+        }
+        if (
+          typeof parsed.documentation_url === "string" &&
+          parsed.documentation_url.trim()
+        ) {
+          documentationUrl = parsed.documentation_url.trim();
+        }
+      } catch {
+        // Non-JSON body — keep the text preview only.
+      }
+    }
+  } catch (error) {
+    console.error(
+      "[github-audit] failed to read GitHub error response body:",
+      error
+    );
+  }
+
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    message,
+    documentationUrl,
+    rateLimitLimit,
+    rateLimitRemaining,
+    rateLimitReset,
+    rateLimitResource,
+    retryAfter,
+    bodyPreview,
+  };
+}
+
+function logGithubHttpFailure(
+  context: string,
+  url: string,
+  details: GithubHttpFailureDetails,
+  extra?: Record<string, unknown>
+): void {
+  console.error(`[github-audit] ${context}`, {
+    url,
+    status: details.status,
+    statusText: details.statusText,
+    classification: classifyGithubHttpStatus(details.status),
+    message: details.message,
+    documentationUrl: details.documentationUrl,
+    rateLimitLimit: details.rateLimitLimit,
+    rateLimitRemaining: details.rateLimitRemaining,
+    rateLimitReset: details.rateLimitReset,
+    rateLimitResource: details.rateLimitResource,
+    retryAfter: details.retryAfter,
+    bodyPreview: details.bodyPreview,
+    ...extra,
+  });
+}
+
+function formatGithubHttpFailureWarning(
+  label: string,
+  owner: string,
+  repo: string,
+  branch: string | null,
+  details: GithubHttpFailureDetails
+): string {
+  const target = branch ? `${owner}/${repo}@${branch}` : `${owner}/${repo}`;
+  const githubMessage = details.message
+    ? ` GitHub says: ${details.message}`
+    : "";
+  const rateLimit =
+    details.rateLimitRemaining != null
+      ? ` Rate limit remaining: ${details.rateLimitRemaining}/${details.rateLimitLimit ?? "?"}.`
+      : "";
+
+  return `${label} failed (${details.status} ${details.statusText || ""}) for ${target} — ${classifyGithubHttpStatus(details.status)}.${githubMessage}${rateLimit}`
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function githubFetch(
   url: string,
   init: RequestInit = {}
@@ -270,6 +422,13 @@ async function githubFetch(
         RETRYABLE_GITHUB_STATUSES.has(response.status) &&
         attempt < GITHUB_FETCH_RETRY_COUNT
       ) {
+        const failure = await readGithubHttpFailure(response);
+        logGithubHttpFailure(
+          `retrying GitHub request after HTTP ${response.status} (attempt ${attempt + 1}/${GITHUB_FETCH_RETRY_COUNT + 1})`,
+          url,
+          failure,
+          { attempt: attempt + 1 }
+        );
         await delay(GITHUB_FETCH_RETRY_DELAY_MS * (attempt + 1));
         continue;
       }
@@ -278,8 +437,13 @@ async function githubFetch(
     } catch (error) {
       lastError = error;
       console.error(
-        `[github-audit] fetch attempt ${attempt + 1} failed for ${url}:`,
-        error
+        `[github-audit] fetch attempt ${attempt + 1}/${GITHUB_FETCH_RETRY_COUNT + 1} failed for ${url}:`,
+        {
+          classification: classifyGithubNetworkError(error),
+          name: error instanceof Error ? error.name : typeof error,
+          message: error instanceof Error ? error.message : String(error),
+          error,
+        }
       );
 
       if (
@@ -451,6 +615,13 @@ async function fetchGitSubtreePaths(
   );
 
   if (!response.ok) {
+    const failure = await readGithubHttpFailure(response);
+    logGithubHttpFailure(
+      `targeted contents fetch failed for ${owner}/${repo}/${path}`,
+      url,
+      failure,
+      { owner, repo, path }
+    );
     return [];
   }
 
@@ -718,19 +889,39 @@ async function fetchRepoFilesystem(
     )
   );
 
-  for (const branch of branches) {
-    try {
-      const response = await githubFetch(
-        `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`
-      );
+  console.info(
+    `[github-audit] inspecting file tree for ${owner}/${repo}`,
+    {
+      owner,
+      repo,
+      defaultBranch,
+      branchesTried: branches,
+      hasGithubToken: Boolean(process.env.GITHUB_TOKEN?.trim()),
+    }
+  );
 
-      if (response.status === 404) {
-        continue;
-      }
+  for (const branch of branches) {
+    const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
+
+    try {
+      const response = await githubFetch(treeUrl);
 
       if (!response.ok) {
+        const failure = await readGithubHttpFailure(response);
+        logGithubHttpFailure(
+          `GitHub file-tree fetch failed for ${owner}/${repo}@${branch}`,
+          treeUrl,
+          failure,
+          { owner, repo, branch }
+        );
         warnings.push(
-          `File-tree request failed (${response.status}) for ${owner}/${repo}@${branch}.`
+          formatGithubHttpFailureWarning(
+            "File-tree request",
+            owner,
+            repo,
+            branch,
+            failure
+          )
         );
         continue;
       }
@@ -791,12 +982,33 @@ async function fetchRepoFilesystem(
       );
     } catch (error) {
       console.error(
-        `[github-audit] GitHub file-tree fetch failed for ${owner}/${repo}@${branch}:`,
-        error
+        `[github-audit] GitHub file-tree fetch threw for ${owner}/${repo}@${branch}:`,
+        {
+          url: treeUrl,
+          classification: classifyGithubNetworkError(error),
+          name: error instanceof Error ? error.name : typeof error,
+          message: error instanceof Error ? error.message : String(error),
+          error,
+        }
+      );
+      warnings.push(
+        `File-tree request threw for ${owner}/${repo}@${branch} — ${classifyGithubNetworkError(error)}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
       );
     }
   }
 
+  console.error(
+    `[github-audit] repository file tree could not be inspected for ${owner}/${repo}; falling back to empty filesystem evidence (score caps will apply)`,
+    {
+      owner,
+      repo,
+      defaultBranch,
+      branchesTried: branches,
+      warningCount: warnings.length,
+    }
+  );
   warnings.push(
     "Repository file tree could not be inspected. README and write-ups will not count as substitutes for missing files."
   );

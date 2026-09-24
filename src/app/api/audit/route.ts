@@ -1109,6 +1109,26 @@ export async function POST(request: Request) {
     result = { ...result, metrics };
   }
 
+  const filesystemEvidence = usedExternalFallback
+    ? null
+    : strongestFilesystemEvidence(githubArtifacts?.artifacts ?? []);
+  const metrics = computeProductionAuditMetrics(filesystemEvidence);
+  result = { ...result, metrics };
+
+  // When the file tree was inspected, blend the qualitative score with the
+  // deterministic production scorecard so CI/tests/error-boundary findings
+  // move the headline number — not only the cap.
+  if (metrics.evidence.inspected) {
+    const blended = clampScore0to100(
+      Math.round(result.score * 0.45 + metrics.productionScore * 0.55)
+    );
+    result = applyFilesystemScoreCap(
+      { ...result, score: blended },
+      filesystemEvidence
+    );
+    result = { ...result, metrics };
+  }
+
   const usage = access.user
     ? await incrementDailyScanUsage(
         access.supabase,

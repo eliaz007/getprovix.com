@@ -5,6 +5,7 @@ import { Check, Copy } from "lucide-react";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
 import ProductionScorecard from "@/components/auditor/production-scorecard";
 import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
+import ProductionScorecard from "@/components/auditor/production-scorecard";
 import ScoreMeter from "@/components/ScoreMeter";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { readJsonResponse } from "@/lib/read-json-response";
