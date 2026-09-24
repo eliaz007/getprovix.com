@@ -94,6 +94,8 @@ export type AuditRequestBody = {
   compensationLevel?: string;
   workIsPrivate?: boolean;
   playground?: boolean;
+  /** Landing-page preview only. Skips author-commit ownership and does not persist. */
+  publicPreview?: boolean;
   externalProjects?: ExternalProjectRecord[];
 };
 
@@ -399,6 +401,7 @@ function normalizeAuditRequestBody(body: AuditRequestBody): AuditRequestBody {
     compensationLevel: body.compensationLevel,
     workIsPrivate: parseWorkIsPrivate(body.workIsPrivate),
     playground: body.playground === true,
+    publicPreview: body.publicPreview === true,
     externalProjects: normalizeExternalProjects(body.externalProjects),
   };
 }
@@ -422,6 +425,7 @@ async function readAuditRequest(request: Request): Promise<
           compensationLevel: formString(form, "compensationLevel"),
           workIsPrivate: parseWorkIsPrivate(formString(form, "workIsPrivate")),
           playground: formString(form, "playground") === "true",
+          publicPreview: formString(form, "publicPreview") === "true",
           externalProjects: normalizeExternalProjects(
             parseJsonValue(formString(form, "externalProjects"))
           ),
@@ -981,7 +985,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (probe?.status === "found" && access.user) {
+    if (probe?.status === "found" && access.user && payload.publicPreview !== true) {
       const { data: roleRow } = await access.supabase
         .from("profiles")
         .select("role")
@@ -1132,7 +1136,7 @@ export async function POST(request: Request) {
   );
 
   let verificationStatus: DossierVerificationStatus = "unverified";
-  if (access.user && isPublicGitHubClaim) {
+  if (access.user && isPublicGitHubClaim && payload.publicPreview !== true) {
     try {
       const ownership = await verifyGitHubRepoOwnership({
         user: access.user,
@@ -1148,6 +1152,7 @@ export async function POST(request: Request) {
   if (
     access.user &&
     payload.playground !== true &&
+    payload.publicPreview !== true &&
     (githubArtifactAuditSucceeded(githubArtifacts) ||
       (usedExternalFallback &&
         hasUsableExternalProjects(payload.externalProjects)))

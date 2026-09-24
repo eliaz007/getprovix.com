@@ -218,7 +218,7 @@ export default function PublicProductionAudit({
     Boolean(sessionUser) &&
     !githubBypass &&
     Boolean(ownershipRepoUrl);
-  const auditLocked = needsTokenChallenge && !isTokenVerified;
+  const auditLocked = !embedded && needsTokenChallenge && !isTokenVerified;
 
   const stopStageProgress = () => {
     if (stageIntervalRef.current) {
@@ -316,7 +316,7 @@ export default function PublicProductionAudit({
         Boolean(sessionOwnershipUrl) &&
         !isTokenVerified;
 
-      if (sessionNeedsChallenge) {
+      if (!embedded && sessionNeedsChallenge) {
         return;
       }
 
@@ -343,6 +343,7 @@ export default function PublicProductionAudit({
           githubUrl: trimmed,
           compensationLevel: "Mid",
           playground: true,
+          ...(embedded ? { publicPreview: true } : {}),
         }),
       });
 
@@ -379,7 +380,7 @@ export default function PublicProductionAudit({
         return;
       }
 
-      if (isUnverifiedOwnershipResponse(data)) {
+      if (!embedded && isUnverifiedOwnershipResponse(data)) {
         setLimitReached(Boolean(data.limit_reached));
         setRepoAccessStatus("unverified");
         setAccessUsername(unverifiedOwnershipUsername(data));
@@ -510,7 +511,7 @@ export default function PublicProductionAudit({
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
       <form onSubmit={onSubmit} className="w-full space-y-3">
-        {needsTokenChallenge ? (
+        {!embedded && needsTokenChallenge ? (
           <RepoOwnershipVerifier
             repoUrl={ownershipRepoUrl}
             userId={sessionUser?.id}
@@ -565,7 +566,11 @@ export default function PublicProductionAudit({
         ) : null}
         <RepoAccessStatus
           status={
-            invalidRepoFormat ? "invalid_format" : repoAccessStatus
+            invalidRepoFormat
+              ? "invalid_format"
+              : embedded && repoAccessStatus === "unverified"
+                ? null
+                : repoAccessStatus
           }
           username={accessUsername}
         />
