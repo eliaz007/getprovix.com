@@ -97,9 +97,7 @@ export function signupRoleFromSearch(
   return null;
 }
 
-export function loginHrefForSignupRole(kind: "employer" | "developer"): string {
-  return kind === "employer" ? "/login?role=employer" : "/login?role=developer";
-}
+export { loginHrefForSignupRole } from "@/lib/login-href";
 
 export function isEmployerAuthIntent(search: string): boolean {
   const params = new URLSearchParams(

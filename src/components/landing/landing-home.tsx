@@ -2,8 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import dynamic from "next/dynamic";
-import ComparisonShowcase from "@/components/ComparisonShowcase";
-import LandingAudienceCards from "@/components/landing/landing-audience-cards";
 
 function AuditFormSkeleton() {
   return (
@@ -17,6 +15,16 @@ function AuditFormSkeleton() {
 const PublicProductionAudit = dynamic(
   () => import("@/components/auditor/public-production-audit"),
   { ssr: false, loading: AuditFormSkeleton }
+);
+
+const ComparisonShowcase = dynamic(
+  () => import("@/components/ComparisonShowcase"),
+  { ssr: true }
+);
+
+const LandingAudienceCards = dynamic(
+  () => import("@/components/landing/landing-audience-cards"),
+  { ssr: true }
 );
 
 export default function LandingHome() {

@@ -108,8 +108,10 @@
     }
   }
 
+  /* Prefer forward fill only — `both` kept opacity:0 until the animation ran,
+     which looked like a blank screen while CSS/fonts finished on slow mobile. */
   .hero-fade-in {
-    animation: hero-fade-in 400ms ease-out both;
+    animation: hero-fade-in 400ms ease-out forwards;
   }
 
   @keyframes comparison-in {

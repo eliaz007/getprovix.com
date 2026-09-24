@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
-import { loginHrefForSignupRole } from "@/lib/account-role";
+import { loginHrefForSignupRole } from "@/lib/login-href";
 
 type Audience = "employer" | "developer";
 
