@@ -124,7 +124,7 @@ export default function ProductionScorecard({
           </div>
           <p className="mt-1 text-sm leading-relaxed text-zinc-400">
             {inspected
-              ? `Secondary codebase index · ${resolved.evidence.fileCount} paths`
+              ? `Secondary codebase index · ${resolved.evidence.fileCount} paths. ${weightSummary}`
               : "Run a GitHub audit to compute architecture, tests, CI, and resilience."}
           </p>
         </div>
@@ -132,6 +132,7 @@ export default function ProductionScorecard({
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {METRIC_ROWS.map((row) => {
             const score = clampScore0to100(resolved[row.key]);
+            const weightPct = Math.round(resolved.weights[row.key] * 100);
             const found = metricCount(resolved, row.countKey);
             const issues = inspected ? metricIssueCount(score, found) : 0;
 
@@ -149,6 +150,9 @@ export default function ProductionScorecard({
                 </p>
                 <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-zinc-400">
                   {row.shortLabel}
+                </p>
+                <p className="mt-0.5 font-mono text-[11px] tabular-nums text-zinc-500">
+                  {weightPct}% weight
                 </p>
                 {inspected ? (
                   <p className="mt-1 text-[11px] leading-snug text-zinc-500">
@@ -200,8 +204,10 @@ export default function ProductionScorecard({
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {METRIC_ROWS.map((row) => {
           const score = clampScore0to100(resolved[row.key]);
+          const weightPct = Math.round(resolved.weights[row.key] * 100);
           const found = metricCount(resolved, row.countKey);
           const issues = inspected ? metricIssueCount(score, found) : 0;
+          const contribution = Math.round(score * resolved.weights[row.key]);
 
           return (
             <li
@@ -209,7 +215,14 @@ export default function ProductionScorecard({
               className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2.5"
             >
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-zinc-100">{row.label}</p>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-zinc-100">
+                    {row.label}
+                  </p>
+                  <p className="mt-0.5 font-mono text-[11px] tabular-nums text-zinc-500">
+                    {weightPct}% of total
+                  </p>
+                </div>
                 <span
                   className={`font-mono text-sm font-bold tabular-nums ${getMetricTone(
                     score
@@ -219,7 +232,9 @@ export default function ProductionScorecard({
                 </span>
               </div>
               <p className="mt-1 text-sm text-zinc-400">
-                {inspected ? `${issues} ${row.microLabel}` : "Not inspected"}
+                {inspected
+                  ? `${issues} ${row.microLabel} · contributes ~${contribution}`
+                  : "Not inspected"}
               </p>
             </li>
           );

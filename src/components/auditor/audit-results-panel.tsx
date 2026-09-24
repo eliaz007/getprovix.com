@@ -1306,7 +1306,7 @@ function AuditResultsPanelView({
 
         <ScoreMeter score={score} />
 
-        <ProductionScorecard metrics={metrics} compact />
+        <ProductionScorecard metrics={metrics} compact={false} />
       </section>
 
       {employerView ? (
