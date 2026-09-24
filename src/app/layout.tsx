@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/react";
+import VercelAnalytics from "@/components/vercel-analytics";
 import {
   SITE_DESCRIPTION,
   SITE_EMAIL,
@@ -16,11 +16,16 @@ import "./globals.css";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "swap",
+  preload: true,
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
+  // Mono is non-critical on first paint — don't compete with CSS on mobile.
+  preload: false,
 });
 
 export const viewport: Viewport = {
@@ -158,6 +163,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
+        {/* Inline critical colors so the first paint is not a white flash while
+            the shared ~100KB Tailwind sheet downloads on slow mobile. */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              "html,body{background:#08090d;color:#ededed}body{margin:0}",
+          }}
+        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -165,7 +178,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           }}
         />
         {children}
-        <Analytics />
+        <VercelAnalytics />
       </body>
     </html>
   );

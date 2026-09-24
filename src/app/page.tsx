@@ -6,6 +6,7 @@ import MarketingAuthLink from "@/components/marketing-auth-link";
 import { buildPageMetadata } from "@/lib/site";
 
 export const dynamic = "force-static";
+export const revalidate = false;
 
 export const metadata = buildPageMetadata(
   "Verified Candidate Intelligence",
@@ -28,7 +29,7 @@ export default function Home() {
       </header>
 
       <main className="relative mx-auto flex max-w-6xl flex-col overflow-x-clip px-6 pb-20 pt-16 sm:pt-24">
-        <section className="hero-fade-in relative mx-auto max-w-4xl text-center">
+        <section className="relative mx-auto max-w-4xl text-center">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute top-10 left-1/2 -z-10 h-[450px] w-[720px] -translate-x-1/2 rounded-full bg-radial-[ellipse_at_center] from-violet-600/28 via-indigo-600/12 via-40% to-transparent to-70% blur-[140px]"
@@ -56,12 +57,14 @@ export default function Home() {
           <div className="flex items-center gap-5 text-xs font-medium">
             <Link
               href="/privacy"
+              prefetch={false}
               className="text-textMuted transition-colors duration-200 hover:text-textMain"
             >
               Privacy
             </Link>
             <Link
               href="/terms"
+              prefetch={false}
               className="text-textMuted transition-colors duration-200 hover:text-textMain"
             >
               Terms

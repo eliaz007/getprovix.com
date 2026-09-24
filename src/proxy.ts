@@ -1,11 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { updateSession } from "@/utils/supabase/middleware";
 
 export async function proxy(request: NextRequest) {
+  // Homepage must never pay for session refresh or the Supabase middleware module.
   if (request.nextUrl.pathname === "/") {
     return NextResponse.next();
   }
 
+  const { updateSession } = await import("@/utils/supabase/middleware");
   return await updateSession(request);
 }
 
