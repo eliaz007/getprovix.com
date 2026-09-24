@@ -5,6 +5,8 @@ import LandingHome from "@/components/landing/landing-home";
 import MarketingAuthLink from "@/components/marketing-auth-link";
 import { buildPageMetadata } from "@/lib/site";
 
+export const dynamic = "force-static";
+
 export const metadata = buildPageMetadata(
   "Verified Candidate Intelligence",
   "Hire developers based on what they've actually built, not what they claim.",
