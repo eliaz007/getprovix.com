@@ -615,13 +615,6 @@ async function fetchGitSubtreePaths(
   );
 
   if (!response.ok) {
-    const failure = await readGithubHttpFailure(response);
-    logGithubHttpFailure(
-      `targeted contents fetch failed for ${owner}/${repo}/${path}`,
-      url,
-      failure,
-      { owner, repo, path }
-    );
     return [];
   }
 
