@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/react";
+import VercelAnalytics from "@/components/vercel-analytics";
 import {
   SITE_DESCRIPTION,
   SITE_EMAIL,
@@ -178,7 +178,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           }}
         />
         {children}
-        <Analytics />
+        <VercelAnalytics />
       </body>
     </html>
   );

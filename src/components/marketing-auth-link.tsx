@@ -5,7 +5,7 @@ export const linkClassName =
 
 export default function MarketingAuthLink() {
   return (
-    <Link href="/login" className={linkClassName}>
+    <Link href="/login" prefetch={false} className={linkClassName}>
       Sign in
     </Link>
   );

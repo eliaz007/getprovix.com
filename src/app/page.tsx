@@ -57,12 +57,14 @@ export default function Home() {
           <div className="flex items-center gap-5 text-xs font-medium">
             <Link
               href="/privacy"
+              prefetch={false}
               className="text-textMuted transition-colors duration-200 hover:text-textMain"
             >
               Privacy
             </Link>
             <Link
               href="/terms"
+              prefetch={false}
               className="text-textMuted transition-colors duration-200 hover:text-textMain"
             >
               Terms

@@ -1,8 +1,24 @@
 import type { Metadata } from "next";
 
-export const SITE_URL =
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ??
-  "https://www.getprovix.com";
+function normalizeSiteUrl(raw: string): string {
+  const trimmed = raw.replace(/\/$/, "");
+  // Apex redirects to www in Vercel — keep canonicals on www so search/share
+  // links do not pay an extra redirect hop on every first visit.
+  try {
+    const url = new URL(trimmed);
+    if (url.hostname === "getprovix.com") {
+      url.hostname = "www.getprovix.com";
+      return url.origin;
+    }
+  } catch {
+    // fall through
+  }
+  return trimmed;
+}
+
+export const SITE_URL = normalizeSiteUrl(
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://www.getprovix.com"
+);
 
 export const SITE_NAME = "Provix";
 export const SITE_TITLE = "Provix — Verified Candidate Intelligence";
