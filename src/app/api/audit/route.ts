@@ -84,6 +84,10 @@ import {
   PRIVATE_AUDITED_REPO_LABEL,
   type DossierVerificationStatus,
 } from "@/lib/production-audit";
+import {
+  fetchAuditScoreBenchmark,
+  type AuditScoreBenchmark,
+} from "@/lib/audit-benchmark";
 
 export const runtime = "nodejs";
 
@@ -115,7 +119,14 @@ export type AuditResult = {
   filesystem: RepoFilesystemEvidence | null;
   commitDates: string[];
   inaccessibleRepo?: boolean;
+  /**
+   * Global ranking vs completed production audits
+   * (`production_audit_history`). Null when sample is unavailable.
+   */
+  benchmark?: AuditScoreBenchmark | null;
 };
+
+export type { AuditScoreBenchmark };
 
 const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws. Strict penalties are required — and every hard deduction must come with a concrete repair plan the candidate can implement.
 
@@ -356,7 +367,35 @@ function normalizeAuditResult(raw: unknown): AuditResult {
     metrics: emptyProductionAuditMetrics(),
     filesystem: optionalFilesystem(record.filesystem),
     commitDates: normalizeCommitDates(record.commitDates ?? record.commit_dates),
+    benchmark: parseAuditBenchmark(record.benchmark),
   };
+}
+
+function parseAuditBenchmark(value: unknown): AuditScoreBenchmark | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const topPercentile =
+    typeof record.topPercentile === "number" &&
+    Number.isFinite(record.topPercentile)
+      ? Math.max(1, Math.min(100, Math.round(record.topPercentile)))
+      : null;
+  const totalAudits =
+    typeof record.totalAudits === "number" && Number.isFinite(record.totalAudits)
+      ? Math.max(0, Math.round(record.totalAudits))
+      : null;
+  const lowerCount =
+    typeof record.lowerCount === "number" && Number.isFinite(record.lowerCount)
+      ? Math.max(0, Math.round(record.lowerCount))
+      : 0;
+
+  if (topPercentile == null || totalAudits == null || totalAudits <= 0) {
+    return null;
+  }
+
+  return { topPercentile, totalAudits, lowerCount };
 }
 
 function isValidRequestBody(body: AuditRequestBody): boolean {
@@ -1191,8 +1230,16 @@ export async function POST(request: Request) {
     }
   }
 
+  let benchmark: AuditScoreBenchmark | null = null;
+  try {
+    benchmark = await fetchAuditScoreBenchmark(result.score);
+  } catch (error) {
+    console.error("[audit] benchmark ranking threw:", error);
+  }
+
   return NextResponse.json({
     ...result,
+    benchmark,
     ...usage,
     verification_status: verificationStatus,
     ownership_verified: verificationStatus === "verified",

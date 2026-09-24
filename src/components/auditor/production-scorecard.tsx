@@ -2,6 +2,10 @@
 
 import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
 import {
+  formatAuditBenchmarkLabel,
+  type AuditScoreBenchmark,
+} from "@/lib/audit-benchmark";
+import {
   type ProductionAuditMetrics,
   emptyProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
@@ -86,22 +90,35 @@ function metricIssueCount(score: number, foundCount: number): number {
   return score >= 60 ? 0 : Math.max(1, Math.min(foundCount, 3));
 }
 
+function formatWeightMath(metrics: ProductionAuditMetrics): string {
+  return METRIC_ROWS.map((row) => {
+    const score = clampScore0to100(metrics[row.key]);
+    const weight = metrics.weights[row.key];
+    return `${score}×${weight.toFixed(2)}`;
+  }).join(" + ");
+}
+
 type ProductionScorecardProps = {
   metrics?: ProductionAuditMetrics | null;
   className?: string;
   /** Dense single-row layout for profile settings / tight result panels. */
   compact?: boolean;
+  /** Global ranking vs completed production audits (optional). */
+  benchmark?: AuditScoreBenchmark | null;
 };
 
 export default function ProductionScorecard({
   metrics,
   className = "",
   compact = true,
+  benchmark = null,
 }: ProductionScorecardProps) {
   const resolved = metrics ?? emptyProductionAuditMetrics();
   const productionScore = clampScore0to100(resolved.productionScore);
   const inspected = resolved.evidence.inspected;
   const weightSummary = `Weighted ${Math.round(resolved.weights.architecture * 100)}% architecture · ${Math.round(resolved.weights.testing * 100)}% tests · ${Math.round(resolved.weights.devops * 100)}% DevOps · ${Math.round(resolved.weights.resilience * 100)}% resilience.`;
+  const benchmarkLabel = formatAuditBenchmarkLabel(benchmark);
+  const mathLine = `${formatWeightMath(resolved)} = ${productionScore}`;
 
   if (compact) {
     return (
@@ -111,6 +128,9 @@ export default function ProductionScorecard({
         <div className="min-w-0">
           <p className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground text-zinc-500">
             Production Scorecard
+          </p>
+          <p className="mb-1 text-[11px] font-medium leading-snug text-zinc-400">
+            {benchmarkLabel.text}
           </p>
           <div className="flex items-center justify-between gap-3">
             <p
@@ -133,6 +153,7 @@ export default function ProductionScorecard({
           {METRIC_ROWS.map((row) => {
             const score = clampScore0to100(resolved[row.key]);
             const weightPct = Math.round(resolved.weights[row.key] * 100);
+            const contribution = Math.round(score * resolved.weights[row.key]);
             const found = metricCount(resolved, row.countKey);
             const issues = inspected ? metricIssueCount(score, found) : 0;
 
@@ -152,7 +173,7 @@ export default function ProductionScorecard({
                   {row.shortLabel}
                 </p>
                 <p className="mt-0.5 font-mono text-[11px] tabular-nums text-zinc-500">
-                  {weightPct}% weight
+                  {weightPct}% · +{contribution} pts
                 </p>
                 {inspected ? (
                   <p className="mt-1 text-[11px] leading-snug text-zinc-500">
@@ -174,7 +195,16 @@ export default function ProductionScorecard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className={`${SECTION_LABEL} mb-1`}>Production Scorecard</div>
-          <p className="text-sm font-semibold text-zinc-100">
+          <p
+            className={`text-sm font-semibold ${
+              benchmarkLabel.hasPercentile
+                ? "text-emerald-300"
+                : "text-zinc-100"
+            }`}
+          >
+            {benchmarkLabel.text}
+          </p>
+          <p className="mt-1 text-sm font-medium text-zinc-300">
             Codebase Quality Index
           </p>
           <p className="mt-1 text-sm leading-relaxed text-zinc-400">
@@ -204,10 +234,11 @@ export default function ProductionScorecard({
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {METRIC_ROWS.map((row) => {
           const score = clampScore0to100(resolved[row.key]);
-          const weightPct = Math.round(resolved.weights[row.key] * 100);
+          const weight = resolved.weights[row.key];
+          const weightPct = Math.round(weight * 100);
+          const contribution = Math.round(score * weight);
           const found = metricCount(resolved, row.countKey);
           const issues = inspected ? metricIssueCount(score, found) : 0;
-          const contribution = Math.round(score * resolved.weights[row.key]);
 
           return (
             <li
@@ -215,14 +246,7 @@ export default function ProductionScorecard({
               className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2.5"
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-zinc-100">
-                    {row.label}
-                  </p>
-                  <p className="mt-0.5 font-mono text-[11px] tabular-nums text-zinc-500">
-                    {weightPct}% of total
-                  </p>
-                </div>
+                <p className="text-sm font-semibold text-zinc-100">{row.label}</p>
                 <span
                   className={`font-mono text-sm font-bold tabular-nums ${getMetricTone(
                     score
@@ -231,15 +255,37 @@ export default function ProductionScorecard({
                   {score}
                 </span>
               </div>
-              <p className="mt-1 text-sm text-zinc-400">
-                {inspected
-                  ? `${issues} ${row.microLabel} · contributes ~${contribution}`
-                  : "Not inspected"}
+              <dl className="mt-2 space-y-1 font-mono text-[11px] tabular-nums text-zinc-500">
+                <div className="flex items-center justify-between gap-2">
+                  <dt>Raw score</dt>
+                  <dd className="text-zinc-300">{score}/100</dd>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <dt>Weight</dt>
+                  <dd className="text-zinc-300">
+                    {weightPct}% ({weight.toFixed(2)})
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <dt>Contribution</dt>
+                  <dd className="font-semibold text-zinc-200">
+                    +{contribution} pts
+                  </dd>
+                </div>
+              </dl>
+              <p className="mt-2 text-sm text-zinc-400">
+                {inspected ? `${issues} ${row.microLabel}` : "Not inspected"}
               </p>
             </li>
           );
         })}
       </ul>
+
+      {inspected ? (
+        <p className="rounded-lg border border-zinc-800/80 bg-zinc-950/40 px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-400 tabular-nums">
+          Math: {mathLine}
+        </p>
+      ) : null}
     </div>
   );
 }
