@@ -44,6 +44,25 @@ const PUBLIC_SCORECARD_THRESHOLD = 75;
 const ROLE_SPEC_DEFAULT = "Full-stack dev";
 const REMEDIATION_POINTS = 25;
 
+const SCORING_METHODOLOGY = [
+  {
+    title: "Architecture — 35%",
+    body: "Scored from the repository file tree: modular structure (src/lib/packages), type config (tsconfig/jsconfig/go.mod/Cargo.toml), typed sources, package manifests, framework configs, and lint setup. Additive signals, clamped 0–100.",
+  },
+  {
+    title: "Testing — 25%",
+    body: "0 only when no unit test files exist (*.test.* / *.spec.* / language equivalents). Density = unit tests ÷ source files: <10% maps ~10–35; 10–30% maps 65–75; >30% maps 75–85, or 85–100 when Playwright/Cypress (or similar e2e) tooling is present.",
+  },
+  {
+    title: "DevOps / CI — 20%",
+    body: "0 with no CI workflow paths. Lint/build-only workflows score 50; workflows that run tests on PR score 80; multi-stage deploy/preview pipelines score 95–100. Nested monorepo workflows count.",
+  },
+  {
+    title: "Resilience — 20%",
+    body: "Starts at 100. Web apps missing error.tsx / ErrorBoundary lose 35. Each unhandled async/fetch without try/catch loses 15 (max −50). Libraries are not penalized for missing React boundaries.",
+  },
+] as const;
+
 const FAIL_BADGE_CLASS =
   "border border-rose-500/30 bg-rose-500/10 text-rose-400 font-mono text-xs px-2.5 py-1 rounded-md";
 const PASS_BADGE_CLASS =
@@ -1306,7 +1325,49 @@ function AuditResultsPanelView({
 
         <ScoreMeter score={score} />
 
-        <ProductionScorecard metrics={metrics} compact />
+        <ProductionScorecard
+          metrics={metrics}
+          compact={false}
+          benchmark={result?.benchmark ?? null}
+        />
+
+        <details className="group rounded-xl border border-zinc-800/60 bg-zinc-950/80">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-zinc-300 transition-colors hover:text-zinc-100 [&::-webkit-details-marker]:hidden">
+            <span>Scoring Methodology &amp; AST Rules</span>
+            <ChevronDown
+              className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180"
+              aria-hidden
+            />
+          </summary>
+          <div className="space-y-3 border-t border-zinc-800/80 px-4 py-4 text-sm leading-relaxed text-zinc-400">
+            <p>
+              Overall production index ={" "}
+              <span className="font-mono text-[12px] text-zinc-300">
+                round(architecture×0.35 + testing×0.25 + devops×0.20 +
+                resilience×0.20)
+              </span>
+              . Each pillar is graded 0–100 from filesystem / AST path evidence —
+              README prose cannot substitute for missing files.
+            </p>
+            <ul className="space-y-3">
+              {SCORING_METHODOLOGY.map((item) => (
+                <li key={item.title}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-300">
+                    {item.title}
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-zinc-500">
+                    {item.body}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[12px] leading-relaxed text-zinc-500">
+              The readiness score shown above blends this deterministic
+              scorecard (55%) with the qualitative model review (45%). Commit
+              age is informational only and never deducts points.
+            </p>
+          </div>
+        </details>
       </section>
 
       {employerView ? (
