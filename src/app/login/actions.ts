@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
 import {
-  isEmployerSignup,
+  loadProfileAccountKind,
+  persistAccountRole,
+  persistEmployerAccount,
+  resolvePostAuthDestination,
   signupMetadataForKind,
-  syncEmployerProfileAfterSignup,
 } from "@/lib/account-role";
-import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
+import { getStandardEmailValidationMessage } from "@/lib/validate-email";
 import { createClient } from "@/utils/supabase/server";
 
 function authFailure(error?: unknown, err?: unknown): { error: string } {
@@ -39,6 +41,13 @@ export async function signInWithEmail(email: string, password: string) {
 
     if (error) {
       authError = authFailure(error);
+    } else {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const role = user ? await loadProfileAccountKind(supabase, user.id) : null;
+      revalidatePath("/", "layout");
+      redirect(resolvePostAuthDestination({ role }));
     }
   } catch (err) {
     if (isRedirectError(err)) {
@@ -64,12 +73,9 @@ export async function signUpWithEmail(
     last_name: string;
   }
 ) {
-  const corporateEmailError =
-    rawData.role === "business"
-      ? getCorporateWorkEmailValidationMessage(email)
-      : null;
-  if (corporateEmailError) {
-    return { error: corporateEmailError };
+  const emailError = getStandardEmailValidationMessage(email);
+  if (emailError) {
+    return { error: emailError };
   }
 
   let authError: { error: string } | undefined;
@@ -106,10 +112,17 @@ export async function signUpWithEmail(
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user && isEmployerSignup(user)) {
-        await syncEmployerProfileAfterSignup(
+      if (user && rawData.role === "business") {
+        await persistEmployerAccount(
           supabase,
           user.id,
+          user.email ?? email
+        );
+      } else if (user && rawData.role === "candidate") {
+        await persistAccountRole(
+          supabase,
+          user.id,
+          "candidate",
           user.email ?? email
         );
       }
@@ -126,5 +139,9 @@ export async function signUpWithEmail(
   }
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  redirect(
+    resolvePostAuthDestination({
+      role: rawData.role === "business" ? "employer" : "candidate",
+    })
+  );
 }

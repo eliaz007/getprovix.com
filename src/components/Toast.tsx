@@ -29,8 +29,8 @@ export default function Toast({
 
   return (
     <div
-      className={`fixed z-50 bg-[#18181b] text-slate-100 text-xs font-medium px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border ${
-        isError ? "border-red-500/40" : "border-zinc-800"
+      className={`fixed z-50 bg-panel text-textMain text-xs font-medium px-4 py-3 rounded-xl flex items-center gap-3 border ${
+        isError ? "border-red-500/40" : "border-border"
       } ${className}`}
       role={isError ? "alert" : "status"}
     >

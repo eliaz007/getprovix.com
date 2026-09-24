@@ -141,18 +141,18 @@ export default function UpdatePasswordPage() {
 
   if (checkingSession) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <p className="text-sm text-zinc-500">Loading...</p>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-sm text-textMuted">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+    <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="w-full max-w-md px-6">
         <Link
           href="/"
-          className="inline-flex items-center gap-1 text-sm text-zinc-300 hover:text-white transition-colors duration-200 ease-out mb-4"
+          className="inline-flex items-center gap-1 text-sm text-textMuted hover:text-textMain transition-colors duration-200 ease-out mb-4"
         >
           ← Back to Home
         </Link>
@@ -163,10 +163,10 @@ export default function UpdatePasswordPage() {
             </Link>
           </div>
 
-          <h1 className="text-2xl font-extrabold text-white tracking-tight text-center">
+          <h1 className="text-2xl font-extrabold text-textMain tracking-tight text-center">
             Update Password
           </h1>
-          <p className="text-sm text-zinc-300 text-center mb-8">
+          <p className="text-sm text-textMuted text-center mb-8">
             Choose a new password for your Provix account.
           </p>
 
@@ -178,7 +178,7 @@ export default function UpdatePasswordPage() {
 
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="password" className="text-sm font-medium text-zinc-300">
+              <label htmlFor="password" className="text-sm font-medium text-textMuted">
                 New Password
               </label>
               <div className="relative">
@@ -192,12 +192,12 @@ export default function UpdatePasswordPage() {
                   disabled={!hasSession || loading}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-4 pr-11 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:opacity-50"
+                  className="w-full bg-background border border-border rounded-lg pl-4 pr-11 py-2 text-textMain placeholder:text-textMuted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all disabled:opacity-50"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((current) => !current)}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-textMuted hover:text-textMuted transition-colors cursor-pointer"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
@@ -212,7 +212,7 @@ export default function UpdatePasswordPage() {
             <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="confirmPassword"
-                className="text-sm font-medium text-zinc-300"
+                className="text-sm font-medium text-textMuted"
               >
                 Confirm New Password
               </label>
@@ -226,7 +226,7 @@ export default function UpdatePasswordPage() {
                 disabled={!hasSession || loading}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:opacity-50"
+                className="bg-background border border-border rounded-lg px-4 py-2 text-textMain placeholder:text-textMuted focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all disabled:opacity-50"
               />
             </div>
 
@@ -239,10 +239,10 @@ export default function UpdatePasswordPage() {
             </Button>
           </form>
 
-          <p className="mt-6 pt-6 border-t border-zinc-800 text-center text-sm text-zinc-400">
+          <p className="mt-6 pt-6 border-t border-border text-center text-sm text-textMuted">
             <Link
               href="/login"
-              className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+              className="text-brand hover:text-brand font-medium transition-colors"
             >
               ← Back to Sign In
             </Link>

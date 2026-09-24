@@ -22,6 +22,7 @@ import JobApplicantsDrawer, {
 } from "@/components/JobApplicantsDrawer";
 import CandidateIntelligenceDrawer from "@/components/employer/candidate-intelligence-drawer";
 import EmployerApplicantsSection from "@/components/employer/employer-applicants-section";
+import EmployerConsoleLockedCard from "@/components/employer/employer-console-locked";
 import {
   mapApplicantToTalentCandidate,
   type EmployerApplicantView,
@@ -29,26 +30,35 @@ import {
 import {
   formatExternalUrl,
   formatTalentMatchLabel,
-  getIntegrityScoreClass,
   type TalentPoolCandidate,
 } from "@/lib/talent-pool-candidate";
 import CandidateIntroRequestsPanel from "@/components/dashboard/candidate-intro-requests-panel";
-import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
-import DashboardSkeleton from "@/components/dashboard/dashboard-skeleton";
+import SkillPicker from "@/components/dashboard/skill-picker";
+import SelfTaughtEngineerBadge from "@/components/SelfTaughtEngineerBadge";
+import EducationEntriesForm from "@/components/dashboard/education-entries-form";
+import { DashboardContentGate, useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
+import { DashboardContentSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import {
+  EmployerConsoleSkeleton,
+  EmployerDashboardBootSkeleton,
+} from "@/components/dashboard/employer-console-skeleton";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import ResumeFileUpload from "@/components/ResumeFileUpload";
 import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
+import VerifiedCodeQualityScorecard from "@/components/dashboard/verified-code-quality-scorecard";
+import ScoreTrendChart from "@/components/dashboard/score-trend-chart";
+import ProductionScoreBadge from "@/components/employer/production-score-badge";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
 import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
 import { buildAlliterativeAliasIdentity } from "@/lib/alias-generator";
 import {
   normalizeAccountKind,
-  resolveAccountRole,
-  profileDefaultsForAccountRole,
+  ROLE_ONBOARDING_PATH,
 } from "@/lib/account-role";
+import { isAdminUser } from "@/lib/admin-access";
 import {
   getPublicCandidateInitials,
   getPublicCandidateLocation,
@@ -59,17 +69,50 @@ import {
 import { signOutAndClearSession } from "@/lib/sign-out";
 import { buildProfileSlug, buildUniqueProfileSlug } from "@/lib/profile-slug";
 import {
+  CANDIDATE_BIO_PLACEHOLDER,
+  MAX_CANDIDATE_BIO_LENGTH,
+  getCandidateBioValidationError,
+  limitCandidateBio,
+} from "@/lib/candidate-bio";
+import {
+  candidateSkillsEqual,
+  getCandidateSkillsValidationError,
+  limitCandidateSkills,
+} from "@/lib/candidate-skills";
+import {
+  educationEntriesEqual,
+  getEducationValidationError,
+  parseEducationEntries,
+  parseEducationFromProfileRow,
+  parseIsSelfTaught,
+  primaryEducationFields,
+  SELF_TAUGHT_ENGINEER_LABEL,
+  type EducationEntry,
+} from "@/lib/candidate-education";
+import {
   buildCandidateProfileUpdatePayload,
   persistCandidatePoolVisibility,
   persistCandidateProfile,
 } from "@/lib/persist-candidate-profile";
-import { createClient } from "@/utils/supabase/client";
+import { handleGitHubLinkIdentity } from "@/lib/github-auth";
+import {
+  githubLinkFromUser,
+  syncGitHubIdentityToProfile,
+} from "@/lib/github-identity";
+import {
+  canEnableTalentPoolVisibility,
+  TALENT_POOL_CONNECT_GITHUB_MESSAGE,
+  TALENT_POOL_SCORE_REQUIRED_MESSAGE,
+} from "@/lib/talent-pool-visibility";
+import { createClient, readBrowserSession } from "@/utils/supabase/client";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   AVAILABILITY_STATUS_OPTIONS,
   DEFAULT_AVAILABILITY_STATUS,
   getAvailabilityBadgeClass,
   normalizeAvailabilityStatus,
+  parseAvailabilityStatus,
   type AvailabilityStatus,
 } from "@/lib/availability-status";
 import {
@@ -112,7 +155,7 @@ import {
   type TalentPoolEducation,
   type TalentPoolProfileRow,
 } from "@/lib/talent-pool-profiles";
-import { fetchProfileForCandidateId } from "@/lib/resolve-candidate-profile";
+import { fetchProfileForCandidateId, isProfileUuid } from "@/lib/resolve-candidate-profile";
 import {
   ensureTalentPoolVisibilityChannel,
   publishTalentPoolVisibility,
@@ -143,6 +186,17 @@ import {
   type WorkPreference,
 } from "@/lib/work-preference";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
+import {
+  claimPendingProductionAudit,
+  claimPendingProductionAuditResult,
+  DOSSIER_PUBLISHED_EVENT,
+  employerVisibleProductionAudit,
+  OWNERSHIP_UNVERIFIED_MESSAGE,
+  parseProductionAuditFromProfileRow,
+  PRIVATE_AUDIT_INTENT,
+  PRODUCTION_AUDIT_UPDATED_EVENT,
+  type ProductionAuditRecord,
+} from "@/lib/production-audit";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
 import {
   hydrateEmployerProfileFromRow,
@@ -157,12 +211,9 @@ import {
   type DashboardTab,
 } from "@/lib/dashboard-account";
 import { clampScore0to100 } from "@/lib/score-scale";
-import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
-import { formatGpa, isGpaDraft } from "@/lib/gpa";
+import { formatGpa } from "@/lib/gpa";
 import ScoreMeter from "@/components/ScoreMeter";
-import AuditChecksList from "@/components/auditor/audit-checks-list";
-import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
-import ProductionScorecard from "@/components/auditor/production-scorecard";
+import AuditResultsPanel from "@/components/auditor/audit-results-panel";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
 
 const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
@@ -332,6 +383,8 @@ type ProfileRecord = {
   bio?: string | null;
   school?: string | null;
   skills?: string[] | null;
+  education?: unknown;
+  is_self_taught?: boolean | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
   resume_filename?: string | null;
@@ -362,6 +415,14 @@ type ProfileRecord = {
   role_type?: string | null;
   integrity_score?: number | null;
   audit_data?: unknown;
+  production_score?: number | null;
+  audit_breakdown?: unknown;
+  is_audit_verified?: boolean | null;
+  is_publicly_visible?: boolean | null;
+  verification_status?: string | null;
+  github_username?: string | null;
+  github_verified?: boolean | null;
+  audit_score?: number | null;
   daily_scans?: number | null;
   last_scan_date?: string | null;
 };
@@ -394,7 +455,11 @@ function formatTalentEducationLines(candidate: {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught?: boolean;
 }): string[] {
+  if (candidate.isSelfTaught) {
+    return [SELF_TAUGHT_ENGINEER_LABEL];
+  }
   return [
     candidate.university,
     candidate.major,
@@ -498,6 +563,9 @@ function mapProfileRowToTalentCandidate(
     Number.isFinite(row.integrity_score)
       ? clampScore0to100(row.integrity_score)
       : null;
+  const productionAudit = employerVisibleProductionAudit(
+    parseProductionAuditFromProfileRow(row)
+  );
   const education = educationFromProfileRow(
     row as unknown as Record<string, unknown>
   );
@@ -539,6 +607,9 @@ function mapProfileRowToTalentCandidate(
     major,
     gpa,
     graduationYear,
+    isSelfTaught: parseIsSelfTaught(
+      (row as { is_self_taught?: unknown }).is_self_taught
+    ),
     skills,
     rating: integrityScore !== null ? `${integrityScore}%` : "",
     execution_score: integrityScore,
@@ -554,6 +625,9 @@ function mapProfileRowToTalentCandidate(
       .map((line) => line.trim())
       .filter(Boolean),
     verifiedOnProvix: isVerifiedOnProvix(row),
+    productionScore: productionAudit?.productionScore ?? null,
+    auditBreakdown: productionAudit?.breakdown ?? null,
+    isAuditVerified: productionAudit?.isAuditVerified ?? false,
     matchScore: scoreTalentMatch(
       {
         title: headline,
@@ -696,29 +770,15 @@ async function ensureUserProfile(
   const existing = await fetchProfileRow(supabase, user.id);
 
   if (!existing.error && existing.data) {
-    const profile = existing.data as ProfileRecord;
-    const metadataRole = resolveAccountRole(null, user);
-    const shouldBeEmployer = normalizeAccountKind(metadataRole) === "employer";
-    const storedAsEmployer = normalizeAccountKind(profile.role) === "employer";
-
-    if (shouldBeEmployer && !storedAsEmployer) {
-      const { data: repaired, error: repairError } = await supabase
-        .from("profiles")
-        .update({
-          role: "employer",
-          is_visible_in_pool: false,
-          is_verified: false,
-        })
-        .eq("id", user.id)
-        .select("*")
-        .maybeSingle();
-
-      if (!repairError && repaired) {
-        return repaired as ProfileRecord;
-      }
+    const link = await syncGitHubIdentityToProfile(supabase, user);
+    if (!link) {
+      return existing.data as ProfileRecord;
     }
-
-    return profile;
+    return {
+      ...(existing.data as ProfileRecord),
+      github_username: link.github_username,
+      github_verified: link.github_verified,
+    };
   }
 
   if (existing.error) {
@@ -737,16 +797,17 @@ async function ensureUserProfile(
     displayNameFromSources(null, user) ||
     user.email?.split("@")[0] ||
     "New User";
-  const { role, is_visible_in_pool } = profileDefaultsForAccountRole(
-    resolveAccountRole(null, user)
-  );
 
+  const githubLink = githubLinkFromUser(user);
   const extendedPayload = {
     id: user.id,
+    user_id: user.id,
     full_name: fullName,
-    role,
-    is_visible_in_pool,
+    role: null,
+    is_visible_in_pool: false,
     is_verified: false,
+    github_username: githubLink?.github_username ?? null,
+    github_verified: githubLink?.github_verified ?? false,
   };
 
   let insertResult = await supabase
@@ -763,7 +824,7 @@ async function ensureUserProfile(
   if (insertResult.error && isMissingColumnError(insertResult.error)) {
     insertResult = await supabase
       .from("profiles")
-      .insert({ id: user.id, full_name: fullName, role })
+      .insert({ id: user.id, full_name: fullName })
       .select("*")
       .maybeSingle();
 
@@ -781,7 +842,14 @@ async function ensureUserProfile(
   return (insertResult.data as ProfileRecord | null) ?? null;
 }
 
-const AUTH_BOOTSTRAP_TIMEOUT_MS = 8000;
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 1500;
+
+function settledValue<T>(
+  result: PromiseSettledResult<T>,
+  fallback: T
+): T {
+  return result.status === "fulfilled" ? result.value : fallback;
+}
 
 function displayNameFromSources(
   profile: ProfileRecord | null,
@@ -808,7 +876,7 @@ export default function DashboardPage() {
   }
 
   const [fallbackActiveTab, setFallbackActiveTab] =
-    useState<DashboardTab>("opportunities");
+    useState<DashboardTab>("my_profile");
   const activeTab = dashboardNav?.activeTab ?? fallbackActiveTab;
   const navSetActiveTab = dashboardNav?.setActiveTab;
   const navSetDefaultTab = dashboardNav?.setDefaultTab;
@@ -818,6 +886,12 @@ export default function DashboardPage() {
   const navSetOnOpenJobApplicants = dashboardNav?.setOnOpenJobApplicants;
   const navRequireAuth = dashboardNav?.requireAuth;
   const navSetAuthModalOpen = dashboardNav?.setAuthModalOpen;
+  const profileStudioSection = dashboardNav?.profileStudioSection ?? "profile";
+  const setNavProfileStudioSection = dashboardNav?.setProfileStudioSection;
+  const navSetAvailabilityStatus = dashboardNav?.setAvailabilityStatus;
+  const navSetUserDisplayName = dashboardNav?.setUserDisplayName;
+  const navSetCompanyName = dashboardNav?.setCompanyName;
+  const navCompanyName = dashboardNav?.companyName;
 
   const setActiveTab = useCallback(
     (tab: DashboardTab) => {
@@ -842,7 +916,7 @@ export default function DashboardPage() {
     [navSetAccountRole]
   );
   const setNavIsVerifiedEmployer = useCallback(
-    (verified: boolean) => {
+    (verified: boolean | null) => {
       navSetIsVerifiedEmployer?.(verified);
     },
     [navSetIsVerifiedEmployer]
@@ -896,6 +970,8 @@ export default function DashboardPage() {
   const [accountRole, setAccountRole] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isVerified, setIsVerified] = useState<boolean | null>(null);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState<string | null>(null);
@@ -929,13 +1005,18 @@ export default function DashboardPage() {
   const talentSearchRef = useRef("");
   // Talent pool visibility — synced from profiles.is_visible_in_pool (visible to employers).
   const [isVisibleInPool, setIsVisibleInPool] = useState(false);
+  const [privateAuditorIntent, setPrivateAuditorIntent] = useState(false);
   const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
+  const [isLinkingGitHub, setIsLinkingGitHub] = useState(false);
+  const [showPrivateAuditor, setShowPrivateAuditor] = useState(false);
 
-  // Prefer profiles.role, then auth user_metadata.role.
-  const profileRole = accountRole ?? dbProfile?.role;
+  // Prefer the loaded profile role. Fall back to the nav bootstrap role so the
+  // Company Hub never paints the candidate studio while the page query is in flight.
+  const profileRole =
+    accountRole ?? dbProfile?.role ?? dashboardNav?.accountRole ?? null;
   const isBusinessAccount = isEmployerRole(profileRole);
   const isEmployeeAccount = isEmployeeRole(profileRole);
-  const isVerifiedEmployer = dbProfile?.is_verified === true;
+  const isVerifiedEmployer = isVerified === true;
   const showTalentPoolNav = canAccessTalentPool(
     profileRole,
     isVerifiedEmployer
@@ -943,7 +1024,7 @@ export default function DashboardPage() {
   const [candidates, setCandidates] = useState<TalentPoolCandidate[]>([]);
   const [selectedCandidate, setSelectedCandidate] =
     useState<TalentPoolCandidate | null>(null);
-  const [talentPoolLoading, setTalentPoolLoading] = useState(false);
+  const [talentPoolLoading, setTalentPoolLoading] = useState(true);
   const [talentPoolError, setTalentPoolError] = useState<string | null>(null);
   const [talentPoolRefreshKey, setTalentPoolRefreshKey] = useState(0);
   const loadTalentPoolRef = useRef<TalentPoolLoadFn>(async () => {});
@@ -953,8 +1034,11 @@ export default function DashboardPage() {
   }, [profileRole, setNavAccountRole]);
 
   useEffect(() => {
-    setNavIsVerifiedEmployer(isVerifiedEmployer);
-  }, [isVerifiedEmployer, setNavIsVerifiedEmployer]);
+    if (isLoading || isVerified === null) {
+      return;
+    }
+    setNavIsVerifiedEmployer(isVerified);
+  }, [isLoading, isVerified, setNavIsVerifiedEmployer]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -963,52 +1047,147 @@ export default function DashboardPage() {
       if (isMounted) {
         setAuthChecked(true);
         setLoadingProfile(false);
+        setIsLoading(false);
       }
     }, AUTH_BOOTSTRAP_TIMEOUT_MS);
 
     (async () => {
+      console.time("dashboard-profile:bootstrap-total");
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        const {
-          data: { user: authedUser },
-          error: userError,
-        } = await supabase.auth.getUser();
+        console.time("dashboard-profile:auth-check");
+        let session: Awaited<
+          ReturnType<typeof supabase.auth.getSession>
+        >["data"]["session"] = null;
+        try {
+          const sessionResult = await readBrowserSession(supabase);
+          session = sessionResult.data.session;
+        } finally {
+          console.timeEnd("dashboard-profile:auth-check");
+        }
 
         if (!isMounted) return;
 
-        if (
-          userError &&
-          userError.name !== "AuthSessionMissingError" &&
-          !/session missing/i.test(userError.message)
-        ) {
-          console.error("Dashboard session check failed:", userError.message, {
-            code: userError.code,
-          });
-        }
-
-        const sessionUser = authedUser ?? session?.user ?? null;
+        const sessionUser = session?.user ?? null;
 
         if (!sessionUser) {
-          setAuthChecked(true);
-          setLoadingProfile(false);
           return;
         }
 
         setUser(sessionUser);
 
-        const profileRow = await ensureUserProfile(supabase, sessionUser);
+        const [profileResult, verifiedResult, applicationsResult, auditResult, introResult] =
+          await Promise.allSettled([
+            (async () => {
+              console.time("dashboard-profile:profile-fetch");
+              try {
+                return await ensureUserProfile(supabase, sessionUser);
+              } catch {
+                return null;
+              } finally {
+                console.timeEnd("dashboard-profile:profile-fetch");
+              }
+            })(),
+            (async () => {
+              console.time("dashboard-profile:employer-verified");
+              try {
+                return await employerIsVerifiedInDatabase(
+                  supabase,
+                  sessionUser.id
+                );
+              } catch {
+                return false;
+              } finally {
+                console.timeEnd("dashboard-profile:employer-verified");
+              }
+            })(),
+            (async () => {
+              console.time("dashboard-profile:job-applications");
+              try {
+                return await supabase
+                  .from("job_applications")
+                  .select("job_id, created_at, jobs(title, company, salary_range, location)")
+                  .eq("candidate_id", sessionUser.id)
+                  .order("created_at", { ascending: false });
+              } catch (error) {
+                return {
+                  data: null,
+                  error:
+                    error instanceof Error
+                      ? error
+                      : { message: "Could not load job applications." },
+                };
+              } finally {
+                console.timeEnd("dashboard-profile:job-applications");
+              }
+            })(),
+            (async () => {
+              console.time("dashboard-profile:audit-query");
+              try {
+                return await claimPendingProductionAudit();
+              } catch {
+                return null;
+              } finally {
+                console.timeEnd("dashboard-profile:audit-query");
+              }
+            })(),
+            (async () => {
+              const columnSets: string[] = [
+                CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS,
+                CANDIDATE_INTRO_REQUEST_PUBLIC_COLUMNS_FALLBACK,
+              ];
+              for (const columns of columnSets) {
+                console.time("dashboard-profile:intro-requests");
+                try {
+                  const { data, error } = await supabase
+                    .from("intro_requests")
+                    .select(columns as "*")
+                    .eq("candidate_id", sessionUser.id)
+                    .order("created_at", { ascending: false })
+                    .returns<CandidateIntroRequestRow[]>();
+                  if (!error) {
+                    return { data: data ?? [], error: null };
+                  }
+                  if (!isSupabaseSchemaError(error)) {
+                    return { data: [] as CandidateIntroRequestRow[], error };
+                  }
+                } catch (error) {
+                  return { data: [] as CandidateIntroRequestRow[], error };
+                } finally {
+                  console.timeEnd("dashboard-profile:intro-requests");
+                }
+              }
+              return {
+                data: [] as CandidateIntroRequestRow[],
+                error: { message: "Could not load intro requests." },
+              };
+            })(),
+          ]);
 
         if (!isMounted) return;
 
+        const profileRow = settledValue(profileResult, null);
+        const verifiedInDb = settledValue(verifiedResult, false);
+        const applicationPayload = settledValue(applicationsResult, {
+          data: null,
+          error: { message: "Could not load job applications." },
+        });
+        const claimedAudit = settledValue(auditResult, null);
+        const introPayload = settledValue(introResult, {
+          data: [] as CandidateIntroRequestRow[],
+          error: { message: "Could not load intro requests." },
+        });
+
+        if (
+          !normalizeAccountKind(profileRow?.role) &&
+          !isAdminUser(sessionUser)
+        ) {
+          window.location.replace(ROLE_ONBOARDING_PATH);
+          return;
+        }
+
         const profile = profileRow ?? null;
-        const resolvedRole = resolveAccountRole(profile?.role, sessionUser);
-        let profileWithRole =
-          profile && !profile.role && resolvedRole
-            ? { ...profile, role: resolvedRole }
-            : profile;
+        const resolvedRole = normalizeAccountKind(profile?.role);
+        let profileWithRole = profile;
 
         const displayName = displayNameFromSources(profileWithRole, sessionUser);
 
@@ -1018,12 +1197,14 @@ export default function DashboardPage() {
             profileWithRole.id
           );
 
+          console.time("dashboard-profile:profile-slug");
           const { data: slugRow, error: slugError } = await supabase
             .from("profiles")
             .update({ profile_slug })
             .eq("id", profileWithRole.id)
             .select("*")
             .maybeSingle();
+          console.timeEnd("dashboard-profile:profile-slug");
 
           if (!slugError && slugRow) {
             profileWithRole = {
@@ -1035,10 +1216,6 @@ export default function DashboardPage() {
           }
         }
 
-        const verifiedInDb = await employerIsVerifiedInDatabase(
-          supabase,
-          sessionUser.id
-        );
         if (profileWithRole) {
           profileWithRole = {
             ...profileWithRole,
@@ -1046,6 +1223,7 @@ export default function DashboardPage() {
           };
         }
 
+        setIsVerified(verifiedInDb);
         setDbProfile(profileWithRole);
         setAccountRole(resolvedRole);
 
@@ -1059,15 +1237,20 @@ export default function DashboardPage() {
 
         const loadedName = displayName || "";
         const loadedTitle = profileWithRole?.job_title ?? "";
-        const loadedBio = profileWithRole?.bio ?? "";
+        const loadedBio = limitCandidateBio(profileWithRole?.bio ?? "");
         const education = educationFromProfileRow(
           profileWithRole as unknown as Record<string, unknown>
         );
-        const loadedSchool = education.university;
-        const loadedDegree = education.major;
-        const loadedSkills = Array.isArray(profileWithRole?.skills)
-          ? profileWithRole.skills.join(", ")
-          : "";
+        const loadedEducation = parseEducationFromProfileRow(
+          profileWithRole as unknown as Record<string, unknown>
+        );
+        const loadedSelfTaught = parseIsSelfTaught(
+          (profileWithRole as { is_self_taught?: unknown } | null)?.is_self_taught
+        );
+        const primaryEducation = primaryEducationFields(loadedEducation);
+        const loadedSchool = primaryEducation.institution || education.university;
+        const loadedDegree = primaryEducation.fieldOfStudy || education.major;
+        const loadedSkills = limitCandidateSkills(profileWithRole?.skills);
         const loadedYoutubeUrl = profileWithRole?.youtube_url ?? "";
         const loadedExperienceLevel =
           profileWithRole?.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL;
@@ -1081,18 +1264,30 @@ export default function DashboardPage() {
           profileWithRole?.timezone
         );
         const loadedGradYear =
-          profileWithRole?.graduation_year != null
+          primaryEducation.graduationYear ||
+          (profileWithRole?.graduation_year != null
             ? String(profileWithRole.graduation_year)
-            : "";
+            : "");
 
         setTitle(loadedTitle);
         setBio(loadedBio);
         setSchool(loadedSchool);
         setDegree(loadedDegree);
+        setEducationEntries(loadedEducation);
+        setIsSelfTaught(loadedSelfTaught);
         setSkills(loadedSkills);
         setPortfolioUrl(loadedPortfolioUrl);
         setExperienceLevel(loadedExperienceLevel as ExperienceLevel);
         setAvailabilityStatus(loadedAvailabilityStatus);
+        navSetAvailabilityStatus?.(
+          parseAvailabilityStatus(profileWithRole?.availability_status)
+        );
+        navSetUserDisplayName?.(
+          profileWithRole?.full_name?.trim() ||
+            loadedName.trim() ||
+            null
+        );
+        navSetCompanyName?.(profileWithRole?.company_name?.trim() || null);
         setWorkPreference(loadedWorkPreference);
         setCandidateTimezone(loadedCandidateTimezone);
 
@@ -1117,6 +1312,8 @@ export default function DashboardPage() {
           school: loadedSchool,
           degree: loadedDegree,
           skills: loadedSkills,
+          education: loadedEducation,
+          isSelfTaught: loadedSelfTaught,
           portfolioUrl: loadedPortfolioUrl,
           experienceLevel: loadedExperienceLevel,
           availabilityStatus: loadedAvailabilityStatus,
@@ -1136,7 +1333,7 @@ export default function DashboardPage() {
         setBusinessProfileData(hydratedBusiness);
         setSavedBusinessProfileData(hydratedBusiness);
 
-        if (canAccessTalentPool(resolvedRole, profileWithRole?.is_verified === true)) {
+        if (isEmployerRole(resolvedRole)) {
           setProfileSubMenu("companyInfo");
           if (navSetDefaultTab) {
             navSetDefaultTab("talent");
@@ -1151,20 +1348,16 @@ export default function DashboardPage() {
           }
         }
 
-        const { data: applicationRows, error: applicationsError } = await supabase
-          .from("job_applications")
-          .select("job_id, created_at, jobs(title, company, salary_range, location)")
-          .eq("candidate_id", sessionUser.id)
-          .order("created_at", { ascending: false });
-
         if (!isMounted) return;
 
+        const applicationRows = applicationPayload.data ?? [];
+        const applicationsError = applicationPayload.error;
         if (applicationsError) {
           console.error("Failed to fetch job applications:", applicationsError);
         } else {
-          setAppliedJobIds((applicationRows ?? []).map((row) => row.job_id));
+          setAppliedJobIds(applicationRows.map((row) => row.job_id));
           setAppliedJobs(
-            (applicationRows ?? []).map((row) => {
+            applicationRows.map((row) => {
               const job = row.jobs as {
                 title?: string | null;
                 company?: string | null;
@@ -1187,14 +1380,75 @@ export default function DashboardPage() {
             })
           );
         }
+
+        const introError = introPayload.error;
+        const introSchemaError =
+          introError && typeof introError === "object" && introError !== null
+            ? {
+                code:
+                  "code" in introError && typeof introError.code === "string"
+                    ? introError.code
+                    : undefined,
+                message:
+                  "message" in introError &&
+                  typeof introError.message === "string"
+                    ? introError.message
+                    : undefined,
+              }
+            : null;
+
+        if (!introError) {
+          setCandidateIntroRequests(introPayload.data ?? []);
+          setCandidateIntroError(null);
+        } else if (isSupabaseSchemaError(introSchemaError)) {
+          setCandidateIntroError("Could not load intro requests. Please try again.");
+        } else {
+          console.error("Candidate intro request fetch error:", introError);
+          setCandidateIntroError("Could not load intro requests. Please try again.");
+        }
+
+        if (claimedAudit) {
+          const verified = claimedAudit.verificationStatus === "verified";
+          setDbProfile((prev) => {
+            if (!prev) {
+              return prev;
+            }
+            if (!verified && prev.verification_status === "verified") {
+              return prev;
+            }
+            return {
+              ...prev,
+              production_score: claimedAudit.productionScore,
+              audit_breakdown: claimedAudit.breakdown,
+              is_audit_verified: verified,
+              is_publicly_visible: verified && claimedAudit.isPubliclyVisible,
+              verification_status: claimedAudit.verificationStatus ?? "unverified",
+              ...(verified && claimedAudit.isPubliclyVisible
+                ? { is_visible_in_pool: true }
+                : {}),
+            };
+          });
+          if (verified && claimedAudit.isPubliclyVisible) {
+            setIsVisibleInPool(true);
+          }
+          showToast(
+            verified
+              ? claimedAudit.isPubliclyVisible
+                ? "Scorecard published to the talent roster."
+                : "Private diagnostic saved to your dashboard."
+              : OWNERSHIP_UNVERIFIED_MESSAGE
+          );
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Dashboard profile load threw:", message, err);
       } finally {
+        console.timeEnd("dashboard-profile:bootstrap-total");
         if (isMounted) {
           window.clearTimeout(timeoutId);
           setAuthChecked(true);
           setLoadingProfile(false);
+          setIsLoading(false);
         }
       }
     })();
@@ -1368,7 +1622,7 @@ export default function DashboardPage() {
           try {
             const response = await fetchWithAuth("/api/talent-pool");
             if (response.ok) {
-              const payload = (await response.json()) as {
+              const payload = (await readJsonResponse(response)) as {
                 profiles?: TalentPoolProfileRow[];
               };
               if (Array.isArray(payload.profiles) && payload.profiles.length > 0) {
@@ -1393,7 +1647,7 @@ export default function DashboardPage() {
         if (error && data.length === 0) {
           console.error("Talent pool fetch failed:", error);
           if (!opts?.silent) {
-            setTalentPoolError("Could not load the talent pool. Please try again.");
+            setTalentPoolError("Could not load the Provix Talent Network. Please try again.");
           }
           return;
         }
@@ -1421,7 +1675,7 @@ export default function DashboardPage() {
       } catch (err) {
         console.error("Talent pool fetch threw:", err);
         if (isMounted && !opts?.silent) {
-          setTalentPoolError("Could not load the talent pool. Please try again.");
+          setTalentPoolError("Could not load the Provix Talent Network. Please try again.");
         }
       } finally {
         if (isMounted && !opts?.silent) {
@@ -1488,10 +1742,12 @@ export default function DashboardPage() {
   const fetchIntroUnlocks = useCallback(async (userId: string) => {
     const supabase = createClient();
     try {
+      console.time("dashboard-profile:intro-unlocks");
       const { data, error } = await supabase
         .from("intro_requests")
         .select("candidate_id, status")
         .eq("user_id", userId);
+      console.timeEnd("dashboard-profile:intro-unlocks");
 
       if (error) {
         console.error("Intro unlock fetch error:", error);
@@ -1517,12 +1773,14 @@ export default function DashboardPage() {
 
       let loaded = false;
       for (const columns of columnSets) {
+        console.time("dashboard-profile:intro-requests");
         const { data, error } = await supabase
           .from("intro_requests")
           .select(columns as "*")
           .eq("candidate_id", userId)
           .order("created_at", { ascending: false })
           .returns<CandidateIntroRequestRow[]>();
+        console.timeEnd("dashboard-profile:intro-requests");
 
         if (!error) {
           setCandidateIntroRequests(data ?? []);
@@ -1592,6 +1850,45 @@ export default function DashboardPage() {
 
     void fetchCandidateIntroRequests(user.id);
   }, [user?.id, isBusinessAccount, isEmployeeAccount, fetchCandidateIntroRequests]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const intent = params.get("intent")?.trim();
+    if (intent !== PRIVATE_AUDIT_INTENT) {
+      return;
+    }
+
+    if (!authChecked) {
+      return;
+    }
+
+    // Candidates land on the dashboard after login, then open the private auditor.
+    if (!isBusinessAccount && !isEmployeeAccount) {
+      window.location.replace(`/audits?intent=${PRIVATE_AUDIT_INTENT}`);
+      return;
+    }
+
+    if (showTalentPoolNav) {
+      setPrivateAuditorIntent(true);
+      setActiveTab("auditor");
+      const nextParams = new URLSearchParams(window.location.search);
+      nextParams.delete("intent");
+      const next = `${window.location.pathname}${
+        nextParams.toString() ? `?${nextParams}` : ""
+      }`;
+      window.history.replaceState({}, "", next);
+    }
+  }, [
+    authChecked,
+    isBusinessAccount,
+    isEmployeeAccount,
+    setActiveTab,
+    showTalentPoolNav,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1699,7 +1996,19 @@ export default function DashboardPage() {
   ]);
 
   useEffect(() => {
-    if (!user || !authChecked) {
+    if (!user || !authChecked || !profileRole) {
+      return;
+    }
+
+    if (isBusinessAccount) {
+      if (
+        activeTab === "opportunities" ||
+        activeTab === "intro_requests" ||
+        activeTab === "opportunity_radar" ||
+        activeTab === "applications"
+      ) {
+        setActiveTab("talent");
+      }
       return;
     }
 
@@ -1717,19 +2026,21 @@ export default function DashboardPage() {
     ) {
       setActiveTab("my_profile");
     }
-    if (isBusinessAccount && activeTab === "opportunities") {
-      setActiveTab("my_profile");
-    }
     if (!isBusinessAccount && activeTab === "applicants") {
       setActiveTab("my_profile");
     }
     if (
-      (isBusinessAccount || isEmployeeAccount) &&
-      activeTab === "intro_requests"
+      !isBusinessAccount &&
+      (activeTab === "talent" ||
+        activeTab === "applicants" ||
+        activeTab === "evaluator")
     ) {
+      router.replace("/dashboard");
+    }
+    if (isEmployeeAccount && activeTab === "intro_requests") {
       setActiveTab("my_profile");
     }
-  }, [showTalentPoolNav, isEmployeeAccount, isBusinessAccount, activeTab, user, authChecked, setActiveTab]);
+  }, [showTalentPoolNav, isEmployeeAccount, isBusinessAccount, activeTab, user, authChecked, setActiveTab, profileRole, router]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -1764,17 +2075,205 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   setTimeout(() => setToastMessage(null), 3000);
 };
 
+  useEffect(() => {
+    if (typeof window === "undefined" || isBusinessAccount) {
+      return;
+    }
+
+    const onAuditUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<ProductionAuditRecord>).detail;
+      if (!detail) {
+        return;
+      }
+
+      const verified = detail.verificationStatus === "verified";
+      setDbProfile((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        if (!verified && prev.verification_status === "verified") {
+          return prev;
+        }
+        return {
+          ...prev,
+          production_score: detail.productionScore,
+          audit_breakdown: detail.breakdown,
+          is_audit_verified: verified,
+          is_publicly_visible: verified && detail.isPubliclyVisible,
+          verification_status: detail.verificationStatus ?? "unverified",
+        };
+      });
+      showToast(
+        verified
+          ? detail.isPubliclyVisible
+            ? "Scorecard published to the talent roster."
+            : "Verified production score saved to your dashboard."
+          : OWNERSHIP_UNVERIFIED_MESSAGE
+      );
+    };
+
+    window.addEventListener(PRODUCTION_AUDIT_UPDATED_EVENT, onAuditUpdated);
+    return () => {
+      window.removeEventListener(PRODUCTION_AUDIT_UPDATED_EVENT, onAuditUpdated);
+    };
+  }, [isBusinessAccount]);
+
+  useEffect(() => {
+    if (!user?.id || isBusinessAccount) {
+      return;
+    }
+
+    let cancelled = false;
+
+    console.time("dashboard-profile:audit-query");
+    void claimPendingProductionAuditResult()
+      .finally(() => {
+        console.timeEnd("dashboard-profile:audit-query");
+      })
+      .then((result) => {
+      if (cancelled) {
+        return;
+      }
+
+      if (result.error) {
+        showToast(result.error);
+        if (!result.record) {
+          return;
+        }
+      }
+
+      const claimed = result.record;
+      if (!claimed) {
+        return;
+      }
+
+      const verified = claimed.verificationStatus === "verified";
+
+      if (result.enrolledInTalentPool && verified) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("dossier", "published");
+        window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+        window.dispatchEvent(new Event(DOSSIER_PUBLISHED_EVENT));
+      }
+
+      setDbProfile((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        if (!verified && prev.verification_status === "verified") {
+          return prev;
+        }
+        return {
+          ...prev,
+          production_score: claimed.productionScore,
+          audit_breakdown: claimed.breakdown,
+          is_audit_verified: verified,
+          is_publicly_visible: verified && claimed.isPubliclyVisible,
+          verification_status: claimed.verificationStatus ?? "unverified",
+          ...(verified && claimed.isPubliclyVisible
+            ? { is_visible_in_pool: true }
+            : {}),
+        };
+      });
+      if (verified && claimed.isPubliclyVisible) {
+        setIsVisibleInPool(true);
+      }
+      if (!result.error && !result.enrolledInTalentPool) {
+        showToast(
+          verified
+            ? claimed.isPubliclyVisible
+              ? "Scorecard published to the talent roster."
+              : "Private diagnostic saved to your dashboard."
+            : OWNERSHIP_UNVERIFIED_MESSAGE
+        );
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, isBusinessAccount]);
+
   // --- SUB-MENU STATE FOR PROFILE TAB ---
   const [profileSubMenu, setProfileSubMenu] = useState<
     "overview" | "academics" | "portfolio" | "settings" | "companyInfo" | "activeListings"
   >("overview");
+
+  useEffect(() => {
+    if (!isBusinessAccount) {
+      return;
+    }
+    setProfileSubMenu((current) =>
+      current === "companyInfo" ||
+      current === "activeListings" ||
+      current === "settings"
+        ? current
+        : "companyInfo"
+    );
+  }, [isBusinessAccount]);
+
+  useEffect(() => {
+    if (!dashboardNav) {
+      return;
+    }
+
+    if (isBusinessAccount) {
+      if (profileStudioSection === "settings") {
+        setProfileSubMenu("settings");
+        return;
+      }
+      setProfileSubMenu((current) =>
+        current === "activeListings" ? current : "companyInfo"
+      );
+      return;
+    }
+
+    if (profileStudioSection === "proof_of_work") {
+      setProfileSubMenu("portfolio");
+      return;
+    }
+
+    if (profileStudioSection === "settings") {
+      setProfileSubMenu("settings");
+      return;
+    }
+
+    setProfileSubMenu((current) =>
+      current === "academics" ? current : "overview"
+    );
+  }, [dashboardNav, isBusinessAccount, profileStudioSection]);
+
+  const selectProfileSubMenu = (
+    submenu:
+      | "overview"
+      | "academics"
+      | "portfolio"
+      | "settings"
+      | "companyInfo"
+      | "activeListings"
+  ) => {
+    setProfileSubMenu(submenu);
+    if (submenu === "portfolio") {
+      setNavProfileStudioSection?.("proof_of_work");
+      return;
+    }
+    if (submenu === "settings") {
+      setNavProfileStudioSection?.("settings");
+      return;
+    }
+    if (submenu === "overview" || submenu === "academics") {
+      setNavProfileStudioSection?.("profile");
+    }
+  };
 
   // --- CANDIDATE PROFILE STUDIO STATE (persisted to Supabase) ---
   const [title, setTitle] = useState("");
   const [bio, setBio] = useState("");
   const [school, setSchool] = useState("");
   const [degree, setDegree] = useState("");
-  const [skills, setSkills] = useState("");
+  const [educationEntries, setEducationEntries] = useState<EducationEntry[]>([]);
+  const [isSelfTaught, setIsSelfTaught] = useState(false);
+  const [skills, setSkills] = useState<string[]>([]);
   const [portfolioUrl, setPortfolioUrl] = useState("");
   const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>(
     DEFAULT_EXPERIENCE_LEVEL
@@ -1794,7 +2293,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     bio: string;
     school: string;
     degree: string;
-    skills: string;
+    skills: string[];
+    education: EducationEntry[];
+    isSelfTaught: boolean;
     portfolioUrl: string;
     experienceLevel: string;
     availabilityStatus: string;
@@ -1815,6 +2316,33 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   // business name, industry, work email, and phone instead of dev credentials.
   const [businessProfileData, setBusinessProfileData] = useState(EMPTY_BUSINESS_PROFILE_DATA);
   const [savedBusinessProfileData, setSavedBusinessProfileData] = useState(EMPTY_BUSINESS_PROFILE_DATA);
+
+  useEffect(() => {
+    if (!isBusinessAccount) {
+      return;
+    }
+
+    const next = navCompanyName?.trim() ?? "";
+    if (!next) {
+      return;
+    }
+
+    setBusinessProfileData((prev) =>
+      prev.businessName.trim() === next
+        ? prev
+        : { ...prev, businessName: next }
+    );
+    setSavedBusinessProfileData((prev) =>
+      prev.businessName.trim() === next
+        ? prev
+        : { ...prev, businessName: next }
+    );
+    setDbProfile((prev) =>
+      prev && prev.company_name?.trim() !== next
+        ? { ...prev, company_name: next }
+        : prev
+    );
+  }, [isBusinessAccount, navCompanyName]);
   const employerCompanyNameForMatching =
     businessProfileData?.businessName?.trim() ||
     dbProfile?.company_name?.trim() ||
@@ -1850,7 +2378,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       bio !== savedCandidateProfile.bio ||
       school !== savedCandidateProfile.school ||
       degree !== savedCandidateProfile.degree ||
-      skills !== savedCandidateProfile.skills ||
+      !educationEntriesEqual(educationEntries, savedCandidateProfile.education) ||
+      isSelfTaught !== savedCandidateProfile.isSelfTaught ||
+      !candidateSkillsEqual(skills, savedCandidateProfile.skills) ||
       portfolioUrl !== savedCandidateProfile.portfolioUrl ||
       experienceLevel !== savedCandidateProfile.experienceLevel ||
       availabilityStatus !== savedCandidateProfile.availabilityStatus ||
@@ -1883,10 +2413,16 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     if (isTogglingVisibility) return;
 
     const nextVisible = !isVisibleInPool;
-    if (nextVisible && !isValidGitHubUrl(portfolioUrl)) {
+    const githubVerified = dbProfile?.github_verified === true;
+    const canEnable = canEnableTalentPoolVisibility({
+      githubVerified,
+      scores: [dbProfile?.production_score, dbProfile?.audit_score],
+    });
+    if (nextVisible && !canEnable) {
       showToast(
-        getGitHubUrlValidationMessage(portfolioUrl) ??
-          "Add a valid GitHub profile URL before joining the talent pool."
+        githubVerified
+          ? TALENT_POOL_SCORE_REQUIRED_MESSAGE
+          : TALENT_POOL_CONNECT_GITHUB_MESSAGE
       );
       return;
     }
@@ -1912,7 +2448,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       if (error) {
         setIsVisibleInPool(previousVisible);
         showToast(
-          userMessage ?? "Could not update talent pool visibility. Please try again."
+          userMessage ?? "Could not update Provix Talent Network visibility. Please try again."
         );
         return;
       }
@@ -1936,14 +2472,36 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       showToast(
         nextVisible
           ? "You are now visible to employers."
-          : "You are hidden from the talent pool."
+          : "You are hidden from the Provix Talent Network."
       );
     } catch (error) {
       console.error("Talent pool visibility update failed:", error);
       setIsVisibleInPool(previousVisible);
-      showToast("Could not update talent pool visibility. Please try again.");
+      showToast("Could not update Provix Talent Network visibility. Please try again.");
     } finally {
       setIsTogglingVisibility(false);
+    }
+  };
+
+  const handleLinkGitHub = async () => {
+    if (isLinkingGitHub) {
+      return;
+    }
+
+    setIsLinkingGitHub(true);
+    try {
+      const { error } = await handleGitHubLinkIdentity("/dashboard");
+      if (error) {
+        showToast(error.message);
+      }
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Could not start GitHub linking."
+      );
+    } finally {
+      setIsLinkingGitHub(false);
     }
   };
 
@@ -2018,6 +2576,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             : prev
         );
         setSavedBusinessProfileData(businessProfileData);
+        navSetCompanyName?.(businessProfileData.businessName.trim() || null);
         showToast(
           isVerified
             ? "Profile changes saved successfully!"
@@ -2038,6 +2597,27 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       return;
     }
 
+    const bioError = getCandidateBioValidationError(bio);
+    if (bioError) {
+      showToast(bioError);
+      return;
+    }
+
+    const skillsError = getCandidateSkillsValidationError(skills);
+    if (skillsError) {
+      showToast(skillsError);
+      return;
+    }
+
+    const nextEducation = parseEducationEntries(educationEntries);
+    const educationError = getEducationValidationError(nextEducation, {
+      isSelfTaught,
+    });
+    if (educationError) {
+      showToast(educationError);
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -2053,14 +2633,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         return;
       }
 
-      const skillsArray = (skills ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
       const normalizedAvailability = normalizeAvailabilityStatus(
         availabilityStatus
       );
-      const academicMajor = degree.trim();
+      const academicPrimary = primaryEducationFields(nextEducation);
+      const academicMajor = academicPrimary.fieldOfStudy;
+      const academicInstitution = academicPrimary.institution;
+      const academicGradYear = academicPrimary.graduationYear;
       const normalizedPortfolioUrl = normalizeGitHubUrl(portfolioUrl);
       const effectiveVisibleInPool =
         isVisibleInPool && isValidGitHubUrl(normalizedPortfolioUrl);
@@ -2072,10 +2651,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           fullName: profileData.name,
           jobTitle: title,
           bio,
-          university: school,
+          university: academicInstitution,
           major: academicMajor,
-          degree: academicMajor,
-          skills: skillsArray,
+          degree: academicPrimary.credentialType,
+          skills,
+          education: nextEducation,
+          isSelfTaught,
           portfolioUrl: normalizedPortfolioUrl,
           youtubeUrl: dbProfile?.youtube_url ?? "",
           experienceLevel,
@@ -2083,7 +2664,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           workPreference,
           candidateTimezone,
           isVisibleInPool: effectiveVisibleInPool,
-          gradYear: profileData.gradYear,
+          gradYear: academicGradYear,
           gpa: formatGpa(profileData.gpa),
           keyAccomplishments: profileData.projects,
         },
@@ -2117,20 +2698,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         );
       }
 
+      setSchool(academicInstitution);
+      setDegree(academicMajor);
+      setEducationEntries(nextEducation);
       const snapshot = {
         fullName: profileData.name,
         title,
         bio,
-        school,
-        degree,
+        school: academicInstitution,
+        degree: academicMajor,
         skills,
+        education: nextEducation,
+        isSelfTaught,
         portfolioUrl: normalizedPortfolioUrl,
         experienceLevel,
         availabilityStatus: normalizedAvailability,
         workPreference,
         candidateTimezone,
         visibleInPool: effectiveVisibleInPool,
-        gradYear: profileData.gradYear,
+        gradYear: academicGradYear,
         gpa: formatGpa(profileData.gpa),
         demoVideo: profileData.demoVideo,
         projects: profileData.projects,
@@ -2140,17 +2726,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         ...profileData,
         role: title,
         bio,
-        school,
-        degree,
+        school: academicInstitution,
+        degree: academicMajor,
         github: normalizedPortfolioUrl,
         gpa: formatGpa(profileData.gpa),
+        gradYear: academicGradYear,
       });
       setProfileData((current) => ({
         ...current,
+        school: academicInstitution,
+        degree: academicMajor,
         gpa: formatGpa(current.gpa),
+        gradYear: academicGradYear,
       }));
       setPortfolioUrl(normalizedPortfolioUrl);
       setAvailabilityStatus(normalizedAvailability);
+      navSetAvailabilityStatus?.(normalizedAvailability);
+      navSetUserDisplayName?.(profileData.name);
       setIsVisibleInPool(effectiveVisibleInPool);
       void publishTalentPoolVisibility(supabase, {
         profileId: session.user.id,
@@ -2208,7 +2800,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         body: JSON.stringify({ status: nextStatus }),
       });
 
-      const payload = (await response.json()) as {
+      const payload = (await readJsonResponse(response)) as {
         error?: string;
         job?: { id: string; status?: string | null };
       };
@@ -2273,7 +2865,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       const response = await fetch(`/api/jobs/${listing.id}`, {
         method: "DELETE",
       });
-      const payload = (await response.json()) as { error?: string };
+      const payload = (await readJsonResponse(response)) as { error?: string };
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Could not delete listing.");
@@ -2379,10 +2971,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     }
 
     const profileId = resolveTalentProfileId(selectedCandidate);
-    if (!profileId) {
+    if (!profileId || !isProfileUuid(profileId)) {
       console.warn(
-        "[talent-pool/education] skipped fetch: candidate has no profiles.id UUID",
-        { id: selectedCandidate.id, profileId: selectedCandidate.profileId }
+        "Could not load education details, using defaults"
       );
       return;
     }
@@ -2396,6 +2987,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         major: "",
         gpa: "",
         graduationYear: "",
+        isSelfTaught: false,
       };
 
       const [clientEducation, apiEducation] = await Promise.all([
@@ -2403,21 +2995,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         (async () => {
           try {
             const response = await fetchWithAuth(
-              `/api/talent-pool/education?profileId=${encodeURIComponent(profileId)}`
+              `/api/talent-pool/education?profileId=${encodeURIComponent(profileId)}`,
+              { credentials: "include" }
             );
             if (!response.ok) {
-              console.error(
-                "[talent-pool/education] API status",
-                response.status,
-                await response.text()
+              console.warn(
+                "Could not load education details, using defaults"
               );
-              return null;
+              return emptyEducation;
             }
-            const payload = (await response.json()) as Record<string, unknown>;
+            const payload = (await readJsonResponse(response)) as
+              | Record<string, unknown>
+              | unknown[];
+            if (!payload || Array.isArray(payload)) {
+              return emptyEducation;
+            }
             return educationFromProfileRow(payload);
-          } catch (error) {
-            console.error("Talent pool education API failed:", error);
-            return null;
+          } catch {
+            console.warn("Could not load education details, using defaults");
+            return emptyEducation;
           }
         })(),
       ]);
@@ -2577,10 +3173,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       return dbProfile.skills;
     }
 
-    return (skills ?? "")
-      .split(",")
-      .map((skill) => skill.trim())
-      .filter(Boolean);
+    return skills;
   }, [dbProfile?.skills, skills]);
 
   const matchCandidate = useMemo(
@@ -2960,7 +3553,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
-      const payload = (await response.json()) as {
+      const payload = (await readJsonResponse(response)) as {
         success?: boolean;
         message?: string;
         error?: string;
@@ -3026,7 +3619,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dismissed }),
       });
-      const payload = (await response.json()) as {
+      const payload = (await readJsonResponse(response)) as {
         success?: boolean;
         message?: string;
         error?: string;
@@ -3120,7 +3713,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         throw new Error(`Essay review failed (${response.status})`);
       }
 
-      const data = await response.json();
+      const data = await readJsonResponse<{
+        overallScore: number;
+        verdict: string;
+        strengths: string[];
+        improvements: string[];
+        lineFeedback: {
+          originalText: string;
+          suggestion: string;
+          reason: string;
+        }[];
+      }>(response);
       setEssayReview(data);
     } catch (err) {
       console.error("Essay review request failed:", err);
@@ -3187,7 +3790,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         throw new Error(`College fit request failed (${response.status})`);
       }
 
-      const data = (await response.json()) as CollegeFitResult;
+      const data = (await readJsonResponse(response)) as CollegeFitResult;
       setCollegeFitStage(COLLEGE_FIT_STAGES.length - 1);
       await new Promise((resolve) => window.setTimeout(resolve, 450));
       setCollegeFitReport(data);
@@ -3239,7 +3842,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         throw new Error(`Aid appeal failed (${response.status})`);
       }
 
-      const data = await response.json();
+      const data = await readJsonResponse<{
+        strategyScore: "Strong Leverage" | "Moderate Leverage" | "Needs Evidence";
+        strategyAnalysis: string;
+        requiredDocuments: string[];
+        negotiationDosAndDonts: string[];
+        letterSubject: string;
+        letterBody: string;
+      }>(response);
       setAidAppealResult(data);
     } catch (err) {
       console.error("Aid appeal request failed:", err);
@@ -3272,9 +3882,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
     }
     if (score === "Moderate Leverage") {
-      return "bg-indigo-500/10 text-indigo-400 border-indigo-500/20";
+      return "bg-brandGlow text-brand border-brand/20";
     }
-    return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+    return "bg-violet-500/10 text-violet-400 border-violet-500/20";
   };
 
   const toggleDocumentChecked = (document: string) => {
@@ -3298,17 +3908,24 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     setEmployerAuditResult(null);
 
     try {
-      const response = await fetch("/api/audit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetRole: evalRole.trim() || undefined,
-          resumeSummary: evalAccomplishments.trim(),
-          compensationLevel: evalMajor.trim() || undefined,
-        }),
-      });
+      console.time("dashboard-profile:audit-api");
+      let response: Response;
+      let data: AuditResult & { error?: string };
+      try {
+        response = await fetch("/api/audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetRole: evalRole.trim() || undefined,
+            resumeSummary: evalAccomplishments.trim(),
+            compensationLevel: evalMajor.trim() || undefined,
+          }),
+        });
 
-      const data = (await response.json()) as AuditResult & { error?: string };
+        data = (await readJsonResponse(response)) as AuditResult & { error?: string };
+      } finally {
+        console.timeEnd("dashboard-profile:audit-api");
+      }
 
       if (!response.ok) {
         throw new Error(data.error ?? `Audit failed (${response.status})`);
@@ -3368,6 +3985,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     integrity_score: dbProfile?.integrity_score,
     audit_data: dbProfile?.audit_data,
   });
+  const candidateProductionAudit = parseProductionAuditFromProfileRow(dbProfile);
+  const githubVerified = dbProfile?.github_verified === true;
+  const githubUsername = (dbProfile?.github_username ?? "")
+    .replace(/^@/, "")
+    .trim();
+  const canEnableTalentPool = canEnableTalentPoolVisibility({
+    githubVerified,
+    scores: [
+      dbProfile?.production_score,
+      dbProfile?.audit_score,
+      candidateProductionAudit?.productionScore,
+    ],
+  });
+  const visibilityToggleDisabled =
+    isTogglingVisibility || (!isVisibleInPool && !canEnableTalentPool);
 
   // --- DERIVED VALUES FOR THE SHAREABLE BUSINESS PROFILE CARD ---
   const businessInitials =
@@ -3515,29 +4147,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     ? `${appOrigin}/c/${businessSlug}`
     : `/c/${businessSlug}`;
 
-  const candidateStatus =
-    dbProfile?.status ||
-    (typeof user?.user_metadata?.status === "string"
-      ? user.user_metadata.status
-      : "") ||
-    "";
-  const isHighSchoolStudent = candidateStatus === "High School Student";
-  const majorLabel = isHighSchoolStudent
-    ? "Intended Major / Academic Interest"
-    : "Major / Specialization";
-
   const renderProfileFormActions = (options?: { showShareLink?: boolean }) => (
-    <div className="mt-6 pt-6 border-t border-zinc-800 space-y-3">
+    <div className="mt-6 pt-6 border-t border-border space-y-3">
       <div className="flex flex-col sm:flex-row gap-3">
         <button
           type="button"
           onClick={handleSaveProfile}
           disabled={!canSaveProfile}
           className={`w-full sm:flex-1 font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
-            canSaveProfile
-              ? "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
-              : "bg-slate-800 text-slate-500 cursor-not-allowed"
-          }`}
+ canSaveProfile
+ ? "bg-brand hover:bg-brandHover text-white cursor-pointer"
+ : "bg-panel text-textMuted cursor-not-allowed"
+ }`}
         >
           {isSaving ? null : hasUnsavedChanges && !githubBlocksSave ? (
             <Icons.Save />
@@ -3550,7 +4171,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           <button
             type="button"
             onClick={() => setShowPublicProfile(true)}
-            className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-4 py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto bg-panel hover:bg-panel text-textMain text-xs font-bold px-4 py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Icons.Link /> Share Profile Link
           </button>
@@ -3573,15 +4194,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const guestNavClass = (active: boolean) =>
     `order-none w-full text-left px-3 py-2 rounded-lg border font-medium transition-colors duration-200 ease-out flex items-center gap-3 text-[13px] cursor-pointer ${
       active
-        ? "bg-slate-800/60 text-white border-transparent"
-        : "text-zinc-400 border-transparent hover:bg-zinc-800/50 hover:text-white"
+        ? "bg-panel text-white border-transparent"
+        : "text-textMuted border-transparent hover:bg-panel hover:text-textMain"
     }`;
 
   const renderGuestNav = () => (
     <div>
-      <div className="mt-8 pt-8 border-t border-zinc-800">
-        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
-          Candidate Dashboard
+      <div className="mt-8 pt-8 border-t border-border">
+        <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
+          Workspace
         </span>
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           <li className="order-none w-full shrink-0">
@@ -3591,18 +4212,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               className={guestNavClass(false)}
             >
               <Icons.User />
-              My Profile
+              Profile
             </button>
-          </li>
-          <li className="order-none w-full shrink-0">
-            <Link
-              href="/opportunities"
-              onClick={() => setGuestMobileNavOpen(false)}
-              className={guestNavClass(false)}
-            >
-              <Icons.Compass />
-              Opportunities
-            </Link>
           </li>
           <li className="order-none w-full shrink-0">
             <button
@@ -3614,23 +4225,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               Intro Requests
             </button>
           </li>
-        </ul>
-      </div>
-      <div className="mt-8 pt-8 border-t border-zinc-800">
-        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3 px-2">
-          Career Accelerator
-        </span>
-        <ul className="m-0 flex list-none flex-col gap-1 p-0">
           <li className="order-none w-full shrink-0">
-            <button
-              type="button"
-              onClick={() => handleGuestNavClick()}
+            <Link
+              href="/opportunities"
+              onClick={() => setGuestMobileNavOpen(false)}
               className={guestNavClass(false)}
             >
-              <FileText className="w-4 h-4 shrink-0" aria-hidden="true" />
-              Pitch Studio
-            </button>
+              <Icons.Compass />
+              Talent Network
+            </Link>
           </li>
+        </ul>
+      </div>
+      <div className="mt-8 pt-8 border-t border-border">
+        <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3 px-2">
+          Tools
+        </span>
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
           <li className="order-none w-full shrink-0">
             <Link
               href="/audits"
@@ -3638,7 +4249,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               className={guestNavClass(false)}
             >
               <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
-              Code & Resume Auditor
+              Code Auditor
             </Link>
           </li>
           <li className="order-none w-full shrink-0">
@@ -3657,22 +4268,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   );
 
   const isStandaloneGuest = Boolean(!user && !dashboardNav);
-  const isLoading =
-    loadingProfile ||
-    ((activeTab === "opportunities" || activeTab === "opportunity_radar") &&
-      jobsLoading);
+  const roleReady = authChecked && !isLoading;
+  // Do not wait for profileRole, getUser(), or auth listeners — those can hang
+  // behind a mobile Web Lock until the tab is backgrounded.
+  const showBootstrapSkeleton = !authChecked || isLoading;
 
   return (
     <>
+      {dashboardNav ? <DashboardContentGate ready={roleReady} /> : null}
       <div
         className={
           isStandaloneGuest
-            ? "flex h-screen overflow-hidden bg-[#0A0A0A] text-slate-200 font-sans antialiased"
+            ? "flex h-screen overflow-hidden bg-background text-textMain font-sans antialiased"
             : undefined
         }
       >
         {isStandaloneGuest ? (
-          <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-[#111111] border-r border-zinc-800 z-20 overflow-y-auto">
+          <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-panel border-r border-border z-20 overflow-y-auto">
             <div className="p-6 flex flex-col min-h-full">
               <Link
                 href="/"
@@ -3684,7 +4296,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               <button
                 type="button"
                 onClick={() => requireAuth()}
-                className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
+                className="mt-8 w-full bg-brand hover:bg-brandHover text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
               >
                 Sign In
               </button>
@@ -3714,19 +4326,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 tabIndex={guestMobileNavOpen ? 0 : -1}
                 onClick={() => setGuestMobileNavOpen(false)}
                 className={`fixed inset-0 z-40 cursor-pointer bg-black/60 transition-opacity duration-300 ease-in-out motion-reduce:transition-none ${
-                  guestMobileNavOpen
-                    ? "opacity-100"
-                    : "pointer-events-none opacity-0"
-                }`}
+ guestMobileNavOpen
+ ? "opacity-100"
+ : "pointer-events-none opacity-0"
+ }`}
               />
               <aside
                 aria-hidden={!guestMobileNavOpen}
                 inert={!guestMobileNavOpen}
-                className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] overflow-y-auto border-r border-zinc-800 bg-[#111111] p-6 transition-transform duration-300 ease-in-out motion-reduce:transition-none ${
-                  guestMobileNavOpen
-                    ? "translate-x-0"
-                    : "pointer-events-none -translate-x-full"
-                }`}
+                className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] overflow-y-auto border-r border-border bg-panel p-6 transition-transform duration-300 ease-in-out motion-reduce:transition-none ${
+ guestMobileNavOpen
+ ? "translate-x-0"
+ : "pointer-events-none -translate-x-full"
+ }`}
               >
                 {renderGuestNav()}
               </aside>
@@ -3738,10 +4350,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 ? undefined
                 : isStandaloneGuest
                   ? "flex-1 overflow-x-hidden overflow-y-auto p-4 pt-8 sm:p-6 sm:pt-10 md:p-12"
-                  : "min-h-screen bg-[#0A0A0A] text-slate-200 p-4 pt-8 sm:p-6 sm:pt-10 md:p-12"
+                  : "min-h-screen bg-background text-textMain p-4 pt-8 sm:p-6 sm:pt-10 md:p-12"
             }
           >
-      {!isBusinessAccount && !isEmployeeAccount && activeTab === "intro_requests" ? (
+      {isLoading ? (
+        <EmployerDashboardBootSkeleton includeSidebar={!dashboardNav} />
+      ) : !isBusinessAccount && !isEmployeeAccount && activeTab === "intro_requests" ? (
         <div className="w-full max-w-5xl mx-auto animate-fadeIn">
           <CandidateIntroRequestsPanel
             requests={candidateIntroRequests}
@@ -3757,15 +4371,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             onRespond={handleCandidateIntroResponse}
           />
         </div>
-      ) : isLoading ? (
-        <DashboardSkeleton />
+      ) : showBootstrapSkeleton ? (
+        isBusinessAccount || activeTab === "talent" ? (
+          <EmployerConsoleSkeleton />
+        ) : (
+          <DashboardContentSkeleton />
+        )
       ) : (
         <>
       {isEmployeeAccount && activeTab === "opportunity_radar" && (
         <div
-          className={`mb-6 inline-flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-md border border-zinc-800 bg-[#111111] ${
-            isVisibleInPool ? "text-zinc-300" : "text-zinc-500"
-          }`}
+          className={`mb-6 inline-flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-md border border-border bg-panel ${
+ isVisibleInPool ? "text-textMuted" : "text-textMuted"
+ }`}
         >
           {isVisibleInPool
             ? "Open to work — visible to employers"
@@ -3776,26 +4394,30 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         key={activeTab}
         className="w-full max-w-5xl mx-auto space-y-10 animate-fadeIn"
       >
+          {isBusinessAccount &&
+            !isLoading &&
+            isVerified === false &&
+            activeTab !== "my_profile" && (
+              <EmployerConsoleLockedCard />
+            )}
 
           {/* MY PROFILE TAB WITH NESTED MENU OPTIONS */}
-          {activeTab === "my_profile" && (
+          {activeTab === "my_profile" && roleReady && (
             <div className="max-w-3xl">
-              <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-3xl font-extrabold tracking-tight text-white">
-                      Profile Studio
+                    <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
+                      {isBusinessAccount ? "Company Profile" : "Profile"}
                     </h1>
                     {!isBusinessAccount ? (
                       <VerifiedOnProvixPill verified={candidateVerifiedOnProvix} />
                     ) : null}
                   </div>
-                  <p className="text-zinc-300 text-sm mt-2 max-w-2xl leading-relaxed">
+                  <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-zinc-400">
                     {isBusinessAccount
                       ? "Manage your company profile, hiring requirements, and account settings."
-                      : candidateVerifiedOnProvix
-                        ? "Your profile is complete and a GitHub integrity audit has run successfully."
-                        : "Complete every required field and run a GitHub integrity audit to earn Verified on Provix."}
+                      : "Manage your verified repositories, tech stack, and inbound visibility."}
                   </p>
                 </div>
                 {!isBusinessAccount && (
@@ -3804,17 +4426,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               </div>
 
               {/* HORIZONTAL SUB-MENU BAR */}
-              <div className="flex border-b border-zinc-800 mb-8 space-x-6">
+              <div className="flex border-b border-border mb-8 space-x-6">
                 {isBusinessAccount ? (
                   <>
                     <button
                       type="button"
                       onClick={() => setProfileSubMenu("companyInfo")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
-                        profileSubMenu === "companyInfo"
-                          ? "text-indigo-400 border-b-2 border-indigo-500"
-                          : "text-slate-500 hover:text-slate-300"
-                      }`}
+ profileSubMenu === "companyInfo"
+ ? "text-brand border-b-2 border-brand"
+ : "text-textMuted hover:text-textMuted"
+ }`}
                     >
                       Company Info
                     </button>
@@ -3822,10 +4444,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       type="button"
                       onClick={() => setProfileSubMenu("activeListings")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
-                        profileSubMenu === "activeListings"
-                          ? "text-indigo-400 border-b-2 border-indigo-500"
-                          : "text-slate-500 hover:text-slate-300"
-                      }`}
+ profileSubMenu === "activeListings"
+ ? "text-brand border-b-2 border-brand"
+ : "text-textMuted hover:text-textMuted"
+ }`}
                     >
                       Active Listings
                     </button>
@@ -3834,34 +4456,34 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <>
                     <button
                       type="button"
-                      onClick={() => setProfileSubMenu("overview")}
+                      onClick={() => selectProfileSubMenu("overview")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
-                        profileSubMenu === "overview"
-                          ? "text-indigo-400 border-b-2 border-indigo-500"
-                          : "text-slate-500 hover:text-slate-300"
-                      }`}
+ profileSubMenu === "overview"
+ ? "text-brand border-b-2 border-brand"
+ : "text-textMuted hover:text-textMuted"
+ }`}
                     >
                       Overview & Bio
                     </button>
                     <button
                       type="button"
-                      onClick={() => setProfileSubMenu("academics")}
+                      onClick={() => selectProfileSubMenu("academics")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
-                        profileSubMenu === "academics"
-                          ? "text-indigo-400 border-b-2 border-indigo-500"
-                          : "text-slate-500 hover:text-slate-300"
-                      }`}
+ profileSubMenu === "academics"
+ ? "text-brand border-b-2 border-brand"
+ : "text-textMuted hover:text-textMuted"
+ }`}
                     >
-                      Academics & Major
+                      Academics
                     </button>
                     <button
                       type="button"
-                      onClick={() => setProfileSubMenu("portfolio")}
+                      onClick={() => selectProfileSubMenu("portfolio")}
                       className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
-                        profileSubMenu === "portfolio"
-                          ? "text-indigo-400 border-b-2 border-indigo-500"
-                          : "text-slate-500 hover:text-slate-300"
-                      }`}
+ profileSubMenu === "portfolio"
+ ? "text-brand border-b-2 border-brand"
+ : "text-textMuted hover:text-textMuted"
+ }`}
                     >
                       Proof of Work
                     </button>
@@ -3869,37 +4491,37 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 )}
                 <button
                   type="button"
-                  onClick={() => setProfileSubMenu("settings")}
+                  onClick={() => selectProfileSubMenu("settings")}
                   className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
-                    profileSubMenu === "settings"
-                      ? "text-indigo-400 border-b-2 border-indigo-500"
-                      : "text-slate-500 hover:text-slate-300"
-                  }`}
+ profileSubMenu === "settings"
+ ? "text-brand border-b-2 border-brand"
+ : "text-textMuted hover:text-textMuted"
+ }`}
                 >
                   Account Settings
                 </button>
               </div>
 
               {/* SUB-MENU CONTENT PANELS */}
-              <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-8 shadow-2xl">
-                {profileSubMenu === "companyInfo" && (
+              <div className="card-edge bg-panel rounded-2xl border border-border p-8">
+                {profileSubMenu === "companyInfo" && isBusinessAccount && (
                   <div className="space-y-6">
-                    <div className="flex items-center gap-5 pb-6 border-b border-zinc-800">
-                      <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-xl font-bold text-indigo-400">
+                    <div className="flex items-center gap-5 pb-6 border-b border-border">
+                      <div className="w-16 h-16 rounded-2xl bg-brand/20 border border-brand/40 flex items-center justify-center text-xl font-bold text-brand">
                         {businessProfileData?.businessName?.trim()?.charAt(0) || "?"}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-2xl text-white truncate">
+                        <p className="font-bold text-2xl text-textMain truncate">
                           {businessProfileData.businessName.trim() || "Company name"}
                         </p>
-                        <p className="text-xs text-indigo-400 font-medium mt-1 truncate">
+                        <p className="text-xs text-brand font-medium mt-1 truncate">
                           {businessProfileData.industry.trim() || "Industry"}
                         </p>
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                      <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                         Company Name
                       </label>
                       <input
@@ -3912,13 +4534,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           })
                         }
                         placeholder="Acme Inc."
-                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                        <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                           Work Email
                         </label>
                         <input
@@ -3931,14 +4553,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             })
                           }
                           placeholder="you@company.com"
-                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain font-mono focus:outline-none focus:border-brand"
                         />
-                        <p className="mt-1.5 text-[11px] text-zinc-500">
+                        <p className="mt-1.5 text-[11px] text-textMuted">
                           Corporate domain required. Use Get Verified to confirm this inbox — saving the profile does not unlock hiring tools.
                         </p>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                        <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                           Phone
                         </label>
                         <input
@@ -3950,13 +4572,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               phone: e.target.value,
                             })
                           }
-                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                          className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain font-mono focus:outline-none focus:border-brand"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                      <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                         Industry
                       </label>
                       <input
@@ -3968,12 +4590,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             industry: e.target.value,
                           })
                         }
-                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain font-mono focus:outline-none focus:border-brand"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                      <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                         Company Bio
                       </label>
                       <textarea
@@ -3985,7 +4607,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             companyBio: e.target.value,
                           })
                         }
-                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
+                        className="w-full bg-background border border-border rounded-xl p-3.5 text-sm text-textMain focus:outline-none focus:border-brand resize-none leading-relaxed"
                       />
                     </div>
 
@@ -3993,10 +4615,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
                 )}
 
-                {profileSubMenu === "activeListings" && (
+                {profileSubMenu === "activeListings" && isBusinessAccount && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-bold text-white">
+                      <h3 className="text-sm font-bold text-textMain">
                         Active Job Listings
                       </h3>
                       <div className="flex items-center gap-2">
@@ -4006,14 +4628,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             setFocusApplicantsJobId(null);
                             setActiveTab("applicants");
                           }}
-                          className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 px-2 py-2 transition-colors cursor-pointer"
+                          className="text-[11px] font-bold text-brand hover:text-brand px-2 py-2 transition-colors cursor-pointer"
                         >
                           View applicants
                         </button>
                         <button
                           type="button"
                           onClick={openPostJobModal}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3.5 py-2 rounded-lg transition-all cursor-pointer"
+                          className="bg-brand hover:bg-brandHover text-white text-[11px] font-bold px-3.5 py-2 rounded-lg transition-all cursor-pointer"
                         >
                           + Post New Job
                         </button>
@@ -4021,8 +4643,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </div>
 
                     {businessListings.length === 0 ? (
-                      <div className="rounded-xl border border-zinc-800 bg-slate-900/30 p-6 text-center">
-                        <p className="text-sm text-slate-400">
+                      <div className="rounded-xl border border-border bg-panel p-6 text-center">
+                        <p className="text-sm text-textMuted">
                           No active listings yet. Post a job to start receiving
                           candidate interest.
                         </p>
@@ -4031,10 +4653,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       businessListings.map((listing) => (
                       <div
                         key={listing.id}
-                        className="flex items-center justify-between p-4 bg-slate-900/50 border border-zinc-800 rounded-xl"
+                        className="flex items-center justify-between p-4 bg-panel border border-border rounded-xl"
                       >
                         <div>
-                          <span className="font-bold text-sm text-white block">
+                          <span className="font-bold text-sm text-textMain block">
                             {listing.title}
                           </span>
                           <button
@@ -4042,10 +4664,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             onClick={() => openApplicantsDrawer(listing)}
                             disabled={listing.applicants <= 0}
                             className={`text-[11px] mt-1 font-bold transition-colors ${
-                              listing.applicants > 0
-                                ? "text-indigo-400 hover:text-indigo-300 cursor-pointer"
-                                : "text-slate-600 cursor-not-allowed"
-                            }`}
+ listing.applicants > 0
+ ? "text-brand hover:text-brand cursor-pointer"
+ : "text-textMuted cursor-not-allowed"
+ }`}
                           >
                             Interested ({listing.applicants})
                           </button>
@@ -4056,10 +4678,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           onClick={() => toggleListingStatus(listing.id)}
                           title="Click to toggle status"
                           className={`px-2.5 py-1 text-[10px] font-bold rounded-full border transition-all cursor-pointer ${
-                            listing.status === "Active"
-                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                              : "bg-slate-800 text-slate-400 border-slate-700"
-                          }`}
+ listing.status === "Active"
+ ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+ : "bg-panel text-textMuted border-border"
+ }`}
                         >
                           {listing.status}
                         </button>
@@ -4069,7 +4691,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           title="Delete listing"
                           onClick={() => void deleteListing(listing)}
                           disabled={deletingListingId === listing.id}
-                          className="p-1.5 rounded-lg border border-zinc-800 text-slate-400 hover:text-red-300 hover:border-red-500/30 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-60"
+                          className="p-1.5 rounded-lg border border-border text-textMuted hover:text-red-300 hover:border-red-500/30 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-60"
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -4080,20 +4702,20 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
                 )}
 
-                {profileSubMenu === "overview" && (
+                {profileSubMenu === "overview" && !isBusinessAccount && (
                   <div className="space-y-6">
-                    <div className="flex items-center gap-5 pb-6 border-b border-zinc-800">
+                    <div className="flex items-center gap-5 pb-6 border-b border-border">
                       {loadingProfile ? (
                         <>
-                          <div className="w-16 h-16 rounded-2xl bg-slate-800 animate-pulse" />
+                          <div className="w-16 h-16 rounded-2xl bg-panel animate-pulse" />
                           <div className="flex-1 space-y-2">
-                            <div className="h-7 w-48 rounded bg-slate-800 animate-pulse" />
-                            <div className="h-4 w-32 rounded bg-slate-800 animate-pulse" />
+                            <div className="h-7 w-48 rounded bg-panel animate-pulse" />
+                            <div className="h-4 w-32 rounded bg-panel animate-pulse" />
                           </div>
                         </>
                       ) : (
                         <>
-                          <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-xl font-bold text-indigo-400">
+                          <div className="w-16 h-16 rounded-2xl bg-brand/20 border border-brand/40 flex items-center justify-center text-xl font-bold text-brand">
                             {profileData?.name?.charAt(0) || "?"}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -4106,13 +4728,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   name: e.target.value,
                                 })
                               }
-                              className="w-full bg-transparent font-bold text-2xl text-white focus:outline-none border-b border-transparent focus:border-indigo-500 pb-1"
+                              className="w-full bg-transparent font-bold text-2xl text-textMain focus:outline-none border-b border-transparent focus:border-brand pb-1"
                             />
                             <input
                               type="text"
                               value={title}
                               onChange={(e) => setTitle(e.target.value)}
-                              className="w-full bg-transparent text-xs text-indigo-400 font-medium focus:outline-none border-b border-transparent focus:border-indigo-500 pb-1 mt-1"
+                              className="w-full bg-transparent text-xs text-brand font-medium focus:outline-none border-b border-transparent focus:border-brand pb-1 mt-1"
                               placeholder="Your title or role"
                             />
                             <VerifiedOnProvixPill
@@ -4125,7 +4747,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                      <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                         Experience Level
                       </label>
                       <select
@@ -4133,7 +4755,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         onChange={(e) =>
                           setExperienceLevel(e.target.value as ExperienceLevel)
                         }
-                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
                       >
                         {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
                           <option key={option} value={option}>
@@ -4144,184 +4766,147 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                      <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                         Bio / Headline
                       </label>
                       <textarea
                         rows={3}
+                        maxLength={MAX_CANDIDATE_BIO_LENGTH}
                         value={bio}
-                        onChange={(e) => setBio(e.target.value)}
-                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
+                        placeholder={CANDIDATE_BIO_PLACEHOLDER}
+                        onChange={(e) =>
+                          setBio(limitCandidateBio(e.target.value))
+                        }
+                        className="w-full bg-background border border-border rounded-xl p-3.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none leading-relaxed"
                       />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
-                        Skills
-                      </label>
-                      <input
-                        type="text"
-                        value={skills}
-                        onChange={(e) => setSkills(e.target.value)}
-                        placeholder="React, TypeScript, Python..."
-                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
-                      />
-                      <p className="text-[11px] text-slate-500 mt-2">
-                        Comma-separated skills used for job matching.
+                      <p
+                        aria-live="polite"
+                        className={`mt-1.5 text-right font-mono text-[11px] ${
+                          bio.length >= MAX_CANDIDATE_BIO_LENGTH
+                            ? "text-rose-400"
+                            : "text-textMuted"
+                        }`}
+                      >
+                        {bio.length} / {MAX_CANDIDATE_BIO_LENGTH}
                       </p>
                     </div>
 
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-2">
-                        Academic Snapshot
-                      </div>
-                      <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-xs text-slate-200 space-y-2">
-                        {school ? (
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="text-slate-500 shrink-0">University</span>
-                            <span className="text-right">{school}</span>
-                          </div>
-                        ) : null}
-                        {degree ? (
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="text-slate-500 shrink-0">Major</span>
-                            <span className="text-right">{degree}</span>
-                          </div>
-                        ) : null}
-                        {formatGpa(profileData.gpa) ? (
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="text-slate-500 shrink-0">GPA</span>
-                            <span className="text-right font-mono">
-                              {formatGpa(profileData.gpa)}
-                            </span>
-                          </div>
-                        ) : null}
-                        {profileData.gradYear ? (
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="text-slate-500 shrink-0">Graduation</span>
-                            <span className="text-right">
-                              Class of {profileData.gradYear}
-                            </span>
-                          </div>
-                        ) : null}
-                        {!school &&
-                        !degree &&
-                        !formatGpa(profileData.gpa) &&
-                        !profileData.gradYear ? (
-                          <p className="text-slate-500">
-                            Education details not provided. Add them in Academics
-                            & Major.
-                          </p>
-                        ) : null}
-                      </div>
+                      <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
+                        Skills
+                      </label>
+                      <SkillPicker
+                        selected={skills}
+                        onChange={setSkills}
+                        disabled={isSaving}
+                      />
                     </div>
 
-                    {renderProfileFormActions()}
-                  </div>
-                )}
+                    <div className="rounded-lg border border-neutral-800 bg-[#0d0f17] p-4">
+                      <p className="mb-3 font-mono text-[11px] uppercase tracking-wider text-neutral-500">
+                        // Academic Snapshot
+                      </p>
+                      {isSelfTaught ? (
+                        <SelfTaughtEngineerBadge />
+                      ) : educationEntries.some(
+                          (entry) =>
+                            entry.institution.trim() ||
+                            entry.fieldOfStudy.trim() ||
+                            entry.graduationYear.trim()
+                        ) ? (
+                        <ul className="divide-y divide-neutral-800/70">
+                          {educationEntries
+                            .filter(
+                              (entry) =>
+                                entry.institution.trim() ||
+                                entry.fieldOfStudy.trim() ||
+                                entry.graduationYear.trim()
+                            )
+                            .map((entry) => {
+                              const credential = entry.credentialType.trim();
+                              const field = entry.fieldOfStudy.trim();
+                              const subtitle =
+                                credential && field
+                                  ? `${credential} • ${field}`
+                                  : credential || field;
 
-                {profileSubMenu === "academics" && (
-                  <div className="space-y-6">
-                    <h3 className="text-sm font-bold text-white mb-2">
-                      Education & University Status
-                    </h3>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
-                          School / Institution
-                        </label>
-                        <input
-                          type="text"
-                          value={school}
-                          onChange={(e) => setSchool(e.target.value)}
-                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
-                          {majorLabel}
-                        </label>
-                        {loadingProfile ? (
-                          <div className="h-11 w-full rounded-xl bg-slate-800 animate-pulse" />
-                        ) : (
-                          <input
-                            type="text"
-                            value={degree}
-                            onChange={(e) => setDegree(e.target.value)}
-                            className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
-                          GPA
-                        </label>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="3.8"
-                          value={profileData.gpa}
-                          onChange={(e) => {
-                            const next = e.target.value;
-                            if (!isGpaDraft(next)) {
-                              return;
-                            }
-                            setProfileData({
-                              ...profileData,
-                              gpa: next,
-                            });
-                          }}
-                          onBlur={() => {
-                            setProfileData({
-                              ...profileData,
-                              gpa: formatGpa(profileData.gpa),
-                            });
-                          }}
-                          className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
-                        />
-                        <p className="mt-1.5 text-[10px] text-slate-500">
-                          4.0 scale only (for example 4.0 or 3.8).
+                              return (
+                                <li
+                                  key={entry.id}
+                                  className="py-3 first:pt-0 last:pb-0"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <p className="text-sm font-medium text-white">
+                                      {entry.institution.trim() || "Untitled program"}
+                                    </p>
+                                    {entry.graduationYear.trim() ? (
+                                      <span className="shrink-0 rounded border border-neutral-800 bg-neutral-900 px-2 py-0.5 font-mono text-xs text-neutral-400">
+                                        {entry.graduationYear.trim()}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  {subtitle ? (
+                                    <p className="mt-1 text-xs text-neutral-400">
+                                      {subtitle}
+                                    </p>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-neutral-400">
+                          Education is optional. Add programs in Academics if you
+                          want them listed.
                         </p>
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
-                          Graduation Year
-                        </label>
-                        {loadingProfile ? (
-                          <div className="h-11 w-full rounded-xl bg-slate-800 animate-pulse" />
-                        ) : (
-                          <input
-                            type="text"
-                            value={profileData.gradYear}
-                            onChange={(e) =>
-                              setProfileData({
-                                ...profileData,
-                                gradYear: e.target.value,
-                              })
-                            }
-                            className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white font-mono focus:outline-none focus:border-indigo-500"
-                          />
-                        )}
-                      </div>
+                      )}
                     </div>
 
                     {renderProfileFormActions()}
                   </div>
                 )}
 
-                {profileSubMenu === "portfolio" && (
+                {profileSubMenu === "academics" && !isBusinessAccount && (
                   <div className="space-y-6">
-                    <h3 className="text-sm font-bold text-white mb-2">
+                    {loadingProfile ? (
+                      <div className="space-y-3">
+                        <div className="h-24 w-full rounded-xl bg-panel animate-pulse" />
+                        <div className="h-24 w-full rounded-xl bg-panel animate-pulse" />
+                      </div>
+                    ) : (
+                      <EducationEntriesForm
+                        entries={educationEntries}
+                        isSelfTaught={isSelfTaught}
+                        onSelfTaughtChange={setIsSelfTaught}
+                        disabled={isSaving}
+                        onChange={(entries) => {
+                          setEducationEntries(entries);
+                          const primary = primaryEducationFields(entries);
+                          setSchool(primary.institution);
+                          setDegree(primary.fieldOfStudy);
+                          setProfileData((current) => ({
+                            ...current,
+                            school: primary.institution,
+                            degree: primary.fieldOfStudy,
+                            gradYear: primary.graduationYear,
+                          }));
+                        }}
+                      />
+                    )}
+
+                    {renderProfileFormActions()}
+                  </div>
+                )}
+
+                {profileSubMenu === "portfolio" && !isBusinessAccount && (
+                  <div className="space-y-6">
+                    <h3 className="text-sm font-bold text-textMain mb-2">
                       Verifiable Projects & Links
                     </h3>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                        <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                           GitHub Profile URL{" "}
                           <span className="text-rose-400">*</span>
                         </label>
@@ -4332,29 +4917,29 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           onChange={(e) => setPortfolioUrl(e.target.value)}
                           aria-invalid={Boolean(githubValidationMessage)}
                           placeholder="https://github.com/your-handle"
-                          className={`w-full bg-[#0A0A0A] border rounded-xl p-3 text-sm text-white font-mono focus:outline-none ${
-                            githubValidationMessage
-                              ? "border-rose-500/70 focus:border-rose-500"
-                              : "border-zinc-800 focus:border-indigo-500"
-                          }`}
+                          className={`w-full bg-background border rounded-xl p-3 text-sm text-textMain font-mono focus:outline-none ${
+ githubValidationMessage
+ ? "border-rose-500/70 focus:border-rose-500"
+ : "border-border focus:border-brand"
+ }`}
                         />
                         {githubValidationMessage && (
                           <p className="mt-2 text-[11px] text-rose-400">
                             {githubValidationMessage}
                           </p>
                         )}
-                        <p className="mt-2 text-[11px] text-slate-500">
-                          Required to save your profile and appear in the employer talent pool.
+                        <p className="mt-2 text-[11px] text-textMuted">
+                          Required to save your profile and appear in the Provix Talent Network.
                           If your GitHub is private or empty, add project artifacts below so the
                           AI auditor can still verify your work.
                         </p>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                        <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                           Resume
                         </label>
                         {loadingProfile ? (
-                          <div className="h-24 w-full rounded-xl bg-slate-800 animate-pulse" />
+                          <div className="h-24 w-full rounded-xl bg-panel animate-pulse" />
                         ) : (
                           <ResumeFileUpload
                             persistToProfile
@@ -4384,7 +4969,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     <ExternalProjectsForm />
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                      <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                         Key Accomplishments
                       </label>
                       <textarea
@@ -4396,7 +4981,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             projects: e.target.value,
                           })
                         }
-                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-indigo-500 resize-none leading-relaxed"
+                        className="w-full bg-background border border-border rounded-xl p-3.5 text-sm text-textMain focus:outline-none focus:border-brand resize-none leading-relaxed"
                       />
                     </div>
 
@@ -4409,13 +4994,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     {!isBusinessAccount && (
                       <>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
+                          <div className="p-4 bg-panel border border-border rounded-xl space-y-3">
                             <div>
-                              <span className="font-bold text-xs text-white block">
+                              <span className="font-bold text-xs text-textMain block">
                                 Work Preference
                               </span>
-                              <span className="text-[11px] text-slate-500">
-                                Shown on your public builder card and talent pool
+                              <span className="text-[11px] text-textMuted">
+                                Shown on your public builder card and Provix Talent Network
                                 profile.
                               </span>
                             </div>
@@ -4424,7 +5009,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               onChange={(e) =>
                                 setWorkPreference(e.target.value as WorkPreference)
                               }
-                              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
                             >
                               {WORK_PREFERENCE_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>
@@ -4434,12 +5019,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             </select>
                           </div>
 
-                          <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
+                          <div className="p-4 bg-panel border border-border rounded-xl space-y-3">
                             <div>
-                              <span className="font-bold text-xs text-white block">
+                              <span className="font-bold text-xs text-textMain block">
                                 Timezone
                               </span>
-                              <span className="text-[11px] text-slate-500">
+                              <span className="text-[11px] text-textMuted">
                                 Helps employers understand your working hours.
                               </span>
                             </div>
@@ -4450,7 +5035,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   e.target.value as CandidateTimezone
                                 )
                               }
-                              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
                             >
                               {TIMEZONE_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>
@@ -4461,24 +5046,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </div>
                         </div>
 
-                        <div className="p-4 bg-slate-900/50 border border-zinc-800 rounded-xl space-y-3">
+                        <div className="p-4 bg-panel border border-border rounded-xl space-y-3">
                           <div>
-                            <span className="font-bold text-xs text-white block">
+                            <span className="font-bold text-xs text-textMain block">
                               Availability Status
                             </span>
-                            <span className="text-[11px] text-slate-500">
-                              Shown on your talent pool card and used by recruiter
+                            <span className="text-[11px] text-textMuted">
+                              Shown on your Provix Talent Network card and used by recruiter
                               availability filters.
                             </span>
                           </div>
                           <select
                             value={availabilityStatus}
-                            onChange={(e) =>
-                              setAvailabilityStatus(
-                                e.target.value as AvailabilityStatus
-                              )
-                            }
-                            className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                            onChange={(e) => {
+                              const nextStatus = e.target
+                                .value as AvailabilityStatus;
+                              setAvailabilityStatus(nextStatus);
+                              navSetAvailabilityStatus?.(nextStatus);
+                            }}
+                            className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
                           >
                             {AVAILABILITY_STATUS_OPTIONS.map((option) => (
                               <option key={option} value={option}>
@@ -4488,36 +5074,59 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </select>
                         </div>
 
-                        <div className="flex items-center justify-between gap-4 p-4 bg-slate-900/50 border border-zinc-800 rounded-xl">
-                          <div>
-                            <span className="font-bold text-xs text-white block">
+                        <div className="flex items-center justify-between gap-4 p-4 bg-panel border border-border rounded-xl">
+                          <div className="min-w-0 space-y-2">
+                            <span className="font-bold text-xs text-textMain block">
                               Visible to Employers
                             </span>
-                            <span className="text-[11px] text-slate-500">
-                              Off by default. Turn this on to opt in to the talent
-                              pool. Requires a valid GitHub profile URL.
+                            <span className="text-[11px] text-textMuted">
+                              Off by default. Requires a linked GitHub account
+                              and at least one 75+ production audit.
                             </span>
+                            {githubVerified ? (
+                              <p className="text-xs font-medium text-emerald-400">
+                                ✓ Linked: @{githubUsername || "github"}
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                <p className="text-xs text-amber-200">
+                                  {TALENT_POOL_CONNECT_GITHUB_MESSAGE}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleLinkGitHub()}
+                                  disabled={isLinkingGitHub}
+                                  className="inline-flex cursor-pointer items-center rounded-lg border border-border bg-background px-3 py-1.5 text-[11px] font-semibold text-textMain transition-colors hover:bg-white/5 disabled:cursor-wait disabled:opacity-60"
+                                >
+                                  {isLinkingGitHub
+                                    ? "Redirecting..."
+                                    : "Connect GitHub"}
+                                </button>
+                              </div>
+                            )}
                           </div>
                           <button
                             type="button"
                             role="switch"
                             aria-checked={isVisibleInPool}
                             aria-label="Visible to Employers"
-                            disabled={isTogglingVisibility}
+                            disabled={visibilityToggleDisabled}
                             onClick={() => {
                               void handleVisibilityToggle();
                             }}
                             className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                              isTogglingVisibility
-                                ? "opacity-60 cursor-wait"
-                                : "cursor-pointer"
-                            } ${
-                              isVisibleInPool ? "bg-emerald-500" : "bg-zinc-700"
-                            }`}
+ visibilityToggleDisabled
+ ? isTogglingVisibility
+ ? "opacity-60 cursor-wait"
+ : "opacity-50 cursor-not-allowed"
+ : "cursor-pointer"
+ } ${
+ isVisibleInPool ? "bg-emerald-500" : "bg-panel"
+ }`}
                           >
                             <span
                               aria-hidden="true"
-                              className="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200"
+                              className="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
                               style={{
                                 transform: isVisibleInPool
                                   ? "translateX(1.25rem)"
@@ -4527,20 +5136,69 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </button>
                         </div>
 
+                        <div className="space-y-4">
+                          <div>
+                            <span className="font-bold text-sm text-textMain block">
+                              Production Scorecard
+                            </span>
+                            <span className="text-sm leading-relaxed text-zinc-400">
+                              Computed from your latest code integrity audit
+                              file tree (architecture, CI, tests, resilience).
+                            </span>
+                          </div>
+                          <VerifiedCodeQualityScorecard
+                            compact
+                            record={candidateProductionAudit}
+                            onVisibilityChange={(nextVisible) => {
+                              setDbProfile((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      is_publicly_visible: nextVisible,
+                                      ...(nextVisible && canEnableTalentPool
+                                        ? { is_visible_in_pool: true }
+                                        : {}),
+                                    }
+                                  : prev
+                              );
+                              if (nextVisible && canEnableTalentPool) {
+                                setIsVisibleInPool(true);
+                              }
+                            }}
+                          />
+                          <ScoreTrendChart
+                            repoUrl={
+                              candidateProductionAudit?.breakdown.audited_repo_url
+                            }
+                            current={
+                              candidateProductionAudit
+                                ? {
+                                    score: candidateProductionAudit.productionScore,
+                                    auditedAt:
+                                      candidateProductionAudit.breakdown.audited_at,
+                                    repoUrl:
+                                      candidateProductionAudit.breakdown
+                                        .audited_repo_url,
+                                  }
+                                : null
+                            }
+                          />
+                        </div>
+
                         {renderProfileFormActions()}
                       </>
                     )}
 
                     <div
                       className={`flex items-center justify-between gap-4 ${
-                        isBusinessAccount ? "" : "pt-2"
-                      }`}
+ isBusinessAccount ? "" : "pt-2"
+ }`}
                     >
                       <div>
-                        <span className="font-bold text-xs text-white block">
+                        <span className="font-bold text-xs text-textMain block">
                           Sign out of Provix
                         </span>
-                        <span className="text-[11px] text-slate-500">
+                        <span className="text-[11px] text-textMuted">
                           You'll be returned to the login screen on this device.
                         </span>
                         <span className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
@@ -4588,22 +5246,22 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           {activeTab === "essay-studio" && (
             <div>
               <div className="mb-8">
-                <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">
                   College Prep
                 </p>
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">
+                <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
                   Essay Studio
                 </h1>
-                <p className="text-zinc-300 text-sm mt-2">
+                <p className="text-textMuted text-sm mt-2">
                   AI-driven structural analysis and line-by-line feedback for your Common App essays.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
                 {/* Left: inputs */}
-                <div className="lg:col-span-7 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
+                <div className="lg:col-span-7 card-edge bg-panel rounded-2xl border border-border p-5 sm:p-6 space-y-4">
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       Target School
                     </label>
                     <input
@@ -4611,12 +5269,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={essayTargetSchool}
                       onChange={(e) => setEssayTargetSchool(e.target.value)}
                       placeholder="e.g. Stanford University"
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       College Prompt
                     </label>
                     <textarea
@@ -4624,16 +5282,16 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={essayPrompt}
                       onChange={(e) => setEssayPrompt(e.target.value)}
                       placeholder="Paste the essay prompt you're responding to..."
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none transition-all"
                     />
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">
+                      <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest">
                         Essay Draft
                       </label>
-                      <span className="text-[11px] font-mono text-slate-500">
+                      <span className="text-[11px] font-mono text-textMuted">
                         {essayWordCount} {essayWordCount === 1 ? "word" : "words"}
                       </span>
                     </div>
@@ -4642,7 +5300,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={essayText}
                       onChange={(e) => setEssayText(e.target.value)}
                       placeholder="Paste your essay draft here..."
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-4 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none transition-all"
                     />
                   </div>
 
@@ -4653,12 +5311,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       evaluatingEssay || !essayPrompt.trim() || !essayText.trim()
                     }
                     className={`w-full font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
-                      evaluatingEssay
-                        ? "bg-indigo-600/80 text-white cursor-wait animate-pulse"
-                        : !essayPrompt.trim() || !essayText.trim()
-                          ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                          : "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
-                    }`}
+ evaluatingEssay
+ ? "bg-brand/80 text-textMain cursor-wait animate-pulse"
+ : !essayPrompt.trim() || !essayText.trim()
+ ? "bg-panel text-textMuted cursor-not-allowed"
+ : "bg-brand text-textMain cursor-pointer"
+ }`}
                   >
                     {evaluatingEssay ? (
                       <>
@@ -4674,21 +5332,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 </div>
 
                 {/* Right: results */}
-                <div className="lg:col-span-5 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
+                <div className="lg:col-span-5 card-edge bg-panel rounded-2xl border border-border p-5 sm:p-6">
                   {evaluatingEssay ? (
                     <div className="flex flex-col items-center justify-center min-h-[320px] text-center">
                       <div className="relative mb-4">
-                        <div className="w-16 h-16 rounded-full border-2 border-indigo-500/30 flex items-center justify-center animate-pulse">
+                        <div className="w-16 h-16 rounded-full border-2 border-brand/30 flex items-center justify-center animate-pulse">
                           <Icons.Pen />
                         </div>
                         <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                          <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500" />
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-brand" />
                         </span>
                       </div>
-                      <p className="text-sm font-medium text-slate-300">
+                      <p className="text-sm font-medium text-textMuted">
                         Gemini is reviewing your essay…
                       </p>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="text-xs text-textMuted mt-1">
                         Checking structure, voice, and prompt alignment
                       </p>
                     </div>
@@ -4696,21 +5354,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     <div className="space-y-5">
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+                          <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-1">
                             Overall Score
                           </span>
-                          <p className="text-sm text-slate-300 leading-relaxed">
+                          <p className="text-sm text-textMuted leading-relaxed">
                             {essayReview.verdict}
                           </p>
                         </div>
                         <div
                           className={`shrink-0 w-14 h-14 rounded-lg flex items-center justify-center text-xl font-mono font-extrabold tabular-nums border ${
-                            essayReview.overallScore >= 8
-                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
-                              : essayReview.overallScore >= 6
-                                ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/25"
-                                : "bg-amber-500/10 text-amber-400 border-amber-500/25"
-                          }`}
+ essayReview.overallScore >= 8
+ ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
+ : essayReview.overallScore >= 6
+ ? "bg-brandGlow text-brand border-brand/25"
+ : "bg-violet-500/10 text-violet-400 border-violet-500/25"
+ }`}
                         >
                           {essayReview.overallScore}
                           <span className="text-[10px] font-bold ml-0.5 opacity-70">
@@ -4720,7 +5378,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       </div>
 
                       {essayReview.strengths.length > 0 && (
-                        <div className="rounded-xl bg-[#0A0A0A] border border-emerald-500/20 p-4">
+                        <div className="rounded-xl bg-background border border-emerald-500/20 p-4">
                           <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block mb-2">
                             Strengths
                           </span>
@@ -4728,7 +5386,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             {essayReview.strengths.map((item) => (
                               <li
                                 key={item}
-                                className="text-xs text-slate-300 leading-relaxed flex gap-2"
+                                className="text-xs text-textMuted leading-relaxed flex gap-2"
                               >
                                 <span className="text-emerald-400 shrink-0">+</span>
                                 <span>{item}</span>
@@ -4739,17 +5397,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       )}
 
                       {essayReview.improvements.length > 0 && (
-                        <div className="rounded-xl bg-[#0A0A0A] border border-amber-500/20 p-4">
-                          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block mb-2">
+                        <div className="rounded-xl bg-background border border-violet-500/20 p-4">
+                          <span className="text-[10px] font-bold text-violet-400 uppercase tracking-widest block mb-2">
                             Areas to Improve
                           </span>
                           <ul className="space-y-1.5">
                             {essayReview.improvements.map((item) => (
                               <li
                                 key={item}
-                                className="text-xs text-slate-300 leading-relaxed flex gap-2"
+                                className="text-xs text-textMuted leading-relaxed flex gap-2"
                               >
-                                <span className="text-amber-400 shrink-0">→</span>
+                                <span className="text-violet-400 shrink-0">→</span>
                                 <span>{item}</span>
                               </li>
                             ))}
@@ -4759,24 +5417,24 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                       {essayReview.lineFeedback.length > 0 && (
                         <div>
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3">
+                          <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3">
                             Actionable Suggestions
                           </span>
                           <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                             {essayReview.lineFeedback.map((item, index) => (
                               <div
                                 key={`${item.originalText}-${index}`}
-                                className="rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3"
+                                className="rounded-xl bg-background border border-border p-3"
                               >
                                 {item.originalText && (
-                                  <p className="text-[11px] text-slate-500 italic mb-2 border-l-2 border-slate-700 pl-2">
+                                  <p className="text-[11px] text-textMuted italic mb-2 border-l-2 border-border pl-2">
                                     &ldquo;{item.originalText}&rdquo;
                                   </p>
                                 )}
-                                <p className="text-xs text-indigo-300 font-medium mb-1">
+                                <p className="text-xs text-brand font-medium mb-1">
                                   {item.suggestion}
                                 </p>
-                                <p className="text-[11px] text-slate-500">
+                                <p className="text-[11px] text-textMuted">
                                   {item.reason}
                                 </p>
                               </div>
@@ -4787,13 +5445,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center min-h-[320px] text-center">
-                      <div className="w-12 h-12 rounded-xl bg-slate-800/60 flex items-center justify-center text-slate-500 mb-4">
+                      <div className="w-12 h-12 rounded-xl bg-panel flex items-center justify-center text-textMuted mb-4">
                         <Icons.Pen />
                       </div>
-                      <p className="text-sm font-medium text-slate-400">
+                      <p className="text-sm font-medium text-textMuted">
                         Awaiting essay input
                       </p>
-                      <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                      <p className="text-xs text-textMuted mt-1 max-w-xs">
                         Add your target school, prompt, and draft — then run an AI analysis.
                       </p>
                     </div>
@@ -4807,22 +5465,22 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           {activeTab === "aid-appeals" && (
             <div>
               <div className="mb-8">
-                <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">
                   College Prep
                 </p>
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">
+                <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
                   Appeal Strategist
                 </h1>
-                <p className="text-zinc-300 text-sm mt-2">
+                <p className="text-textMuted text-sm mt-2">
                   Assess your case strength, build an evidence checklist, and draft a professional aid appeal letter.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
                 {/* Left: inputs */}
-                <div className="lg:col-span-5 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
+                <div className="lg:col-span-5 card-edge bg-panel rounded-2xl border border-border p-5 sm:p-6 space-y-4">
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       College Name
                     </label>
                     <input
@@ -4830,12 +5488,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={collegeName}
                       onChange={(e) => setCollegeName(e.target.value)}
                       placeholder="e.g. NYU, Stanford University"
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       Current Aid Offer (Optional)
                     </label>
                     <input
@@ -4843,18 +5501,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={currentOffer}
                       onChange={(e) => setCurrentOffer(e.target.value)}
                       placeholder="e.g. $12,000 grant + $5,500 loans"
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       Appeal Reason
                     </label>
                     <select
                       value={appealReason}
                       onChange={(e) => setAppealReason(e.target.value)}
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand transition-all cursor-pointer"
                     >
                       <option value="Competing Offer">Competing Offer</option>
                       <option value="Financial Hardship">Financial Hardship</option>
@@ -4863,7 +5521,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       Detailed Notes
                     </label>
                     <textarea
@@ -4871,7 +5529,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={contextDetails}
                       onChange={(e) => setContextDetails(e.target.value)}
                       placeholder="Describe changed circumstances, competing offers, family income updates, or merit achievements..."
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none transition-all"
                     />
                   </div>
 
@@ -4884,12 +5542,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       !contextDetails.trim()
                     }
                     className={`w-full font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
-                      generatingAid
-                        ? "bg-indigo-600/80 text-white cursor-wait animate-pulse"
-                        : !collegeName.trim() || !contextDetails.trim()
-                          ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                          : "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
-                    }`}
+ generatingAid
+ ? "bg-brand/80 text-textMain cursor-wait animate-pulse"
+ : !collegeName.trim() || !contextDetails.trim()
+ ? "bg-panel text-textMuted cursor-not-allowed"
+ : "bg-brand text-textMain cursor-pointer"
+ }`}
                   >
                     {generatingAid ? (
                       <>
@@ -4907,33 +5565,33 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 {/* Right: results */}
                 <div className="lg:col-span-7 space-y-4">
                   {generatingAid ? (
-                    <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[420px] text-center">
+                    <div className="card-edge bg-panel rounded-2xl border border-border p-10 flex flex-col items-center justify-center min-h-[420px] text-center">
                       <div className="relative mb-4">
-                        <div className="w-16 h-16 rounded-full border-2 border-indigo-500/30 flex items-center justify-center animate-pulse">
-                          <FileText className="w-7 h-7 text-indigo-400" aria-hidden="true" />
+                        <div className="w-16 h-16 rounded-full border-2 border-brand/30 flex items-center justify-center animate-pulse">
+                          <FileText className="w-7 h-7 text-brand" aria-hidden="true" />
                         </div>
                         <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                          <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500" />
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-brand" />
                         </span>
                       </div>
-                      <p className="text-sm font-medium text-slate-300">
+                      <p className="text-sm font-medium text-textMuted">
                         Analyzing case strength & drafting letter…
                       </p>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="text-xs text-textMuted mt-1">
                         Gemini is building your strategy, document checklist, and appeal draft
                       </p>
                     </div>
                   ) : aidAppealResult ? (
                     <>
-                      <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-2xl p-4 sm:p-5">
-                        <p className="text-xs text-indigo-200/90 leading-relaxed">
+                      <div className="bg-brandGlow border border-brand/20 rounded-2xl p-4 sm:p-5">
+                        <p className="text-xs text-brand/90 leading-relaxed">
                           Financial aid offices approve appeals based on verifiable documentation. Use this tailored draft as your structural foundation and attach the recommended evidence.
                         </p>
                       </div>
 
-                      <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
+                      <div className="card-edge bg-panel rounded-2xl border border-border p-5 sm:p-6">
                         <div className="flex items-center justify-between gap-3 mb-4">
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+                          <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest">
                             Strategy & Case Strength
                           </span>
                           <span
@@ -4942,19 +5600,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             {aidAppealResult.strategyScore}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-300 leading-relaxed">
+                        <p className="text-xs text-textMuted leading-relaxed">
                           {aidAppealResult.strategyAnalysis}
                         </p>
                         {aidAppealResult.negotiationDosAndDonts.length > 0 && (
-                          <div className="mt-5 pt-5 border-t border-zinc-800">
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3">
+                          <div className="mt-5 pt-5 border-t border-border">
+                            <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3">
                               Negotiation Do&apos;s & Don&apos;ts
                             </span>
                             <ul className="space-y-2">
                               {aidAppealResult.negotiationDosAndDonts.map((item) => (
                                 <li
                                   key={item}
-                                  className="text-xs text-slate-400 leading-relaxed flex gap-2"
+                                  className="text-xs text-textMuted leading-relaxed flex gap-2"
                                 >
                                   <span className="text-emerald-400 shrink-0">→</span>
                                   <span>{item}</span>
@@ -4965,8 +5623,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         )}
                       </div>
 
-                      <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3">
+                      <div className="card-edge bg-panel rounded-2xl border border-border p-5 sm:p-6">
+                        <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3">
                           Required Documents & Evidence Checklist
                         </span>
                         <ul className="space-y-2">
@@ -4977,14 +5635,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   type="checkbox"
                                   checked={!!checkedDocuments[document]}
                                   onChange={() => toggleDocumentChecked(document)}
-                                  className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-[#0A0A0A] text-indigo-500 focus:ring-indigo-500/30 focus:ring-offset-0 cursor-pointer"
+                                  className="mt-0.5 h-4 w-4 rounded border-border bg-background text-indigo-500 focus:ring-brand/30 focus:ring-offset-0 cursor-pointer"
                                 />
                                 <span
                                   className={`text-xs leading-relaxed transition-colors ${
-                                    checkedDocuments[document]
-                                      ? "text-slate-500 line-through"
-                                      : "text-slate-300 group-hover:text-slate-200"
-                                  }`}
+ checkedDocuments[document]
+ ? "text-textMuted line-through"
+ : "text-textMuted group-hover:text-textMain"
+ }`}
                                 >
                                   {document}
                                 </span>
@@ -4994,19 +5652,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         </ul>
                       </div>
 
-                      <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
+                      <div className="card-edge bg-panel rounded-2xl border border-border p-5 sm:p-6">
                         <div className="flex items-center justify-between gap-3 mb-4">
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+                          <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest">
                             Formal Letter Drafter
                           </span>
                           <button
                             type="button"
                             onClick={copyAppealLetter}
                             className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
-                              letterCopied
-                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                : "bg-[#0A0A0A] text-slate-400 border-zinc-800 hover:text-slate-200 hover:border-slate-700"
-                            }`}
+ letterCopied
+ ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+ : "bg-background text-textMuted border-border hover:text-textMain hover:border-border"
+ }`}
                           >
                             {letterCopied ? (
                               <>
@@ -5022,23 +5680,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </button>
                         </div>
 
-                        <p className="text-xs font-semibold text-indigo-400 mb-3">
+                        <p className="text-xs font-semibold text-brand mb-3">
                           Subject: {aidAppealResult.letterSubject}
                         </p>
-                        <div className="rounded-xl bg-[#0A0A0A] border border-zinc-800 p-4 text-[13px] text-slate-300 leading-relaxed whitespace-pre-wrap">
+                        <div className="rounded-xl bg-background border border-border p-4 text-[13px] text-textMuted leading-relaxed whitespace-pre-wrap">
                           {aidAppealResult.letterBody}
                         </div>
                       </div>
                     </>
                   ) : (
-                    <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[420px] text-center">
-                      <div className="w-12 h-12 rounded-xl bg-slate-800/60 flex items-center justify-center text-slate-500 mb-4">
+                    <div className="card-edge bg-panel rounded-2xl border border-border p-10 flex flex-col items-center justify-center min-h-[420px] text-center">
+                      <div className="w-12 h-12 rounded-xl bg-panel flex items-center justify-center text-textMuted mb-4">
                         <FileText className="w-6 h-6" aria-hidden="true" />
                       </div>
-                      <p className="text-sm font-medium text-slate-400">
+                      <p className="text-sm font-medium text-textMuted">
                         Your appeal strategy will appear here
                       </p>
-                      <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                      <p className="text-xs text-textMuted mt-1 max-w-sm">
                         Enter your college details and case context, then generate a tailored strategy, evidence checklist, and letter draft.
                       </p>
                     </div>
@@ -5052,21 +5710,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           {activeTab === "college-fit" && (
             <div>
               <div className="mb-8">
-                <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">
                   College Prep
                 </p>
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">
+                <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
                   College Fit AI
                 </h1>
-                <p className="text-zinc-300 text-sm mt-2">
+                <p className="text-textMuted text-sm mt-2">
                   Personalized reach, target, and safety school recommendations based on your profile.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-                <div className="lg:col-span-4 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg space-y-4">
+                <div className="lg:col-span-4 card-edge bg-panel rounded-2xl border border-border p-5 sm:p-6 space-y-4">
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       GPA
                     </label>
                     <input
@@ -5074,12 +5732,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={fitGpa}
                       onChange={(e) => setFitGpa(e.target.value)}
                       placeholder="e.g. 3.8"
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       Intended Major
                     </label>
                     <input
@@ -5087,12 +5745,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={fitMajor}
                       onChange={(e) => setFitMajor(e.target.value)}
                       placeholder="e.g. Computer Science"
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       Test Scores
                     </label>
                     <input
@@ -5100,12 +5758,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={fitTestScores}
                       onChange={(e) => setFitTestScores(e.target.value)}
                       placeholder="e.g. SAT 1450 / ACT 32"
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       Location Preference
                     </label>
                     <input
@@ -5113,12 +5771,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={fitLocationPreference}
                       onChange={(e) => setFitLocationPreference(e.target.value)}
                       placeholder="e.g. West Coast, Northeast"
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                    <label className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                       Annual Budget Preference
                     </label>
                     <input
@@ -5126,7 +5784,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={fitBudgetPreference}
                       onChange={(e) => setFitBudgetPreference(e.target.value)}
                       placeholder="e.g. Under $30k net cost"
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
                     />
                   </div>
 
@@ -5137,12 +5795,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       generatingCollegeFit || !fitGpa.trim() || !fitMajor.trim()
                     }
                     className={`w-full font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 ${
-                      generatingCollegeFit
-                        ? "bg-indigo-600/80 text-white cursor-wait animate-pulse"
-                        : !fitGpa.trim() || !fitMajor.trim()
-                          ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                          : "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
-                    }`}
+ generatingCollegeFit
+ ? "bg-brand/80 text-textMain cursor-wait animate-pulse"
+ : !fitGpa.trim() || !fitMajor.trim()
+ ? "bg-panel text-textMuted cursor-not-allowed"
+ : "bg-brand text-textMain cursor-pointer"
+ }`}
                   >
                     {generatingCollegeFit ? (
                       <>
@@ -5174,21 +5832,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   )}
 
                   {generatingCollegeFit ? (
-                    <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-6 sm:p-8 shadow-lg space-y-5 min-h-[320px]">
+                    <div className="card-edge bg-panel rounded-2xl border border-border p-6 sm:p-8 space-y-5 min-h-[320px]">
                       <div className="flex items-center gap-3">
                         <div className="relative">
-                          <div className="w-12 h-12 rounded-full border-2 border-indigo-500/30 flex items-center justify-center animate-pulse">
+                          <div className="w-12 h-12 rounded-full border-2 border-brand/30 flex items-center justify-center animate-pulse">
                             <Icons.GraduationCap />
                           </div>
                           <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500" />
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand" />
                           </span>
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-white">
+                          <p className="text-sm font-semibold text-textMain">
                             College Fit Radar
                           </p>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-textMuted">
                             Provix AI is building your personalized strategy...
                           </p>
                         </div>
@@ -5203,38 +5861,38 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             <div
                               key={stageLabel}
                               className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-all duration-300 ${
-                                isComplete
-                                  ? "border-emerald-500/25 bg-emerald-500/5"
-                                  : isActive
-                                    ? "border-indigo-500/30 bg-indigo-500/10"
-                                    : "border-zinc-800 bg-[#0A0A0A]"
-                              }`}
+ isComplete
+ ? "border-emerald-500/25 bg-emerald-500/5"
+ : isActive
+ ? "border-brand/30 bg-brandGlow"
+ : "border-border bg-background"
+ }`}
                             >
                               <span
                                 className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
-                                  isComplete
-                                    ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
-                                    : isActive
-                                      ? "border-indigo-500/40 bg-indigo-500/15 text-indigo-300"
-                                      : "border-slate-700 text-slate-600"
-                                }`}
+ isComplete
+ ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+ : isActive
+ ? "border-brand/40 bg-brandGlow text-brand"
+ : "border-border text-textMuted"
+ }`}
                               >
                                 {isComplete ? (
                                   <Check className="h-3 w-3" aria-hidden />
                                 ) : isActive ? (
-                                  <span className="h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />
+                                  <span className="h-2 w-2 rounded-full bg-brand animate-pulse" />
                                 ) : (
                                   index + 1
                                 )}
                               </span>
                               <p
                                 className={`text-xs leading-relaxed ${
-                                  isComplete
-                                    ? "text-emerald-200"
-                                    : isActive
-                                      ? "text-indigo-100"
-                                      : "text-slate-500"
-                                }`}
+ isComplete
+ ? "text-emerald-200"
+ : isActive
+ ? "text-indigo-100"
+ : "text-textMuted"
+ }`}
                               >
                                 {stageLabel}
                               </p>
@@ -5245,11 +5903,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </div>
                   ) : collegeFitReport ? (
                     <>
-                      <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-5 sm:p-6 shadow-lg">
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                      <div className="card-edge bg-panel rounded-2xl border border-border p-5 sm:p-6">
+                        <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                           Fit Summary
                         </span>
-                        <p className="text-sm text-slate-300 leading-relaxed">
+                        <p className="text-sm text-textMuted leading-relaxed">
                           {collegeFitReport.summary}
                         </p>
                       </div>
@@ -5268,8 +5926,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           Icon: Target,
                           iconClassName: "w-4 h-4 text-blue-400",
                           schools: collegeFitReport.targetSchools,
-                          accent: "border-indigo-500/20",
-                          badge: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+                          accent: "border-brand/20",
+                          badge: "bg-brandGlow text-brand border-brand/20",
                         },
                         {
                           title: "Safety",
@@ -5282,9 +5940,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       ].map((section) => (
                         <div
                           key={section.title}
-                          className={`card-edge bg-[#111111] rounded-2xl border ${section.accent} p-5 sm:p-6 shadow-lg`}
+                          className={`card-edge bg-panel rounded-2xl border ${section.accent} p-5 sm:p-6`}
                         >
-                          <h3 className="text-sm font-extrabold text-white mb-4 flex items-center gap-2">
+                          <h3 className="text-sm font-extrabold text-textMain mb-4 flex items-center gap-2">
                             <section.Icon
                               className={section.iconClassName}
                               aria-hidden="true"
@@ -5292,7 +5950,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             <span>{section.title}</span>
                           </h3>
                           {section.schools.length === 0 ? (
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-textMuted">
                               No {section.title.toLowerCase()} schools returned.
                             </p>
                           ) : (
@@ -5300,14 +5958,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               {section.schools.map((school) => (
                                 <div
                                   key={`${section.title}-${school.name}`}
-                                  className="rounded-xl bg-[#0A0A0A] border border-zinc-800 p-4 sm:p-5"
+                                  className="rounded-xl bg-background border border-border p-4 sm:p-5"
                                 >
                                   <div className="flex items-start justify-between gap-3 mb-3">
                                     <div className="min-w-0">
-                                      <h4 className="font-bold text-white text-sm">
+                                      <h4 className="font-bold text-textMain text-sm">
                                         {school.name}
                                       </h4>
-                                      <p className="text-[11px] text-slate-500 mt-0.5">
+                                      <p className="text-[11px] text-textMuted mt-0.5">
                                         {school.location}
                                       </p>
                                     </div>
@@ -5318,46 +5976,46 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                     </span>
                                   </div>
 
-                                  <p className="text-xs text-slate-300 leading-relaxed mb-4">
+                                  <p className="text-xs text-textMuted leading-relaxed mb-4">
                                     {school.matchReason}
                                   </p>
 
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-zinc-800">
-                                    <div className="rounded-lg border border-zinc-800 bg-[#111111] p-3">
-                                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-border">
+                                    <div className="rounded-lg border border-border bg-panel p-3">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-textMuted block mb-1.5">
                                         Acceptance Odds
                                       </span>
-                                      <p className="text-xs text-slate-300 leading-relaxed">
+                                      <p className="text-xs text-textMuted leading-relaxed">
                                         {school.acceptanceOdds}
                                       </p>
                                     </div>
-                                    <div className="rounded-lg border border-zinc-800 bg-[#111111] p-3">
-                                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
+                                    <div className="rounded-lg border border-border bg-panel p-3">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-textMuted block mb-1.5">
                                         Financial Profile
                                       </span>
-                                      <p className="text-xs text-slate-300 leading-relaxed">
+                                      <p className="text-xs text-textMuted leading-relaxed">
                                         {school.financialProfile}
                                       </p>
                                     </div>
-                                    <div className="md:col-span-2 rounded-lg border border-zinc-800 bg-[#111111] p-3">
-                                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
+                                    <div className="md:col-span-2 rounded-lg border border-border bg-panel p-3">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-textMuted block mb-1.5">
                                         Departmental Strengths
                                       </span>
-                                      <p className="text-xs text-slate-300 leading-relaxed">
+                                      <p className="text-xs text-textMuted leading-relaxed">
                                         {school.departmentalStrengths}
                                       </p>
                                     </div>
-                                    <div className="md:col-span-2 rounded-lg border border-indigo-500/15 bg-indigo-500/5 p-3">
-                                      <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-300 block mb-2">
+                                    <div className="md:col-span-2 rounded-lg border border-brand/20 bg-brandGlow p-3">
+                                      <span className="text-[10px] font-bold uppercase tracking-widest text-brand block mb-2">
                                         Essay Angles
                                       </span>
                                       <ul className="space-y-1.5">
                                         {school.essayAngles.map((angle) => (
                                           <li
                                             key={`${school.name}-${angle}`}
-                                            className="text-xs text-zinc-300 leading-relaxed flex items-start gap-2"
+                                            className="text-xs text-textMuted leading-relaxed flex items-start gap-2"
                                           >
-                                            <span className="mt-0.5 shrink-0 font-mono text-zinc-500">
+                                            <span className="mt-0.5 shrink-0 font-mono text-textMuted">
                                               –
                                             </span>
                                             <span>{angle}</span>
@@ -5366,18 +6024,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                       </ul>
                                     </div>
                                     {school.profileRedFlags.length > 0 && (
-                                      <div className="md:col-span-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-amber-300 block mb-2">
+                                      <div className="md:col-span-2 rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-violet-300 block mb-2">
                                           Profile Red Flags
                                         </span>
                                         <ul className="space-y-1.5">
                                           {school.profileRedFlags.map((flag) => (
                                             <li
                                               key={`${school.name}-${flag}`}
-                                              className="text-xs text-amber-100/90 leading-relaxed flex items-start gap-2"
+                                              className="text-xs text-violet-100/90 leading-relaxed flex items-start gap-2"
                                             >
                                               <AlertTriangle
-                                                className="w-3 h-3 mt-0.5 shrink-0 text-amber-400"
+                                                className="w-3 h-3 mt-0.5 shrink-0 text-violet-400"
                                                 aria-hidden
                                               />
                                               <span>{flag}</span>
@@ -5395,14 +6053,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       ))}
                     </>
                   ) : (
-                    <div className="card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-10 shadow-lg flex flex-col items-center justify-center min-h-[320px] text-center">
-                      <div className="w-12 h-12 rounded-xl bg-slate-800/60 flex items-center justify-center text-slate-500 mb-4">
+                    <div className="card-edge bg-panel rounded-2xl border border-border p-10 flex flex-col items-center justify-center min-h-[320px] text-center">
+                      <div className="w-12 h-12 rounded-xl bg-panel flex items-center justify-center text-textMuted mb-4">
                         <Icons.GraduationCap />
                       </div>
-                      <p className="text-sm font-medium text-slate-400">
+                      <p className="text-sm font-medium text-textMuted">
                         Awaiting your profile
                       </p>
-                      <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                      <p className="text-xs text-textMuted mt-1 max-w-sm">
                         Enter your GPA, major, and preferences — then generate a personalized reach / target / safety list.
                       </p>
                     </div>
@@ -5416,53 +6074,53 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           {isEmployeeAccount && activeTab === "opportunity_radar" && (
             <div>
               <div className="mb-8">
-                <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">
                   Live Matching
                 </p>
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">
-                  Opportunity Radar
+                <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
+                  Provix Talent Network
                 </h1>
-                <p className="text-zinc-300 text-sm mt-2">
+                <p className="text-textMuted text-sm mt-2">
                   AI-matched roles from verified employers — tuned to your skills and visibility settings.
                 </p>
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+                <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+                  <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
                     Active Roles
                   </span>
-                  <span className="text-3xl font-extrabold text-white">
+                  <span className="text-3xl font-extrabold text-textMain">
                     {jobsLoading ? "—" : filteredRadarJobFeed.length}
                   </span>
-                  <p className="text-[11px] text-slate-500 mt-1">
+                  <p className="text-[11px] text-textMuted mt-1">
                     of {jobsLoading ? "—" : activeOpeningsCount} active
                   </p>
                 </div>
-                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+                <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+                  <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
                     Direct Matches
                   </span>
                   <span className="text-3xl font-extrabold text-emerald-400">
                     {jobsLoading ? "—" : radarDirectMatchesCount}
                   </span>
-                  <p className="text-[11px] text-slate-500 mt-1">90%+ fit score</p>
+                  <p className="text-[11px] text-textMuted mt-1">90%+ fit score</p>
                 </div>
-                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg col-span-2 lg:col-span-1">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+                <div className="card-edge bg-panel p-5 rounded-2xl border border-border col-span-2 lg:col-span-1">
+                  <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
                     Profile Views
                   </span>
-                  <span className="text-3xl font-extrabold text-indigo-400">
+                  <span className="text-3xl font-extrabold text-brand">
                     {profileViewsCount}
                   </span>
-                  <p className="text-[11px] text-slate-500 mt-1">last 30 days</p>
+                  <p className="text-[11px] text-textMuted mt-1">last 30 days</p>
                 </div>
               </div>
 
-              <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-4 mb-6 shadow-lg">
+              <div className="card-edge bg-panel border border-border rounded-2xl p-4 mb-6">
                 <div className="flex flex-col lg:flex-row lg:items-center gap-3">
                   <div className="relative flex-1">
-                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
+                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-textMuted">
                       <Icons.Search />
                     </span>
                     <input
@@ -5470,24 +6128,24 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={radarSearch}
                       onChange={(e) => setRadarSearch(e.target.value)}
                       placeholder="Search by role title..."
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => setRemoteOnly((prev) => !prev)}
                     className={`shrink-0 text-[11px] font-bold px-4 py-2.5 rounded-xl border transition-all cursor-pointer ${
-                      remoteOnly
-                        ? "bg-indigo-600 border-indigo-500 text-white"
-                        : "bg-[#0A0A0A] border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
-                    }`}
+ remoteOnly
+ ? "bg-brand border-brand text-white"
+ : "bg-background border-border text-textMuted hover:text-textMain hover:border-border"
+ }`}
                   >
                     Remote Only
                   </button>
                   <select
                     value={radarExperienceFilter}
                     onChange={(e) => setRadarExperienceFilter(e.target.value)}
-                    className="shrink-0 bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                    className="shrink-0 bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand transition-all cursor-pointer"
                   >
                     <option value="all">All Experience Levels</option>
                     <option value="Entry-Level">Entry-Level</option>
@@ -5497,36 +6155,36 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               </div>
 
               {jobsLoading ? (
-                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-                  <p className="text-sm font-medium text-slate-400">
+                <div className="card-edge bg-panel border border-border rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-textMuted">
                     Loading opportunities...
                   </p>
                 </div>
               ) : jobsError ? (
-                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-                  <p className="text-sm font-medium text-slate-300">
+                <div className="card-edge bg-panel border border-border rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-textMuted">
                     Could not load job feed
                   </p>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-textMuted mt-1">
                     The opportunities list is unavailable right now. You can
                     keep using the rest of the dashboard.
                   </p>
                 </div>
               ) : activeJobs.length === 0 ? (
-                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-                  <p className="text-sm font-medium text-slate-300">
+                <div className="card-edge bg-panel border border-border rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-textMuted">
                     No active openings right now
                   </p>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-textMuted mt-1">
                     Check back soon — new roles are posted as employers join Provix.
                   </p>
                 </div>
               ) : filteredRadarJobFeed.length === 0 ? (
-                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-                  <p className="text-sm font-medium text-slate-300">
+                <div className="card-edge bg-panel border border-border rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-textMuted">
                     No opportunities match your filters
                   </p>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-textMuted mt-1">
                     Try clearing search or disabling Remote Only.
                   </p>
                 </div>
@@ -5550,20 +6208,20 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     return (
                       <div
                         key={job.id}
-                        className="card-edge card-lift bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col"
+                        className="card-edge card-lift bg-panel border border-border rounded-2xl p-5 flex flex-col"
                       >
                         <div className="flex items-start justify-between gap-3 mb-4">
                           <div className="flex items-start gap-3 min-w-0">
-                            <div className="w-11 h-11 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0">
-                              <span className="text-xs font-extrabold text-indigo-300">
+                            <div className="w-11 h-11 rounded-lg bg-background border border-border flex items-center justify-center shrink-0">
+                              <span className="text-xs font-extrabold text-brand">
                                 {companyInitials}
                               </span>
                             </div>
                             <div className="min-w-0">
-                              <h3 className="font-bold text-white text-base truncate">
+                              <h3 className="font-bold text-textMain text-base truncate">
                                 {job.title}
                               </h3>
-                              <p className="text-sm text-slate-400 font-medium mt-0.5 truncate">
+                              <p className="text-sm text-textMuted font-medium mt-0.5 truncate">
                                 {job.company}
                               </p>
                               {formattedSalary && (
@@ -5576,12 +6234,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           <div className="flex flex-col items-end gap-1.5 shrink-0">
                             <span
                               className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
-                                isMatching
-                                  ? "bg-indigo-500/10 text-indigo-300 border-indigo-500/30 animate-pulse"
-                                  : insight
-                                    ? getMatchBadgeClass(insight)
-                                    : "bg-slate-800/80 text-slate-500 border-slate-700/50"
-                              }`}
+ isMatching
+ ? "bg-brandGlow text-brand border-brand/30 animate-pulse"
+ : insight
+ ? getMatchBadgeClass(insight)
+ : "bg-panel/80 text-textMuted border-border/50"
+ }`}
                             >
                               {isMatching
                                 ? "Scoring…"
@@ -5591,7 +6249,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             </span>
                             {insight && !isMatching ? (
                               <>
-                                <span className="text-[10px] font-mono font-bold tabular-nums text-zinc-400">
+                                <span className="text-[10px] font-mono font-bold tabular-nums text-textMuted">
                                   {clampScore0to100(matchScore)}% match
                                 </span>
                                 <ScoreMeter
@@ -5603,17 +6261,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </div>
                         </div>
 
-                        <p className="text-xs text-slate-500 mb-3">{job.location}</p>
+                        <p className="text-xs text-textMuted mb-3">{job.location}</p>
 
                         <div className="mb-5">
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                          <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                             Tech Stack
                           </span>
                           <div className="flex flex-wrap gap-1.5">
                             {tags.map((tag: string) => (
                               <span
                                 key={tag}
-                                className="px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                                className="px-2 py-1 rounded-md text-[10px] font-bold bg-brandGlow text-brand border border-brand/20"
                               >
                                 {tag}
                               </span>
@@ -5622,16 +6280,16 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         </div>
 
                         {(isMatching || insight) && (
-                          <div className="mb-5 rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3">
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                          <div className="mb-5 rounded-xl bg-background border border-border p-3">
+                            <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                               AI Match Analysis
                             </span>
                             {isMatching ? (
                               <div className="flex items-center gap-2">
                                 <span className="relative flex h-2 w-2">
-                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-brand" />
                                 </span>
-                                <p className="text-xs text-slate-500">
+                                <p className="text-xs text-textMuted">
                                   Evaluating your profile against this role with Gemini…
                                 </p>
                               </div>
@@ -5640,9 +6298,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 {insight?.match_reasons.map((reason, index) => (
                                   <li
                                     key={`${job.id}-reason-${index}`}
-                                    className="flex items-start gap-2 text-xs text-slate-300 leading-relaxed"
+                                    className="flex items-start gap-2 text-xs text-textMuted leading-relaxed"
                                   >
-                                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-indigo-400" />
+                                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand" />
                                     <span>{reason}</span>
                                   </li>
                                 ))}
@@ -5651,17 +6309,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </div>
                         )}
 
-                        <div className="mt-auto flex items-center justify-between gap-3 pt-4 border-t border-zinc-800">
+                        <div className="mt-auto flex items-center justify-between gap-3 pt-4 border-t border-border">
                           <button
                             type="button"
                             onClick={() =>
                               handleSaveOpportunity(job.id, job.title ?? "Role")
                             }
                             className={`text-[11px] font-bold px-3 py-2 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
-                              isSaved
-                                ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-400"
-                                : "bg-[#0A0A0A] border-zinc-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
-                            }`}
+ isSaved
+ ? "bg-brandGlow border-brand/30 text-brand"
+ : "bg-background border-border text-textMuted hover:text-textMain hover:border-border"
+ }`}
                           >
                             <Icons.Bookmark />
                             {isSaved ? "Saved" : "Save"}
@@ -5671,10 +6329,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             onClick={() => handleExpressInterest(job)}
                             disabled={alreadyInterested}
                             className={`text-[11px] font-bold px-4 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                              alreadyInterested
-                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-not-allowed"
-                                : "bg-indigo-600 hover:bg-indigo-500 text-white"
-                            }`}
+ alreadyInterested
+ ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-not-allowed"
+ : "bg-brand hover:bg-brandHover text-white"
+ }`}
                           >
                             {alreadyInterested ? (
                               <>
@@ -5698,31 +6356,31 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           {isEmployeeAccount && activeTab === "applications" && (
             <div>
               <div className="mb-8">
-                <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">
                   Job Search
                 </p>
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">
+                <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
                   Applications
                 </h1>
-                <p className="text-zinc-300 text-sm mt-2">
+                <p className="text-textMuted text-sm mt-2">
                   Track roles you&apos;ve applied to and their current status.
                 </p>
               </div>
 
               {appliedJobs.length === 0 ? (
-                <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-                  <p className="text-sm font-medium text-slate-300">
+                <div className="card-edge bg-panel border border-border rounded-2xl p-10 text-center">
+                  <p className="text-sm font-medium text-textMuted">
                     No applications yet
                   </p>
-                  <p className="text-xs text-slate-500 mt-1 mb-5">
+                  <p className="text-xs text-textMuted mt-1 mb-5">
                     Scan the radar and express interest in your first match.
                   </p>
                   <button
                     type="button"
                     onClick={() => setActiveTab("opportunity_radar")}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-all cursor-pointer"
+                    className="bg-brand hover:bg-brandHover text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-all cursor-pointer"
                   >
-                    Open Opportunity Radar
+                    Open Provix Talent Network
                   </button>
                 </div>
               ) : (
@@ -5730,16 +6388,16 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   {appliedJobs.map((application) => (
                     <div
                       key={application.jobId}
-                      className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                      className="card-edge bg-panel border border-border rounded-2xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
                     >
                       <div>
-                        <h3 className="font-bold text-white text-base">
+                        <h3 className="font-bold text-textMain text-base">
                           {application.title}
                         </h3>
-                        <p className="text-sm text-indigo-400 font-medium mt-0.5">
+                        <p className="text-sm text-brand font-medium mt-0.5">
                           {application.company}
                         </p>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-400">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-textMuted">
                           <span>{application.salary}</span>
                           <span>{application.location}</span>
                           <span>Interest expressed {application.appliedAt}</span>
@@ -5747,14 +6405,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       </div>
                       <span
                         className={`self-start md:self-center px-3 py-1.5 rounded-full text-[10px] font-bold shrink-0 ${
-                          application.status === "Interest Expressed"
-                            ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                            : application.status === "Submitted"
-                            ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
-                            : application.status === "Under Review"
-                              ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                              : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                        }`}
+ application.status === "Interest Expressed"
+ ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+ : application.status === "Submitted"
+ ? "bg-brandGlow text-brand border border-brand/20"
+ : application.status === "Under Review"
+ ? "bg-violet-500/10 text-violet-400 border border-violet-500/20"
+ : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+ }`}
                       >
                         {application.status}
                       </span>
@@ -5766,7 +6424,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           )}
 
           {/* EMPLOYER: INTERESTED CANDIDATES */}
-          {isBusinessAccount && activeTab === "applicants" && (
+          {isBusinessAccount &&
+            isVerifiedEmployer &&
+            activeTab === "applicants" && (
             <EmployerApplicantsSection
               key={applicantsRefreshKey}
               userId={user?.id ?? null}
@@ -5781,20 +6441,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
           {/* EMPLOYER: VETTED TALENT POOL */}
           {showTalentPoolNav && activeTab === "talent" && (
+            talentPoolLoading ? (
+              <EmployerConsoleSkeleton />
+            ) : (
             <div>
               <div className="flex items-end justify-between mb-8">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">
                     Employer Console
                   </p>
-                  <h1 className="text-3xl font-extrabold tracking-tight text-white">
+                  <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
                     {isBusinessAccount
                       ? savedCompanyName
                         ? `Welcome, ${savedCompanyName}`
                         : "Welcome"
-                      : "Vetted Talent Pool"}
+                      : "Provix Talent Network"}
                   </h1>
-                  <p className="text-zinc-300 text-sm mt-2">
+                  <p className="text-textMuted text-sm mt-2">
                     {isBusinessAccount
                       ? "Your company profile is live. Search anonymized, AI-vetted talent below."
                       : "Hire top young talent based on verifiable projects and education."}
@@ -5804,7 +6467,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   <button
                     type="button"
                     onClick={openPostJobModal}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer shrink-0"
+                    className="bg-brand hover:bg-brandHover text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer shrink-0"
                   >
                     + Post New Job
                   </button>
@@ -5813,32 +6476,32 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
               {/* METRICS ROW */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+                <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+                  <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
                     Total Candidates
                   </span>
-                  <span className="text-3xl font-mono font-extrabold tabular-nums text-white">
+                  <span className="text-3xl font-mono font-extrabold tabular-nums text-textMain">
                     {candidates.length}
                   </span>
                 </div>
-                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
-                    Saved Profiles
+                <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+                  <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
+                    Active Profiles
                   </span>
-                  <span className="text-3xl font-mono font-extrabold tabular-nums text-white">
+                  <span className="text-3xl font-mono font-extrabold tabular-nums text-textMain">
                     {savedProfilesCount}
                   </span>
                 </div>
-                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+                <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+                  <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
                     New Matches
                   </span>
-                  <span className="text-3xl font-mono font-extrabold tabular-nums text-indigo-400">
+                  <span className="text-3xl font-mono font-extrabold tabular-nums text-brand">
                     {newMatchesCount}
                   </span>
                 </div>
-                <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+                <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
+                  <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
                     Active Roles
                   </span>
                   <span className="text-3xl font-mono font-extrabold tabular-nums text-emerald-400">
@@ -5849,24 +6512,24 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* FILTER SIDEBAR */}
-                <aside className="lg:col-span-3 card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-2xl space-y-5">
+                <aside className="lg:col-span-3 card-edge bg-panel border border-border rounded-2xl p-5 space-y-5">
                   <div>
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-3">
+                    <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-3">
                       Filters
                     </span>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-textMuted">
                       Narrow the pool by experience, role, and availability.
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wide">
+                    <label className="block text-[11px] font-bold text-textMuted mb-1.5 uppercase tracking-wide">
                       Experience Level
                     </label>
                     <select
                       value={experienceFilter}
                       onChange={(e) => setExperienceFilter(e.target.value)}
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
                     >
                       <option value="all">All Levels</option>
                       {EXPERIENCE_LEVEL_OPTIONS.map((option) => (
@@ -5878,13 +6541,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wide">
+                    <label className="block text-[11px] font-bold text-textMuted mb-1.5 uppercase tracking-wide">
                       Role Type
                     </label>
                     <select
                       value={roleTypeFilter}
                       onChange={(e) => setRoleTypeFilter(e.target.value)}
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
                     >
                       <option value="all">All Roles</option>
                       <option value="Engineering">Engineering</option>
@@ -5895,13 +6558,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wide">
+                    <label className="block text-[11px] font-bold text-textMuted mb-1.5 uppercase tracking-wide">
                       Availability
                     </label>
                     <select
                       value={availabilityFilter}
                       onChange={(e) => setAvailabilityFilter(e.target.value)}
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
                     >
                       <option value="all">Any Status</option>
                       <option value="Available Now">Available Now</option>
@@ -5918,7 +6581,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       setAvailabilityFilter("all");
                       setTalentSearch("");
                     }}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer"
+                    className="w-full bg-panel hover:bg-panel text-textMuted text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer"
                   >
                     Clear Filters
                   </button>
@@ -5927,7 +6590,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 {/* SEARCH + CANDIDATE GRID */}
                 <div className="lg:col-span-9 space-y-4">
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
+                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-textMuted">
                       <Icons.Search />
                     </span>
                     <input
@@ -5935,40 +6598,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       value={talentSearch}
                       onChange={(e) => setTalentSearch(e.target.value)}
                       placeholder="Search by role or tech stack (e.g. Next.js, Python)..."
-                      className="w-full bg-[#111111] border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                      className="w-full bg-panel border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-all"
                     />
                   </div>
 
-                  {talentPoolLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {Array.from({ length: 3 }).map((_, index) => (
-                        <div
-                          key={index}
-                          className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-5 animate-pulse min-h-[260px]"
-                          aria-hidden="true"
-                        >
-                          <div className="flex items-start justify-between gap-2 mb-4">
-                            <div className="w-12 h-12 rounded-full bg-slate-800" />
-                            <div className="space-y-2">
-                              <div className="h-5 w-20 rounded-full bg-slate-800" />
-                              <div className="h-5 w-16 rounded-full bg-slate-800/80" />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="h-4 w-32 rounded bg-slate-800" />
-                            <div className="h-3 w-24 rounded bg-slate-800/80" />
-                            <div className="h-3 w-40 rounded bg-slate-800/60" />
-                          </div>
-                          <div className="flex gap-1.5 mt-6">
-                            <div className="h-6 w-14 rounded-md bg-slate-800/80" />
-                            <div className="h-6 w-16 rounded-md bg-slate-800/80" />
-                            <div className="h-6 w-12 rounded-md bg-slate-800/80" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : talentPoolError ? (
-                    <div className="card-edge bg-[#111111] border border-red-500/20 rounded-2xl p-10 text-center">
+                  {talentPoolError ? (
+                    <div className="card-edge bg-panel border border-red-500/20 rounded-2xl p-10 text-center">
                       <p className="text-sm font-medium text-red-200">
                         {talentPoolError}
                       </p>
@@ -5983,11 +6618,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       </button>
                     </div>
                   ) : filteredCandidates.length === 0 ? (
-                    <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-                      <p className="text-sm font-medium text-slate-300">
+                    <div className="card-edge bg-panel border border-border rounded-2xl p-10 text-center">
+                      <p className="text-sm font-medium text-textMuted">
                         No published candidates match your filters
                       </p>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="text-xs text-textMuted mt-1">
                         Only verified, published candidate profiles appear here.
                       </p>
                     </div>
@@ -6001,26 +6636,26 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         return (
                           <div
                             key={col.profileId}
-                            className="card-edge card-lift bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col justify-between h-full min-h-[260px] min-w-0 overflow-hidden"
+                            className="card-edge card-lift bg-panel border border-border rounded-2xl p-5 flex flex-col justify-between h-full min-h-[260px] min-w-0 overflow-hidden"
                           >
                             <div className="flex items-start justify-between gap-2 mb-4">
-                              <div className="w-12 h-12 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-sm font-bold text-indigo-400 shrink-0">
+                              <div className="w-12 h-12 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-sm font-bold text-brand shrink-0">
                                 {initials}
                               </div>
                               <div className="flex flex-col items-end gap-1 shrink-0">
                                 <span
                                   className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getAvailabilityBadgeClass(
-                                    col.availability
-                                  )}`}
+ col.availability
+ )}`}
                                 >
                                   {col.availability}
                                 </span>
                                 <span
                                   className={`font-mono text-[10px] font-semibold tabular-nums ${
-                                    col.matchPending
-                                      ? "text-indigo-300 animate-pulse"
-                                      : "text-zinc-400"
-                                  }`}
+ col.matchPending
+ ? "text-brand animate-pulse"
+ : "text-textMuted"
+ }`}
                                 >
                                   {formatTalentMatchLabel(
                                     col.matchScore,
@@ -6037,10 +6672,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             </div>
 
                             <div className="mb-1">
-                              <h3 className="font-bold text-white text-sm">
+                              <h3 className="font-bold text-textMain text-sm">
                                 {publicName}
                               </h3>
-                              <p className="text-xs text-indigo-400 font-medium mt-0.5">
+                              <p className="text-xs text-brand font-medium mt-0.5">
                                 {col.role}
                               </p>
                               <WorkPreferenceTimezoneBadge
@@ -6048,15 +6683,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 timezone={col.timezone}
                                 className="mt-2"
                               />
-                              <div className="mt-2">
+                              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                <ProductionScoreBadge
+                                  score={col.productionScore}
+                                  verified={Boolean(col.isAuditVerified)}
+                                />
                                 <VerifiedOnProvixPill
                                   verified={Boolean(col.verifiedOnProvix)}
                                 />
                               </div>
-                              <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                              <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-brandGlow text-brand border border-brand/20">
                                 {col.experienceLevel}
                               </span>
-                              <p className="text-[11px] text-slate-500 mt-2">
+                              <p className="text-[11px] text-textMuted mt-2">
                                 {formatTalentEducationLines(col).join(" · ") ||
                                   "Education details not provided"}
                               </p>
@@ -6066,13 +6705,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               {col.skills.slice(0, 3).map((skill) => (
                                 <span
                                   key={skill}
-                                  className="px-2 py-1 rounded-md text-[10px] font-bold bg-slate-800/80 text-slate-300 border border-slate-700/50"
+                                  className="px-2 py-1 rounded-md text-[10px] font-bold bg-panel/80 text-textMuted border border-border/50"
                                 >
                                   {skill}
                                 </span>
                               ))}
                               {col.skills.length > 3 && (
-                                <span className="px-2 py-0.5 text-[11px] rounded bg-white/5 text-zinc-400 border border-white/5">
+                                <span className="px-2 py-0.5 text-[11px] rounded bg-white/5 text-textMuted border border-border">
                                   +{col.skills.length - 3} more
                                 </span>
                               )}
@@ -6082,14 +6721,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               <button
                                 type="button"
                                 onClick={() => setSelectedCandidate(col)}
-                                className="flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center transition-all bg-slate-800 hover:bg-slate-700 text-white cursor-pointer"
+                                className="flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center transition-all bg-panel hover:bg-panel text-textMain cursor-pointer"
                               >
                                 View Profile
                               </button>
                               <button
                                 type="button"
                                 onClick={() => openIntroModal(col)}
-                                className="flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white"
+                                className="flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer bg-brand hover:bg-brandHover text-white"
                               >
                                 Connect
                               </button>
@@ -6102,109 +6741,44 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 </div>
               </div>
             </div>
+            )
           )}
 
           {/* EMPLOYER: AI SCREEN CANDIDATE */}
           {showTalentPoolNav && activeTab === "evaluator" && (
             <div>
               <div className="mb-8">
-                <h1 className="text-3xl font-extrabold tracking-tight text-white">Employer AI Screen</h1>
-                <p className="text-zinc-300 text-sm mt-2">Paste a candidate's resume or project links to generate a hiring summary.</p>
+                <h1 className="text-3xl font-extrabold tracking-tight text-textMain">Employer AI Screen</h1>
+                <p className="text-textMuted text-sm mt-2">Paste a candidate's resume or project links to generate a hiring summary.</p>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-7 space-y-5">
-                  <input type="text" placeholder="Candidate Target Role" value={evalRole} onChange={(e) => setEvalRole(e.target.value)} className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
-                  <input type="text" placeholder="Education / Major (Optional)" value={evalMajor} onChange={(e) => setEvalMajor(e.target.value)} className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
-                  <textarea rows={5} placeholder="Paste Proof of Work or Resume details here..." value={evalAccomplishments} onChange={(e) => setEvalAccomplishments(e.target.value)} className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white resize-none focus:outline-none focus:border-indigo-500" />
+                <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-7 space-y-5">
+                  <input type="text" placeholder="Candidate Target Role" value={evalRole} onChange={(e) => setEvalRole(e.target.value)} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand" />
+                  <input type="text" placeholder="Education / Major (Optional)" value={evalMajor} onChange={(e) => setEvalMajor(e.target.value)} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand" />
+                  <textarea rows={5} placeholder="Paste Proof of Work or Resume details here..." value={evalAccomplishments} onChange={(e) => setEvalAccomplishments(e.target.value)} className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-textMain resize-none focus:outline-none focus:border-brand" />
                   
-                  <button onClick={evaluateCandidate} disabled={evaluatingPoW || !evalAccomplishments} className="w-full bg-white hover:bg-slate-200 text-black font-bold py-3.5 rounded-xl text-xs transition-all">
+                  <button onClick={evaluateCandidate} disabled={evaluatingPoW || !evalAccomplishments} className="w-full bg-brand text-white hover:bg-brandHover font-bold py-3.5 rounded-xl text-xs transition-all">
                     {evaluatingPoW ? "Processing..." : "Generate Candidate Brief"}
                   </button>
                 </div>
 
-                <div className="lg:col-span-6 card-edge bg-[#111111] rounded-2xl border border-zinc-800 p-6 min-h-[360px]">
+                <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-6 min-h-[360px]">
                   {employerAuditError ? (
                     <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
                       {employerAuditError}
                     </div>
                   ) : employerAuditResult ? (
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center pb-4 border-b border-zinc-800">
-                        <div className="text-2xl font-extrabold text-white">
-                          Audit Score
-                        </div>
-                        <div
-                          className={`text-xl font-mono font-bold px-3 py-1 rounded-lg border ${getIntegrityScoreClass(employerAuditResult.score)}`}
-                        >
-                          {clampScore0to100(employerAuditResult.score)}/100
-                        </div>
-                      </div>
-                      <ScoreMeter
-                        score={employerAuditResult.score}
-                        className="mt-3"
-                      />
-
-                      <ProductionScorecard metrics={employerAuditResult.metrics} />
-
-                      <ScoreCapBreakdown
-                        scoreCap={employerAuditResult.scoreCap}
-                        score={employerAuditResult.score}
-                      />
-
-                      <AuditChecksList checks={employerAuditResult.checks} />
-
-                      {employerAuditResult.strengths.length > 0 && (
-                        <div>
-                          <span className="font-bold text-white block mb-2 text-sm">
-                            Strengths
-                          </span>
-                          <ul className="space-y-1.5 text-sm text-slate-300 leading-relaxed">
-                            {employerAuditResult.strengths.map((item) => (
-                              <li key={item}>• {item}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {employerAuditResult.redFlags.filter(
-                        (item) =>
-                          !employerAuditResult.scoreCap?.applied ||
-                          !isFilesystemCapRedFlag(item)
-                      ).length > 0 && (
-                        <div>
-                          <span className="font-bold text-white block mb-2 text-sm">
-                            Red Flags
-                          </span>
-                          <ul className="space-y-1.5 text-sm text-amber-200/90 leading-relaxed">
-                            {employerAuditResult.redFlags
-                              .filter(
-                                (item) =>
-                                  !employerAuditResult.scoreCap?.applied ||
-                                  !isFilesystemCapRedFlag(item)
-                              )
-                              .map((item) => (
-                              <li key={item}>• {item}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {employerAuditResult.recommendations.length > 0 && (
-                        <div>
-                          <span className="font-bold text-white block mb-2 text-sm">
-                            Recommendations
-                          </span>
-                          <ul className="space-y-1.5 text-sm text-slate-400 leading-relaxed">
-                            {employerAuditResult.recommendations.map((item) => (
-                              <li key={item}>• {item}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
+                    <AuditResultsPanel
+                      result={employerAuditResult}
+                      roleSpec={evalRole.trim() || "Full-stack dev"}
+                      viewerRole="employer"
+                      isEmployerView
+                      onRescan={() => void evaluateCandidate()}
+                      rescanning={evaluatingPoW}
+                    />
                   ) : (
-                    <div className="text-slate-500 text-center mt-28 text-sm">
+                    <div className="text-textMuted text-center mt-28 text-sm">
                       Awaiting candidate data...
                     </div>
                   )}
@@ -6214,7 +6788,30 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           )}
 
           {showTalentPoolNav && activeTab === "auditor" && (
-            <GitHubResumeAuditor />
+            <GitHubResumeAuditor
+              initialPrivateWork={privateAuditorIntent}
+              isEmployerView
+              onAuditPersisted={(record) => {
+                const verified = record.verificationStatus === "verified";
+                setDbProfile((prev) => {
+                  if (!prev) {
+                    return prev;
+                  }
+                  if (!verified && prev.verification_status === "verified") {
+                    return prev;
+                  }
+                  return {
+                    ...prev,
+                    production_score: record.productionScore,
+                    audit_breakdown: record.breakdown,
+                    is_audit_verified: verified,
+                    is_publicly_visible: verified && record.isPubliclyVisible,
+                    verification_status:
+                      record.verificationStatus ?? "unverified",
+                  };
+                });
+              }}
+            />
           )}
 
         </div>
@@ -6240,14 +6837,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         {/* PUBLIC PROFILE MODAL */}
         {showPublicProfile && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-[#121212] border border-zinc-800 rounded-2xl max-w-xl w-full p-6 relative shadow-2xl overflow-hidden">
+            <div className="bg-panel border border-border rounded-2xl max-w-xl w-full p-6 relative overflow-hidden">
               {/* Header / Title */}
-              <div className="flex items-center justify-between pb-4 mb-4 border-b border-zinc-800">
+              <div className="flex items-center justify-between pb-4 mb-4 border-b border-border">
                 <div>
-                  <h3 className="text-lg font-bold text-white">
+                  <h3 className="text-lg font-bold text-textMain">
                     {isBusinessAccount ? "Your Shareable Company Card" : "Your Shareable Profile Card"}
                   </h3>
-                  <p className="text-slate-400 text-xs mt-0.5">
+                  <p className="text-textMuted text-xs mt-0.5">
                     {isBusinessAccount
                       ? "This is what candidates see when you share your company link."
                       : "This is what clients and agencies see when you share your link."}
@@ -6256,7 +6853,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                 <button
                   onClick={() => setShowPublicProfile(false)}
-                  className="text-slate-400 hover:text-white bg-slate-900 w-7 h-7 rounded-lg border border-zinc-800 flex items-center justify-center transition-all cursor-pointer"
+                  className="text-textMuted hover:text-textMain bg-background w-7 h-7 rounded-lg border border-border flex items-center justify-center transition-all cursor-pointer"
                 >
                   <Icons.XMark />
                 </button>
@@ -6264,90 +6861,90 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
               {/* Profile Card Preview */}
               {isBusinessAccount ? (
-                <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-5 mb-5 space-y-4">
+                <div className="bg-background border border-border rounded-xl p-5 mb-5 space-y-4">
                   {/* Business Identity */}
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold text-lg">
+                    <div className="w-12 h-12 rounded-xl bg-brand/20 border border-brand/30 text-brand flex items-center justify-center font-bold text-lg">
                       {businessInitials}
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-white">
+                      <h4 className="text-sm font-bold text-textMain">
                         {businessProfileData.businessName}
                       </h4>
-                      <p className="text-xs text-slate-400">{businessProfileData.industry}</p>
+                      <p className="text-xs text-textMuted">{businessProfileData.industry}</p>
                     </div>
                   </div>
 
                   {/* Company Bio */}
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <p className="text-xs text-textMuted leading-relaxed">
                     {businessProfileData.companyBio}
                   </p>
 
                   {/* Active Roles */}
-                  <div className="flex items-center justify-between text-xs bg-slate-900/80 px-3 py-2 rounded-lg border border-zinc-800">
-                    <span className="text-slate-300">Active Roles</span>
+                  <div className="flex items-center justify-between text-xs bg-background/80 px-3 py-2 rounded-lg border border-border">
+                    <span className="text-textMuted">Active Roles</span>
                     <span className="text-emerald-400 font-mono font-bold">{activeRolesCount}</span>
                   </div>
 
                   {/* Industry */}
                   <div>
-                    <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">
+                    <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-1">
                       Industry
                     </div>
-                    <div className="text-xs font-semibold text-slate-200">
+                    <div className="text-xs font-semibold text-textMain">
                       {businessProfileData.industry}
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="bg-[#0A0A0A] border border-zinc-800 rounded-xl p-5 mb-5 space-y-4">
+                <div className="bg-background border border-border rounded-xl p-5 mb-5 space-y-4">
                   {/* User Bio */}
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center font-bold text-lg">
+                    <div className="w-12 h-12 rounded-xl bg-brand/20 border border-brand/30 text-brand flex items-center justify-center font-bold text-lg">
                       {profileInitials}
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-white">
+                      <h4 className="text-sm font-bold text-textMain">
                         {profileData.name}
                       </h4>
-                      <p className="text-xs text-slate-400">{title}</p>
+                      <p className="text-xs text-textMuted">{title}</p>
                     </div>
                   </div>
 
                   {/* Bio */}
-                  <p className="text-xs text-slate-300 leading-relaxed">
+                  <p className="text-xs text-textMuted leading-relaxed">
                     {bio}
                   </p>
 
                   {/* Status */}
-                  <div className="flex items-center justify-between text-xs bg-slate-900/80 px-3 py-2 rounded-lg border border-zinc-800">
-                    <span className="text-slate-300">
+                  <div className="flex items-center justify-between text-xs bg-background/80 px-3 py-2 rounded-lg border border-border">
+                    <span className="text-textMuted">
                       Availability:{" "}
                       <strong
                         className={
                           availabilityStatus === "Available Now"
                             ? "text-emerald-400"
                             : availabilityStatus === "Interviewing"
-                              ? "text-amber-400"
-                              : "text-slate-400"
+                              ? "text-violet-400"
+                              : "text-textMuted"
                         }
                       >
                         {availabilityStatus}
                       </strong>
                     </span>
-                    <span className="text-slate-400 font-mono">10–15 hrs/wk</span>
+                    <span className="text-textMuted font-mono">10–15 hrs/wk</span>
                   </div>
 
                   {/* Verified Project */}
                   <div>
-                    <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">
+                    <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider mb-1">
                       Featured Project
                     </div>
-                    <div className="text-xs font-semibold text-slate-200">
+                    <div className="text-xs font-semibold text-textMain">
                       {featuredProjectTitle}
                     </div>
                     {featuredProjectDetail && (
-                      <div className="text-[11px] text-slate-400 mt-0.5">
+                      <div className="text-[11px] text-textMuted mt-0.5">
                         {featuredProjectDetail}
                       </div>
                     )}
@@ -6357,7 +6954,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
               {/* Link Sharing Action */}
               <div className="space-y-2">
-                <label className="text-[11px] font-medium text-slate-400">
+                <label className="text-[11px] font-medium text-textMuted">
                   Your Public Link
                 </label>
                 <div className="flex items-center gap-2">
@@ -6365,7 +6962,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     type="text"
                     readOnly
                     value={isBusinessAccount ? publicBusinessProfileUrl : publicProfileUrl}
-                    className="flex-1 bg-[#0A0A0A] border border-zinc-800 text-slate-300 text-xs px-3 py-2.5 rounded-xl font-mono focus:outline-none"
+                    className="flex-1 bg-background border border-border text-textMuted text-xs px-3 py-2.5 rounded-xl font-mono focus:outline-none"
                   />
                   <button
                     onClick={() => {
@@ -6379,7 +6976,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       navigator.clipboard.writeText(linkToCopy);
                       showToast("Link copied to clipboard!");
                     }}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap"
+                    className="bg-brand hover:bg-brandHover text-white font-semibold text-xs px-4 py-2.5 rounded-xl transition-all cursor-pointer whitespace-nowrap"
                   >
                     Copy Link
                   </button>
@@ -6394,7 +6991,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         {/* POST NEW JOB MODAL (Employer) */}
         {postJobModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-8 max-w-lg w-full relative shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="card-edge bg-panel border border-border rounded-2xl p-8 max-w-lg w-full relative max-h-[90vh] overflow-y-auto">
               <button
                 type="button"
                 onClick={() => {
@@ -6402,22 +6999,22 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   resetNewJobForm();
                 }}
                 disabled={isCreatingJob}
-                className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                className="absolute top-4 right-4 text-textMuted hover:text-textMain transition-colors cursor-pointer disabled:opacity-50"
               >
                 <Icons.XMark />
               </button>
 
-              <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">
+              <p className="text-xs font-bold uppercase tracking-widest text-brand mb-2">
                 Employer Console
               </p>
-              <h3 className="text-xl font-extrabold text-white">Post New Job</h3>
-              <p className="text-sm text-slate-400 mt-2 mb-6">
+              <h3 className="text-xl font-extrabold text-textMain">Post New Job</h3>
+              <p className="text-sm text-textMuted mt-2 mb-6">
                 Publish a role to the Provix opportunities feed.
               </p>
 
               <form onSubmit={handleCreateJob} className="space-y-4">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                  <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                     Job Title
                   </label>
                   <input
@@ -6426,12 +7023,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     onChange={(e) => setNewJobTitle(e.target.value)}
                     placeholder="Senior Frontend Engineer"
                     required
-                    className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                  <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                     Company Name
                   </label>
                   <input
@@ -6440,13 +7037,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     onChange={(e) => setNewJobCompany(e.target.value)}
                     placeholder="Your company"
                     required
-                    className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                    <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                       Location
                     </label>
                     <input
@@ -6455,15 +7052,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       onChange={(e) => setNewJobLocation(e.target.value)}
                       placeholder="Remote · US"
                       required
-                      className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                    <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                       Salary Range
                     </label>
                     <div className="relative">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-textMuted">
                         $
                       </span>
                       <input
@@ -6472,17 +7069,17 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         onChange={(e) => setNewJobSalaryRange(e.target.value)}
                         placeholder="80,000 - 100,000 / yr"
                         required
-                        className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl py-3 pr-3 pl-7 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-background border border-border rounded-xl py-3 pr-3 pl-7 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
                       />
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-2">
+                    <p className="text-[11px] text-textMuted mt-2">
                       Example: $80,000 - $100,000 / yr (80k-100k also works)
                     </p>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                  <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                     Required Skills
                   </label>
                   <input
@@ -6491,18 +7088,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     onChange={(e) => setNewJobRequiredSkills(e.target.value)}
                     placeholder="Agile, system design, 3+ years backend"
                     required
-                    className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
                   />
-                  <p className="text-[11px] text-slate-500 mt-2">
+                  <p className="text-[11px] text-textMuted mt-2">
                     Comma-separated methodologies, experience, or general
                     requirements.
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase">
+                  <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                     Tech Stack
-                    <span className="ml-1.5 font-medium normal-case tracking-normal text-slate-500">
+                    <span className="ml-1.5 font-medium normal-case tracking-normal text-textMuted">
                       optional
                     </span>
                   </label>
@@ -6511,9 +7108,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     value={newJobTechStack}
                     onChange={(e) => setNewJobTechStack(e.target.value)}
                     placeholder="React, TypeScript, Next.js"
-                    className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl p-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
                   />
-                  <p className="text-[11px] text-slate-500 mt-2">
+                  <p className="text-[11px] text-textMuted mt-2">
                     Optional. Comma-separated tools, languages, and frameworks.
                     Leave blank for non-technical roles.
                   </p>
@@ -6527,14 +7124,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       resetNewJobForm();
                     }}
                     disabled={isCreatingJob}
-                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
+                    className="flex-1 bg-panel hover:bg-panel text-textMuted font-bold py-3 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isCreatingJob}
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="flex-1 bg-brand hover:bg-brandHover text-white font-bold py-3 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {isCreatingJob ? "Posting..." : "Post Job"}
                   </button>

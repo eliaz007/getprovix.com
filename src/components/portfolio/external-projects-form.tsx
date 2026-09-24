@@ -18,22 +18,22 @@ import {
 import { createClient } from "@/utils/supabase/client";
 
 const inputClass =
-  "w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500";
+  "w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand";
 
 const labelClass =
-  "block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wide";
+  "block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide";
 
 function AlternativeArtifactsTrustNotice({ className = "" }: { className?: string }) {
   return (
     <div
-      className={`rounded-xl border border-zinc-800 bg-[#0A0A0A] px-3.5 py-3 ${className}`}
+      className={`rounded-xl border border-border bg-background px-3.5 py-3 ${className}`}
       role="note"
     >
-      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-        <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
+      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-textMuted">
+        <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-textMuted" aria-hidden />
         Security & Privacy
       </div>
-      <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed text-slate-500">
+      <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed text-textMuted">
         <li>Technical breakdowns are ephemeral.</li>
         <li>Never stored permanently for third-party access.</li>
         <li>Never used to train public AI models.</li>
@@ -222,17 +222,17 @@ export default function ExternalProjectsForm({
 
   if (signedIn === false) {
     return (
-      <div className="rounded-xl border border-zinc-800 bg-[#0A0A0A] px-4 py-4">
+      <div className="rounded-xl border border-border bg-background px-4 py-4">
         <div className="flex items-start gap-3">
           <FolderKanban
-            className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400"
+            className="mt-0.5 h-4 w-4 shrink-0 text-brand"
             aria-hidden
           />
           <div>
-            <p className="text-sm font-semibold text-white">
+            <p className="text-sm font-semibold text-textMain">
               Alternative project artifacts
             </p>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            <p className="mt-1 text-xs leading-relaxed text-textMuted">
               Sign in to save live demos, docs, and technical breakdowns for
               private or enterprise work. The AI auditor will use these when a
               public GitHub repository is not available.
@@ -240,7 +240,7 @@ export default function ExternalProjectsForm({
             <AlternativeArtifactsTrustNotice className="mt-3" />
             <Link
               href="/login"
-              className="mt-3 inline-flex text-xs font-semibold text-indigo-300 hover:text-indigo-200"
+              className="mt-3 inline-flex text-xs font-semibold text-brand hover:text-brand"
             >
               Sign in to add projects
             </Link>
@@ -253,11 +253,11 @@ export default function ExternalProjectsForm({
   return (
     <div className="space-y-5">
       <div>
-        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">
-          <FolderKanban className="h-3.5 w-3.5 text-indigo-400" aria-hidden />
+        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-textMuted">
+          <FolderKanban className="h-3.5 w-3.5 text-brand" aria-hidden />
           Alternative project artifacts
         </div>
-        <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+        <p className="mt-1.5 text-xs leading-relaxed text-textMuted">
           For private, enterprise, or otherwise unpublished work, add a live or
           documentation URL plus a technical breakdown. The auditor uses these
           instead of failing on a missing public GitHub repo.
@@ -325,7 +325,7 @@ export default function ExternalProjectsForm({
         <button
           type="submit"
           disabled={saving || loading || signedIn !== true}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-xs font-bold tracking-tight text-white transition-colors duration-200 ease-out hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2.5 text-xs font-bold tracking-tight text-white transition-colors duration-200 ease-out hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? (
             <>
@@ -342,7 +342,7 @@ export default function ExternalProjectsForm({
       </form>
 
       <div className="space-y-3">
-        <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-textMuted">
           Saved artifacts
           {hasUsableExternalProjects(projects)
             ? ` (${projects.length})`
@@ -350,12 +350,12 @@ export default function ExternalProjectsForm({
         </div>
 
         {loading ? (
-          <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-[#0A0A0A] px-4 py-3 text-xs text-slate-500">
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-3 text-xs text-textMuted">
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             Loading saved projects...
           </div>
         ) : projects.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-zinc-800 bg-[#0A0A0A] px-4 py-3 text-xs leading-relaxed text-slate-500">
+          <p className="rounded-xl border border-dashed border-border bg-background px-4 py-3 text-xs leading-relaxed text-textMuted">
             No alternative artifacts yet. Save a project above to give the
             auditor something to evaluate when GitHub is private.
           </p>
@@ -364,11 +364,11 @@ export default function ExternalProjectsForm({
             {projects.map((project) => (
               <li
                 key={project.id ?? `${project.project_title}-${project.project_url}`}
-                className="rounded-xl border border-zinc-800 bg-[#0A0A0A] px-4 py-3"
+                className="rounded-xl border border-border bg-background px-4 py-3"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-white">
+                    <p className="truncate text-sm font-semibold text-textMain">
                       {project.project_title || "Untitled project"}
                     </p>
                     {project.project_url ? (
@@ -376,7 +376,7 @@ export default function ExternalProjectsForm({
                         href={project.project_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[11px] font-mono text-indigo-300 hover:text-indigo-200"
+                        className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-[11px] font-mono text-brand hover:text-brand"
                       >
                         <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
                         <span className="truncate">{project.project_url}</span>
@@ -388,7 +388,7 @@ export default function ExternalProjectsForm({
                       type="button"
                       onClick={() => void handleDelete(project.id as string)}
                       disabled={deletingId === project.id}
-                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800 text-slate-500 transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-50"
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border text-textMuted transition-colors hover:border-rose-500/40 hover:text-rose-300 disabled:opacity-50"
                       aria-label={`Remove ${project.project_title || "project"}`}
                     >
                       {deletingId === project.id ? (
@@ -400,7 +400,7 @@ export default function ExternalProjectsForm({
                   ) : null}
                 </div>
                 {project.description ? (
-                  <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                  <p className="mt-2 text-xs leading-relaxed text-textMuted">
                     {project.description}
                   </p>
                 ) : null}

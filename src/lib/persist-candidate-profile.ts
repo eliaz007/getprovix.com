@@ -8,6 +8,23 @@ import {
 } from "@/lib/work-preference";
 import { formatGpa } from "@/lib/gpa";
 import { normalizeGitHubUrl } from "@/lib/validate-github-url";
+import {
+  getCandidateSkillsValidationError,
+  parseCandidateSkills,
+} from "@/lib/candidate-skills";
+import { CANDIDATE_BIO_LIMIT_TEXT, getCandidateBioValidationError } from "@/lib/candidate-bio";
+import {
+  getEducationValidationError,
+  parseEducationEntries,
+  primaryEducationFields,
+  serializeEducationEntries,
+  type EducationEntry,
+} from "@/lib/candidate-education";
+import {
+  canEnableTalentPoolVisibility,
+  TALENT_POOL_CONNECT_GITHUB_MESSAGE,
+  TALENT_POOL_SCORE_REQUIRED_MESSAGE,
+} from "@/lib/talent-pool-visibility";
 
 export type CandidateProfileSaveInput = {
   fullName: string;
@@ -17,6 +34,8 @@ export type CandidateProfileSaveInput = {
   major: string;
   degree: string;
   skills: string[] | string | null | undefined;
+  education?: EducationEntry[] | unknown;
+  isSelfTaught?: boolean;
   portfolioUrl: string;
   youtubeUrl: string;
   experienceLevel: string;
@@ -35,7 +54,12 @@ type PersistOptions = {
 
 type ProfilePayload = Record<
   string,
-  string | number | boolean | string[] | null
+  | string
+  | number
+  | boolean
+  | string[]
+  | Array<Record<string, string>>
+  | null
 >;
 
 function nullIfEmpty(value: string | null | undefined): string | null {
@@ -46,18 +70,7 @@ function nullIfEmpty(value: string | null | undefined): string | null {
 export function normalizeSkillsForDb(
   skills: string[] | string | null | undefined
 ): string[] {
-  if (Array.isArray(skills)) {
-    return skills.map((skill) => skill.trim()).filter(Boolean);
-  }
-
-  if (typeof skills === "string") {
-    return skills
-      .split(",")
-      .map((skill) => skill.trim())
-      .filter(Boolean);
-  }
-
-  return [];
+  return parseCandidateSkills(skills);
 }
 
 export function buildCandidateProfileUpdatePayload(
@@ -65,17 +78,25 @@ export function buildCandidateProfileUpdatePayload(
   userId: string,
   options?: PersistOptions
 ): ProfilePayload {
-  const parsedGradYear = Number.parseInt(input.gradYear, 10);
+  const educationEntries = serializeEducationEntries(
+    parseEducationEntries(input.education)
+  );
+  const primaryEducation = primaryEducationFields(educationEntries);
+  const parsedGradYear = Number.parseInt(primaryEducation.graduationYear, 10);
   const existingSlug = options?.existingProfileSlug?.trim();
+  const institution = primaryEducation.institution;
+  const fieldOfStudy = primaryEducation.fieldOfStudy;
 
   const payload: ProfilePayload = {
     full_name: nullIfEmpty(input.fullName),
     job_title: nullIfEmpty(input.jobTitle),
     bio: nullIfEmpty(input.bio),
-    university: nullIfEmpty(input.university),
-    school: nullIfEmpty(input.university),
-    major: nullIfEmpty(input.major),
-    degree: nullIfEmpty(input.degree),
+    university: nullIfEmpty(institution),
+    school: nullIfEmpty(institution),
+    major: nullIfEmpty(fieldOfStudy),
+    degree: nullIfEmpty(primaryEducation.credentialType),
+    education: educationEntries,
+    is_self_taught: Boolean(input.isSelfTaught),
     skills: normalizeSkillsForDb(input.skills),
     user_id: userId,
     portfolio_url: nullIfEmpty(normalizeGitHubUrl(input.portfolioUrl)),
@@ -134,6 +155,14 @@ function formatPersistError(error: { message?: string; code?: string } | null): 
 
   if (isUniqueViolation(error)) {
     return "Could not save profile: profile URL slug conflict. Try again.";
+  }
+
+  if (
+    error.message?.toLowerCase().includes("profiles_candidate_bio_length_check") ||
+    (error.code === "23514" &&
+      (error.message?.toLowerCase().includes("bio") ?? false))
+  ) {
+    return CANDIDATE_BIO_LIMIT_TEXT;
   }
 
   return error.message?.trim() || "Could not save profile. Please try again.";
@@ -216,6 +245,55 @@ export async function persistCandidatePoolVisibility(
     };
   }
 
+  if (isVisibleInPool) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("github_verified, production_score, audit_score")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const scores = [
+      typeof profile?.production_score === "number"
+        ? profile.production_score
+        : null,
+      typeof profile?.audit_score === "number" ? profile.audit_score : null,
+    ];
+
+    if (
+      !canEnableTalentPoolVisibility({
+        githubVerified: profile?.github_verified === true,
+        scores,
+      })
+    ) {
+      let historyScore: number | null = null;
+      const history = await supabase
+        .from("production_audit_history")
+        .select("production_score")
+        .eq("user_id", userId)
+        .gte("production_score", 75)
+        .limit(1)
+        .maybeSingle();
+      if (typeof history.data?.production_score === "number") {
+        historyScore = history.data.production_score;
+      }
+
+      if (
+        !canEnableTalentPoolVisibility({
+          githubVerified: profile?.github_verified === true,
+          scores: [...scores, historyScore],
+        })
+      ) {
+        return {
+          error: { message: TALENT_POOL_CONNECT_GITHUB_MESSAGE },
+          userMessage:
+            profile?.github_verified === true
+              ? TALENT_POOL_SCORE_REQUIRED_MESSAGE
+              : TALENT_POOL_CONNECT_GITHUB_MESSAGE,
+        };
+      }
+    }
+  }
+
   const payload: ProfilePayload = {
     is_visible_in_pool: isVisibleInPool,
     visible_to_employers: isVisibleInPool,
@@ -286,6 +364,51 @@ export async function persistCandidateProfile(
     };
   }
 
+  if ("bio" in payload) {
+    const bioValue = typeof payload.bio === "string" ? payload.bio : "";
+    const bioError = getCandidateBioValidationError(bioValue);
+    if (bioError) {
+      return {
+        data: null,
+        error: { message: bioError },
+        userMessage: bioError,
+      };
+    }
+  }
+
+  if ("skills" in payload) {
+    const parsedSkills = parseCandidateSkills(
+      payload.skills as string[] | string | null | undefined
+    );
+    const skillsError = getCandidateSkillsValidationError(parsedSkills);
+    if (skillsError) {
+      return {
+        data: null,
+        error: { message: skillsError },
+        userMessage: skillsError,
+      };
+    }
+    payload = { ...payload, skills: parsedSkills };
+  }
+
+  if ("education" in payload) {
+    const parsedEducation = parseEducationEntries(payload.education);
+    const educationError = getEducationValidationError(parsedEducation, {
+      isSelfTaught: Boolean(payload.is_self_taught),
+    });
+    if (educationError) {
+      return {
+        data: null,
+        error: { message: educationError },
+        userMessage: educationError,
+      };
+    }
+    payload = {
+      ...payload,
+      education: serializeEducationEntries(parsedEducation),
+    };
+  }
+
   let attemptPayload: ProfilePayload = { ...payload };
   const maxAttempts = Object.keys(attemptPayload).length + 3;
 
@@ -305,6 +428,8 @@ export async function persistCandidateProfile(
         "degree",
         "gpa",
         "graduation_year",
+        "education",
+        "is_self_taught",
       ] as const) {
         if (key in attemptPayload) {
           educationPatch[key] = attemptPayload[key];

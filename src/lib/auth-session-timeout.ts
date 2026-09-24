@@ -1,0 +1,1 @@
+export const AUTH_SESSION_TIMEOUT_MS = 1500;

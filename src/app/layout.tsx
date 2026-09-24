@@ -10,6 +10,7 @@ import {
   SITE_TITLE,
   SITE_URL,
 } from "@/lib/site";
+import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,7 +24,7 @@ const geistMono = Geist_Mono({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0a",
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
 };
@@ -129,7 +130,8 @@ const jsonLd = {
         priceCurrency: "USD",
         availability: "https://schema.org/InStock",
         description:
-          "Free during beta for profile browsing and AI screening. 12% success fee on full-time placements.",
+          "Free during beta for profile browsing and AI screening. " +
+          PUBLIC_PLACEMENT_TERMS_SUMMARY,
       },
       featureList:
         "Verified candidate profiles with proof-of-work signals, AI Code & Resume Auditor, repository integrity analysis, candidate scoring and talent matching, Pitch Studio outreach generation, warm employer introductions",

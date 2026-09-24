@@ -24,13 +24,18 @@ import {
   fetchGitHubProfileArtifacts,
   githubArtifactAuditSucceeded,
   githubAuditHasFetchedArtifacts,
+  githubAuditLooksInaccessible,
   type GitHubArtifactAudit,
 } from "@/lib/github-audit";
+import { INACCESSIBLE_PUBLIC_REPO_MESSAGE } from "@/lib/inaccessible-public-audit";
 import {
   AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE,
   hasUsableGitHubAuditTarget,
+  INVALID_REPO_FORMAT,
+  INVALID_REPO_FORMAT_MESSAGE,
   isGitHubPlaceholderInput,
   normalizeGitHubAuditTarget,
+  parseGitHubRepoPath,
 } from "@/lib/validate-github-url";
 import {
   consumeRateLimit,
@@ -41,23 +46,44 @@ import { extractResumeTextFromFile } from "@/lib/parse-resume";
 import { RESUME_TEXT_LIMIT } from "@/lib/resume-file";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
+  blendReadinessScore,
+  normalizeCommitDates,
+} from "@/lib/audit-readiness";
+import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
   emptyScoreCapAudit,
-  MISSING_CORE_ARTIFACT_SCORE_CAP,
+  parseRepoFilesystemEvidence,
   parseScoreCapAudit,
   strongestFilesystemEvidence,
-  UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
+  type RepoFilesystemEvidence,
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import {
   computeProductionAuditMetrics,
   emptyProductionAuditMetrics,
-  parseProductionAuditMetrics,
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
+import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
+import { isEmployerRole } from "@/lib/dashboard-account";
+import {
+  probeGitHubRepository,
+  REPO_NOT_FOUND_OR_PRIVATE,
+  REPO_NOT_FOUND_OR_PRIVATE_MESSAGE,
+  UNVERIFIED_OWNERSHIP,
+  UNVERIFIED_OWNERSHIP_MESSAGE,
+  verifyGitHubRepoOwnership,
+} from "@/lib/github-ownership";
+import { parseGitHubUrl } from "@/lib/validate-github-url";
+import { hasPersistedProvixTokenVerification } from "@/lib/provix-token";
+import {
+  buildProductionAuditClaim,
+  persistProfileProductionAudit,
+  PRIVATE_AUDITED_REPO_LABEL,
+  type DossierVerificationStatus,
+} from "@/lib/production-audit";
 
 export const runtime = "nodejs";
 
@@ -67,6 +93,7 @@ export type AuditRequestBody = {
   resumeSummary?: string;
   compensationLevel?: string;
   workIsPrivate?: boolean;
+  playground?: boolean;
   externalProjects?: ExternalProjectRecord[];
 };
 
@@ -83,32 +110,42 @@ export type AuditResult = {
   recommendations: string[];
   checks: AuditCheck[];
   scoreCap: ScoreCapAudit;
-  /** File-tree-derived scorecard: CI/CD, tests, error boundaries, weighted total. */
+  /** File-tree-derived scorecard: architecture, tests, DevOps, resilience. */
   metrics: ProductionAuditMetrics;
+  filesystem: RepoFilesystemEvidence | null;
+  commitDates: string[];
+  inaccessibleRepo?: boolean;
 };
 
-const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws.
+const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws. Strict penalties are required — and every hard deduction must come with a concrete repair plan the candidate can implement.
 
 RULES FOR YOUR AUDIT:
 1. NO BUZZWORDS: Never use words like "resiliency," "robust," "seamless," "leverage," "cutting-edge," or "paradigm." Speak in plain, direct, technical English.
 2. CITE SPECIFIC EVIDENCE: You are forbidden from claiming a code flaw or strength unless you can point to a specific file path from filesystem inspection, file type, directory pattern, commit history detail, live/documentation URL, or technical-breakdown detail you actually observed in the provided artifacts.
-3. HARSH SCORING: Grade out of 100 like a strict employer. Start at 100 and aggressively deduct points for missing production standards (e.g., missing error boundaries, lack of tests, empty READMEs, or shallow tutorial code). A score of 100 requires production-grade architecture AND file-system proof of tests, CI, and error handling.
-4. CODE-FIRST: Provix scores repositories and file-system artifacts, not paperwork. A missing resume or experience summary must not lower the score and must not appear in redFlags. If resumeText is empty, ignore that absence. If a resume is present, use it only to check claim-vs-code mismatches.
-5. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo or external project write-up is a basic template, you must penalize the score heavily and state the mismatch explicitly.
-6. FILE-SYSTEM EVIDENCE VS PROSE: README text, resume bullets, commit messages, and external project write-ups are claims, not proof. They must never override missing code artifacts. If filesystem.test_paths, filesystem.ci_workflow_paths, or filesystem.error_handling_paths is empty, that artifact is missing — even if a README or write-up describes tests, CI, or error handling. Do not invent files that are not listed.
-7. HARD SCORE CAPS:
-   - If any core technical requirement is missing from repo inspection (test suite, CI workflow, or explicit error-handling files), the score MUST be at most ${MISSING_CORE_ARTIFACT_SCORE_CAP}.
-   - If two or more core requirements are missing, or filesystem.inspected is false, the score MUST be at most ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
-   - Scores above 80 are forbidden unless filesystem.inspected is true AND test_paths, ci_workflow_paths, and error_handling_paths are all non-empty. Cite those paths as proof.
-   - Honor scorePolicy.appliedMaxScore. Never exceed it. Never raise the score because the prose sounded production-grade.
-8. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts and cannot raise the score above the caps in rule 7. Never say the audit could not be completed solely because GitHub is private.
+3. HARSH SCORING: Grade out of 100 like a strict employer using the four-pillar weighted model. A score of 100 requires strong architecture plus file-system proof of tests, CI, and structured error handling. Never clamp the overall score to 60 (or 50) because error handling, tests, or CI is missing — those gaps lower only their pillar. Do not deduct any numerical points for commit age or inactivity; tag the repo "active" or "stable" instead.
+4. CONSTRUCTIVE, ACTIONABLE FIXES: Do not stop at the penalty. Pair every major deduction with a recommendation that names the exact file, nested package path, config, or command to add, the test runner or CI system to use, and what file-tree proof would raise that pillar. Vague coaching ("add more tests", "improve quality") is forbidden.
+5. CODE-FIRST: Provix scores repositories and file-system artifacts, not paperwork. A missing resume or experience summary must not lower the score and must not appear in redFlags. If resumeText is empty, ignore that absence. If a resume is present, use it only to check claim-vs-code mismatches.
+6. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo or external project write-up is a basic template, you must penalize the score heavily and state the mismatch explicitly.
+7. FILE-SYSTEM EVIDENCE VS PROSE: README text, resume bullets, commit messages, and external project write-ups are claims, not proof. They must never override missing code artifacts. Treat scorePolicy.coreArtifacts and scorePolicy.missingCoreArtifacts as the authority for whether tests, CI, and error handling exist. If those lists say an artifact is present, it is present — even when the files live in a nested package or use a non-Jest runner. Do not invent files that are not listed.
+8. FOUR-PILLAR WEIGHTED SCORE (proportional grades, no binary 0/100 drops):
+   - Overall score = Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Each pillar is 0-100.
+   - Architecture (35%): structure, type safety, modularity.
+   - Testing (25%): 0 only when no *.test.* / *.spec.* files exist. Token coverage (test/source ratio < 0.10) caps at 35. Ratio 0.10–0.30 maps to 65–75. Ratio > 0.30 with Playwright/Cypress reaches 85–100.
+   - DevOps / CI (20%): 0 only when no workflow files exist. Lint/build-only workflows score 50. Workflows that execute tests on PR score 80. Multi-stage deploy/preview pipelines score 95–100.
+   - Resilience (20%): start at 100. Web apps missing root error.tsx / ErrorBoundary lose 35. Each unhandled async/await or fetch without try/catch loses 15, max −50. Floor at 0. A single unhandled error is 85, never 0.
+   - A pillar is 0 only when the capability is genuinely absent. Superficial testing or resilience must be capped, not zeroed. Never cap the total score at 60 or 50. Never invent a missing-test or missing-CI failure because the repo is a monorepo or the runner is not Jest.
+   - If scorePolicy.repoKind is "library" (library, package, or backend tool), do not penalize missing React error boundaries; grade resilience from unhandled async/fetch only.
+   - If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct 35 from resilience only.
+9. MONOREPOS AND ALTERNATIVE TEST RUNNERS: Nested packages under apps/, packages/, services/, libs/, modules/, or workspaces/ are valid production layouts. Tests, CI, and error-handling files inside those packages count. Jest, Vitest, Ava, Mocha, node:test, Pytest, Go testing, Playwright, Cypress, RSpec, JUnit, and similar runners count when their files or configs appear in filesystem.test_paths / ci_workflow_paths / error_handling_paths. Do not treat a missing repo-root /tests folder as a missing suite. If filesystem.truncated is true, do not assume nested package artifacts are absent just because they are not at the repository root; only treat an artifact as missing when scorePolicy lists it in missingCoreArtifacts.
+10. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts. Never say the audit could not be completed solely because GitHub is private.
+11. REPO ACTIVITY: Do not deduct any numerical quality points for commit age, inactivity, clustered commits, or a finished repository. You may mention an informational activity tag of "active" (recent commits) or "stable" (older / inactive). Never apply a History −25 or similar cadence penalty. When scorePolicy shows tests, CI, and error handling are present, the score should stay aligned with that production evidence.
 
 Return strict JSON only:
 {
-  "score": number (integer 0-100 after deductions from 100, already capped per rule 7),
+  "score": number (integer 0-100 after the four-pillar weighted model; never hard-capped at 60),
   "strengths": ["strength cited with a file path, file type, directory pattern, or commit-history detail", "..."],
   "redFlags": ["flaw or resume/repo mismatch cited with evidence", "..."],
-  "recommendations": ["specific fix", "...", "..."],
+  "recommendations": ["concrete file/config/command to add, including nested package paths when relevant", "...", "..."],
   "checks": [
     {
       "id": "artifact_analysis",
@@ -129,14 +166,14 @@ Return strict JSON only:
 }
 
 JSON field rules:
-- score: integer 0-100. Start at 100 and deduct. Apply the hard caps in rule 7 before returning. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling. Do not deduct for a missing resume.
-- strengths: 3-5 bullets. Each must cite a file path, file type, directory pattern, commit-history detail, live/documentation URL, or technical-breakdown detail from the provided artifacts. If you cannot cite it, omit it. Do not cite README claims as proof of tests, CI, or error handling.
-- redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. If core files are missing from the file tree, say so. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true. Never list a missing resume, CV, or experience summary as a red flag.
-- recommendations: exactly 3 specific, actionable fixes.
-- checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown, and must cite observed evidence. If evidence is missing, say so and deduct.
-  - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims. Treat README as a claim sheet, not as a substitute for files.
-  - Check 2 architecture_review: folder/module structure from the file tree or technical-breakdown architecture and whether the candidate shows real system design, not a template.
-  - Check 3 api_resiliency: API design, data handling, error handling, tests, and production standards. Pass/fail tests, CI, and error handling only from filesystem paths. If those path lists are empty, say they are missing.
+- score: integer 0-100 from the four-pillar weighted model in rule 8. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling. Do not deduct for a missing resume. Do not deduct merely for a monorepo layout or a non-Jest test runner. Do not deduct for inactivity (rule 11).
+- strengths: 3-5 bullets. Each must cite a file path, file type, directory pattern, commit-history detail, live/documentation URL, or technical-breakdown detail from the provided artifacts. If you cannot cite it, omit it. Nested package paths and alternative test-runner files are valid citations. Do not cite README claims as proof of tests, CI, or error handling.
+- redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. If scorePolicy.missingCoreArtifacts is non-empty, say so. Do not red-flag a missing repo-root /tests folder when nested package tests or alternative runners are listed. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true. Never list a missing resume, CV, or experience summary as a red flag.
+- recommendations: exactly 3 constructive, actionable fixes. Each must name a concrete file, nested package path, config, or command, plus what evidence would lift the related penalty.
+- checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown, and must cite observed evidence. If scorePolicy says an artifact is missing, say so and deduct; if it is present in a nested package, credit it.
+  - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims. Treat README as a claim sheet, not as a substitute for files. Stale but real history is an informational "stable" tag (rule 11), not a score deduction.
+  - Check 2 architecture_review: folder/module structure from the file tree or technical-breakdown architecture and whether the candidate shows real system design, not a template. Monorepo package maps count as architecture, not as a flaw.
+  - Check 3 api_resiliency: API design, data handling, error handling, tests, and production standards. Pass/fail tests, CI, and error handling from scorePolicy.coreArtifacts and the listed filesystem paths, including nested packages and alternative runners.
 - No markdown, no extra keys. Never use the banned buzzwords above.`;
 
 const AUDIT_CHECK_SCHEMA = {
@@ -159,7 +196,7 @@ const AUDIT_RESPONSE_SCHEMA = {
     score: {
       type: Type.INTEGER,
       description:
-        "Overall hiring readiness score from 0 to 100 based on code artifacts. Do not lower the score for a missing resume. Must already apply file-system caps: max 60 if any core artifact is missing, max 50 if two or more are missing or the file tree was not inspected, and above 80 only with file-system proof of tests, CI, and error handling.",
+        "Overall hiring readiness score from 0 to 100 from the four-pillar weighted model (architecture 35%, testing 25%, DevOps 20%, resilience 20%). Do not lower the score for a missing resume. Do not hard-cap at 60 for missing error handling. Do not deduct for commit age.",
     },
     strengths: {
       type: Type.ARRAY,
@@ -174,6 +211,8 @@ const AUDIT_RESPONSE_SCHEMA = {
     recommendations: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
+      description:
+        "Exactly 3 constructive, actionable fixes. Each names a concrete file, nested package path, config, or command that would address a penalty.",
     },
     checks: {
       type: Type.ARRAY,
@@ -225,12 +264,65 @@ function isMissingResumeFlag(text: string): boolean {
   );
 }
 
+/** Rewrite LLM copy that still claims History −25 (or similar oversized cadence dings). */
+function sanitizeHistoryPenaltyCopy(text: string): string {
+  return text
+    .replace(
+      /History\s*[:−-]?\s*−?\s*\d+\b/gi,
+      "activity: informational only"
+    )
+    .replace(
+      /(?:history|commit(?:\s+history)?|cadence|inactiv(?:e|ity)|stale)\b[^.]{0,80}?(?:−|-|minus\s+)\s*\d+\s*(?:pts?|points?)?/gi,
+      (match) =>
+        match.replace(
+          /(?:−|-|minus\s+)\s*\d+\s*(?:pts?|points?)?/i,
+          " (informational, no score impact)"
+        )
+    );
+}
+
+function optionalFilesystem(value: unknown): RepoFilesystemEvidence | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return parseRepoFilesystemEvidence(value);
+}
+
+function attachAuditEvidence(
+  result: AuditResult,
+  filesystem: RepoFilesystemEvidence | null,
+  commitDates: string[]
+): AuditResult {
+  return {
+    ...result,
+    filesystem,
+    commitDates: normalizeCommitDates(commitDates),
+  };
+}
+
+function commitDatesFromArtifacts(
+  githubArtifacts: GitHubArtifactAudit | null
+): string[] {
+  const artifacts = githubArtifacts?.artifacts ?? [];
+  const filesystem = strongestFilesystemEvidence(artifacts);
+  const primary =
+    artifacts.find((artifact) => artifact.filesystem === filesystem) ??
+    artifacts[0];
+
+  return normalizeCommitDates(primary?.commit_dates);
+}
+
 function normalizeAuditResult(raw: unknown): AuditResult {
   const record =
     raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 
-  const recommendations = normalizeStringArray(record.recommendations, 3);
-  const redFlagsRaw = normalizeStringArray(record.redFlags, 5);
+  const recommendations = normalizeStringArray(record.recommendations, 3).map(
+    sanitizeHistoryPenaltyCopy
+  );
+  const redFlagsRaw = normalizeStringArray(record.redFlags, 5).map(
+    sanitizeHistoryPenaltyCopy
+  );
   const redFlags = redFlagsRaw.filter((flag) => !isMissingResumeFlag(flag));
   const strippedResumeFlags = redFlagsRaw.length - redFlags.length;
   const score =
@@ -242,7 +334,9 @@ function normalizeAuditResult(raw: unknown): AuditResult {
 
   return {
     score,
-    strengths: normalizeStringArray(record.strengths, 5),
+    strengths: normalizeStringArray(record.strengths, 5).map(
+      sanitizeHistoryPenaltyCopy
+    ),
     redFlags,
     recommendations:
       recommendations.length >= 3
@@ -253,12 +347,15 @@ function normalizeAuditResult(raw: unknown): AuditResult {
             "Add file-system proof of tests, CI workflows, and error handling.",
             "Align project stack keywords with the target role in your headline and bio.",
           ].slice(0, 3),
-    checks: normalizeAuditChecks(record.checks),
+    checks: normalizeAuditChecks(record.checks).map((check) => ({
+      ...check,
+      summary: sanitizeHistoryPenaltyCopy(check.summary),
+    })),
     scoreCap:
       parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(score),
-    metrics:
-      parseProductionAuditMetrics(record.metrics) ??
-      emptyProductionAuditMetrics(),
+    metrics: emptyProductionAuditMetrics(),
+    filesystem: optionalFilesystem(record.filesystem),
+    commitDates: normalizeCommitDates(record.commitDates ?? record.commit_dates),
   };
 }
 
@@ -301,6 +398,7 @@ function normalizeAuditRequestBody(body: AuditRequestBody): AuditRequestBody {
     resumeSummary: body.resumeSummary,
     compensationLevel: body.compensationLevel,
     workIsPrivate: parseWorkIsPrivate(body.workIsPrivate),
+    playground: body.playground === true,
     externalProjects: normalizeExternalProjects(body.externalProjects),
   };
 }
@@ -323,6 +421,7 @@ async function readAuditRequest(request: Request): Promise<
           resumeSummary: formString(form, "resumeSummary"),
           compensationLevel: formString(form, "compensationLevel"),
           workIsPrivate: parseWorkIsPrivate(formString(form, "workIsPrivate")),
+          playground: formString(form, "playground") === "true",
           externalProjects: normalizeExternalProjects(
             parseJsonValue(formString(form, "externalProjects"))
           ),
@@ -354,8 +453,7 @@ function buildFallbackAudit(
   externalProjects: ExternalProjectRecord[],
   usedExternalFallback: boolean
 ): AuditResult {
-  const hasGithub =
-    !!body.githubUrl?.trim() || (githubArtifacts?.artifacts.length ?? 0) > 0;
+  const hasGithub = githubArtifactAuditSucceeded(githubArtifacts);
   const hasExternal = hasUsableExternalProjects(externalProjects);
   const hasResume = !!body.resumeSummary?.trim();
   const role = body.targetRole?.trim() || "your target role";
@@ -420,7 +518,7 @@ function buildFallbackAudit(
       : `Pin 1-2 production repos that map directly to ${level}-level ${role} expectations.`,
     hasResume
       ? "Rewrite top resume bullets with metrics, stack tags, and links to live demos or PRs."
-      : "Add tests, CI workflows, and explicit error-handling files so the file tree can support a higher score.",
+      : "Add a real test file in the app package (for example packages/<app>/src/foo.test.ts, tests/test_app.py, or *_test.go), a CI workflow under .github/workflows, and an explicit error-handling module so those pillars can rise.",
     usedExternalFallback
       ? "Add architecture notes, error handling, and test strategy to each technical breakdown so reviewers can score production standards."
       : "Add a concise README per repo covering architecture, your contributions, and setup steps."
@@ -563,7 +661,7 @@ async function generateGeminiAudit(
           systemInstruction: SYSTEM_PROMPT,
           responseMimeType: "application/json",
           responseSchema: AUDIT_RESPONSE_SCHEMA,
-          temperature: 0.25,
+          temperature: 0,
         },
       });
 
@@ -590,7 +688,7 @@ async function resolveAuditAccess(): Promise<
   | {
       ok: true;
       supabase: Awaited<ReturnType<typeof createClient>>;
-      user: { id: string } | null;
+      user: User | null;
       usage: DailyScanUsage;
     }
 > {
@@ -774,10 +872,25 @@ export async function POST(request: Request) {
   );
 
   const githubField = payload.githubUrl?.trim() ?? "";
+  const parsedRepoPath = parseGitHubRepoPath(githubField);
   const githubMissing =
     !githubField ||
     isGitHubPlaceholderInput(githubField) ||
-    !hasUsableGitHubAuditTarget(githubField);
+    !parsedRepoPath;
+
+  if (
+    githubField &&
+    !isGitHubPlaceholderInput(githubField) &&
+    !parsedRepoPath
+  ) {
+    return NextResponse.json(
+      {
+        error: INVALID_REPO_FORMAT,
+        message: INVALID_REPO_FORMAT_MESSAGE,
+      },
+      { status: 400 }
+    );
+  }
 
   if (githubMissing && !hasUsableExternalProjects(payload.externalProjects)) {
     return NextResponse.json(
@@ -814,9 +927,10 @@ export async function POST(request: Request) {
     }
 
     if (
+      data &&
       !payload.workIsPrivate &&
       !hasUsableGitHubAuditTarget(payload.githubUrl) &&
-      data?.portfolio_url?.trim()
+      hasUsableGitHubAuditTarget(data.portfolio_url)
     ) {
       payload.githubUrl = data.portfolio_url;
     }
@@ -835,6 +949,75 @@ export async function POST(request: Request) {
     ? normalizeGitHubAuditTarget(payload.githubUrl)
     : "";
 
+  const usageForEarlyExit = async () =>
+    access.user
+      ? incrementDailyScanUsage(access.supabase, access.user.id, access.usage)
+      : access.usage;
+
+  if (githubFetchUrl) {
+    const parsedFetch = parseGitHubRepoPath(githubFetchUrl);
+    if (!parsedFetch?.owner?.trim() || !parsedFetch?.repo?.trim()) {
+      return NextResponse.json(
+        {
+          error: INVALID_REPO_FORMAT,
+          message: INVALID_REPO_FORMAT_MESSAGE,
+        },
+        { status: 400 }
+      );
+    }
+
+    const probe = await probeGitHubRepository(githubFetchUrl);
+    if (probe?.status === "not_found") {
+      return NextResponse.json(
+        {
+          error: REPO_NOT_FOUND_OR_PRIVATE,
+          message: REPO_NOT_FOUND_OR_PRIVATE_MESSAGE,
+          isPrivateOrNotFound: true,
+          repoUrl: githubFetchUrl,
+          inaccessibleRepo: true,
+          ...(await usageForEarlyExit()),
+        },
+        { status: 404 }
+      );
+    }
+
+    if (probe?.status === "found" && access.user) {
+      const { data: roleRow } = await access.supabase
+        .from("profiles")
+        .select("role")
+        .or(`id.eq.${access.user.id},user_id.eq.${access.user.id}`)
+        .limit(1)
+        .maybeSingle();
+      const employerViewer = isEmployerRole(
+        typeof roleRow?.role === "string" ? roleRow.role : null
+      );
+
+      if (!employerViewer) {
+        const ownership = await verifyGitHubRepoOwnership({
+          user: access.user,
+          repoUrl: githubFetchUrl,
+        });
+        const tokenVerified = await hasPersistedProvixTokenVerification(
+          access.supabase,
+          access.user.id,
+          githubFetchUrl
+        );
+        if (!ownership.verified && !tokenVerified) {
+          return NextResponse.json(
+            {
+              error: UNVERIFIED_OWNERSHIP,
+              owner: probe.owner,
+              username: ownership.username,
+              message: UNVERIFIED_OWNERSHIP_MESSAGE,
+              ...(await usageForEarlyExit()),
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
+  }
+
   let githubArtifacts: GitHubArtifactAudit | null = null;
   if (githubFetchUrl) {
     try {
@@ -842,6 +1025,32 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("[audit] GitHub artifact fetch failed:", error);
     }
+  }
+
+  const inaccessibleRepo =
+    !workIsPrivate &&
+    Boolean(githubFetchUrl) &&
+    (githubArtifacts === null || githubAuditLooksInaccessible(githubArtifacts));
+
+  if (inaccessibleRepo) {
+    const usage = access.user
+      ? await incrementDailyScanUsage(
+          access.supabase,
+          access.user.id,
+          access.usage
+        )
+      : access.usage;
+
+    return NextResponse.json(
+      {
+        isPrivateOrNotFound: true,
+        repoUrl: githubFetchUrl,
+        inaccessibleRepo: true,
+        error: INACCESSIBLE_PUBLIC_REPO_MESSAGE,
+        ...usage,
+      },
+      { status: 404 }
+    );
   }
 
   const usedExternalFallback = shouldUseExternalProjectFallback({
@@ -870,27 +1079,32 @@ export async function POST(request: Request) {
     );
   }
 
-  result = applyFilesystemScoreCap(
-    result,
-    strongestFilesystemEvidence(githubArtifacts?.artifacts ?? [])
+  const filesystem = strongestFilesystemEvidence(
+    githubArtifacts?.artifacts ?? []
   );
-
-  const filesystemEvidence = usedExternalFallback
-    ? null
-    : strongestFilesystemEvidence(githubArtifacts?.artifacts ?? []);
-  const metrics = computeProductionAuditMetrics(filesystemEvidence);
+  const commitDates = commitDatesFromArtifacts(githubArtifacts);
+  const metrics = computeProductionAuditMetrics(
+    usedExternalFallback ? null : filesystem
+  );
+  result = attachAuditEvidence(
+    applyFilesystemScoreCap(result, filesystem),
+    filesystem,
+    commitDates
+  );
   result = { ...result, metrics };
 
   // When the file tree was inspected, blend the qualitative score with the
-  // deterministic production scorecard so CI/tests/error-boundary findings
-  // move the headline number — not only the cap.
+  // deterministic four-pillar production scorecard. Inactivity is informational
+  // only and cannot drag a proven production repo.
   if (metrics.evidence.inspected) {
-    const blended = clampScore0to100(
-      Math.round(result.score * 0.45 + metrics.productionScore * 0.55)
-    );
+    const blended = blendReadinessScore({
+      qualitativeScore: result.score,
+      productionScore: metrics.productionScore,
+      commitDates,
+    });
     result = applyFilesystemScoreCap(
       { ...result, score: blended },
-      filesystemEvidence
+      filesystem
     );
     result = { ...result, metrics };
   }
@@ -903,27 +1117,84 @@ export async function POST(request: Request) {
       )
     : access.usage;
 
+  const auditedRepoUrl = workIsPrivate
+    ? PRIVATE_AUDITED_REPO_LABEL
+    : payload.githubUrl?.trim() ||
+      githubArtifacts?.source_url ||
+      githubArtifacts?.artifacts[0]?.repo_url ||
+      PRIVATE_AUDITED_REPO_LABEL;
+  const parsedRepo = parseGitHubUrl(auditedRepoUrl);
+  const isPublicGitHubClaim = Boolean(
+    !workIsPrivate &&
+      parsedRepo?.owner &&
+      parsedRepo.repo &&
+      auditedRepoUrl !== PRIVATE_AUDITED_REPO_LABEL
+  );
+
+  let verificationStatus: DossierVerificationStatus = "unverified";
+  if (access.user && isPublicGitHubClaim) {
+    try {
+      const ownership = await verifyGitHubRepoOwnership({
+        user: access.user,
+        repoUrl: auditedRepoUrl,
+      });
+      verificationStatus = ownership.verified ? "verified" : "unverified";
+    } catch (error) {
+      console.error("[audit] ownership verification threw:", error);
+      verificationStatus = "unverified";
+    }
+  }
+
   if (
     access.user &&
+    payload.playground !== true &&
     (githubArtifactAuditSucceeded(githubArtifacts) ||
       (usedExternalFallback &&
         hasUsableExternalProjects(payload.externalProjects)))
   ) {
+    if (verificationStatus === "verified" || workIsPrivate) {
+      try {
+        await persistOwnIntegrityAudit(
+          access.supabase,
+          access.user.id,
+          result.score,
+          githubArtifacts,
+          payload.externalProjects ?? [],
+          usedExternalFallback,
+          result.scoreCap,
+          result.metrics
+        );
+      } catch (error) {
+        console.error("[audit] persist integrity audit threw:", error);
+      }
+    }
+
     try {
-      await persistOwnIntegrityAudit(
+      const claim = buildProductionAuditClaim({
+        score: result.score,
+        githubUrl: auditedRepoUrl,
+        filesystem,
+        scoreCap: result.scoreCap,
+        isPubliclyVisible: false,
+      });
+      await persistProfileProductionAudit(
         access.supabase,
         access.user.id,
-        result.score,
-        githubArtifacts,
-        payload.externalProjects ?? [],
-        usedExternalFallback,
-        result.scoreCap,
-        result.metrics
+        claim,
+        {
+          isPubliclyVisible: false,
+          verificationStatus,
+        }
       );
     } catch (error) {
-      console.error("[audit] persist integrity audit threw:", error);
+      console.error("[audit] persist production audit threw:", error);
     }
   }
 
-  return NextResponse.json({ ...result, ...usage });
+  return NextResponse.json({
+    ...result,
+    ...usage,
+    verification_status: verificationStatus,
+    ownership_verified: verificationStatus === "verified",
+  });
 }

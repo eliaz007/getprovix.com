@@ -143,12 +143,15 @@ export default function PublicOpportunitiesFeed() {
     setLoadingProfile(true);
 
     const loadCandidate = async () => {
+      const startedAt =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
       try {
         const [{ data, error }, profile] = await Promise.all([
           supabase
             .from("job_applications")
             .select("job_id")
-            .eq("candidate_id", userId),
+            .eq("candidate_id", userId)
+            .limit(100),
           fetchProfileForCandidateId(
             supabase,
             userId,
@@ -159,6 +162,17 @@ export default function PublicOpportunitiesFeed() {
         if (!isMounted) {
           return;
         }
+
+        const ms = Math.round(
+          (typeof performance !== "undefined" ? performance.now() : Date.now()) -
+            startedAt
+        );
+        console.info("[opportunities] candidate context", {
+          ms,
+          applications: data?.length ?? 0,
+          hasProfile: Boolean(profile),
+          error: error?.message ?? null,
+        });
 
         if (error) {
           console.error("Failed to fetch job applications:", error);

@@ -1,11 +1,22 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isAdminUser } from "@/lib/admin-access";
 import {
-  isDashboardAuditorPath,
+  isAuditorPath,
   isProtectedAppPath,
-  isPublicAuditorPath,
-  isPublicOpportunitiesPath,
+  isPublicRoute,
+  shouldSkipMiddlewareAuth,
 } from "@/lib/dashboard-account";
+import {
+  CANDIDATE_DASHBOARD_PATH,
+  EMPLOYER_DASHBOARD_PATH,
+  isEmployerAllowedDashboardRequest,
+  isEmployerDashboardRequest,
+  isRoleOnboardingPath,
+  normalizeAccountKind,
+  resolvePostAuthDestination,
+  ROLE_ONBOARDING_PATH,
+} from "@/lib/account-role";
 
 const cookieOptions = {
   path: "/",
@@ -51,6 +62,15 @@ function redirectWithSessionCookies(
 }
 
 export async function updateSession(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Public homepage, marketing/legal pages, and static assets must not
+  // create a Supabase client or call getUser() / refresh the session.
+  // Auth runs only on protected app paths such as /dashboard and /settings.
+  if (shouldSkipMiddlewareAuth(pathname)) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -87,14 +107,17 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Refresh the auth session so expired tokens are renewed before route checks.
-  await supabase.auth.getSession();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
+  // API routes must always return JSON. A redirect to the marketing page
+  // follows to HTML, and response.json() then throws on "<!DOCTYPE".
+  // Route handlers authenticate (cookie or bearer) and return { error }.
+  if (pathname.startsWith("/api/")) {
+    return supabaseResponse;
+  }
+
   const isLogin =
     pathname === "/login" || pathname.startsWith("/login/");
   const isHome = pathname === "/";
@@ -103,8 +126,6 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/update-password/");
   const isEmployer =
     pathname === "/employer" || pathname.startsWith("/employer/");
-  const isPublicAuditor = isPublicAuditorPath(pathname);
-  const isPublicOpportunities = isPublicOpportunitiesPath(pathname);
   const isProtectedRoute = isProtectedAppPath(pathname);
 
   // Unauthenticated users must be allowed to stay on /login (no redirect).
@@ -116,75 +137,173 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // /audits (and legacy auditor URLs) stay public so guests can run GitHub audits.
-  if (isPublicAuditor) {
-    if (!user && isDashboardAuditorPath(pathname)) {
-      return redirectWithSessionCookies(request, supabaseResponse, "/audits");
-    }
-
-    return supabaseResponse;
+  // Unsigned visitors never enter the app shell. Send them to the marketing page.
+  if (!user && isProtectedRoute && !isPublicRoute(pathname)) {
+    return redirectWithSessionCookies(request, supabaseResponse, "/");
   }
 
-  // /opportunities stays public so guests can browse the job feed.
-  if (isPublicOpportunities) {
-    return supabaseResponse;
-  }
-
-  // Protected routes: no session → login (cookies still copied on redirect).
-  if (isProtectedRoute && !user) {
-    const loginSearch = new URLSearchParams();
-    loginSearch.set("next", `${pathname}${request.nextUrl.search}`);
-    const verified = request.nextUrl.searchParams.get("employer_verified");
-    const verifyError = request.nextUrl.searchParams.get("verify_error");
-    if (verified) {
-      loginSearch.set("employer_verified", verified);
-    }
-    if (verifyError) {
-      loginSearch.set("verify_error", verifyError);
-    }
-
-    return redirectWithSessionCookies(
-      request,
-      supabaseResponse,
-      "/login",
-      `?${loginSearch.toString()}`
+  if (user) {
+    const employerRequest = isEmployerDashboardRequest(
+      pathname,
+      request.nextUrl.search
     );
-  }
+    const onRoleOnboarding = isRoleOnboardingPath(pathname);
+    const needsRole =
+      isHome ||
+      isLogin ||
+      isEmployer ||
+      employerRequest ||
+      isAuditorPath(pathname) ||
+      onRoleOnboarding ||
+      (isProtectedRoute && !isLogin);
 
-  if (isEmployer) {
-    if (!user) {
-      return redirectWithSessionCookies(request, supabaseResponse, "/login");
-    }
+    let role: ReturnType<typeof normalizeAccountKind> = null;
 
-    try {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
+    if (needsRole) {
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+        role = normalizeAccountKind(
+          typeof profile?.role === "string" ? profile.role : null
+        );
 
-      const role = profile?.role ?? user.user_metadata?.role;
-      if (role === "candidate") {
+        if (!role) {
+          const { data: linkedProfile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          role = normalizeAccountKind(
+            typeof linkedProfile?.role === "string" ? linkedProfile.role : null
+          );
+        }
+      } catch (err) {
+        console.error("Account role check failed:", err);
+      }
+
+      if (
+        !role &&
+        !isAdminUser(user) &&
+        !onRoleOnboarding &&
+        !isLogin &&
+        (isProtectedRoute || isHome)
+      ) {
         return redirectWithSessionCookies(
           request,
           supabaseResponse,
-          "/dashboard"
+          ROLE_ONBOARDING_PATH
         );
       }
-    } catch (err) {
-      console.error("Employer role check failed:", err);
-    }
 
-    return supabaseResponse;
+      if (role && onRoleOnboarding) {
+        const destination = new URL(
+          role === "employer" ? EMPLOYER_DASHBOARD_PATH : CANDIDATE_DASHBOARD_PATH,
+          request.url
+        );
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          destination.pathname,
+          destination.search
+        );
+      }
+
+      if (isLogin) {
+        const destination = new URL(
+          resolvePostAuthDestination({
+            role,
+            requestedNext: request.nextUrl.searchParams.get("next"),
+            isAdmin: isAdminUser(user),
+          }),
+          request.url
+        );
+        if (
+          destination.pathname !== "/login" &&
+          !destination.pathname.startsWith("/login/")
+        ) {
+          return redirectWithSessionCookies(
+            request,
+            supabaseResponse,
+            destination.pathname,
+            destination.search
+          );
+        }
+      }
+
+      const isEmployerAccount = role === "employer";
+
+      if (
+        isEmployerAccount &&
+        pathname === "/dashboard" &&
+        !isEmployerAllowedDashboardRequest(pathname, request.nextUrl.search)
+      ) {
+        const destination = new URL(EMPLOYER_DASHBOARD_PATH, request.url);
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          destination.pathname,
+          destination.search
+        );
+      }
+
+      if (isEmployerAccount && (isHome || isEmployer || isAuditorPath(pathname))) {
+        const destination = new URL(EMPLOYER_DASHBOARD_PATH, request.url);
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          destination.pathname,
+          destination.search
+        );
+      }
+
+      if (!isEmployerAccount && (isEmployer || employerRequest)) {
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          CANDIDATE_DASHBOARD_PATH
+        );
+      }
+
+      if (
+        role === "candidate" &&
+        pathname === "/dashboard"
+      ) {
+        const tab = request.nextUrl.searchParams.get("tab")?.trim() ?? "";
+        if (!tab || tab === "overview" || tab === "my_profile") {
+          return redirectWithSessionCookies(
+            request,
+            supabaseResponse,
+            CANDIDATE_DASHBOARD_PATH
+          );
+        }
+      }
+    }
   }
 
-  // Home only: active session → dashboard. /login stays put so users can choose.
+  // Signed-in candidates: /auditor and /audits belong in the dashboard auditor.
+  if (user && isAuditorPath(pathname) && !pathname.startsWith("/dashboard/")) {
+    return redirectWithSessionCookies(
+      request,
+      supabaseResponse,
+      "/dashboard/auditor",
+      request.nextUrl.search
+    );
+  }
+
+  // Home only: active session → candidate dashboard. Employers already left above.
   if (isHome && user) {
     if (request.nextUrl.searchParams.get("passwordUpdated") === "1") {
       return supabaseResponse;
     }
 
-    return redirectWithSessionCookies(request, supabaseResponse, "/dashboard");
+    return redirectWithSessionCookies(
+      request,
+      supabaseResponse,
+      CANDIDATE_DASHBOARD_PATH
+    );
   }
 
   return supabaseResponse;

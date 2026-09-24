@@ -12,6 +12,7 @@ import {
 } from "@/lib/opportunity-match";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { resolvedProfileId } from "@/lib/resolve-candidate-profile";
+import { employerVisibleProductionAudit, parseProductionAuditFromProfileRow } from "@/lib/production-audit";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { normalizeAvailabilityStatus } from "@/lib/availability-status";
 import { DEFAULT_EXPERIENCE_LEVEL } from "@/lib/experience-level";
@@ -53,6 +54,8 @@ export const APPLICANT_PROFILE_COLUMNS = [
   "university",
   "gpa",
   "graduation_year",
+  "education",
+  "is_self_taught",
   "portfolio_url",
   "youtube_url",
   "availability_status",
@@ -62,6 +65,11 @@ export const APPLICANT_PROFILE_COLUMNS = [
   "key_accomplishments",
   "integrity_score",
   "audit_data",
+  "production_score",
+  "audit_breakdown",
+  "is_audit_verified",
+  "is_publicly_visible",
+  "verification_status",
 ] as const;
 
 export type ApplicantProfileRow = {
@@ -89,6 +97,8 @@ export type ApplicantProfileRow = {
   university?: string | null;
   gpa?: string | number | null;
   graduation_year?: number | string | null;
+  education?: unknown;
+  is_self_taught?: boolean | string | number | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
   availability_status?: string | null;
@@ -99,6 +109,11 @@ export type ApplicantProfileRow = {
   github_url?: string | null;
   integrity_score?: number | string | null;
   audit_data?: unknown;
+  production_score?: number | string | null;
+  audit_breakdown?: unknown;
+  is_audit_verified?: boolean | null;
+  is_publicly_visible?: boolean | null;
+  verification_status?: string | null;
 };
 
 export type ApplicantReviewStatus = "new" | "intro_requested" | "rejected";
@@ -129,6 +144,7 @@ export type EmployerApplicantView = {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught: boolean;
   matchScore: number;
   fitVerdict: FitVerdict;
   matchingSkills: string[];
@@ -148,6 +164,9 @@ export type EmployerApplicantView = {
   status: ApplicantReviewStatus;
   unlocked: boolean;
   verifiedOnProvix: boolean;
+  productionScore?: number | null;
+  auditBreakdown?: unknown;
+  isAuditVerified?: boolean;
   email?: string | null;
   phone?: string | null;
   linkedinUrl?: string | null;
@@ -275,7 +294,7 @@ export function applicantStatusClass(status: ApplicantReviewStatus): string {
     case "intro_requested":
       return "bg-indigo-500/10 text-indigo-300 border-indigo-500/20";
     default:
-      return "bg-amber-500/10 text-amber-300 border-amber-500/20";
+      return "bg-violet-500/10 text-violet-300 border-violet-500/20";
   }
 }
 
@@ -330,6 +349,9 @@ export function mapEmployerApplicant(input: {
     github_url: profile?.github_url,
     portfolio_url: profile?.portfolio_url,
   });
+  const productionAudit = employerVisibleProductionAudit(
+    parseProductionAuditFromProfileRow(profile)
+  );
 
   return {
     applicationId: input.applicationId,
@@ -351,6 +373,7 @@ export function mapEmployerApplicant(input: {
     major: education.major,
     gpa: formatGpa(education.gpa),
     graduationYear: education.graduationYear,
+    isSelfTaught: Boolean(education.isSelfTaught),
     matchScore,
     fitVerdict: scoreToFitVerdict(matchScore),
     matchingSkills: match.matching_skills.slice(0, 4),
@@ -375,6 +398,9 @@ export function mapEmployerApplicant(input: {
     }),
     unlocked: isUnlocked,
     verifiedOnProvix: isVerifiedOnProvix(profile),
+    productionScore: productionAudit?.productionScore ?? null,
+    auditBreakdown: productionAudit?.breakdown ?? null,
+    isAuditVerified: productionAudit?.isAuditVerified ?? false,
     email: isUnlocked ? resolveApplicantContactEmail(profile) : null,
     phone: isUnlocked ? profile?.phone?.trim() || null : null,
     linkedinUrl: isUnlocked ? profile?.linkedin_url?.trim() || null : null,
@@ -391,7 +417,11 @@ export type ApplicantIntelligenceSource = {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught?: boolean;
   verifiedOnProvix: boolean;
+  productionScore?: number | null;
+  auditBreakdown?: unknown;
+  isAuditVerified?: boolean;
   email?: string | null;
   phone?: string | null;
   linkedinUrl?: string | null;
@@ -452,6 +482,7 @@ export function mapApplicantToTalentCandidate(
     major: applicant.major,
     gpa: formatGpa(applicant.gpa),
     graduationYear: applicant.graduationYear,
+    isSelfTaught: Boolean(applicant.isSelfTaught),
     skills: applicant.skills,
     rating: applicant.aiScoreLabel || `${matchScore}% Match`,
     execution_score: matchScore,
@@ -465,5 +496,13 @@ export function mapApplicantToTalentCandidate(
     demoVideo: applicant.demoVideo || "",
     projects: applicant.projects ?? [],
     verifiedOnProvix: applicant.verifiedOnProvix,
+    productionScore: applicant.productionScore ?? null,
+    auditBreakdown:
+      parseProductionAuditFromProfileRow({
+        production_score: applicant.productionScore,
+        audit_breakdown: applicant.auditBreakdown,
+        is_audit_verified: applicant.isAuditVerified,
+      })?.breakdown ?? null,
+    isAuditVerified: Boolean(applicant.isAuditVerified),
   };
 }

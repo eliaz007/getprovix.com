@@ -1,5 +1,5 @@
-import DashboardSkeleton from "@/components/dashboard/dashboard-skeleton";
+import { EmployerConsoleSkeleton } from "@/components/dashboard/employer-console-skeleton";
 
 export default function DashboardLoading() {
-  return <DashboardSkeleton />;
+  return <EmployerConsoleSkeleton />;
 }

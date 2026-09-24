@@ -147,15 +147,18 @@ export function getCandidateIntroStatusLabel(
 export function getCandidateIntroStatusBadgeClass(
   status: string | null | undefined
 ): string {
+  const base =
+    "inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-medium";
+
   switch (normalizeCandidateIntroStatus(status)) {
     case "accepted":
-      return "bg-emerald-500/10 text-emerald-400 border-emerald-500/25";
+      return `${base} bg-emerald-500/10 text-emerald-400 border border-emerald-500/25`;
     case "declined":
-      return "bg-slate-500/10 text-slate-400 border-slate-600/40";
+      return `${base} bg-[#1A1A1E] text-zinc-400 border border-white/[0.08]`;
     case "dismissed":
-      return "bg-zinc-500/10 text-zinc-400 border-zinc-600/40";
+      return `${base} bg-[#1A1A1E] text-zinc-400 border border-white/[0.08]`;
     default:
-      return "bg-amber-500/10 text-amber-400 border-amber-500/25";
+      return `${base} bg-violet-500/10 text-violet-300 border border-violet-500/25`;
   }
 }
 

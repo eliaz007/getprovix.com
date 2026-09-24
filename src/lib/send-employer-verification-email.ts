@@ -24,7 +24,7 @@ export function buildEmployerVerificationEmailHtml(input: {
       <h1 style="font-size: 22px; margin: 8px 0 16px;">Confirm your work email</h1>
       <p style="line-height: 1.6; color: #4b5563;">
         Click the button below to verify <strong>${workEmail}</strong> and unlock the
-        talent pool, AI screening, and job posting tools.
+        Provix Talent Network, AI screening, and job posting tools.
       </p>
       <p style="margin: 28px 0;">
         <a href="${confirmUrl}" style="display: inline-block; background: #4f46e5; color: #ffffff; text-decoration: none; font-weight: 700; padding: 12px 20px; border-radius: 10px;">

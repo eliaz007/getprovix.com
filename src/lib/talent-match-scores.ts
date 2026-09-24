@@ -9,6 +9,7 @@ import {
   type MatchResult,
 } from "@/lib/match-heuristic";
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 export function resolveMatchInsight(
   raw: unknown,
@@ -96,7 +97,7 @@ export async function fetchTalentMatchInsight(
       return buildFallbackMatch(candidate, job);
     }
 
-    const raw = (await response.json()) as unknown;
+    const raw = (await readJsonResponse(response)) as unknown;
     return resolveMatchInsight(raw, candidate, job);
   } catch (error) {
     console.warn("Talent match API unavailable, using fallback.", error);

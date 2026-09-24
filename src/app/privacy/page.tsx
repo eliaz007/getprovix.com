@@ -55,23 +55,23 @@ const sections = [
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-300">
+    <div className="min-h-screen bg-background text-textMuted">
       <div className="max-w-3xl mx-auto px-6 py-16">
         <Link
           href="/"
-          className="inline-flex items-center text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+          className="inline-flex items-center text-sm font-medium text-brand hover:text-brand transition-colors"
         >
           ← Back to Home
         </Link>
 
         <header className="mt-8 mb-10">
-          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-3">
+          <p className="text-xs font-semibold uppercase tracking-widest text-brand mb-3">
             Legal
           </p>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-textMain">
             Privacy Policy
           </h1>
-          <p className="mt-4 text-sm text-zinc-400 leading-relaxed">
+          <p className="mt-4 text-sm text-textMuted leading-relaxed">
             Effective date: August 16, 2026. This policy describes how Provix
             collects, uses, and protects information when you use our verified
             candidate intelligence platform.
@@ -81,10 +81,10 @@ export default function PrivacyPage() {
         <div className="space-y-10">
           {sections.map((section) => (
             <section key={section.title}>
-              <h2 className="text-xl font-bold text-white mb-3">
+              <h2 className="text-xl font-bold text-textMain mb-3">
                 {section.title}
               </h2>
-              <div className="space-y-3 text-sm leading-relaxed text-zinc-300">
+              <div className="space-y-3 text-sm leading-relaxed text-textMuted">
                 {section.paragraphs.map((paragraph) => (
                   <p key={paragraph}>{paragraph}</p>
                 ))}
@@ -93,11 +93,11 @@ export default function PrivacyPage() {
           ))}
         </div>
 
-        <footer className="mt-12 pt-8 border-t border-zinc-800 text-sm text-zinc-500">
+        <footer className="mt-12 pt-8 border-t border-border text-sm text-textMuted">
           Questions? Email{" "}
           <a
             href="mailto:support@getprovix.com"
-            className="text-indigo-400 hover:text-indigo-300 transition-colors"
+            className="text-brand hover:text-brand transition-colors"
           >
             support@provix.app
           </a>

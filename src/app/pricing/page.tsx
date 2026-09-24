@@ -12,6 +12,8 @@ import {
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
+import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 type FeatureHighlight = {
   title: string;
@@ -35,16 +37,16 @@ const employerHighlights: FeatureHighlight[] = [
   {
     title: "Full-Time Placements",
     description:
-      "12% success fee only when you officially hire, backed by a 60-day replacement guarantee.",
+      PUBLIC_PLACEMENT_TERMS_SUMMARY,
     icon: ShieldCheck,
   },
 ];
 
 const talentHighlights = [
-  "List your profile in the vetted talent pool",
+  "List your profile in the Provix Talent Network",
   "Get AI match scores against live roles",
   "Share proof-of-work and portfolio links",
-  "Apply to opportunities with one click",
+  "Apply through the Provix Talent Network with one click",
 ];
 
 const BETA_UNLOCK_STORAGE_KEY = "beta_unlocked_session";
@@ -105,7 +107,7 @@ export default function PricingPage() {
         return;
       }
 
-      const data = (await response.json()) as {
+      const data = (await readJsonResponse(response)) as {
         error?: string;
         success?: boolean;
         warnings?: string[];
@@ -138,17 +140,17 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 flex flex-col items-center py-16 px-4">
+    <div className="min-h-screen bg-background text-textMain flex flex-col items-center py-16 px-4">
       <div className="w-full max-w-5xl mx-auto space-y-16">
         <section className="text-center hero-fade-in">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 mb-6">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-textMuted mb-6">
             Performance-Based Hiring
           </p>
 
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">
-            Hire Vetted Talent with Zero Upfront Cost
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-textMain">
+            Hire from the Provix Talent Network with Zero Upfront Cost
           </h1>
-          <p className="text-zinc-300 text-base sm:text-lg mt-4 max-w-3xl mx-auto leading-relaxed">
+          <p className="text-textMuted text-base sm:text-lg mt-4 max-w-3xl mx-auto leading-relaxed">
             Browse profiles, view proof-of-work, and generate Gemini Deep
             Screenings for free during our beta.
           </p>
@@ -159,13 +161,13 @@ export default function PricingPage() {
             const Icon = item.icon;
             return (
               <Card key={item.title} interactive className="p-6">
-                <div className="w-10 h-10 rounded-md bg-indigo-600/15 border border-indigo-500/25 text-indigo-300 flex items-center justify-center mb-4">
+                <div className="w-10 h-10 rounded-md bg-brand/15 border border-brand/25 text-brand flex items-center justify-center mb-4">
                   <Icon className="w-5 h-5" aria-hidden />
                 </div>
-                <h2 className="text-base font-bold tracking-tight text-white">
+                <h2 className="text-base font-bold tracking-tight text-textMain">
                   {item.title}
                 </h2>
-                <p className="text-sm text-zinc-300 mt-2 leading-relaxed">
+                <p className="text-sm text-textMuted mt-2 leading-relaxed">
                   {item.description}
                 </p>
               </Card>
@@ -174,10 +176,10 @@ export default function PricingPage() {
         </section>
 
         <Card interactive={false} className="p-8 max-w-xl mx-auto w-full">
-          <h2 className="text-xl font-bold tracking-tight text-white text-center">
+          <h2 className="text-xl font-bold tracking-tight text-textMain text-center">
             Unlock Early Beta Access
           </h2>
-          <p className="text-sm text-zinc-300 text-center mt-2 leading-relaxed">
+          <p className="text-sm text-textMuted text-center mt-2 leading-relaxed">
             Tell us where you hire from and we&apos;ll enable deep screening,
             profile browsing, and candidate contact tools instantly.
           </p>
@@ -186,7 +188,7 @@ export default function PricingPage() {
             <div>
               <label
                 htmlFor="pricing-company-name"
-                className="block text-[11px] font-bold uppercase tracking-widest text-zinc-400 mb-1.5"
+                className="block text-[11px] font-bold uppercase tracking-widest text-textMuted mb-1.5"
               >
                 Company Name
               </label>
@@ -196,13 +198,13 @@ export default function PricingPage() {
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="Your company name"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-[border-color,box-shadow] duration-150 ease-out"
+                className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-[border-color,box-shadow] duration-150 ease-out"
               />
             </div>
             <div>
               <label
                 htmlFor="pricing-work-email"
-                className="block text-[11px] font-bold uppercase tracking-widest text-zinc-400 mb-1.5"
+                className="block text-[11px] font-bold uppercase tracking-widest text-textMuted mb-1.5"
               >
                 Work Email
               </label>
@@ -217,7 +219,7 @@ export default function PricingPage() {
                   }
                 }}
                 placeholder="hiring@company.com"
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-[border-color,box-shadow] duration-150 ease-out"
+                className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-[border-color,box-shadow] duration-150 ease-out"
               />
             </div>
           </div>
@@ -242,11 +244,11 @@ export default function PricingPage() {
         </Card>
 
         <div className="flex items-center gap-4">
-          <div className="flex-1 border-t border-zinc-800" />
-          <span className="text-xs text-zinc-400 uppercase tracking-widest font-semibold">
+          <div className="flex-1 border-t border-border" />
+          <span className="text-xs text-textMuted uppercase tracking-widest font-semibold">
             For Talent &amp; Students
           </span>
-          <div className="flex-1 border-t border-zinc-800" />
+          <div className="flex-1 border-t border-border" />
         </div>
 
         <Card interactive className="p-8 max-w-3xl mx-auto w-full">
@@ -255,10 +257,10 @@ export default function PricingPage() {
               <Users className="w-5 h-5" aria-hidden />
             </div>
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-white">
+              <h2 className="text-2xl font-bold tracking-tight text-textMain">
                 Always Free for Candidates
               </h2>
-              <p className="text-zinc-300 text-sm mt-2 leading-relaxed">
+              <p className="text-textMuted text-sm mt-2 leading-relaxed">
                 Build a verified profile, get matched to roles, and showcase
                 proof-of-work at no cost.
               </p>
@@ -266,7 +268,7 @@ export default function PricingPage() {
                 {talentHighlights.map((item) => (
                   <li
                     key={item}
-                    className="flex items-center gap-3 text-sm text-zinc-200"
+                    className="flex items-center gap-3 text-sm text-textMain"
                   >
                     <CheckCircle2
                       className="w-4 h-4 shrink-0 text-emerald-400"

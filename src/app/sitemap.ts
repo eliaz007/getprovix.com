@@ -7,6 +7,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     "",
     "/pricing",
+    "/audit",
     "/audits",
     "/opportunities",
     "/privacy",
@@ -16,6 +17,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     url: `${SITE_URL}${path || "/"}`,
     lastModified,
     changeFrequency: path === "" ? "weekly" : "monthly",
-    priority: path === "" ? 1 : path === "/pricing" || path === "/audits" ? 0.8 : 0.6,
+    priority:
+      path === ""
+        ? 1
+        : path === "/pricing" || path === "/audit" || path === "/audits"
+          ? 0.8
+          : 0.6,
   }));
 }

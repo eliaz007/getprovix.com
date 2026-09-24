@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireAiApiUser, rejectUnlessVerifiedEmployer } from "@/lib/api-auth";
 import {
@@ -23,19 +24,19 @@ import {
 } from "@/lib/resolve-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
+  blendReadinessScore,
+} from "@/lib/audit-readiness";
+import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
   compactFilesystemForPrompt,
   emptyScoreCapAudit,
-  MISSING_CORE_ARTIFACT_SCORE_CAP,
   parseScoreCapAudit,
-  UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP,
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import {
   computeProductionAuditMetrics,
   emptyProductionAuditMetrics,
-  parseProductionAuditMetrics,
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
 import {
@@ -45,6 +46,14 @@ import {
   type AuditCheck,
 } from "@/lib/audit-checks";
 import { formatGpa } from "@/lib/gpa";
+import {
+  completeScreeningRun,
+  enqueuePendingScreening,
+  failScreeningRun,
+  markScreeningProcessing,
+  readQueuedRunId,
+  type ScreeningJobInput,
+} from "@/lib/screening-queue";
 import { createClient } from "@/utils/supabase/server";
 
 export const maxDuration = 120;
@@ -110,29 +119,32 @@ You receive:
 - Target job requirements
 - Optional live GitHub repository audit data (stars, forks, creation date, language, recent commits, README excerpt, and filesystem file-tree inspection)
 - Optional external_projects artifacts (project titles, live/documentation URLs, and technical breakdowns) when GitHub is private, enterprise-only, or a ghost/empty public profile
-- scorePolicy: hard numeric caps computed from the file tree. You must obey appliedMaxScore.
+- scorePolicy: four-pillar weights and repoKind from the file tree. Do not hard-cap the overall score.
 
 Perform three artifact checks plus a chronological timeline conflict check:
 - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support claimed skills. README is a claim sheet, not file-system proof.
 - Check 2 architecture_review: system design signals, folder/module structure from the file tree, and whether the candidate demonstrates architectural thinking.
 - Check 3 api_resiliency: API design, data handling, error handling, and production resiliency signals. Tests, CI workflows, and error handling pass only if filesystem.test_paths, filesystem.ci_workflow_paths, and filesystem.error_handling_paths contain real paths. If evidence is thin, say so explicitly.
-- timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history).
+- timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history). Stale or inactive commit history is not a chronological conflict and must not lower integrity_score. Tag it "active" or "stable" only. Never apply a History penalty.
 - Be skeptical but fair; cite concrete file paths from filesystem inspection when available. Repo metadata and external project write-ups are secondary.
 - Do not treat GitHub handle, GitHub login, or GitHub profile name vs Provix display name/codename as a red flag, identity issue, or scoring penalty. Never add a timeline_flag or lower integrity_score because those strings do not match.
 - CODE-FIRST: A missing resume, CV, or experience summary must not lower integrity_score and must not appear in timeline_flags. Score from GitHub file-tree artifacts, commits, and project write-ups. If a resume is present, use it only to check claim-vs-code mismatches.
-- If github_audit is missing or empty and external_projects are present, evaluate those write-ups and live/docs URLs for qualitative notes instead of failing the screen for a missing public repository. Write-ups still cannot raise the score above the file-system caps.
+- If github_audit is missing or empty and external_projects are present, evaluate those write-ups and live/docs URLs for qualitative notes instead of failing the screen for a missing public repository. Write-ups still cannot invent file-system artifacts.
 
 FILE-SYSTEM EVIDENCE VS PROSE:
 - Prose descriptions, README summaries, resume bullets, and external project write-ups can never override missing code artifacts.
-- If a README says the repo has tests, CI, or error handling but the matching filesystem path list is empty, treat that artifact as missing.
-- If any core technical requirement is missing from repo inspection (test suite, CI workflow, or explicit error-handling files), integrity_score MUST be at most ${MISSING_CORE_ARTIFACT_SCORE_CAP}.
-- If two or more core requirements are missing, or filesystem.inspected is false, integrity_score MUST be at most ${UNINSPECTED_OR_MULTIPLE_MISSING_SCORE_CAP}.
-- Scores above 80 require concrete file-system proof: inspected file tree plus non-empty test_paths, ci_workflow_paths, and error_handling_paths. Cite those paths.
-- Never exceed scorePolicy.appliedMaxScore.
+- If a README says the repo has tests, CI, or error handling but the matching filesystem path list is empty, treat that artifact as missing from its pillar only.
+- integrity_score uses the four-pillar weighted model: Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Never hard-cap the total at 60 or 50. Never drop a pillar to 0 unless that capability is genuinely absent.
+- Testing: 0 only with no test files; ratio < 0.10 caps at 35; 0.10–0.30 maps to 65–75; > 0.30 with Playwright/Cypress is 85–100.
+- DevOps: 0 only with no workflows; lint/build-only is 50; tests on PR is 80; multi-stage deploy/previews are 95–100.
+- Resilience starts at 100. Web apps missing error.tsx / ErrorBoundary lose 35. Each unhandled async/fetch without try/catch loses 15, max −50. A single unhandled error is 85, not 0.
+- If scorePolicy.repoKind is "library", do not penalize missing React error boundaries; grade resilience from unhandled async/fetch only.
+- If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct 35 from resilience only — never cap the total score.
+- Do not deduct numerical points for commit age or inactivity.
 
 Return strict JSON only in this exact structure:
 {
-  "integrity_score": number (integer 0-100, already capped per file-system rules),
+  "integrity_score": number (integer 0-100 from the four-pillar weighted model; never hard-capped at 60),
   "timeline_flags": ["flag1", "flag2"],
   "artifact_analysis": "Concise paragraph on repository/proof-of-work authenticity (same content as Check 1).",
   "technical_depth_summary": "Concise paragraph on demonstrated technical depth vs role requirements.",
@@ -167,7 +179,7 @@ Also generate an Employer Interview Cheat Sheet:
 - Each question must include a category badge label and a concise what_to_listen_for tip for hiring managers.
 
 Rules:
-- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with file-system artifacts. Apply the hard caps above. Do not deduct points for GitHub handle / display-name mismatch. Do not deduct points for a missing resume.
+- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with file-system artifacts. Use proportional pillar grades — never binary 0/100 drops unless a capability is absent. Do not deduct points for GitHub handle / display-name mismatch. Do not deduct points for a missing resume.
 - timeline_flags: array of specific red-flag strings; empty array if none. Never include flags about GitHub handle, username, or login not matching the candidate display name or codename. Never include a missing resume, CV, or experience summary. Include missing tests/CI/error-handling files when those path lists are empty.
 - checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown. Do not mention handle-vs-name mismatch.
 - artifact_analysis should match Check 1. technical_depth_summary remains a separate overall depth paragraph.
@@ -355,9 +367,11 @@ function applyScreenFilesystemCap(
   let integrity_score = capped.score;
 
   if (metrics.evidence.inspected) {
-    integrity_score = clampIntegrityScore(
-      Math.round(capped.score * 0.45 + metrics.productionScore * 0.55)
-    );
+    integrity_score = blendReadinessScore({
+      qualitativeScore: capped.score,
+      productionScore: metrics.productionScore,
+      commitDates: githubAudit?.commit_dates,
+    });
     const reCapped = applyFilesystemScoreCap(
       {
         score: integrity_score,
@@ -498,7 +512,7 @@ function normalizeScreenResult(
     depthFallback
   );
 
-  let interview_questions = normalizeInterviewQuestions(
+  const interview_questions = normalizeInterviewQuestions(
     record.interview_questions
   );
   while (interview_questions.length < 3) {
@@ -523,9 +537,7 @@ function normalizeScreenResult(
     checks,
     scoreCap:
       parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(restoredScore),
-    metrics:
-      parseProductionAuditMetrics(record.metrics) ??
-      emptyProductionAuditMetrics(),
+    metrics: emptyProductionAuditMetrics(),
   };
 }
 
@@ -573,7 +585,6 @@ function buildFallbackScreen(
       timeline_flags.push(
         "Repository shows minimal commit history relative to claimed project ownership."
       );
-      integrity_score -= 15;
     }
 
     if (githubAudit.readme_excerpt) {
@@ -665,7 +676,8 @@ async function persistScreeningResult(
   candidateKey: string | undefined,
   profileId: string | undefined,
   result: ScreenResult,
-  userId: string
+  userId: string,
+  queue?: { screeningId: string; runId: string }
 ): Promise<boolean> {
   if (!candidateKey?.trim()) {
     return false;
@@ -674,6 +686,7 @@ async function persistScreeningResult(
   try {
     const supabase = await createClient();
     const admin = createServiceRoleClient();
+    const writer = admin ?? supabase;
     const key = candidateKey.trim();
     const payload = result as unknown as Record<string, unknown>;
     const requestedId = profileId?.trim() || null;
@@ -691,25 +704,99 @@ async function persistScreeningResult(
 
     const candidateProfileId = resolvedProfileId(profileRow, lookupId);
 
-    const { error: screeningError } = await supabase
-      .from("candidate_screenings")
-      .upsert(
-        {
-          candidate_key: key,
-          profile_id: candidateProfileId,
-          integrity_score: result.integrity_score,
-          audit_data: payload,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "candidate_key" }
-      );
+    const screeningPayload = {
+      candidate_key: key,
+      created_by: userId,
+      profile_id: candidateProfileId,
+      integrity_score: result.integrity_score,
+      status: "completed",
+      audit_data: payload,
+      updated_at: new Date().toISOString(),
+    };
 
-    if (screeningError) {
-      console.error("[screen] candidate_screenings upsert failed:", screeningError);
+    const { data: existingScreening, error: existingScreeningError } =
+      await writer
+        .from("candidate_screenings")
+        .select("id")
+        .eq("created_by", userId)
+        .eq("candidate_key", key)
+        .maybeSingle();
+
+    let screeningPersisted = false;
+    const screeningUnavailable =
+      existingScreeningError &&
+      (existingScreeningError.code === "42P01" ||
+        existingScreeningError.code === "42703" ||
+        existingScreeningError.code === "PGRST205" ||
+        existingScreeningError.code === "PGRST204");
+
+    if (screeningUnavailable) {
+      console.warn(
+        "[screen] candidate_screenings unavailable; skipping cache persist:",
+        existingScreeningError.message
+      );
+    } else if (existingScreeningError) {
+      console.error(
+        "[screen] candidate_screenings lookup failed:",
+        existingScreeningError
+      );
+    }
+
+    if (!screeningUnavailable) {
+      const baseUpdate = existingScreening?.id
+        ? writer
+            .from("candidate_screenings")
+            .update(screeningPayload)
+            .eq("id", existingScreening.id)
+            .eq("created_by", userId)
+        : null;
+
+      const guardedUpdate =
+        baseUpdate && queue?.runId
+          ? baseUpdate.filter("audit_data->>run_id", "eq", queue.runId)
+          : baseUpdate;
+
+      const firstWrite = guardedUpdate
+        ? await guardedUpdate.select("id")
+        : await writer
+            .from("candidate_screenings")
+            .insert(screeningPayload)
+            .select("id");
+
+      let screeningError = firstWrite.error;
+      let wroteRow = Boolean(firstWrite.data?.length);
+
+      if (screeningError?.code === "42703") {
+        const { status: _status, ...withoutStatus } = screeningPayload;
+        const retry = existingScreening?.id
+          ? await writer
+              .from("candidate_screenings")
+              .update(withoutStatus)
+              .eq("id", existingScreening.id)
+              .eq("created_by", userId)
+              .select("id")
+          : await writer
+              .from("candidate_screenings")
+              .insert(withoutStatus)
+              .select("id");
+        screeningError = retry.error;
+        wroteRow = Boolean(retry.data?.length);
+      }
+
+      if (screeningError) {
+        console.error(
+          "[screen] candidate_screenings upsert failed:",
+          screeningError
+        );
+      } else if (wroteRow) {
+        screeningPersisted = true;
+      } else {
+        console.warn("[screen] screening write skipped; a newer run owns the row");
+      }
     }
 
     if (!candidateProfileId) {
-      return !screeningError;
+      return screeningPersisted || Boolean(screeningUnavailable);
     }
 
     const canWriteOwnProfile = candidateProfileId === userId;
@@ -739,7 +826,7 @@ async function persistScreeningResult(
       }
     }
 
-    return !screeningError;
+    return screeningPersisted || Boolean(screeningUnavailable);
   } catch (error) {
     console.error("[screen] persistScreeningResult threw:", error);
     return false;
@@ -820,7 +907,7 @@ async function generateGeminiScreen(
           systemInstruction: SYSTEM_PROMPT,
           responseMimeType: "application/json",
           responseSchema: SCREEN_RESPONSE_SCHEMA,
-          temperature: 0.2,
+          temperature: 0,
         },
       });
 
@@ -908,7 +995,100 @@ export async function POST(request: Request) {
     }
   }
 
-  const githubUrl = resolveCandidateGitHubUrl(candidate);
+  const candidateKey = candidate_key?.trim();
+  if (!candidateKey) {
+    return NextResponse.json(
+      { error: "candidate_key is required to queue a screening." },
+      { status: 400 }
+    );
+  }
+
+  const jobInput: ScreeningJobInput = {
+    candidate: candidate as unknown as Record<string, unknown>,
+    job: job as unknown as Record<string, unknown>,
+    profileId: profile_id?.trim() || lookupId,
+  };
+
+  const queued = await enqueuePendingScreening(access.supabase, {
+    userId: access.user.id,
+    candidateKey,
+    profileId: lookupId,
+    input: jobInput,
+  });
+
+  if (queued.ok) {
+    const snapshot = {
+      userId: access.user.id,
+      screeningId: queued.row.id,
+      runId: queued.row.runId,
+      candidate,
+      job,
+      candidateKey,
+      profileId: profile_id,
+      lookupId,
+    };
+
+    after(() => {
+      void runQueuedScreening(snapshot);
+    });
+
+    return NextResponse.json(
+      {
+        accepted: true,
+        status: "pending",
+        screening_id: queued.row.id,
+        candidate_key: queued.row.candidateKey,
+        run_id: queued.row.runId,
+      },
+      { status: 202 }
+    );
+  }
+
+  console.warn("[screen] queue storage unavailable; running live audit inline", {
+    unavailable: queued.unavailable,
+    error: queued.error,
+  });
+
+  try {
+    const writer = createServiceRoleClient() ?? access.supabase;
+    const result = await executeLiveScreening({
+      candidate,
+      job,
+      lookupId,
+      writer,
+    });
+
+    try {
+      await persistScreeningResult(
+        candidateKey,
+        profile_id,
+        result,
+        access.user.id
+      );
+    } catch (persistError) {
+      console.warn("[screen] inline persist skipped:", persistError);
+    }
+
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("[screen] inline live audit failed:", error);
+    return NextResponse.json(
+      {
+        error: "The live GitHub audit could not be completed. Please retry.",
+        retryable: true,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+async function executeLiveScreening(args: {
+  candidate: CandidatePayload;
+  job: JobPayload;
+  lookupId: string | null;
+  writer: SupabaseClient;
+}): Promise<ScreenResult> {
+  const githubUrl = resolveCandidateGitHubUrl(args.candidate);
   let githubAudit: GitHubAuditContext | null = null;
 
   try {
@@ -926,17 +1106,14 @@ export async function POST(request: Request) {
   }
 
   let externalProjects: ExternalProjectRecord[] = [];
-  const projectOwnerId = lookupId;
   if (
-    projectOwnerId &&
+    args.lookupId &&
     (!githubUrl || !githubAuditHasFetchedArtifacts(githubAudit))
   ) {
-    const admin = createServiceRoleClient();
-    const reader = admin ?? access.supabase;
-    const { data, error } = await reader
+    const { data, error } = await args.writer
       .from("external_projects")
       .select("project_title, project_url, description, created_at")
-      .eq("user_id", projectOwnerId)
+      .eq("user_id", args.lookupId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -946,29 +1123,101 @@ export async function POST(request: Request) {
     }
   }
 
+  return generateGeminiScreen(
+    args.candidate,
+    args.job,
+    githubAudit,
+    hasUsableExternalProjects(externalProjects) ? externalProjects : []
+  );
+}
+
+async function runQueuedScreening(snapshot: {
+  userId: string;
+  screeningId: string;
+  runId: string;
+  candidate: CandidatePayload;
+  job: JobPayload;
+  candidateKey: string;
+  profileId?: string;
+  lookupId: string | null;
+}): Promise<void> {
+  const writer = createServiceRoleClient() ?? (await createClient());
+  const input: ScreeningJobInput = {
+    candidate: snapshot.candidate as unknown as Record<string, unknown>,
+    job: snapshot.job as unknown as Record<string, unknown>,
+    profileId: snapshot.profileId?.trim() || snapshot.lookupId,
+  };
+
+  const claimed = await markScreeningProcessing(writer, {
+    screeningId: snapshot.screeningId,
+    userId: snapshot.userId,
+    runId: snapshot.runId,
+    input,
+  });
+
+  if (!claimed) {
+    return;
+  }
+
   try {
-    const result = await generateGeminiScreen(
-      candidate,
-      job,
-      githubAudit,
-      hasUsableExternalProjects(externalProjects) ? externalProjects : []
-    );
+    const stale = async () => {
+      const currentRunId = await readQueuedRunId(
+        writer,
+        snapshot.screeningId,
+        snapshot.userId
+      );
+      return Boolean(currentRunId && currentRunId !== snapshot.runId);
+    };
+
+    if (await stale()) {
+      return;
+    }
+
+    const result = await executeLiveScreening({
+      candidate: snapshot.candidate,
+      job: snapshot.job,
+      lookupId: snapshot.lookupId,
+      writer,
+    });
+
+    if (await stale()) {
+      return;
+    }
+
     const persisted = await persistScreeningResult(
-      candidate_key,
-      profile_id,
+      snapshot.candidateKey,
+      snapshot.profileId,
       result,
-      access.user.id
+      snapshot.userId,
+      { screeningId: snapshot.screeningId, runId: snapshot.runId }
     );
-    return NextResponse.json({ ...result, persisted });
+
+    if (persisted) {
+      await completeScreeningRun(writer, {
+        screeningId: snapshot.screeningId,
+        userId: snapshot.userId,
+        runId: snapshot.runId,
+        profileId: snapshot.lookupId,
+        integrityScore: result.integrity_score,
+        auditData: result as unknown as Record<string, unknown>,
+      });
+    } else {
+      await failScreeningRun(writer, {
+        screeningId: snapshot.screeningId,
+        userId: snapshot.userId,
+        runId: snapshot.runId,
+        input,
+        error: "The live audit finished but could not be saved. Please retry.",
+      });
+    }
   } catch (error) {
-    console.error("[screen] Gemini execution failed:", error);
-    return NextResponse.json(
-      {
-        error:
-          "The live GitHub audit could not be completed. Please retry.",
-        retryable: true,
-      },
-      { status: 503 }
-    );
+    console.error("[screen] background audit failed:", error);
+    await failScreeningRun(writer, {
+      screeningId: snapshot.screeningId,
+      userId: snapshot.userId,
+      runId: snapshot.runId,
+      input,
+      error: "The live GitHub audit could not be completed. Please retry.",
+    });
   }
 }

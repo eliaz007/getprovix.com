@@ -9,6 +9,11 @@ import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { formatGpa } from "@/lib/gpa";
 import {
+  parseEducationFromProfileRow,
+  parseIsSelfTaught,
+  type EducationEntry,
+} from "@/lib/candidate-education";
+import {
   educationFromProfileRow,
   hydrateRowsWithEducation,
 } from "@/lib/talent-pool-profiles";
@@ -37,6 +42,8 @@ export type PublicCandidateProfile = {
   school: string | null;
   gpa: string | null;
   graduationYear: string | null;
+  education: EducationEntry[];
+  isSelfTaught: boolean;
   experienceLevel: string | null;
   location: string;
   workPreference: string;
@@ -69,6 +76,8 @@ type PublicProfileRow = {
   degree?: string | null;
   gpa?: string | number | null;
   graduation_year?: string | number | null;
+  education?: unknown;
+  is_self_taught?: boolean | string | number | null;
   experience_level?: string | null;
   country?: string | null;
   timezone?: string | null;
@@ -124,6 +133,9 @@ function mapRowToPublicProfile(row: PublicProfileRow): PublicCandidateProfile {
   const education = educationFromProfileRow(
     row as unknown as Record<string, unknown>
   );
+  const educationEntries = parseEducationFromProfileRow(
+    row as unknown as Record<string, unknown>
+  );
 
   const identity = {
     codenameAlias: row.codename_alias,
@@ -148,6 +160,8 @@ function mapRowToPublicProfile(row: PublicProfileRow): PublicCandidateProfile {
     school: row.school?.trim() || education.university || null,
     gpa: formatGpa(education.gpa) || null,
     graduationYear: education.graduationYear || null,
+    education: educationEntries,
+    isSelfTaught: parseIsSelfTaught(row.is_self_taught),
     experienceLevel: row.experience_level?.trim() || null,
     location: getPublicCandidateLocation(identity),
     workPreference: normalizeWorkPreference(row.work_preference),
@@ -194,6 +208,8 @@ const PUBLIC_PROFILE_SELECT_COLUMNS = [
   "degree",
   "gpa",
   "graduation_year",
+  "education",
+  "is_self_taught",
   "experience_level",
   "country",
   "timezone",
@@ -327,7 +343,9 @@ export async function getPublicProfileBySlug(
       viaRpc?.major ||
       viaRpc?.school ||
       viaRpc?.gpa ||
-      viaRpc?.graduationYear
+      viaRpc?.graduationYear ||
+      viaRpc?.education.length ||
+      viaRpc?.isSelfTaught
   );
 
   if (viaRpc && rpcHasEducation) {
@@ -350,6 +368,11 @@ export async function getPublicProfileBySlug(
     school: viaServiceRole.school || viaRpc.school,
     gpa: formatGpa(viaServiceRole.gpa) || formatGpa(viaRpc.gpa) || null,
     graduationYear: viaServiceRole.graduationYear || viaRpc.graduationYear,
+    education:
+      viaServiceRole.education.length > 0
+        ? viaServiceRole.education
+        : viaRpc.education,
+    isSelfTaught: viaServiceRole.isSelfTaught || viaRpc.isSelfTaught,
     isVerifiedOnProvix:
       viaServiceRole.isVerifiedOnProvix || viaRpc.isVerifiedOnProvix,
   };

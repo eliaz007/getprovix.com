@@ -5,6 +5,7 @@ import { ShieldCheck } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
+import { readJsonResponse } from "@/lib/read-json-response";
 import { createClient } from "@/utils/supabase/client";
 
 export default function GetVerifiedBanner({
@@ -74,7 +75,7 @@ export default function GetVerifiedBanner({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const payload = (await response.json().catch(() => null)) as {
+      const payload = (await readJsonResponse(response).catch(() => null)) as {
         error?: string;
         email?: string;
       } | null;
@@ -95,13 +96,13 @@ export default function GetVerifiedBanner({
   };
 
   return (
-    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 sm:px-5">
+    <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-4 sm:px-5">
       <div className="flex items-start gap-3">
-        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" aria-hidden />
+        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-violet-300" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-amber-100">Get Verified</p>
-          <p className="mt-1 text-sm text-amber-200/90">
-            Confirm a corporate work email to unlock the talent pool, AI screening, and job posting.
+          <p className="text-sm font-semibold text-violet-100">Get Verified</p>
+          <p className="mt-1 text-sm text-violet-200/90">
+            Confirm a corporate work email to unlock the Provix Talent Network, AI screening, and job posting.
             Personal inboxes like Gmail are not accepted.
           </p>
 
@@ -127,7 +128,7 @@ export default function GetVerifiedBanner({
                 }
               }}
               placeholder="you@company.com"
-              className="w-full sm:flex-1 bg-[#0A0A0A] border border-amber-500/20 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-400/70"
+              className="w-full sm:flex-1 bg-background border border-violet-500/20 rounded-lg px-3 py-2 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:ring-2 focus:ring-violet-400/70"
             />
             <Button type="submit" disabled={sending} className="sm:w-auto w-full">
               {sending ? "Sending..." : "Send confirmation link"}

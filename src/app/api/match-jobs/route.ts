@@ -147,7 +147,7 @@ async function generateGeminiJobMatches(
             systemInstruction: SYSTEM_PROMPT,
             responseMimeType: "application/json",
             responseSchema: MATCH_JOBS_RESPONSE_SCHEMA,
-            temperature: 0.2,
+            temperature: 0,
           },
         });
 

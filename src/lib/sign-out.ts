@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/utils/supabase/client";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 export async function signOutAndClearSession(): Promise<void> {
   const supabase = createClient();
@@ -21,7 +22,7 @@ export async function signOutAndClearSession(): Promise<void> {
     });
 
     if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as {
+      const payload = (await readJsonResponse(response).catch(() => null)) as {
         error?: string;
       } | null;
       console.error("Server sign out failed:", payload);

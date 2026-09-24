@@ -1,4 +1,5 @@
 import type { GitHubAuditContext } from "@/lib/github-audit";
+import { readJsonResponse } from "@/lib/read-json-response";
 import { normalizeStringArray } from "@/lib/match-heuristic";
 import { clampScore0to100 } from "@/lib/score-scale";
 
@@ -91,13 +92,16 @@ export function normalizeOpportunityMatchResult(
 }
 
 export function getFitVerdictBadgeClass(verdict: FitVerdict): string {
+  const base =
+    "inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-medium";
+
   switch (verdict) {
     case "Strong Fit":
-      return "bg-emerald-500/10 text-emerald-400 border-emerald-500/25";
+      return `${base} bg-emerald-500/10 text-emerald-400 border border-emerald-500/25`;
     case "Moderate Fit":
-      return "bg-indigo-500/10 text-indigo-400 border-indigo-500/25";
+      return `${base} bg-[#1A1A1E] text-zinc-300 border border-white/[0.08]`;
     case "Growth Fit":
-      return "bg-amber-500/10 text-amber-400 border-amber-500/25";
+      return `${base} bg-violet-500/10 text-violet-300 border border-violet-500/25`;
   }
 }
 
@@ -245,7 +249,7 @@ export async function fetchOpportunityMatch(
       return buildFallbackOpportunityMatch(candidate, job);
     }
 
-    const raw = (await response.json()) as unknown;
+    const raw = (await readJsonResponse(response)) as unknown;
     if (raw && typeof raw === "object" && "error" in (raw as object)) {
       return buildFallbackOpportunityMatch(candidate, job);
     }

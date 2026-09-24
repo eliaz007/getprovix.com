@@ -12,17 +12,27 @@ export default function GuestAuthModal({
   error,
   onClose,
   onError,
+  description,
+  loginHref: loginHrefProp,
+  nextPath,
 }: {
   open: boolean;
   error: string | null;
   onClose: () => void;
   onError: (message: string | null) => void;
+  description?: string;
+  loginHref?: string;
+  nextPath?: string;
 }) {
   const pathname = usePathname();
+  const resolvedNext =
+    nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")
+      ? nextPath
+      : pathname && pathname.startsWith("/") && !pathname.startsWith("//")
+        ? pathname
+        : "/dashboard";
   const loginHref =
-    pathname && pathname.startsWith("/") && !pathname.startsWith("//")
-      ? `/login?next=${encodeURIComponent(pathname)}`
-      : "/login";
+    loginHrefProp ?? `/login?next=${encodeURIComponent(resolvedNext)}`;
 
   if (!open) {
     return null;
@@ -46,33 +56,39 @@ export default function GuestAuthModal({
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 text-zinc-400 hover:text-white transition-colors duration-200 ease-out cursor-pointer"
+          className="absolute top-4 right-4 text-textMuted hover:text-textMain transition-colors duration-200 ease-out cursor-pointer"
           aria-label="Close"
         >
           <DashboardIcons.XMark />
         </button>
         <h2
           id="guest-auth-title"
-          className="text-lg font-extrabold tracking-tight text-white pr-8"
+          className="text-lg font-extrabold tracking-tight text-textMain pr-8"
         >
           Sign in or create an account
         </h2>
-        <p className="text-sm text-zinc-300 mt-2 leading-relaxed">
-          You can browse roles freely. Sign in to express interest, apply, and
-          use career accelerator tools.
+        <p className="text-sm text-textMuted mt-2 leading-relaxed">
+          {description ??
+            "You can browse roles freely. Sign in to express interest, apply, and use career accelerator tools."}
         </p>
         <div className="mt-6 flex w-full flex-col gap-3">
-          <GitHubSignInButton onError={(message) => onError(message || null)} />
-          <GoogleSignInButton onError={(message) => onError(message || null)} />
+          <GitHubSignInButton
+            nextPath={resolvedNext}
+            onError={(message) => onError(message || null)}
+          />
+          <GoogleSignInButton
+            nextPath={resolvedNext}
+            onError={(message) => onError(message || null)}
+          />
         </div>
         {error ? (
           <p className="text-xs text-red-400 mt-3">{error}</p>
         ) : null}
-        <p className="text-[11px] text-zinc-400 mt-4 text-center">
+        <p className="text-[11px] text-textMuted mt-4 text-center">
           Prefer email?{" "}
           <Link
             href={loginHref}
-            className="text-indigo-300 hover:text-indigo-200 font-semibold transition-colors duration-200"
+            className="text-brand hover:text-brand font-semibold transition-colors duration-200"
           >
             Sign in / Sign up
           </Link>

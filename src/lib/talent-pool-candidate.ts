@@ -4,9 +4,7 @@ import {
 } from "@/lib/audit-checks";
 import type { GitHubAuditContext } from "@/lib/github-audit";
 import {
-  computeProductionAuditMetrics,
-  emptyProductionAuditMetrics,
-  parseProductionAuditMetrics,
+  resolveProductionAuditMetrics,
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
 import {
@@ -16,6 +14,11 @@ import {
 } from "@/lib/repo-filesystem";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { resolveTalentProfileId } from "@/lib/talent-pool-profiles";
+import type { ProductionAuditBreakdown } from "@/lib/production-audit";
+import {
+  employerVisibleProductionAudit,
+  parseProductionAuditFromProfileRow,
+} from "@/lib/production-audit";
 
 export type TalentPoolCandidate = {
   id: string;
@@ -39,6 +42,7 @@ export type TalentPoolCandidate = {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught?: boolean;
   skills: string[];
   rating: string;
   execution_score?: number | string | null;
@@ -53,7 +57,25 @@ export type TalentPoolCandidate = {
   matchScore: number;
   matchPending?: boolean;
   verifiedOnProvix?: boolean;
+  productionScore?: number | null;
+  auditBreakdown?: ProductionAuditBreakdown | null;
+  isAuditVerified?: boolean;
 };
+
+export function productionAuditRecordFromCandidate(
+  candidate: Pick<
+    TalentPoolCandidate,
+    "productionScore" | "auditBreakdown" | "isAuditVerified"
+  >
+) {
+  return employerVisibleProductionAudit(
+    parseProductionAuditFromProfileRow({
+      production_score: candidate.productionScore,
+      audit_breakdown: candidate.auditBreakdown,
+      is_audit_verified: candidate.isAuditVerified,
+    })
+  );
+}
 
 export type InterviewCheatSheetQuestion = {
   question: string;
@@ -91,6 +113,35 @@ export const DEEP_SCREENING_STAGES = [
 ] as const;
 
 export const DEEP_SCREENING_FETCH_TIMEOUT_MS = 180_000;
+export const SCREENING_ENQUEUE_TIMEOUT_MS = 20_000;
+export const SCREENING_BACKGROUND_WAIT_MS = 180_000;
+
+export type ScreeningQueueStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed";
+
+export type ScreeningAcceptedResponse = {
+  accepted: true;
+  status: "pending";
+  screening_id: string;
+  candidate_key: string;
+  run_id: string;
+};
+
+export type ScreeningQueueRow = {
+  id?: string | null;
+  status?: string | null;
+  integrity_score?: number | null;
+  audit_data?: unknown;
+};
+
+export type ScreeningQueueView =
+  | { phase: "pending" | "processing" }
+  | { phase: "failed"; error: string }
+  | { phase: "completed"; result: DeepScreeningResult }
+  | { phase: "empty" };
 
 export function isAbortOrTimeoutError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
@@ -169,11 +220,10 @@ export function coerceDeepScreeningResult(
   const filesystem = result.github_audit?.filesystem
     ? parseRepoFilesystemEvidence(result.github_audit.filesystem)
     : null;
-  const metrics =
-    parseProductionAuditMetrics(result.metrics) ??
-    (filesystem
-      ? computeProductionAuditMetrics(filesystem)
-      : emptyProductionAuditMetrics());
+  const metrics = resolveProductionAuditMetrics({
+    metrics: result.metrics,
+    filesystem,
+  });
 
   return {
     ...result,
@@ -198,6 +248,75 @@ export function coerceDeepScreeningResult(
   };
 }
 
+function screeningAuditRecord(
+  value: unknown
+): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+export function isScreeningAcceptedResponse(
+  value: unknown
+): value is ScreeningAcceptedResponse {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return (
+    record.accepted === true &&
+    record.status === "pending" &&
+    typeof record.screening_id === "string" &&
+    record.screening_id.trim().length > 0
+  );
+}
+
+export function readScreeningQueueState(
+  row: ScreeningQueueRow | null | undefined
+): ScreeningQueueView {
+  if (!row) {
+    return { phase: "empty" };
+  }
+
+  const audit = screeningAuditRecord(row.audit_data);
+  const embedded =
+    typeof audit?.status === "string" ? audit.status : null;
+  const status = row.status ?? embedded;
+
+  if (status === "pending" || status === "processing") {
+    return { phase: status };
+  }
+
+  if (status === "failed") {
+    const error =
+      typeof audit?.error === "string" && audit.error.trim()
+        ? audit.error.trim()
+        : "The live audit could not be completed. Please retry.";
+    return { phase: "failed", error };
+  }
+
+  if (audit && typeof audit.integrity_score === "number") {
+    return {
+      phase: "completed",
+      result: coerceDeepScreeningResult(audit as DeepScreeningResult),
+    };
+  }
+
+  if (typeof row.integrity_score === "number" && audit) {
+    return {
+      phase: "completed",
+      result: coerceDeepScreeningResult({
+        ...(audit as DeepScreeningResult),
+        integrity_score: row.integrity_score,
+      }),
+    };
+  }
+
+  return { phase: "empty" };
+}
+
 export function parseStoredScreeningResult(raw: string): DeepScreeningResult | null {
   try {
     const parsed = JSON.parse(raw) as DeepScreeningResult;
@@ -219,7 +338,7 @@ export function getIntegrityScoreClass(score: number): string {
     return "text-emerald-400 border-emerald-500/30 bg-emerald-500/10";
   }
   if (score >= 60) {
-    return "text-amber-400 border-amber-500/30 bg-amber-500/10";
+    return "text-violet-400 border-violet-500/30 bg-violet-500/10";
   }
   return "text-red-400 border-red-500/30 bg-red-500/10";
 }

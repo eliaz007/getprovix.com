@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
+export const dynamic = "force-dynamic";
 
-export default function ResumeAuditorRedirectPage() {
-  redirect("/dashboard/auditor");
-}
+export { default } from "../auditor/page";

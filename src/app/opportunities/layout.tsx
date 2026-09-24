@@ -1,7 +1,20 @@
 "use client";
 
+import type { ReactNode } from "react";
 import DashboardShell from "@/components/dashboard/dashboard-shell";
-import { DashboardNavProvider } from "@/components/dashboard/dashboard-nav-context";
+import {
+  DashboardContentGate,
+  DashboardNavProvider,
+} from "@/components/dashboard/dashboard-nav-context";
+
+function OpportunitiesReady({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <DashboardContentGate ready />
+      {children}
+    </>
+  );
+}
 
 export default function OpportunitiesLayout({
   children,
@@ -10,7 +23,9 @@ export default function OpportunitiesLayout({
 }) {
   return (
     <DashboardNavProvider>
-      <DashboardShell>{children}</DashboardShell>
+      <DashboardShell>
+        <OpportunitiesReady>{children}</OpportunitiesReady>
+      </DashboardShell>
     </DashboardNavProvider>
   );
 }

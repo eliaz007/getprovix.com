@@ -7,15 +7,17 @@ import { getPublicCandidateLocation } from "@/lib/candidate-anonymization";
 import { scoreTalentMatch } from "@/lib/match-heuristic";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 import { formatGpa } from "@/lib/gpa";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   educationFromProfileRow,
-  hasTalentEducation,
 } from "@/lib/talent-pool-profiles";
 import {
   fetchProfilesForCandidateIds,
   resolvedProfileId,
 } from "@/lib/resolve-candidate-profile";
+import CandidateEducationSummary from "@/components/CandidateEducationSummary";
 import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { createClient } from "@/utils/supabase/client";
@@ -45,6 +47,8 @@ type ApplicantProfileRow = {
   university?: string | null;
   gpa?: string | number | null;
   graduation_year?: number | string | null;
+  education?: unknown;
+  is_self_taught?: boolean | string | number | null;
   portfolio_url?: string | null;
   youtube_url?: string | null;
   availability_status?: string | null;
@@ -76,6 +80,7 @@ export type JobApplicantView = {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught?: boolean;
   aiScoreLabel: string;
   appliedAtLabel: string;
   unlocked: boolean;
@@ -180,6 +185,8 @@ const APPLICANT_PROFILE_COLUMNS = [
   "university",
   "gpa",
   "graduation_year",
+  "education",
+  "is_self_taught",
   "portfolio_url",
   "youtube_url",
   "availability_status",
@@ -268,6 +275,7 @@ function mapApplicationToApplicant(
     major: education.major,
     gpa: formatGpa(education.gpa),
     graduationYear: education.graduationYear,
+    isSelfTaught: Boolean(education.isSelfTaught),
     aiScoreLabel: formatAiScoreLabel(
       matchByCandidateId.get(row.candidate_id),
       { skills, headline, bio: profile?.bio },
@@ -320,7 +328,7 @@ export default function JobApplicantsDrawer({
         );
 
         if (fromApi.ok) {
-          const payload = (await fromApi.json()) as {
+          const payload = (await readJsonResponse(fromApi)) as {
             applications?: Array<
               Pick<
                 JobApplicationRow,
@@ -459,22 +467,22 @@ export default function JobApplicantsDrawer({
         onClick={onClose}
       />
 
-      <aside className="relative h-full w-full max-w-lg bg-[#111111] border-l border-zinc-800 shadow-none flex flex-col">
-        <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-6 py-5">
+      <aside className="relative h-full w-full max-w-lg bg-panel border-l border-border flex flex-col">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-400">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-brand">
               Interested Candidates
             </p>
-            <h2 className="text-xl font-extrabold text-white mt-1">{jobTitle}</h2>
-            <p className="text-sm text-slate-400 mt-1">
+            <h2 className="text-xl font-extrabold text-textMain mt-1">{jobTitle}</h2>
+            <p className="text-sm text-textMuted mt-1">
               Anonymized proof-of-work profiles — request an intro with no
-              upfront fees under Provix contingency placement terms.
+              upfront fees. {PUBLIC_PLACEMENT_TERMS_SUMMARY}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-500 hover:text-white transition-colors cursor-pointer"
+            className="text-textMuted hover:text-textMain transition-colors cursor-pointer"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -483,8 +491,8 @@ export default function JobApplicantsDrawer({
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {loading ? (
-            <div className="flex items-center justify-center gap-3 py-16 text-sm text-slate-400">
-              <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+            <div className="flex items-center justify-center gap-3 py-16 text-sm text-textMuted">
+              <Loader2 className="w-5 h-5 animate-spin text-brand" />
               Loading applicants...
             </div>
           ) : error ? (
@@ -492,8 +500,8 @@ export default function JobApplicantsDrawer({
               {error}
             </div>
           ) : applicants.length === 0 ? (
-            <div className="rounded-xl border border-zinc-800 bg-[#0A0A0A] px-4 py-10 text-center">
-              <p className="text-sm text-slate-400">
+            <div className="rounded-xl border border-border bg-background px-4 py-10 text-center">
+              <p className="text-sm text-textMuted">
                 No candidates have expressed interest in this role yet.
               </p>
             </div>
@@ -501,21 +509,21 @@ export default function JobApplicantsDrawer({
             applicants.map((applicant) => (
               <div
                 key={applicant.applicationId}
-                className="card-edge rounded-2xl border border-zinc-800 bg-[#0A0A0A] p-5 space-y-4"
+                className="card-edge rounded-2xl border border-border bg-background p-5 space-y-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-xs font-bold text-indigo-300 shrink-0">
+                    <div className="w-11 h-11 rounded-full bg-brand/20 border border-brand/30 flex items-center justify-center text-xs font-bold text-brand shrink-0">
                       {applicant.initials}
                     </div>
                     <div className="min-w-0">
-                      <h3 className="font-bold text-white text-sm truncate">
+                      <h3 className="font-bold text-textMain text-sm truncate">
                         {applicant.codenameAlias}
                       </h3>
-                      <p className="text-xs text-indigo-400 font-medium mt-0.5 truncate">
+                      <p className="text-xs text-brand font-medium mt-0.5 truncate">
                         {applicant.headline}
                       </p>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[11px] text-textMuted mt-1">
                         {applicant.location}
                       </p>
                       {(applicant.verifiedOnProvix || applicant.unlocked) && (
@@ -533,7 +541,7 @@ export default function JobApplicantsDrawer({
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
-                    <span className="font-mono text-[11px] font-bold tabular-nums text-zinc-300">
+                    <span className="font-mono text-[11px] font-bold tabular-nums text-textMuted">
                       {applicant.aiScoreLabel}
                     </span>
                     {/^\d+/.test(applicant.aiScoreLabel) ? (
@@ -546,46 +554,22 @@ export default function JobApplicantsDrawer({
                 </div>
 
                 <div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                  <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                     Education
                   </span>
-                  <div className="rounded-xl border border-zinc-800 bg-[#111111] p-3.5 text-xs text-slate-200 space-y-2">
-                    {applicant.university ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">University</span>
-                        <span className="text-right">{applicant.university}</span>
-                      </div>
-                    ) : null}
-                    {applicant.major ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">Major</span>
-                        <span className="text-right">{applicant.major}</span>
-                      </div>
-                    ) : null}
-                    {formatGpa(applicant.gpa) ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">GPA</span>
-                        <span className="text-right font-mono">
-                          {formatGpa(applicant.gpa)}
-                        </span>
-                      </div>
-                    ) : null}
-                    {applicant.graduationYear ? (
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-slate-500 shrink-0">Graduation</span>
-                        <span className="text-right">{applicant.graduationYear}</span>
-                      </div>
-                    ) : null}
-                    {!hasTalentEducation(applicant) ? (
-                      <p className="text-slate-500">
-                        Education details not provided.
-                      </p>
-                    ) : null}
+                  <div className="rounded-xl border border-border bg-panel p-3.5 text-xs text-textMain space-y-2">
+                    <CandidateEducationSummary
+                      isSelfTaught={applicant.isSelfTaught}
+                      university={applicant.university}
+                      major={applicant.major}
+                      gpa={applicant.gpa}
+                      graduationYear={applicant.graduationYear}
+                    />
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                  <span className="text-[10px] font-bold text-textMuted uppercase tracking-widest block mb-2">
                     Skills
                   </span>
                   <div className="flex flex-wrap gap-1.5">
@@ -593,18 +577,18 @@ export default function JobApplicantsDrawer({
                       applicant.skills.slice(0, 4).map((skill) => (
                         <span
                           key={skill}
-                          className="px-2 py-1 rounded-md text-[10px] font-bold bg-slate-800/80 text-slate-300 border border-slate-700/50"
+                          className="px-2 py-1 rounded-md text-[10px] font-bold bg-panel/80 text-textMuted border border-border/50"
                         >
                           {skill}
                         </span>
                       ))
                     ) : (
-                      <span className="text-[11px] text-slate-500">
+                      <span className="text-[11px] text-textMuted">
                         Skills pending profile sync
                       </span>
                     )}
                     {applicant.skills.length > 4 && (
-                      <span className="px-2 py-0.5 text-[11px] rounded bg-white/5 text-zinc-400 border border-white/5">
+                      <span className="px-2 py-0.5 text-[11px] rounded bg-white/5 text-textMuted border border-border">
                         +{applicant.skills.length - 4} more
                       </span>
                     )}
@@ -619,24 +603,24 @@ export default function JobApplicantsDrawer({
                     {applicant.email ? (
                       <a
                         href={`mailto:${applicant.email}`}
-                        className="block text-xs text-slate-200 hover:text-white break-all"
+                        className="block text-xs text-textMain hover:text-textMain break-all"
                       >
                         {applicant.email}
                       </a>
                     ) : (
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-textMuted">
                         No email on file for this candidate.
                       </p>
                     )}
                     {applicant.phone && (
-                      <p className="text-xs text-slate-200">{applicant.phone}</p>
+                      <p className="text-xs text-textMain">{applicant.phone}</p>
                     )}
                     {applicant.linkedinUrl && (
                       <a
                         href={applicant.linkedinUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block text-xs text-indigo-300 hover:text-indigo-200 break-all"
+                        className="block text-xs text-brand hover:text-brand break-all"
                       >
                         LinkedIn profile
                       </a>
@@ -645,7 +629,7 @@ export default function JobApplicantsDrawer({
                 )}
 
                 <div className="flex items-center justify-between gap-3 pt-1">
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-textMuted">
                     Interest expressed {applicant.appliedAtLabel}
                   </span>
                   {applicant.unlocked ? (
@@ -656,7 +640,7 @@ export default function JobApplicantsDrawer({
                     <button
                       type="button"
                       onClick={() => onRequestIntro(applicant)}
-                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer"
+                      className="text-[11px] font-bold px-3.5 py-2 rounded-lg bg-brand hover:bg-brandHover text-white transition-all cursor-pointer"
                     >
                       Request Intro
                     </button>

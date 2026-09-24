@@ -16,7 +16,7 @@ export default function Card({
   return (
     <Comp
       className={cn(
-        "card-edge rounded-md border border-zinc-700 bg-[#111111] text-zinc-50 shadow-[4px_4px_0px_#000]",
+        "card-edge rounded-md border border-border bg-panel text-textMain",
         interactive && "card-lift",
         className
       )}

@@ -1,18 +1,25 @@
-"use client";
+import { redirect } from "next/navigation";
+import {
+  EMPLOYER_DASHBOARD_PATH,
+  loadStoredAccountRole,
+  normalizeAccountKind,
+} from "@/lib/account-role";
+import { createClient } from "@/utils/supabase/server";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+export default async function EmployerPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-export default function EmployerPage() {
-  const router = useRouter();
+  if (!user) {
+    redirect("/");
+  }
 
-  useEffect(() => {
-    router.replace("/dashboard");
-  }, [router]);
+  const role = await loadStoredAccountRole(supabase, user);
+  if (normalizeAccountKind(role) !== "employer") {
+    redirect("/dashboard");
+  }
 
-  return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-      <p className="text-sm text-zinc-500">Loading employer console...</p>
-    </div>
-  );
+  redirect(EMPLOYER_DASHBOARD_PATH);
 }

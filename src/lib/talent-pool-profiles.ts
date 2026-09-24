@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatGpa } from "@/lib/gpa";
+import {
+  parseEducationFromProfileRow,
+  parseIsSelfTaught,
+} from "@/lib/candidate-education";
 import { isEmployerRole } from "@/lib/dashboard-account";
 import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
 import {
@@ -13,6 +17,7 @@ export type TalentPoolEducation = {
   major: string;
   gpa: string;
   graduationYear: string;
+  isSelfTaught?: boolean;
 };
 
 const UNIVERSITY_KEYS = [
@@ -43,6 +48,8 @@ export const PROFILE_EDUCATION_COLUMNS = [
   "degree",
   "gpa",
   "graduation_year",
+  "education",
+  "is_self_taught",
 ] as const;
 
 const PROFILE_ID_COLUMNS = ["id", "user_id"] as const;
@@ -100,14 +107,20 @@ export function educationFromProfileRow(
       major: "",
       gpa: "",
       graduationYear: "",
+      isSelfTaught: false,
     };
   }
 
+  const fromEntries = parseEducationFromProfileRow(row);
+  const primary = fromEntries[0];
+
   return {
-    university: valueFromRow(row, UNIVERSITY_KEYS),
-    major: valueFromRow(row, MAJOR_KEYS),
+    university: primary?.institution || valueFromRow(row, UNIVERSITY_KEYS),
+    major: primary?.fieldOfStudy || valueFromRow(row, MAJOR_KEYS),
     gpa: formatGpa(valueFromRow(row, GPA_KEYS)),
-    graduationYear: valueFromRow(row, GRADUATION_YEAR_KEYS),
+    graduationYear:
+      primary?.graduationYear || valueFromRow(row, GRADUATION_YEAR_KEYS),
+    isSelfTaught: parseIsSelfTaught(row.is_self_taught ?? row.isSelfTaught),
   };
 }
 
@@ -139,10 +152,15 @@ export function candidateEducationFields(
     major: candidate.major,
     gpa: formatGpa(candidate.gpa),
     graduationYear: candidate.graduationYear,
+    isSelfTaught: Boolean(candidate.isSelfTaught),
   };
 }
 
 export function hasTalentEducation(education: TalentPoolEducation): boolean {
+  if (education.isSelfTaught) {
+    return true;
+  }
+
   return [
     education.university,
     education.major,
@@ -160,6 +178,7 @@ export function mergeTalentEducation(
     major: incoming.major || current.major,
     gpa: formatGpa(incoming.gpa) || formatGpa(current.gpa),
     graduationYear: incoming.graduationYear || current.graduationYear,
+    isSelfTaught: Boolean(incoming.isSelfTaught || current.isSelfTaught),
   };
 }
 

@@ -18,17 +18,17 @@ export default function TalentDirectoryPage() {
           return;
         }
 
-        router.replace("/login?next=/dashboard");
+        router.replace("/");
       })
       .catch((err) => {
         console.error("Talent redirect failed:", err);
-        router.replace("/login?next=/dashboard");
+        router.replace("/");
       });
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-      <p className="text-sm text-zinc-500">Loading vetted talent pool...</p>
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <p className="text-sm text-textMuted">Loading Provix Talent Network...</p>
     </div>
   );
 }

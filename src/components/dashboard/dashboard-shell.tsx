@@ -6,12 +6,12 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname } from "next/navigation";
-import EmployerNotificationBell from "@/components/EmployerNotificationBell";
 import GuestAuthModal from "@/components/GuestAuthModal";
+import CompanySetupModal from "@/components/dashboard/CompanySetupModal";
+import DossierClaimBanner from "@/components/dashboard/dossier-claim-banner";
 import DashboardSidebar from "@/components/dashboard/dashboard-sidebar";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import GetVerifiedBanner from "@/components/GetVerifiedBanner";
-import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
 
 function ContentFade({
@@ -45,12 +45,11 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     isBusinessAccount,
     isVerifiedEmployer,
     isGuest,
-    mobileNavOpen,
-    setMobileNavOpen,
     userId,
     userAvatarUrl,
     userInitials,
-    onOpenJobApplicants,
+    mobileNavOpen,
+    setMobileNavOpen,
     requireAuth,
     authModalOpen,
     authModalError,
@@ -59,10 +58,36 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   } = useDashboardNav();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0A0A0A] text-zinc-100 font-sans antialiased selection:bg-indigo-500/30">
-      <aside className="hidden md:flex w-64 h-screen sticky top-0 shrink-0 flex-col bg-[#111111] border-r border-zinc-800 z-20 overflow-y-auto">
+    <div className="flex h-screen overflow-hidden bg-[#0B0B0D] text-zinc-100 font-sans antialiased selection:bg-brand/30">
+      <aside className="hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-white/[0.08] bg-[#0E0E12] md:flex">
         <DashboardSidebar />
       </aside>
+
+      <div className="md:hidden">
+        <button
+          type="button"
+          aria-label="Close navigation menu"
+          aria-hidden={!mobileNavOpen}
+          tabIndex={mobileNavOpen ? 0 : -1}
+          onClick={() => setMobileNavOpen(false)}
+          className={`fixed inset-0 z-40 cursor-pointer bg-black/60 transition-opacity duration-300 ease-in-out motion-reduce:transition-none ${
+            mobileNavOpen
+              ? "opacity-100"
+              : "pointer-events-none opacity-0"
+          }`}
+        />
+        <aside
+          aria-hidden={!mobileNavOpen}
+          inert={!mobileNavOpen}
+          className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] overflow-y-auto border-r border-white/[0.08] bg-[#0E0E12] transition-transform duration-300 ease-in-out motion-reduce:transition-none ${
+            mobileNavOpen
+              ? "translate-x-0"
+              : "pointer-events-none -translate-x-full"
+          }`}
+        >
+          <DashboardSidebar />
+        </aside>
+      </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <MobileAppHeader
@@ -72,75 +97,20 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           authLoading={authLoading}
           avatarUrl={userAvatarUrl}
           initials={userInitials}
-          trailing={
-            !isGuest && isBusinessAccount ? (
-              <EmployerNotificationBell
-                userId={userId}
-                onOpenJobApplicants={(jobId) => onOpenJobApplicants?.(jobId)}
-              />
-            ) : null
-          }
         />
 
-        <div className="md:hidden">
-          <button
-            type="button"
-            aria-label="Close navigation menu"
-            aria-hidden={!mobileNavOpen}
-            tabIndex={mobileNavOpen ? 0 : -1}
-            onClick={() => setMobileNavOpen(false)}
-            className={`fixed inset-0 z-40 cursor-pointer bg-black/60 transition-opacity duration-300 ease-in-out motion-reduce:transition-none ${
-              mobileNavOpen
-                ? "opacity-100"
-                : "pointer-events-none opacity-0"
-            }`}
-          />
-          <aside
-            aria-hidden={!mobileNavOpen}
-            inert={!mobileNavOpen}
-            className={`fixed inset-y-0 left-0 z-50 flex w-64 max-w-[85vw] flex-col overflow-y-auto border-r border-zinc-800 bg-[#111111] shadow-none transition-transform duration-300 ease-in-out motion-reduce:transition-none ${
-              mobileNavOpen
-                ? "translate-x-0"
-                : "pointer-events-none -translate-x-full"
-            }`}
-          >
-            <div className="flex items-center justify-end p-3 border-b border-zinc-800 shrink-0">
-              <button
-                type="button"
-                onClick={() => setMobileNavOpen(false)}
-                aria-label="Close menu"
-                tabIndex={mobileNavOpen ? 0 : -1}
-                className="p-2 rounded-lg text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors duration-200 ease-out cursor-pointer"
-              >
-                <DashboardIcons.XMark />
-              </button>
-            </div>
-            <DashboardSidebar />
-          </aside>
-        </div>
-
-        <main className="relative min-h-0 w-full flex-1 flex flex-col overflow-hidden bg-[#0A0A0A]">
-          {!isGuest && isBusinessAccount && (
-            <div className="hidden md:flex shrink-0 items-center justify-end px-6 md:px-12 pt-4">
-              <EmployerNotificationBell
-                userId={userId}
-                onOpenJobApplicants={(jobId) => onOpenJobApplicants?.(jobId)}
-              />
-            </div>
-          )}
-
-          <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 pt-8 sm:p-6 sm:pt-10 md:p-12">
+        <main className="relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#0B0B0D] text-zinc-100">
+          <div className="mx-auto min-h-screen w-full max-w-6xl p-8">
+            {!isBusinessAccount ? <DossierClaimBanner /> : null}
             {!isGuest &&
             isBusinessAccount &&
-            !isVerifiedEmployer &&
+            isVerifiedEmployer === false &&
             !authLoading ? (
               <div className="mb-6">
                 <GetVerifiedBanner userId={userId} />
               </div>
             ) : null}
-            <ContentFade trigger={pathname}>
-              {children}
-            </ContentFade>
+            <ContentFade trigger={pathname}>{children}</ContentFade>
           </div>
         </main>
       </div>
@@ -151,6 +121,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         onClose={() => setAuthModalOpen(false)}
         onError={setAuthModalError}
       />
+      <CompanySetupModal />
     </div>
   );
 }

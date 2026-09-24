@@ -105,30 +105,18 @@ export default function OpportunitiesJobFeed({
   }, [activeJobs, hasAiMatchResults, matchInsights, remoteOnly, search]);
 
   return (
-    <div>
-      <div className="mb-8 rounded-2xl border border-zinc-800 bg-gradient-to-br from-[#141414] via-[#111111] to-[#0A0A0A] p-6 sm:p-8">
-        <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-snug">
-          Hire developers based on what they&apos;ve actually built, not what
-          they claim.
-        </h2>
-        <p className="text-zinc-300 text-sm sm:text-base mt-3 leading-relaxed max-w-3xl">
-          Provix audits candidates&apos; real GitHub work and proof-of-work
-          signals — so employers hire with confidence, and candidates get credit
-          for what they&apos;ve genuinely done.
-        </p>
-      </div>
-
+    <div className="text-zinc-100">
       <div className="mb-8">
-        <p className="text-xs font-bold uppercase tracking-widest text-indigo-300 mb-2">
-          Job Feed
+        <p className="font-mono text-xs font-medium uppercase tracking-widest text-zinc-500">
+          Talent Network
         </p>
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">
-          Opportunities
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-white">
+          Provix Talent Network
         </h1>
-        <p className="text-zinc-300 text-sm mt-2 leading-relaxed">
+        <p className="mt-1 text-sm text-zinc-400">
           {isGuest
             ? "Browse openings, companies, and requirements. Sign in when you are ready to express interest."
-            : "Curated openings matched to your profile — express interest in one click."}
+            : "Open roles matched to your verified stack. Connect directly with hiring teams."}
         </p>
         {enableAiMatch ? (
           <div className="mt-5">
@@ -136,7 +124,7 @@ export default function OpportunitiesJobFeed({
               type="button"
               onClick={() => onRunAiMatch?.()}
               disabled={!canRunAiMatch}
-              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 disabled:cursor-not-allowed text-white text-xs font-bold tracking-tight px-4 py-2.5 rounded-md transition-colors duration-200 ease-out cursor-pointer"
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {aiMatchRunning ? (
                 <LoaderCircle
@@ -153,7 +141,7 @@ export default function OpportunitiesJobFeed({
                   : "Run Provix AI Match"}
             </button>
             {aiMatchRunning ? (
-              <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+              <p className="mt-2 text-xs leading-relaxed text-zinc-400">
                 Scoring your audited skills against active listings. This can
                 take a few seconds.
               </p>
@@ -167,57 +155,67 @@ export default function OpportunitiesJobFeed({
 
       <div
         className={`grid grid-cols-1 gap-4 mb-8 ${
-          isGuest ? "sm:grid-cols-2" : "sm:grid-cols-3"
-        }`}
+ isGuest ? "sm:grid-cols-2" : "sm:grid-cols-3"
+ }`}
       >
-        <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+        <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 p-5 shadow-xl backdrop-blur-md">
+          <span className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-400">
             Active Openings
           </span>
-          <span className="text-3xl font-extrabold text-white">
+          <span
+            className={`font-mono text-2xl font-bold ${
+              !jobsLoading && activeOpeningsCount > 0
+                ? "text-violet-400"
+                : "text-zinc-100"
+            }`}
+          >
             {jobsLoading ? "—" : activeOpeningsCount}
           </span>
           {!jobsLoading && activeOpeningsCount === 0 ? (
-            <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-              New roles are posted as employers join Provix. Sign in to be first
-              in line.
+            <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+              New roles are added regularly. Keep your profile updated to match
+              with hiring founders.
             </p>
           ) : null}
         </div>
         {isGuest ? (
-          <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+          <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 p-5 shadow-xl backdrop-blur-md">
+            <span className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-400">
               Apply
             </span>
-            <span className="text-sm font-extrabold text-indigo-400">
+            <span className="font-mono text-sm font-bold text-violet-300">
               Sign in to get matched
             </span>
           </div>
         ) : (
           <>
-            <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+            <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 p-5 shadow-xl backdrop-blur-md">
+              <span className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-400">
                 Matching Your Skills
               </span>
-              <span className="text-3xl font-extrabold text-indigo-400">
+              <span
+                className={`font-mono text-2xl font-bold ${
+                  !jobsLoading && skillMatchingJobsCount > 0
+                    ? "text-violet-400"
+                    : "text-zinc-100"
+                }`}
+              >
                 {jobsLoading ? "—" : skillMatchingJobsCount}
               </span>
             </div>
-            <div className="card-edge bg-[#111111] p-5 rounded-2xl border border-zinc-800 shadow-lg">
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+            <div className="rounded-xl border border-white/[0.08] bg-zinc-900/50 p-5 shadow-xl backdrop-blur-md">
+              <span className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-400">
                 Profile Visibility
               </span>
               <span
-                className={`text-sm font-extrabold ${
-                  profileVisibleToEmployers
-                    ? "text-emerald-400"
-                    : "text-zinc-300"
+                className={`font-mono text-sm font-bold ${
+                  profileVisibleToEmployers ? "text-emerald-400" : "text-zinc-400"
                 }`}
               >
                 {loadingProfile
                   ? "—"
                   : profileVisibleToEmployers
-                    ? "Active 🟢"
+                    ? "Active"
                     : "Hidden"}
               </span>
             </div>
@@ -225,27 +223,27 @@ export default function OpportunitiesJobFeed({
         )}
       </div>
 
-      <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-4 mb-6 shadow-lg">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="mb-6 rounded-xl border border-white/[0.08] bg-zinc-900/50 p-4 shadow-xl backdrop-blur-md">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
-              <Search className="w-4 h-4" aria-hidden="true" />
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
+              <Search className="h-4 w-4" aria-hidden="true" />
             </span>
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search roles, companies, or skills..."
-              className="w-full bg-[#0A0A0A] border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+              className="w-full rounded-lg border border-white/[0.09] bg-[#070709] py-2.5 pl-10 pr-4 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-500/60 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
             />
           </div>
           <button
             type="button"
             onClick={() => setRemoteOnly((prev) => !prev)}
-            className={`shrink-0 text-[11px] font-bold px-4 py-2.5 rounded-xl border transition-colors duration-200 ease-out cursor-pointer ${
+            className={`shrink-0 cursor-pointer rounded-md border px-4 py-2.5 font-mono text-[11px] transition-colors duration-200 ease-out ${
               remoteOnly
-                ? "bg-indigo-600 border-indigo-500 text-white"
-                : "bg-[#0A0A0A] border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-500"
+                ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
+                : "border-white/[0.08] bg-[#070709] text-zinc-400 hover:text-zinc-200"
             }`}
           >
             Remote Only
@@ -254,33 +252,33 @@ export default function OpportunitiesJobFeed({
       </div>
 
       {jobsLoading ? (
-        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
-          <p className="text-sm font-medium text-zinc-300">
+        <div className="rounded-xl border border-white/[0.08] bg-[#131316]/90 p-10 text-center shadow-xl backdrop-blur-md">
+          <p className="text-sm font-medium text-zinc-400">
             Loading opportunities...
           </p>
         </div>
       ) : jobsError ? (
-        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+        <div className="rounded-xl border border-white/[0.08] bg-[#131316]/90 p-10 text-center shadow-xl backdrop-blur-md">
           <p className="text-sm font-medium text-zinc-100">
             Could not load job feed
           </p>
-          <p className="text-xs text-zinc-400 mt-1">
+          <p className="mt-1 text-xs text-zinc-400">
             The opportunities list is unavailable right now. You can keep
             using the rest of the dashboard.
           </p>
         </div>
       ) : activeJobs.length === 0 ? (
-        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+        <div className="rounded-xl border border-white/[0.08] bg-[#131316]/90 p-10 text-center shadow-xl backdrop-blur-md">
           <p className="text-sm font-medium text-zinc-100">
             No active openings right now
           </p>
         </div>
       ) : filteredJobFeed.length === 0 ? (
-        <div className="card-edge bg-[#111111] border border-zinc-800 rounded-2xl p-10 text-center">
+        <div className="rounded-xl border border-white/[0.08] bg-[#131316]/90 p-10 text-center shadow-xl backdrop-blur-md">
           <p className="text-sm font-medium text-zinc-100">
             No jobs match your filters
           </p>
-          <p className="text-xs text-zinc-400 mt-1">
+          <p className="mt-1 text-xs text-zinc-400">
             Try clearing search or disabling Remote Only.
           </p>
         </div>
@@ -299,27 +297,27 @@ export default function OpportunitiesJobFeed({
             return (
               <div
                 key={job.id}
-                className="card-edge card-lift bg-[#111111] border border-zinc-800 rounded-2xl p-5 shadow-lg flex flex-col"
+                className="flex flex-col rounded-xl border border-white/[0.08] bg-[#131316]/90 p-5 shadow-2xl transition-all hover:border-violet-500/30"
               >
-                <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="font-bold text-white text-base truncate">
+                    <h3 className="truncate font-semibold text-zinc-100">
                       {job.title}
                     </h3>
-                    <p className="text-sm text-indigo-300 font-semibold mt-0.5 truncate">
+                    <p className="mt-0.5 truncate text-sm font-medium text-violet-300">
                       {job.company}
                     </p>
                   </div>
                   {enableAiMatch ? (
-                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
                       <span
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
+                        className={
                           isMatching
-                            ? "bg-indigo-500/10 text-indigo-300 border-indigo-500/30 animate-pulse"
+                            ? "inline-flex items-center rounded-md border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 font-mono text-xs font-medium text-violet-300 animate-pulse"
                             : insight
                               ? getFitVerdictBadgeClass(insight.fit_verdict)
-                              : "bg-zinc-800 text-zinc-300 border-zinc-700"
-                        }`}
+                              : "inline-flex items-center rounded-md border border-white/[0.08] bg-[#1A1A1E] px-2.5 py-1 font-mono text-xs font-medium text-zinc-400"
+                        }
                       >
                         {isMatching
                           ? "Scoring…"
@@ -329,7 +327,7 @@ export default function OpportunitiesJobFeed({
                       </span>
                       {insight && !isMatching ? (
                         <>
-                          <span className="text-[10px] font-mono font-bold tabular-nums text-zinc-400">
+                          <span className="font-mono text-[10px] font-bold tabular-nums text-zinc-500">
                             {clampScore0to100(matchScore)}% match
                           </span>
                           <ScoreMeter score={matchScore} className="w-16" />
@@ -340,18 +338,18 @@ export default function OpportunitiesJobFeed({
                 </div>
 
                 {formattedSalary ? (
-                  <p className="text-sm font-semibold text-emerald-400 mb-1">
+                  <p className="mb-1 font-mono text-sm font-semibold text-violet-300">
                     {formattedSalary}
                   </p>
                 ) : null}
-                <p className="text-xs text-zinc-300 mb-4">{job.location}</p>
+                <p className="mb-4 font-mono text-xs text-zinc-500">{job.location}</p>
 
                 {tags.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 mb-4">
+                  <div className="mb-4 flex flex-wrap gap-1.5">
                     {tags.map((tag) => (
                       <span
                         key={tag}
-                        className="px-2 py-1 rounded-md text-[10px] font-bold border bg-indigo-500/10 text-indigo-200 border-indigo-500/30"
+                        className="rounded border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 font-mono text-[10px] text-violet-300"
                       >
                         {tag}
                       </span>
@@ -362,7 +360,7 @@ export default function OpportunitiesJobFeed({
                 {jobDescription ? (
                   <div className="mb-4">
                     <p
-                      className={`text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap ${
+                      className={`whitespace-pre-wrap text-xs leading-relaxed text-zinc-400 ${
                         isExpanded ? "" : "line-clamp-3"
                       }`}
                     >
@@ -376,7 +374,7 @@ export default function OpportunitiesJobFeed({
                             prev === job.id ? null : job.id
                           )
                         }
-                        className="mt-2 text-[11px] font-bold text-indigo-300 hover:text-indigo-200 transition-colors duration-200 ease-out cursor-pointer"
+                        className="mt-2 cursor-pointer font-mono text-[11px] font-medium text-violet-300 transition-colors duration-200 ease-out hover:text-violet-200"
                       >
                         {isExpanded ? "Show less" : "Read full opening"}
                       </button>
@@ -385,14 +383,14 @@ export default function OpportunitiesJobFeed({
                 ) : null}
 
                 {enableAiMatch && (isMatching || insight) && (
-                  <div className="mb-4 rounded-xl bg-[#0A0A0A] border border-zinc-800 p-3">
-                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                  <div className="mb-4 rounded-lg border border-white/[0.06] bg-[#070709] p-3 font-mono text-xs text-zinc-300">
+                    <span className="mb-2 block font-mono text-[10px] uppercase tracking-widest text-zinc-500">
                       AI Match Analysis
                     </span>
                     {isMatching ? (
                       <div className="flex items-center gap-2">
                         <span className="relative flex h-2 w-2">
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-400" />
                         </span>
                         <p className="text-xs text-zinc-400">
                           Evaluating your profile against this role with Gemini…
@@ -403,9 +401,9 @@ export default function OpportunitiesJobFeed({
                         {insight?.match_reasons.map((reason, index) => (
                           <li
                             key={`${job.id}-reason-${index}`}
-                            className="flex items-start gap-2 text-xs text-zinc-200 leading-relaxed"
+                            className="flex items-start gap-2 text-xs leading-relaxed text-zinc-300"
                           >
-                            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-indigo-400" />
+                            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-violet-400" />
                             <span>{reason}</span>
                           </li>
                         ))}
@@ -414,15 +412,15 @@ export default function OpportunitiesJobFeed({
                   </div>
                 )}
 
-                <div className="mt-auto flex items-center justify-end pt-4 border-t border-zinc-800">
+                <div className="mt-3 flex items-center justify-between border-t border-white/[0.06] pt-3 text-xs text-zinc-400">
                   <button
                     type="button"
                     onClick={() => onExpressInterest(job)}
                     disabled={alreadyApplied}
-                    className={`text-[11px] font-bold tracking-tight px-4 py-2 rounded-md transition-colors duration-200 ease-out flex items-center gap-1.5 ${
+                    className={`ml-auto flex items-center gap-1.5 rounded-md px-4 py-2 font-mono text-[11px] font-medium tracking-tight transition-colors duration-200 ease-out ${
                       alreadyApplied
-                        ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 cursor-not-allowed"
-                        : "bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
+                        ? "cursor-not-allowed border border-white/[0.08] bg-zinc-900/50 text-zinc-400"
+                        : "cursor-pointer bg-violet-600 text-white shadow-sm hover:bg-violet-500"
                     }`}
                   >
                     {alreadyApplied ? (

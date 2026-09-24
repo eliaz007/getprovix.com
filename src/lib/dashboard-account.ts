@@ -36,8 +36,23 @@ export function canAccessTalentPool(
   return isVerifiedEmployerFlag(isVerified);
 }
 
+export const CANDIDATE_PROFILE_PATH = "/dashboard/profile";
+
 export function isDashboardRootPath(pathname: string): boolean {
   return pathname === "/dashboard";
+}
+
+export function isDashboardProfilePath(pathname: string): boolean {
+  return pathname === CANDIDATE_PROFILE_PATH;
+}
+
+export function defaultDashboardTabForRole(
+  role: string | null | undefined
+): DashboardTab {
+  if (isEmployerRole(role)) {
+    return "talent";
+  }
+  return "my_profile";
 }
 
 export function dashboardTabHref(tab: DashboardTab): string {
@@ -45,12 +60,13 @@ export function dashboardTabHref(tab: DashboardTab): string {
     return "/opportunities";
   }
   if (tab === "my_profile") {
-    return "/dashboard";
+    return CANDIDATE_PROFILE_PATH;
   }
   return `/dashboard?tab=${encodeURIComponent(tab)}`;
 }
 
 const SEARCH_DASHBOARD_TABS = [
+  "my_profile",
   "intro_requests",
   "opportunity_radar",
   "applications",
@@ -83,6 +99,9 @@ export function resolveDashboardTabFromLocation(
   if (isAuditorPath(pathname)) {
     return "auditor";
   }
+  if (isDashboardProfilePath(pathname)) {
+    return "my_profile";
+  }
   if (!isDashboardRootPath(pathname)) {
     return null;
   }
@@ -94,15 +113,6 @@ export function isPitchStudioPath(pathname: string): boolean {
   return pathname === "/dashboard/pitch-studio";
 }
 
-const PROTECTED_ROUTE_PREFIXES = [
-  "/dashboard",
-  "/employer",
-  "/pitch-studio",
-  "/simulator",
-  "/profile-studio",
-  "/intro-requests",
-] as const;
-
 export function isDashboardAuditorPath(pathname: string): boolean {
   return (
     pathname === "/dashboard/auditor" ||
@@ -111,8 +121,13 @@ export function isDashboardAuditorPath(pathname: string): boolean {
   );
 }
 
+export function isStandalonePublicAuditPath(pathname: string): boolean {
+  return pathname === "/audit" || pathname.startsWith("/audit/");
+}
+
 export function isPublicAuditorPath(pathname: string): boolean {
   return (
+    isStandalonePublicAuditPath(pathname) ||
     pathname === "/audits" ||
     pathname.startsWith("/audits/") ||
     isDashboardAuditorPath(pathname)
@@ -120,7 +135,13 @@ export function isPublicAuditorPath(pathname: string): boolean {
 }
 
 export function isAuditorPath(pathname: string): boolean {
-  return isPublicAuditorPath(pathname);
+  return (
+    pathname === "/audits" ||
+    pathname.startsWith("/audits/") ||
+    pathname === "/auditor" ||
+    pathname.startsWith("/auditor/") ||
+    isDashboardAuditorPath(pathname)
+  );
 }
 
 export function isOpportunitiesPath(pathname: string): boolean {
@@ -128,17 +149,64 @@ export function isOpportunitiesPath(pathname: string): boolean {
 }
 
 export function isPublicOpportunitiesPath(pathname: string): boolean {
-  return isOpportunitiesPath(pathname);
+  return false;
 }
 
-export function isProtectedAppPath(pathname: string): boolean {
-  if (isPublicAuditorPath(pathname) || isPublicOpportunitiesPath(pathname)) {
-    return false;
+const PUBLIC_EXACT_PATHS = new Set([
+  "/",
+  "/login",
+  "/privacy",
+  "/terms",
+  "/pricing",
+  "/update-password",
+  "/admin/login",
+  "/icon",
+  "/apple-icon",
+  "/opengraph-image",
+  "/robots.txt",
+  "/sitemap.xml",
+]);
+
+const PUBLIC_PREFIXES = [
+  "/login/",
+  "/auth/",
+  "/p/",
+  "/update-password/",
+  "/admin/login/",
+  "/audit/",
+] as const;
+
+const STATIC_ASSET_PATH =
+  /^\/(?:_next\/(?:static|image)(?:\/|$)|favicon\.ico$)|\/[^/]+\.(?:avif|css|gif|ico|jpeg|jpg|js|map|png|svg|txt|webp|woff2?|xml)$/i;
+
+/** Marketing, legal, auth, and the standalone public audit. Not the app shell. */
+export function isPublicRoute(pathname: string): boolean {
+  if (PUBLIC_EXACT_PATHS.has(pathname)) {
+    return true;
   }
 
-  return PROTECTED_ROUTE_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
+  if (pathname === "/audit") {
+    return true;
+  }
+
+  return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+export function isStaticAssetPath(pathname: string): boolean {
+  return STATIC_ASSET_PATH.test(pathname);
+}
+
+/**
+ * Homepage, marketing/legal pages, and static files must not call
+ * supabase.auth.getUser() or refresh a session in middleware/proxy.
+ */
+export function shouldSkipMiddlewareAuth(pathname: string): boolean {
+  return isStaticAssetPath(pathname) || isPublicRoute(pathname);
+}
+
+/** App-shell and other internal pages. Unsigned visitors are sent to /. */
+export function isProtectedAppPath(pathname: string): boolean {
+  return !isPublicRoute(pathname);
 }
 
 export function isInterviewPrepPath(pathname: string): boolean {

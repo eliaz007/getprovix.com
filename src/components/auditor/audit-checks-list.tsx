@@ -9,8 +9,8 @@ const CHECK_STYLES: Record<
   { title: string; body: string }
 > = {
   artifact_analysis: {
-    title: "text-indigo-300",
-    body: "bg-indigo-500/5 border-indigo-500/10",
+    title: "text-brand",
+    body: "bg-brandGlow border-brand/20",
   },
   architecture_review: {
     title: "text-purple-300",
@@ -42,7 +42,7 @@ export default function AuditChecksList({
               {check.title}
             </div>
             <p
-              className={`text-xs text-slate-300 leading-relaxed border rounded-lg px-3 py-2 ${style.body}`}
+              className={`text-xs text-textMuted leading-relaxed border rounded-lg px-3 py-2 ${style.body}`}
             >
               {check.summary}
             </p>
