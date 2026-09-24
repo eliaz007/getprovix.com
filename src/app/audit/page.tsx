@@ -1,10 +1,7 @@
-import { Suspense } from "react";
 import Link from "next/link";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import PublicProductionAudit from "@/components/auditor/public-production-audit";
-import MarketingAuthLink, {
-  linkClassName,
-} from "@/components/marketing-auth-link";
+import MarketingAuthLink from "@/components/marketing-auth-link";
 import { buildPageMetadata } from "@/lib/site";
 import { githubUrlFromAuditQuery } from "@/lib/validate-github-url";
 
@@ -32,15 +29,7 @@ export default async function PublicAuditPage({
             <ProvixLogo />
           </Link>
           <nav className="flex items-center gap-3">
-            <Suspense
-              fallback={
-                <Link href="/login" className={linkClassName}>
-                  Sign in
-                </Link>
-              }
-            >
-              <MarketingAuthLink />
-            </Suspense>
+            <MarketingAuthLink />
           </nav>
         </div>
       </header>
