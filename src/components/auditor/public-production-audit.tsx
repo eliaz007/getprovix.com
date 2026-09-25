@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import type { User } from "@supabase/supabase-js";
 import {
   AlertTriangle,
   Check,
@@ -27,7 +26,6 @@ import RepoAccessStatus, {
   VerifiedContributorMark,
   type RepoAccessStatusKind,
 } from "@/components/auditor/repo-access-status";
-import RepoOwnershipVerifier from "@/components/auditor/repo-ownership-verifier";
 import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
@@ -39,45 +37,17 @@ import {
   unverifiedOwnershipUsername,
 } from "@/lib/inaccessible-public-audit";
 import Toast from "@/components/Toast";
-import { AUTH_SESSION_TIMEOUT_MS } from "@/lib/auth-session-timeout";
-import { canBypassProvixTokenChallenge } from "@/lib/provix-token";
 import {
   getGitHubUrlValidationMessage,
   hasUsableGitHubAuditTarget,
   isGitHubPlaceholderInput,
-  parseGitHubUrl,
 } from "@/lib/validate-github-url";
-import { createClient } from "@/utils/supabase/client";
 
 const AUDIT_STAGES = [
   "Artifact Analysis (Check 1)...",
   "Architecture Review (Check 2)...",
   "API & Data Resiliency Check (Check 3)...",
 ] as const;
-
-type AuditorSessionSnapshot = {
-  user: User | null;
-  githubVerified: boolean;
-};
-
-function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error("Auditor session lookup timed out"));
-    }, ms);
-
-    Promise.resolve(promise).then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timer);
-        reject(error);
-      }
-    );
-  });
-}
 
 function SubMetric({ label, score }: { label: string; score: number }) {
   return (
@@ -177,11 +147,6 @@ export default function PublicProductionAudit({
   const stageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStartedRef = useRef("");
   const inFlightRef = useRef(false);
-  const sessionPromiseRef = useRef<Promise<AuditorSessionSnapshot> | null>(null);
-  const [sessionUser, setSessionUser] = useState<User | null>(null);
-  const [profileGithubVerified, setProfileGithubVerified] = useState(false);
-  const [sessionReady, setSessionReady] = useState(false);
-  const [isTokenVerified, setIsTokenVerified] = useState(false);
 
   const openAuthModal = (options: {
     description: string;
@@ -196,11 +161,6 @@ export default function PublicProductionAudit({
   };
 
   const hasValidGithubInput = hasUsableGitHubAuditTarget(repoUrl);
-  const parsedGithub = parseGitHubUrl(repoUrl);
-  const ownershipRepoUrl =
-    parsedGithub?.repo != null
-      ? `https://github.com/${parsedGithub.owner}/${parsedGithub.repo}`
-      : "";
   const invalidRepoFormat =
     Boolean(repoUrl.trim()) &&
     !isGitHubPlaceholderInput(repoUrl) &&
@@ -209,16 +169,6 @@ export default function PublicProductionAudit({
     repoUrl.trim() && !hasValidGithubInput && !invalidRepoFormat
       ? getGitHubUrlValidationMessage(repoUrl)
       : null;
-  const githubBypass = canBypassProvixTokenChallenge(
-    sessionUser,
-    profileGithubVerified
-  );
-  const needsTokenChallenge =
-    sessionReady &&
-    Boolean(sessionUser) &&
-    !githubBypass &&
-    Boolean(ownershipRepoUrl);
-  const auditLocked = needsTokenChallenge && !isTokenVerified;
 
   const stopStageProgress = () => {
     if (stageIntervalRef.current) {
@@ -237,53 +187,9 @@ export default function PublicProductionAudit({
     }, 1400);
   };
 
-  const ensureSession = () => {
-    if (!sessionPromiseRef.current) {
-      sessionPromiseRef.current = withTimeout(
-        (async (): Promise<AuditorSessionSnapshot> => {
-          const supabase = createClient();
-          const { data: sessionData } = await supabase.auth.getUser();
-          const user = sessionData.user ?? null;
-          if (!user) {
-            return { user: null, githubVerified: false };
-          }
-
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("github_verified")
-            .or(`id.eq.${user.id},user_id.eq.${user.id}`)
-            .limit(1)
-            .maybeSingle();
-
-          return {
-            user,
-            githubVerified: profile?.github_verified === true,
-          };
-        })(),
-        AUTH_SESSION_TIMEOUT_MS
-      )
-        .then((snapshot) => {
-          setSessionUser(snapshot.user);
-          setProfileGithubVerified(snapshot.githubVerified);
-          setSessionReady(true);
-          return snapshot;
-        })
-        .catch((err) => {
-          console.error("Could not load public auditor session:", err);
-          sessionPromiseRef.current = null;
-          setSessionUser(null);
-          setProfileGithubVerified(false);
-          setSessionReady(true);
-          return { user: null, githubVerified: false } satisfies AuditorSessionSnapshot;
-        });
-    }
-
-    return sessionPromiseRef.current;
-  };
-
   const runAudit = async (url: string) => {
     const trimmed = url.trim();
-    if (inFlightRef.current || limitReached || auditLocked) {
+    if (inFlightRef.current || limitReached) {
       return;
     }
     if (!hasUsableGitHubAuditTarget(trimmed)) {
@@ -304,22 +210,6 @@ export default function PublicProductionAudit({
     setToastMessage(null);
 
     try {
-      const session = await ensureSession();
-      const parsedSessionRepo = parseGitHubUrl(trimmed);
-      const sessionOwnershipUrl =
-        parsedSessionRepo?.repo != null
-          ? `https://github.com/${parsedSessionRepo.owner}/${parsedSessionRepo.repo}`
-          : "";
-      const sessionNeedsChallenge =
-        Boolean(session.user) &&
-        !canBypassProvixTokenChallenge(session.user, session.githubVerified) &&
-        Boolean(sessionOwnershipUrl) &&
-        !isTokenVerified;
-
-      if (sessionNeedsChallenge) {
-        return;
-      }
-
       try {
         const usageResponse = await fetch("/api/audit");
         if (usageResponse.ok) {
@@ -461,7 +351,7 @@ export default function PublicProductionAudit({
     }
     autoStartedRef.current = trimmed;
     void runAudit(trimmed);
-    // Auto-run once per incoming repo query. Session and usage load inside runAudit.
+    // Auto-run once per incoming repo query. Usage loads inside runAudit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialRepoUrl]);
 
@@ -510,14 +400,6 @@ export default function PublicProductionAudit({
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
       <form onSubmit={onSubmit} className="w-full space-y-3">
-        {needsTokenChallenge ? (
-          <RepoOwnershipVerifier
-            repoUrl={ownershipRepoUrl}
-            userId={sessionUser?.id}
-            variant="banner"
-            onVerified={() => setIsTokenVerified(true)}
-          />
-        ) : null}
         <div className="relative flex flex-col gap-2 overflow-hidden rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-1.5 transition-colors hover:border-neutral-700/80 sm:flex-row sm:items-stretch">
           <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-violet-600/5 blur-2xl" />
           <label htmlFor="public-audit-repo" className="sr-only">
@@ -537,7 +419,6 @@ export default function PublicProductionAudit({
                 setRepoUrl(event.target.value);
                 setRepoAccessStatus(null);
                 setAccessUsername(null);
-                setIsTokenVerified(false);
               }}
               placeholder="Paste GitHub repo URL (owner/repository)"
               aria-invalid={Boolean(githubValidationMessage)}
@@ -552,7 +433,7 @@ export default function PublicProductionAudit({
           </div>
           <button
             type="submit"
-            disabled={loading || limitReached || auditLocked}
+            disabled={loading || limitReached}
             className="relative inline-flex min-h-12 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-violet-600 px-5 text-sm font-medium tracking-tight text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Running Audit..." : "Run Production Audit"}

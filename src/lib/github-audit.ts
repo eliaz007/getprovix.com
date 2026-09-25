@@ -150,6 +150,11 @@ export function githubAuditLooksInaccessible(
 const GITHUB_FETCH_TIMEOUT_MS = 20_000;
 const GITHUB_FETCH_RETRY_COUNT = 2;
 const GITHUB_FETCH_RETRY_DELAY_MS = 500;
+const GITHUB_FETCH_MAX_RETRY_WAIT_MS = 3_000;
+const GITHUB_FETCH_CONCURRENCY = 4;
+const GITHUB_CONTENT_BATCH_TIMEOUT_MS = 12_000;
+const GITHUB_RATE_LIMIT_MESSAGE =
+  "GitHub API rate limit reached. Please try again shortly or configure a personal access token.";
 const RETRYABLE_GITHUB_STATUSES = new Set([403, 408, 429, 500, 502, 503, 504]);
 
 const RESERVED_GITHUB_OWNERS = new Set([
@@ -207,13 +212,21 @@ function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
   }
 }
 
+function githubAuthToken(): string {
+  return (
+    process.env.GITHUB_TOKEN?.trim() ||
+    process.env.GITHUB_PAT?.trim() ||
+    ""
+  );
+}
+
 function githubHeaders(): HeadersInit {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "Provix-OpportunityMatch/1.0",
   };
 
-  const token = process.env.GITHUB_TOKEN?.trim();
+  const token = githubAuthToken();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -245,17 +258,100 @@ async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function retryDelayMs(response: Response, attempt: number): number {
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+  timeoutMs = GITHUB_CONTENT_BATCH_TIMEOUT_MS
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  let timedOut = false;
+
+  const runWorker = async () => {
+    while (!timedOut) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) {
+        return;
+      }
+      try {
+        results[index] = await worker(items[index]);
+      } catch (error) {
+        if (timedOut) {
+          return;
+        }
+        throw error;
+      }
+    }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(Math.max(1, limit), items.length) },
+    () => runWorker()
+  );
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      reject(new GithubContentReadError(GITHUB_RATE_LIMIT_MESSAGE));
+    }, timeoutMs);
+  });
+
+  try {
+    await Promise.race([Promise.all(workers), timeout]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+
+  return results;
+}
+
+function requestedRetryDelayMs(response: Response): number | null {
   const header = response.headers.get("retry-after");
-  if (header) {
-    const seconds = Number(header);
-    if (Number.isFinite(seconds) && seconds >= 0) {
-      return Math.min(Math.round(seconds * 1000), 60_000);
-    }
-    const when = Date.parse(header);
-    if (Number.isFinite(when)) {
-      return Math.min(Math.max(0, when - Date.now()), 60_000);
-    }
+  if (!header) {
+    return null;
+  }
+
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.round(seconds * 1000);
+  }
+
+  const when = Date.parse(header);
+  if (Number.isFinite(when)) {
+    return Math.max(0, when - Date.now());
+  }
+
+  return null;
+}
+
+function isGithubRateLimitResponse(response: Response): boolean {
+  if (response.status === 429) {
+    return true;
+  }
+
+  if (response.status !== 403) {
+    return false;
+  }
+
+  return (
+    response.headers.get("x-ratelimit-remaining") === "0" ||
+    response.headers.has("retry-after")
+  );
+}
+
+function retryDelayMs(response: Response, attempt: number): number {
+  const requested = requestedRetryDelayMs(response);
+  if (requested != null) {
+    return Math.min(requested, GITHUB_FETCH_MAX_RETRY_WAIT_MS);
   }
   return GITHUB_FETCH_RETRY_DELAY_MS * (attempt + 1);
 }
@@ -440,6 +536,23 @@ async function githubFetch(
         cache: "no-store",
         signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS),
       });
+
+      const rateLimited = isGithubRateLimitResponse(response);
+      const requestedWaitMs = requestedRetryDelayMs(response);
+      const waitExceedsCap =
+        requestedWaitMs != null &&
+        requestedWaitMs > GITHUB_FETCH_MAX_RETRY_WAIT_MS;
+
+      if (rateLimited && (waitExceedsCap || attempt === GITHUB_FETCH_RETRY_COUNT)) {
+        const failure = await readGithubHttpFailure(response);
+        logGithubHttpFailure(
+          "GitHub rate limit; failing fast",
+          url,
+          failure,
+          { attempt: attempt + 1, requestedWaitMs }
+        );
+        throw new GithubContentReadError(GITHUB_RATE_LIMIT_MESSAGE);
+      }
 
       if (
         RETRYABLE_GITHUB_STATUSES.has(response.status) &&
@@ -677,19 +790,24 @@ async function collectTruncatedTreePaths(
   const extraPaths: string[] = [];
 
   const probeDirs = boundedCoreArtifactProbeDirs();
-  const probeResults = await Promise.all(
-    probeDirs.map(async (dir) => {
+  const probeResults = await mapWithConcurrency(
+    probeDirs,
+    GITHUB_FETCH_CONCURRENCY,
+    async (dir) => {
       try {
         const listed = await listGithubContents(owner, repo, dir, branch);
         return listed.filter((path) => pathStaysWithin(dir, path));
       } catch (error) {
+        if (error instanceof GithubContentReadError) {
+          throw error;
+        }
         console.error(
           `[github-audit] targeted contents fetch failed for ${owner}/${repo}/${dir}:`,
           error
         );
         return [] as string[];
       }
-    })
+    }
   );
   extraPaths.push(...probeResults.flat());
 
@@ -704,18 +822,23 @@ async function collectTruncatedTreePaths(
     }
   }
 
-  const workspaceRoots = await Promise.all(
-    WORKSPACE_ROOT_DIRS.map(async (root) => {
+  const workspaceRoots = await mapWithConcurrency(
+    WORKSPACE_ROOT_DIRS,
+    GITHUB_FETCH_CONCURRENCY,
+    async (root) => {
       try {
         return await listGithubDirEntries(owner, repo, root, branch);
       } catch (error) {
+        if (error instanceof GithubContentReadError) {
+          throw error;
+        }
         console.error(
           `[github-audit] workspace root listing failed for ${owner}/${repo}/${root}:`,
           error
         );
         return [] as GithubDirEntry[];
       }
-    })
+    }
   );
 
   for (const entry of workspaceRoots.flat()) {
@@ -769,8 +892,10 @@ async function collectTruncatedTreePaths(
             return [] as string[];
           }
 
-          const nested = await Promise.all(
-            nestedDirs.map(async (dir) => {
+          const nested = await mapWithConcurrency(
+            nestedDirs,
+            GITHUB_FETCH_CONCURRENCY,
+            async (dir) => {
               const probePath = `${pkgPath}/${dir}`;
               if (!pathStaysWithin(pkgPath, probePath)) {
                 return [] as string[];
@@ -783,7 +908,7 @@ async function collectTruncatedTreePaths(
                 branch
               );
               return listed.filter((path) => pathStaysWithin(probePath, path));
-            })
+            }
           );
           return nested.flat();
         };
@@ -865,13 +990,11 @@ async function enrichFilesystemFromContents(
   );
 
   const [workflowTexts, sourceTexts] = await Promise.all([
-    Promise.all(
-      workflowPaths.map((path) =>
-        fetchGithubFileRaw(owner, repo, path, commitSha)
-      )
+    mapWithConcurrency(workflowPaths, GITHUB_FETCH_CONCURRENCY, (path) =>
+      fetchGithubFileRaw(owner, repo, path, commitSha)
     ),
-    Promise.all(
-      sourcePaths.map((path) => fetchGithubFileRaw(owner, repo, path, commitSha))
+    mapWithConcurrency(sourcePaths, GITHUB_FETCH_CONCURRENCY, (path) =>
+      fetchGithubFileRaw(owner, repo, path, commitSha)
     ),
   ]);
 
@@ -952,7 +1075,7 @@ async function fetchRepoFilesystem(
       repo,
       defaultBranch,
       branchesTried: branches,
-      hasGithubToken: Boolean(process.env.GITHUB_TOKEN?.trim()),
+      hasGithubToken: Boolean(githubAuthToken()),
     }
   );
 
