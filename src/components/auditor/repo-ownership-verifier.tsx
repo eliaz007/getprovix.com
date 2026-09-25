@@ -191,35 +191,24 @@ export default function RepoOwnershipVerifier({
   if (variant === "banner") {
     return (
       <section
-        className="flex w-full flex-col justify-between gap-3 overflow-hidden rounded-xl border border-purple-500/30 bg-purple-950/20 p-3 sm:flex-row sm:items-center"
+        className="flex w-full flex-col gap-3 rounded-xl border border-purple-500/30 bg-purple-950/20 p-3"
         aria-labelledby="repo-ownership-heading"
       >
-        <div className="min-w-0 flex-1">
+        <div>
           <p
             id="repo-ownership-heading"
             className="text-[11px] font-bold uppercase tracking-widest text-purple-300"
           >
-            {PROVIX_FILENAME}
+            Repository ownership
           </p>
-          <p className="mt-0.5 truncate text-xs text-zinc-400">
+          <p className="mt-1 text-xs leading-relaxed text-zinc-400">
             {verified
-              ? `Ownership verified${verifiedBranch ? ` on ${verifiedBranch}` : ""}`
-              : "Commit this token at the repo root, then verify"}
+              ? `Ownership verified${verifiedBranch ? ` on ${verifiedBranch}` : ""}.`
+              : "Add a provix.txt or PROVIX.TXT file at your repository root on main or master, then verify."}
           </p>
-          {verified ? (
-            <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-              <Check className="h-3 w-3" aria-hidden />
-              Ownership verified
-            </span>
-          ) : null}
-          {error ? (
-            <p role="alert" className="mt-1.5 text-xs leading-relaxed text-red-300">
-              {error}
-            </p>
-          ) : null}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap">
+        <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="provix-verification-token" className="sr-only">
             {PROVIX_FILENAME} contents
           </label>
@@ -270,6 +259,24 @@ export default function RepoOwnershipVerifier({
             )}
           </button>
         </div>
+
+        {verified ? (
+          <p
+            role="status"
+            className="w-full rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs leading-relaxed text-emerald-200"
+          >
+            Ownership verified{verifiedBranch ? ` on ${verifiedBranch}` : ""}.
+          </p>
+        ) : null}
+
+        {error ? (
+          <p
+            role="alert"
+            className="w-full rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs leading-relaxed text-red-200"
+          >
+            {error}
+          </p>
+        ) : null}
       </section>
     );
   }
@@ -290,9 +297,10 @@ export default function RepoOwnershipVerifier({
         Prove you own this repository
       </h3>
       <p className="mt-2 text-xs leading-relaxed text-textMuted">
-        Commit a <span className="font-mono text-textMain">{PROVIX_FILENAME}</span>{" "}
-        file at the repo root on <span className="font-mono text-textMain">main</span>{" "}
-        or <span className="font-mono text-textMain">master</span>, then verify.
+        Commit a <span className="font-mono text-textMain">provix.txt</span> or{" "}
+        <span className="font-mono text-textMain">PROVIX.TXT</span> file at the
+        repo root on <span className="font-mono text-textMain">main</span> or{" "}
+        <span className="font-mono text-textMain">master</span>, then verify.
         GitHub sometimes serves a cached 404 for a few seconds after you push.
       </p>
 
@@ -354,26 +362,6 @@ export default function RepoOwnershipVerifier({
         </div>
       </div>
 
-      {verified ? (
-        <p
-          role="status"
-          className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-200"
-        >
-          Ownership verified
-          {verifiedBranch ? ` on ${verifiedBranch}` : ""}. This repository is now
-          linked to your Provix account.
-        </p>
-      ) : null}
-
-      {error ? (
-        <p
-          role="alert"
-          className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-2.5 text-sm text-violet-100"
-        >
-          {error}
-        </p>
-      ) : null}
-
       <button
         type="button"
         onClick={() => void verifyOwnership()}
@@ -395,6 +383,26 @@ export default function RepoOwnershipVerifier({
           "Verify Ownership"
         )}
       </button>
+
+      {verified ? (
+        <p
+          role="status"
+          className="mt-4 w-full rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-200"
+        >
+          Ownership verified
+          {verifiedBranch ? ` on ${verifiedBranch}` : ""}. This repository is now
+          linked to your Provix account.
+        </p>
+      ) : null}
+
+      {error ? (
+        <p
+          role="alert"
+          className="mt-4 w-full rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm leading-relaxed text-red-200"
+        >
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }

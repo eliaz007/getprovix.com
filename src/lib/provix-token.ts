@@ -3,6 +3,7 @@ import { userHasGitHubIdentity } from "@/lib/github-identity";
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 
 export const PROVIX_FILENAME = "provix.txt";
+export const PROVIX_FILENAMES = ["provix.txt", "PROVIX.TXT"] as const;
 export const PROVIX_TOKEN_PREFIX = "provix-verify-";
 export const PROVIX_BRANCHES = ["main", "master"] as const;
 

@@ -4,6 +4,7 @@ import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 import {
   PROVIX_BRANCHES,
   PROVIX_FILENAME,
+  PROVIX_FILENAMES,
   normalizeProofToken,
 } from "@/lib/provix-token";
 
@@ -12,8 +13,13 @@ export type GithubFileResult =
   | { kind: "missing"; branch: string }
   | { kind: "error"; branch: string; status: number; message: string };
 
-function githubRawProvixUrl(owner: string, repo: string, branch: string): string {
-  return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/${PROVIX_FILENAME}`;
+function githubRawProvixUrl(
+  owner: string,
+  repo: string,
+  branch: string,
+  filename: string
+): string {
+  return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/${filename}`;
 }
 
 function githubFetchHeaders(): HeadersInit {
@@ -33,9 +39,10 @@ function githubFetchHeaders(): HeadersInit {
 export async function fetchProvixOnBranch(
   owner: string,
   repo: string,
-  branch: string
+  branch: string,
+  filename: string = PROVIX_FILENAME
 ): Promise<GithubFileResult> {
-  const url = githubRawProvixUrl(owner, repo, branch);
+  const url = githubRawProvixUrl(owner, repo, branch, filename);
 
   try {
     const response = await fetch(url, {
@@ -65,7 +72,7 @@ export async function fetchProvixOnBranch(
         branch,
         status: response.status,
         message:
-          "GitHub denied access to this repository. Make sure the repo is public and provix.txt is at the root.",
+          "GitHub denied access to this repository. Make sure the repo is public and provix.txt or PROVIX.TXT is at the root.",
       };
     }
 
@@ -74,7 +81,7 @@ export async function fetchProvixOnBranch(
         kind: "error",
         branch,
         status: response.status,
-        message: `GitHub returned ${response.status} while reading ${PROVIX_FILENAME} on ${branch}.`,
+        message: `GitHub returned ${response.status} while reading ${filename} on ${branch}.`,
       };
     }
 
@@ -87,7 +94,7 @@ export async function fetchProvixOnBranch(
         kind: "error",
         branch,
         status: 504,
-        message: `Timed out reading ${PROVIX_FILENAME} from the ${branch} branch.`,
+        message: `Timed out reading ${filename} from the ${branch} branch.`,
       };
     }
 
@@ -96,7 +103,7 @@ export async function fetchProvixOnBranch(
       kind: "error",
       branch,
       status: 502,
-      message: `Could not reach GitHub to read ${PROVIX_FILENAME} on ${branch}.`,
+      message: `Could not reach GitHub to read ${filename} on ${branch}.`,
     };
   }
 }
@@ -109,27 +116,37 @@ export async function findMatchingProvixFile(
   | { ok: true; branch: string }
   | { ok: false; response: NextResponse }
 > {
-  const expected = normalizeProofToken(expectedToken);
+  const expected = normalizeProofToken(expectedToken).trim();
   let sawFile = false;
   let lastError: Extract<GithubFileResult, { kind: "error" }> | null = null;
   const missingBranches: string[] = [];
 
   for (const branch of PROVIX_BRANCHES) {
-    const result = await fetchProvixOnBranch(owner, repo, branch);
+    let branchMissing = true;
 
-    if (result.kind === "missing") {
+    for (const filename of PROVIX_FILENAMES) {
+      const result = await fetchProvixOnBranch(owner, repo, branch, filename);
+
+      if (result.kind === "missing") {
+        continue;
+      }
+
+      branchMissing = false;
+
+      if (result.kind === "error") {
+        lastError = result;
+        continue;
+      }
+
+      sawFile = true;
+      const fetched = normalizeProofToken(result.content).trim();
+      if (fetched === expected) {
+        return { ok: true, branch: result.branch };
+      }
+    }
+
+    if (branchMissing) {
       missingBranches.push(branch);
-      continue;
-    }
-
-    if (result.kind === "error") {
-      lastError = result;
-      continue;
-    }
-
-    sawFile = true;
-    if (normalizeProofToken(result.content) === expected) {
-      return { ok: true, branch: result.branch };
     }
   }
 
@@ -138,7 +155,7 @@ export async function findMatchingProvixFile(
       ok: false,
       response: NextResponse.json(
         {
-          error: `${PROVIX_FILENAME} was found, but the token did not match.`,
+          error: "provix.txt or PROVIX.TXT was found, but the token did not match.",
           verified: false,
           success: false,
         },
@@ -168,7 +185,8 @@ export async function findMatchingProvixFile(
     ok: false,
     response: NextResponse.json(
       {
-        error: `${PROVIX_FILENAME} was not detected on main or master. Add the file at the repository root with your verification token and try again.`,
+        error:
+          "provix.txt or PROVIX.TXT was not detected on main or master. Add the file at the repository root with your verification token and try again.",
         verified: false,
         success: false,
         missing_branches:
