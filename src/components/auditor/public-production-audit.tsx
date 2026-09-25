@@ -114,6 +114,7 @@ export default function PublicProductionAudit({
   embedded = false,
   showEmptyState = true,
   autoFocus = false,
+  isPublicTeaser = false,
   onHasResultsChange,
 }: {
   initialRepoUrl?: string;
@@ -121,6 +122,8 @@ export default function PublicProductionAudit({
   embedded?: boolean;
   showEmptyState?: boolean;
   autoFocus?: boolean;
+  /** Homepage teaser: any public repo, no authorship or token gate. */
+  isPublicTeaser?: boolean;
   onHasResultsChange?: (hasResults: boolean) => void;
 }) {
   const router = useRouter();
@@ -233,6 +236,7 @@ export default function PublicProductionAudit({
           githubUrl: trimmed,
           compensationLevel: "Mid",
           playground: true,
+          isPublicTeaser,
         }),
       });
 
@@ -269,7 +273,7 @@ export default function PublicProductionAudit({
         return;
       }
 
-      if (isUnverifiedOwnershipResponse(data)) {
+      if (!isPublicTeaser && isUnverifiedOwnershipResponse(data)) {
         setLimitReached(Boolean(data.limit_reached));
         setRepoAccessStatus("unverified");
         setAccessUsername(unverifiedOwnershipUsername(data));

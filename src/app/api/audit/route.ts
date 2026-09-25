@@ -97,6 +97,8 @@ export type AuditRequestBody = {
   compensationLevel?: string;
   workIsPrivate?: boolean;
   playground?: boolean;
+  /** Homepage teaser: score any public repo without authorship or session gates. */
+  isPublicTeaser?: boolean;
   externalProjects?: ExternalProjectRecord[];
 };
 
@@ -404,6 +406,7 @@ function normalizeAuditRequestBody(body: AuditRequestBody): AuditRequestBody {
     compensationLevel: body.compensationLevel,
     workIsPrivate: parseWorkIsPrivate(body.workIsPrivate),
     playground: body.playground === true,
+    isPublicTeaser: body.isPublicTeaser === true,
     externalProjects: normalizeExternalProjects(body.externalProjects),
   };
 }
@@ -427,6 +430,7 @@ async function readAuditRequest(request: Request): Promise<
           compensationLevel: formString(form, "compensationLevel"),
           workIsPrivate: parseWorkIsPrivate(formString(form, "workIsPrivate")),
           playground: formString(form, "playground") === "true",
+          isPublicTeaser: formString(form, "isPublicTeaser") === "true",
           externalProjects: normalizeExternalProjects(
             parseJsonValue(formString(form, "externalProjects"))
           ),
@@ -832,7 +836,21 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const access = await resolveAuditAccess();
+  const parsed = await readAuditRequest(request);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const payload: AuditRequestBody = { ...parsed.body };
+  const access =
+    payload.isPublicTeaser === true
+      ? {
+          ok: true as const,
+          supabase: await createClient(),
+          user: null,
+          usage: resolveDailyScanUsage(0, null),
+        }
+      : await resolveAuditAccess();
 
   if (!access.ok) {
     return access.response;
@@ -855,13 +873,6 @@ export async function POST(request: Request) {
       { status: 429 }
     );
   }
-
-  const parsed = await readAuditRequest(request);
-  if (!parsed.ok) {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
-  }
-
-  const payload: AuditRequestBody = { ...parsed.body };
 
   let storedProjects: ExternalProjectRecord[] = [];
   if (access.user) {
@@ -986,7 +997,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (probe?.status === "found" && access.user) {
+    if (probe?.status === "found" && access.user && payload.isPublicTeaser !== true) {
       const { data: roleRow } = await access.supabase
         .from("profiles")
         .select("role")
@@ -1137,7 +1148,7 @@ export async function POST(request: Request) {
   );
 
   let verificationStatus: DossierVerificationStatus = "unverified";
-  if (access.user && isPublicGitHubClaim) {
+  if (access.user && isPublicGitHubClaim && payload.isPublicTeaser !== true) {
     try {
       const ownership = await verifyGitHubRepoOwnership({
         user: access.user,
@@ -1153,6 +1164,7 @@ export async function POST(request: Request) {
   if (
     access.user &&
     payload.playground !== true &&
+    payload.isPublicTeaser !== true &&
     (githubArtifactAuditSucceeded(githubArtifacts) ||
       (usedExternalFallback &&
         hasUsableExternalProjects(payload.externalProjects)))

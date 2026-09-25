@@ -27,7 +27,12 @@ const LandingAudienceCards = dynamic(
   { ssr: true }
 );
 
-export default function LandingHome() {
+export default function LandingHome({
+  isPublicTeaser = false,
+}: {
+  /** Score any public repo. Do not apply candidate authorship checks. */
+  isPublicTeaser?: boolean;
+}) {
   const [hasAuditResults, setHasAuditResults] = useState(false);
   const [draftRepoUrl, setDraftRepoUrl] = useState("");
   const [auditReady, setAuditReady] = useState(false);
@@ -49,6 +54,7 @@ export default function LandingHome() {
             embedded
             showEmptyState={false}
             autoFocus
+            isPublicTeaser={isPublicTeaser}
             initialRepoUrl={draftRepoUrl}
             onHasResultsChange={setHasAuditResults}
           />

@@ -50,7 +50,7 @@ export default function Home() {
           </p>
         </section>
 
-        <LandingHome />
+        <LandingHome isPublicTeaser />
       </main>
 
       <footer className="border-t border-border">
