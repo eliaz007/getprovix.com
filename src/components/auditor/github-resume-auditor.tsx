@@ -9,7 +9,6 @@ import ResumeFileUpload, {
 } from "@/components/ResumeFileUpload";
 import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
-import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
 import RepoOwnershipVerifier from "@/components/auditor/repo-ownership-verifier";
 import RepoAccessStatus, {
   VerifiedContributorMark,
@@ -102,9 +101,6 @@ export default function GitHubResumeAuditor({
   const [loading, setLoading] = useState(false);
   const [stageIndex, setStageIndex] = useState(0);
   const [result, setResult] = useState<AuditResult | null>(null);
-  const [claim, setClaim] = useState<ReturnType<typeof buildProductionAuditClaim> | null>(
-    null
-  );
   const [error, setError] = useState<string | null>(null);
   const [repoAccessStatus, setRepoAccessStatus] =
     useState<RepoAccessStatusKind | null>(null);
@@ -336,7 +332,6 @@ export default function GitHubResumeAuditor({
         setLimitReached(Boolean(data.limit_reached));
         setRepoAccessStatus("invalid_format");
         setResult(null);
-        setClaim(null);
         return;
       }
 
@@ -345,7 +340,6 @@ export default function GitHubResumeAuditor({
         setRepoAccessStatus("unverified");
         setAccessUsername(unverifiedOwnershipUsername(data));
         setResult(null);
-        setClaim(null);
         return;
       }
 
@@ -359,7 +353,6 @@ export default function GitHubResumeAuditor({
         setLimitReached(Boolean(data.limit_reached));
         setRepoAccessStatus("private");
         setResult(null);
-        setClaim(null);
         return;
       }
 
@@ -375,7 +368,6 @@ export default function GitHubResumeAuditor({
       if (data.inaccessibleRepo) {
         setRepoAccessStatus("private");
         setResult(null);
-        setClaim(null);
         return;
       }
 
@@ -404,7 +396,6 @@ export default function GitHubResumeAuditor({
       const verificationStatus = parseDossierVerificationStatus(
         data.verification_status
       );
-      setClaim(nextClaim);
       try {
         const supabase = createClient();
         const { data: sessionData } = await supabase.auth.getUser();
@@ -517,9 +508,6 @@ export default function GitHubResumeAuditor({
                 onRescan={() => void runAudit()}
                 rescanning={loading}
               />
-              {!isEmployerView && claim ? (
-                <ScorecardPublicationCallout claim={claim} />
-              ) : null}
             </div>
           )}
 

@@ -37,6 +37,7 @@ import {
   unverifiedOwnershipUsername,
 } from "@/lib/inaccessible-public-audit";
 import Toast from "@/components/Toast";
+import { createClient } from "@/utils/supabase/client";
 import {
   getGitHubUrlValidationMessage,
   hasUsableGitHubAuditTarget,
@@ -150,6 +151,7 @@ export default function PublicProductionAudit({
   const stageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStartedRef = useRef("");
   const inFlightRef = useRef(false);
+  const [viewerSignedIn, setViewerSignedIn] = useState<boolean | null>(null);
 
   const openAuthModal = (options: {
     description: string;
@@ -162,6 +164,24 @@ export default function PublicProductionAudit({
     setAuthIntent(options.intent ?? PRIVATE_AUDIT_INTENT);
     setAuthModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!isPublicTeaser) {
+      return;
+    }
+
+    let cancelled = false;
+    const supabase = createClient();
+    void supabase.auth.getUser().then(({ data }) => {
+      if (!cancelled) {
+        setViewerSignedIn(Boolean(data.user));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPublicTeaser]);
 
   const hasValidGithubInput = hasUsableGitHubAuditTarget(repoUrl);
   const invalidRepoFormat =
@@ -595,18 +615,20 @@ export default function PublicProductionAudit({
             </div>
           </section>
 
-          <ScorecardPublicationCallout
-            claim={claim}
-            onRequireAuth={(nextClaim) => {
-              cachePendingProductionAudit(nextClaim);
-              openAuthModal({
-                description:
-                  "Sign in with GitHub to verify you authored this repository and publish your dossier.",
-                nextPath: "/dashboard",
-                intent: CLAIM_AUDIT_INTENT,
-              });
-            }}
-          />
+          {isPublicTeaser && viewerSignedIn === false ? (
+            <ScorecardPublicationCallout
+              claim={claim}
+              onRequireAuth={(nextClaim) => {
+                cachePendingProductionAudit(nextClaim);
+                openAuthModal({
+                  description:
+                    "Sign in with GitHub to verify you authored this repository and publish your dossier.",
+                  nextPath: "/dashboard",
+                  intent: CLAIM_AUDIT_INTENT,
+                });
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
 
