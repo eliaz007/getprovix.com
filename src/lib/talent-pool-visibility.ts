@@ -20,10 +20,12 @@ export function hasQualifyingTalentPoolAudit(
 
 export function canEnableTalentPoolVisibility(input: {
   githubVerified: boolean;
+  ownershipVerified: boolean;
   scores: Array<number | null | undefined>;
 }): boolean {
   return (
     input.githubVerified === true &&
+    input.ownershipVerified === true &&
     hasQualifyingTalentPoolAudit(...input.scores)
   );
 }

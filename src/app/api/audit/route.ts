@@ -46,7 +46,12 @@ import {
 import { extractResumeTextFromFile } from "@/lib/parse-resume";
 import { RESUME_TEXT_LIMIT } from "@/lib/resume-file";
 import { clampScore0to100 } from "@/lib/score-scale";
-import { normalizeCommitDates } from "@/lib/audit-readiness";
+import {
+  isProductionReadyAudit,
+  normalizeCommitDates,
+  PRODUCTION_READY_VERIFIED,
+  targetedAuditSuggestions,
+} from "@/lib/audit-readiness";
 import {
   applyFilesystemScoreCap,
   buildFilesystemScorePolicy,
@@ -308,6 +313,167 @@ function attachAuditEvidence(
   };
 }
 
+function isJavaScriptFamily(language: string | null | undefined): boolean {
+  const value = (language ?? "").trim().toLowerCase();
+  return (
+    value === "typescript" ||
+    value === "javascript" ||
+    value === "tsx" ||
+    value === "jsx"
+  );
+}
+
+function repoHasReadme(
+  githubArtifacts: GitHubArtifactAudit | null,
+  filesystem: RepoFilesystemEvidence | null
+): boolean {
+  if (githubArtifacts?.artifacts.some((artifact) => artifact.readme_excerpt?.trim())) {
+    return true;
+  }
+  const paths = [
+    ...(filesystem?.sample_paths ?? []),
+    ...(filesystem?.architecture_paths ?? []),
+  ];
+  return paths.some((path) => /(^|\/)readme(\.[^/]+)?$/i.test(path));
+}
+
+function primaryRepoLanguage(
+  githubArtifacts: GitHubArtifactAudit | null
+): string | null {
+  return githubArtifacts?.artifacts.find((artifact) => artifact.language)?.language ?? null;
+}
+
+const REAL_TEST_FILE_COPY =
+  /add a real test file|tests\/test_app\.py|\*_test\.go|_test\.go/i;
+const README_COPY = /add a concise readme|readme per repo|with readme/i;
+const EXPAND_TESTS_COPY = /integration coverage|end-to-end|e2e test/i;
+const PROMPT_LEAK_COPY =
+  /name the exact workflow file or route handler that would lift the lowest pillar/i;
+
+function refineActionableFixes(
+  recommendations: string[],
+  input: {
+    productionScore: number;
+    architecture: number;
+    testingScore: number;
+    devopsScore: number;
+    resilience: number;
+    testFileCount: number;
+    language: string | null;
+    hasReadme: boolean;
+    needsSchemaValidation: boolean;
+    needsBuildGate: boolean;
+  }
+): string[] {
+  if (
+    isProductionReadyAudit({
+      productionScore: input.productionScore,
+      architecture: input.architecture,
+      testing: input.testingScore,
+      devops: input.devopsScore,
+      resilience: input.resilience,
+    })
+  ) {
+    return [PRODUCTION_READY_VERIFIED];
+  }
+
+  const javascript = isJavaScriptFamily(input.language);
+  const testing = input.testingScore;
+  const suppressNewTestFile =
+    testing >= 70 || input.testFileCount >= 10;
+
+  const cleaned = recommendations
+    .map((item) => {
+      if (!javascript) {
+        return item;
+      }
+      return item
+        .replace(/,?\s*tests\/test_app\.py/gi, "")
+        .replace(/,?\s*or \*_test\.go/gi, "")
+        .replace(/\*_test\.go/gi, "")
+        .replace(/_test\.go/gi, "")
+        .replace(/\.go\b/gi, "")
+        .replace(/\.py\b/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .replace(/\s+,/g, ",")
+        .trim();
+    })
+    .filter((item) => {
+      if (!item) {
+        return false;
+      }
+      if (javascript && /\.(go|py)\b/i.test(item)) {
+        return false;
+      }
+      if (input.hasReadme && README_COPY.test(item)) {
+        return false;
+      }
+      if (suppressNewTestFile && REAL_TEST_FILE_COPY.test(item)) {
+        return false;
+      }
+      if (testing >= 70 && EXPAND_TESTS_COPY.test(item)) {
+        return false;
+      }
+      if (testing < 70 && REAL_TEST_FILE_COPY.test(item)) {
+        return false;
+      }
+      if (PROMPT_LEAK_COPY.test(item)) {
+        return false;
+      }
+      if (input.devopsScore >= 75 && /production build step/i.test(item)) {
+        return false;
+      }
+      return true;
+    });
+
+  if (input.needsSchemaValidation) {
+    cleaned.unshift(
+      "Add Zod schema parsing on API route handlers that currently cast JSON with `as Type`."
+    );
+  }
+  if (input.needsBuildGate && input.devopsScore < 75) {
+    cleaned.unshift(
+      "Add a production build step (`next build` or `tsc`) to the CI workflow."
+    );
+  }
+  if (
+    testing < 70 &&
+    input.testFileCount < 10 &&
+    !cleaned.some((item) => EXPAND_TESTS_COPY.test(item))
+  ) {
+    const [expand] = targetedAuditSuggestions({
+      language: input.language,
+      testingScore: testing,
+      testFileCount: input.testFileCount,
+      devopsScore: input.devopsScore,
+      needsSchemaValidation: false,
+      needsBuildGate: false,
+    });
+    if (expand) {
+      cleaned.unshift(expand);
+    }
+  }
+
+  const fillers = [
+    input.hasReadme
+      ? "Document the module boundaries already covered by the existing README."
+      : "Add a concise README covering architecture, your contributions, and setup steps.",
+    "Add a GitHub Actions workflow that runs lint, tests, and a production build.",
+    "Wrap unvalidated route handlers in Zod parsing instead of `as Type` casts.",
+  ].filter((item) => !(input.hasReadme && README_COPY.test(item)));
+
+  for (const filler of fillers) {
+    if (cleaned.length >= 3) {
+      break;
+    }
+    if (!cleaned.includes(filler)) {
+      cleaned.push(filler);
+    }
+  }
+
+  return cleaned.slice(0, 3);
+}
+
 function commitDatesFromArtifacts(
   githubArtifacts: GitHubArtifactAudit | null
 ): string[] {
@@ -527,10 +693,10 @@ function buildFallbackAudit(
       : `Pin 1-2 production repos that map directly to ${level}-level ${role} expectations.`,
     hasResume
       ? "Rewrite top resume bullets with metrics, stack tags, and links to live demos or PRs."
-      : "Add a real test file in the app package (for example packages/<app>/src/foo.test.ts, tests/test_app.py, or *_test.go), a CI workflow under .github/workflows, and an explicit error-handling module so those pillars can rise.",
+      : "Expand integration or end-to-end coverage for the modules this repository already ships.",
     usedExternalFallback
       ? "Add architecture notes, error handling, and test strategy to each technical breakdown so reviewers can score production standards."
-      : "Add a concise README per repo covering architecture, your contributions, and setup steps."
+      : "Add the CI, test, or schema check that is holding the lowest pillar down."
   );
 
   if (strengths.length === 0) {
@@ -1124,6 +1290,26 @@ export async function POST(request: Request) {
     );
     result = { ...result, metrics };
   }
+
+  result = {
+    ...result,
+    recommendations: refineActionableFixes(result.recommendations, {
+      productionScore: metrics.productionScore,
+      architecture: metrics.architecture,
+      testingScore: metrics.testing,
+      devopsScore: metrics.devops,
+      resilience: metrics.resilience,
+      testFileCount: filesystem?.unit_test_file_count ?? 0,
+      language: primaryRepoLanguage(githubArtifacts),
+      hasReadme: repoHasReadme(githubArtifacts, filesystem),
+      needsSchemaValidation:
+        filesystem?.route_contracts_sampled === true &&
+        filesystem.route_schema_validation !== true,
+      needsBuildGate:
+        (filesystem?.ci_workflow_paths.length ?? 0) > 0 &&
+        filesystem?.ci_has_build !== true,
+    }),
+  };
 
   const usage = access.user
     ? await incrementDailyScanUsage(

@@ -1031,6 +1031,7 @@ async function enrichFilesystemFromContents(
     ci_has_tests: gates?.hasTests,
     ci_has_build: gates?.hasBuild,
     ci_has_deploy: gates?.hasDeploy,
+    ci_has_monorepo_pipeline: gates?.hasMonorepoPipeline,
     unhandled_async_count: unhandled,
     resilience_sampled: readableSources.length > 0,
     route_contracts_sampled: contracts.sampled,

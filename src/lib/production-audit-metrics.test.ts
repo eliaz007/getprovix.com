@@ -129,19 +129,34 @@ describe("four-pillar production audit", () => {
       ...filesystem,
       unit_test_file_count: 1,
       source_file_count: 20,
+      executable_source_count: 20,
       has_e2e_tools: false,
     };
     const mid = {
       ...filesystem,
       unit_test_file_count: 3,
       source_file_count: 15,
+      executable_source_count: 15,
       has_e2e_tools: false,
     };
     const dense = {
       ...filesystem,
       unit_test_file_count: 8,
       source_file_count: 20,
+      executable_source_count: 20,
       has_e2e_tools: true,
+    };
+    const e2eHeavy = {
+      ...filesystem,
+      unit_test_file_count: 50,
+      executable_source_count: 80,
+      has_e2e_tools: true,
+    };
+    const thinLarge = {
+      ...filesystem,
+      unit_test_file_count: 2,
+      executable_source_count: 60,
+      has_e2e_tools: false,
     };
 
     expect(scoreTesting({ ...filesystem, unit_test_file_count: 0 })).toBe(0);
@@ -150,6 +165,9 @@ describe("four-pillar production audit", () => {
     expect(scoreTesting(mid)).toBeGreaterThanOrEqual(65);
     expect(scoreTesting(mid)).toBeLessThanOrEqual(75);
     expect(scoreTesting(dense)).toBeGreaterThanOrEqual(85);
+    expect(scoreTesting(e2eHeavy)).toBeGreaterThanOrEqual(85);
+    expect(scoreTesting(e2eHeavy)).toBeLessThanOrEqual(95);
+    expect(scoreTesting(thinLarge)).toBeLessThanOrEqual(15);
   });
 
   it("grades devops by pipeline depth instead of a binary drop", () => {
@@ -180,6 +198,17 @@ describe("four-pillar production audit", () => {
         ci_has_deploy: true,
       })
     ).toBeGreaterThanOrEqual(95);
+    expect(
+      scoreDevops({
+        ...filesystem,
+        architecture_paths: ["turbo.json"],
+        ci_workflow_paths: [
+          ".github/workflows/ci.yml",
+          ".github/workflows/release.yml",
+        ],
+        ci_has_monorepo_pipeline: true,
+      })
+    ).toBeGreaterThanOrEqual(90);
   });
 
   it("caps resilience when routes use type assertions without schema parsing", () => {

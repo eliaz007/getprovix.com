@@ -222,10 +222,31 @@ function ciGatesKnown(evidence: RepoFilesystemEvidence): boolean {
   );
 }
 
+function isMonorepoPipeline(evidence: RepoFilesystemEvidence): boolean {
+  if (evidence.ci_has_monorepo_pipeline === true) {
+    return true;
+  }
+  const paths = [
+    ...evidence.architecture_paths,
+    ...evidence.sample_paths,
+    ...evidence.ci_workflow_paths,
+  ];
+  const hasConfig = paths.some((path) =>
+    /(^|\/)(turbo\.json|nx\.json|pnpm-workspace\.ya?ml)$/i.test(path)
+  );
+  const multiStage =
+    evidence.ci_depth === "deploy" || evidence.ci_workflow_paths.length >= 2;
+  return hasConfig && multiStage;
+}
+
+function hasCompileGate(evidence: RepoFilesystemEvidence): boolean {
+  return evidence.ci_has_build === true;
+}
+
 /**
  * DevOps / CI (0-100): 0 only when no workflow exists.
- * A workflow without lint + automated tests + a production build gate caps at 58.
- * 80+ requires all three gates. Deploy on top of that gate reaches 95–100.
+ * Monorepo turbo/nx or multi-stage pipelines score 92.
+ * Scores above 70 require an explicit compile/build gate (`next build` or `tsc`).
  */
 export function scoreDevops(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
@@ -240,14 +261,16 @@ export function scoreDevops(evidence: RepoFilesystemEvidence): number {
     return 0;
   }
 
+  if (isMonorepoPipeline(evidence)) {
+    return 92;
+  }
+
   const lint = evidence.ci_has_lint === true;
   const tests = evidence.ci_has_tests === true;
-  const build = evidence.ci_has_build === true;
+  const build = hasCompileGate(evidence);
   const deploy = evidence.ci_has_deploy === true || depth === "deploy";
-  const fullGate =
-    ciGatesKnown(evidence) && lint && tests && build;
 
-  if (!fullGate) {
+  if (!(ciGatesKnown(evidence) && lint && tests && build)) {
     return 58;
   }
 
@@ -265,9 +288,10 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
 }
 
 /**
- * Testing (0-100): 0 only when no *.test.* / *.spec.* files exist.
- * Token coverage (<10%) stays below 20. 10–30% maps to 65–75.
- * >30% with Playwright/Cypress reaches 85–100.
+ * Testing (0-100). Ratios use executable *.ts/*.tsx/*.js/*.jsx files only.
+ * Fewer than 10% of those files tested stays under 20.
+ * More than 50 source files with ratio under 0.08 caps at 15.
+ * 50+ test files plus Playwright/Cypress scores 85–95.
  */
 export function scoreTesting(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
@@ -282,29 +306,39 @@ export function scoreTesting(evidence: RepoFilesystemEvidence): number {
     return 0;
   }
 
+  const executable = evidence.executable_source_count;
   const sourceFiles = Math.max(
-    evidence.source_file_count,
-    evidence.file_count - testFiles,
+    typeof executable === "number" && executable > 0
+      ? executable
+      : evidence.source_file_count,
     testFiles
   );
   const ratio = testFiles / sourceFiles;
   const hasE2e = evidence.has_e2e_tools === true;
 
+  if (testFiles >= 50 && hasE2e) {
+    const extra = Math.min(10, Math.floor((testFiles - 50) / 10));
+    return 85 + extra;
+  }
+
+  let score: number;
   if (ratio < 0.1) {
-    return Math.min(19, clampScore0to100(Math.round((ratio / 0.1) * 19)));
-  }
-
-  if (ratio <= 0.3) {
+    score = Math.min(19, clampScore0to100(Math.round((ratio / 0.1) * 19)));
+  } else if (ratio <= 0.3) {
     const t = (ratio - 0.1) / 0.2;
-    return clampScore0to100(Math.round(65 + t * 10));
+    score = clampScore0to100(Math.round(65 + t * 10));
+  } else {
+    const extra = Math.min(1, (ratio - 0.3) / 0.2);
+    score = hasE2e
+      ? clampScore0to100(Math.round(85 + extra * 15))
+      : clampScore0to100(Math.round(75 + extra * 10));
   }
 
-  const extra = Math.min(1, (ratio - 0.3) / 0.2);
-  if (hasE2e) {
-    return clampScore0to100(Math.round(85 + extra * 15));
+  if (sourceFiles > 50 && ratio < 0.08) {
+    return Math.min(score, 15);
   }
 
-  return clampScore0to100(Math.round(75 + extra * 10));
+  return score;
 }
 
 /** @deprecated Use scoreTesting. */

@@ -248,7 +248,7 @@ export async function persistCandidatePoolVisibility(
   if (isVisibleInPool) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("github_verified, production_score, audit_score")
+      .select("github_verified, github_username, verification_status, production_score, audit_score")
       .eq("id", userId)
       .maybeSingle();
 
@@ -261,7 +261,10 @@ export async function persistCandidatePoolVisibility(
 
     if (
       !canEnableTalentPoolVisibility({
-        githubVerified: profile?.github_verified === true,
+        githubVerified:
+          profile?.github_verified === true &&
+          Boolean(profile?.github_username?.trim()),
+        ownershipVerified: profile?.verification_status === "verified",
         scores,
       })
     ) {
@@ -279,7 +282,10 @@ export async function persistCandidatePoolVisibility(
 
       if (
         !canEnableTalentPoolVisibility({
-          githubVerified: profile?.github_verified === true,
+          githubVerified:
+            profile?.github_verified === true &&
+            Boolean(profile?.github_username?.trim()),
+          ownershipVerified: profile?.verification_status === "verified",
           scores: [...scores, historyScore],
         })
       ) {

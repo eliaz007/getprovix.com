@@ -232,7 +232,9 @@ function testCoverageRatio(
   }
 
   const sourceFiles = Math.max(
-    filesystem.source_file_count,
+    filesystem.executable_source_count > 0
+      ? filesystem.executable_source_count
+      : filesystem.source_file_count,
     filesystem.file_count - testFiles,
     testFiles
   );
@@ -291,6 +293,59 @@ export function classifyCommitCadence(
     tone: activity === "active" ? "pass" : "warn",
     penalty: 0,
   };
+}
+
+export const PRODUCTION_READY_VERIFIED =
+  "Production-ready engineering standards verified across pipelines, test coverage, and schema boundaries.";
+
+export function isProductionReadyAudit(metrics: {
+  productionScore: number;
+  architecture: number;
+  testing: number;
+  devops: number;
+  resilience: number;
+}): boolean {
+  return (
+    metrics.productionScore >= 90 &&
+    metrics.architecture >= 85 &&
+    metrics.testing >= 85 &&
+    metrics.devops >= 85 &&
+    metrics.resilience >= 85
+  );
+}
+
+export function targetedAuditSuggestions(input: {
+  language: string | null;
+  testingScore: number;
+  testFileCount: number;
+  devopsScore: number;
+  needsSchemaValidation: boolean;
+  needsBuildGate: boolean;
+}): string[] {
+  const javascript = /^(typescript|javascript|tsx|jsx)$/i.test(
+    input.language?.trim() ?? ""
+  );
+  const suggestions: string[] = [];
+
+  if (input.needsBuildGate && input.devopsScore < 75) {
+    suggestions.push(
+      "Add a production build step (`next build` or `tsc`) to the CI workflow."
+    );
+  }
+  if (input.needsSchemaValidation) {
+    suggestions.push(
+      "Add Zod schema parsing on API route handlers that currently cast JSON with `as Type`."
+    );
+  }
+  if (input.testingScore < 70 && input.testFileCount < 10) {
+    suggestions.push(
+      javascript
+        ? "Expand integration or end-to-end coverage with a TypeScript test such as src/foo.test.ts."
+        : "Expand integration or end-to-end coverage with a test file that matches this repository's primary language."
+    );
+  }
+
+  return suggestions;
 }
 
 export function buildExecutiveChecklist(input: {

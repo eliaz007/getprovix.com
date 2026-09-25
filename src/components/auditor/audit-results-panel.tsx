@@ -26,6 +26,8 @@ import ScoreMeter from "@/components/ScoreMeter";
 import {
   buildExecutiveChecklist,
   getReadinessBadge,
+  isProductionReadyAudit,
+  PRODUCTION_READY_VERIFIED,
   resolveDisplayedReadinessScore,
   type ChecklistTone,
   type ExecutiveChecklistItem,
@@ -136,7 +138,13 @@ describe('Production Smoke Test', () => {
 });
 `;
 
-type RemediationId = "ci" | "tests" | "error_handling" | "ci_depth" | "tests_coverage";
+type RemediationId =
+  | "ci"
+  | "tests"
+  | "error_handling"
+  | "ci_depth"
+  | "tests_coverage"
+  | "production_ready";
 
 type RemediationDrawer = {
   filePath: string;
@@ -335,6 +343,25 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
     });
     const testingScore = clampScore0to100(metrics.testing);
     const devopsScore = clampScore0to100(metrics.devops);
+
+    if (
+      isProductionReadyAudit({
+        productionScore: metrics.productionScore,
+        architecture: metrics.architecture,
+        testing: testingScore,
+        devops: devopsScore,
+        resilience: metrics.resilience,
+      })
+    ) {
+      return [
+        {
+          id: "production_ready",
+          title: "Production-ready",
+          deductionLabel: "",
+          summary: PRODUCTION_READY_VERIFIED,
+        },
+      ];
+    }
 
     const fixes: ActionableFix[] = [];
 
@@ -1083,7 +1110,9 @@ function ActionableFixDrawer({ fix }: { fix: ActionableFix }) {
               {fix.summary}
             </p>
           </div>
-          <span className={FAIL_BADGE_CLASS}>{fix.deductionLabel}</span>
+          {fix.deductionLabel ? (
+            <span className={FAIL_BADGE_CLASS}>{fix.deductionLabel}</span>
+          ) : null}
         </div>
 
         {fix.template ? (

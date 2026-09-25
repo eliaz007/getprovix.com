@@ -70,6 +70,8 @@ export type CiGateReport = {
   hasTests: boolean;
   hasBuild: boolean;
   hasDeploy: boolean;
+  /** turbo/nx task graph or a multi-job pipeline. */
+  hasMonorepoPipeline: boolean;
 };
 
 const CI_LINT =
@@ -77,9 +79,11 @@ const CI_LINT =
 const CI_TESTS =
   /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+test|npx\s+(?:vitest|jest|playwright|cypress)|vitest|jest|playwright|cypress|pytest|go test|cargo test)\b/;
 const CI_BUILD =
-  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+build|next\s+build|npx\s+next\s+build)\b/;
+  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+build|next\s+build|npx\s+next\s+build|npx\s+tsc\b|\btsc\b)\b/;
 const CI_DEPLOY =
   /\b(deploy|preview|vercel|netlify|flyctl|wrangler|pulumi|gh-pages)\b|terraform\s+apply|environment:\s*(production|preview)/;
+const CI_MONOREPO =
+  /\b(turbo\s+(run|build|test)|nx\s+(run|affected|build|test)|pnpm\s+-r)\b/;
 
 /** Lint, test, and production-build steps actually present in workflow YAML. */
 export function analyzeCiGates(contents: string[]): CiGateReport {
@@ -89,6 +93,7 @@ export function analyzeCiGates(contents: string[]): CiGateReport {
     hasTests: CI_TESTS.test(joined),
     hasBuild: CI_BUILD.test(joined),
     hasDeploy: CI_DEPLOY.test(joined),
+    hasMonorepoPipeline: CI_MONOREPO.test(joined),
   };
 }
 

@@ -10,22 +10,32 @@ describe("talent pool visibility gating", () => {
     expect(hasQualifyingTalentPoolAudit(undefined, 75)).toBe(true);
   });
 
-  it("requires GitHub verification and a qualifying audit", () => {
+  it("requires GitHub, verified ownership, and a qualifying audit", () => {
     expect(
       canEnableTalentPoolVisibility({
         githubVerified: true,
+        ownershipVerified: true,
         scores: [88],
       })
     ).toBe(true);
     expect(
       canEnableTalentPoolVisibility({
         githubVerified: false,
+        ownershipVerified: true,
         scores: [99],
       })
     ).toBe(false);
     expect(
       canEnableTalentPoolVisibility({
         githubVerified: true,
+        ownershipVerified: false,
+        scores: [99],
+      })
+    ).toBe(false);
+    expect(
+      canEnableTalentPoolVisibility({
+        githubVerified: true,
+        ownershipVerified: true,
         scores: [60],
       })
     ).toBe(false);

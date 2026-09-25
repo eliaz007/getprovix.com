@@ -32,6 +32,7 @@ export async function handleGitHubLinkIdentity(nextPath = "/dashboard") {
     provider: "github",
     options: {
       redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(destination)}`,
+      scopes: "read:user user:email",
     },
   });
 }

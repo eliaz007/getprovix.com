@@ -116,6 +116,56 @@ export function unverifiedOwnership(
   };
 }
 
+function emailMatchesGitHubAccount(email: string, username: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  const login = username.trim().toLowerCase();
+  if (!normalized || !login) {
+    return false;
+  }
+  return (
+    normalized === `${login}@users.noreply.github.com` ||
+    normalized.endsWith(`+${login}@users.noreply.github.com`)
+  );
+}
+
+async function commitsMatchGitHubAccount(
+  owner: string,
+  repo: string,
+  username: string,
+  branch?: string | null
+): Promise<boolean> {
+  const params = new URLSearchParams({ per_page: "20" });
+  if (branch?.trim()) {
+    params.set("sha", branch.trim());
+  }
+
+  const response = await githubGet(
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?${params.toString()}`
+  );
+  if (!response.ok) {
+    return false;
+  }
+
+  const commits = (await readJsonResponse(response)) as unknown;
+  if (!Array.isArray(commits)) {
+    return false;
+  }
+
+  const login = username.trim().toLowerCase();
+  return commits.some((commit) => {
+    if (!commit || typeof commit !== "object") {
+      return false;
+    }
+    const record = commit as {
+      author?: { login?: string | null } | null;
+      commit?: { author?: { email?: string | null } | null } | null;
+    };
+    const authorLogin = record.author?.login?.trim().toLowerCase() ?? "";
+    const email = record.commit?.author?.email?.trim() ?? "";
+    return authorLogin === login || emailMatchesGitHubAccount(email, username);
+  });
+}
+
 export async function userHasAuthoredCommits(
   owner: string,
   repo: string,
@@ -191,7 +241,15 @@ export async function verifyGitHubRepoOwnership(input: {
       username,
       isFork ? defaultBranch : null
     );
-    if (authored) {
+    const emailMatch = authored
+      ? false
+      : await commitsMatchGitHubAccount(
+          owner,
+          repo,
+          username,
+          isFork ? defaultBranch : null
+        );
+    if (authored || emailMatch) {
       return {
         verified: true,
         method: isFork ? "fork_author" : "contributor",

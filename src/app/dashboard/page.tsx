@@ -1232,7 +1232,19 @@ export default function DashboardPage() {
         );
         const loadedPortfolioUrl = profileWithRole?.portfolio_url ?? "";
         setIsVisibleInPool(
-          loadedVisibleInPool && isValidGitHubUrl(loadedPortfolioUrl)
+          loadedVisibleInPool &&
+            isValidGitHubUrl(loadedPortfolioUrl) &&
+            canEnableTalentPoolVisibility({
+              githubVerified:
+                profileWithRole?.github_verified === true &&
+                Boolean(profileWithRole?.github_username?.trim()),
+              ownershipVerified:
+                profileWithRole?.verification_status === "verified",
+              scores: [
+                profileWithRole?.production_score,
+                profileWithRole?.audit_score,
+              ],
+            })
         );
 
         const loadedName = displayName || "";
@@ -2413,17 +2425,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     if (isTogglingVisibility) return;
 
     const nextVisible = !isVisibleInPool;
-    const githubVerified = dbProfile?.github_verified === true;
+    const githubLinked =
+      dbProfile?.github_verified === true && Boolean(githubUsername);
+    const ownershipVerified = dbProfile?.verification_status === "verified";
     const canEnable = canEnableTalentPoolVisibility({
-      githubVerified,
+      githubVerified: githubLinked,
+      ownershipVerified,
       scores: [dbProfile?.production_score, dbProfile?.audit_score],
     });
     if (nextVisible && !canEnable) {
       showToast(
-        githubVerified
-          ? TALENT_POOL_SCORE_REQUIRED_MESSAGE
-          : TALENT_POOL_CONNECT_GITHUB_MESSAGE
+        !githubLinked
+          ? TALENT_POOL_CONNECT_GITHUB_MESSAGE
+          : !ownershipVerified
+            ? "Ownership unverified. Audit a repository you authored before becoming visible."
+            : TALENT_POOL_SCORE_REQUIRED_MESSAGE
       );
+      setIsVisibleInPool(false);
       return;
     }
 
@@ -3986,20 +4004,24 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     audit_data: dbProfile?.audit_data,
   });
   const candidateProductionAudit = parseProductionAuditFromProfileRow(dbProfile);
-  const githubVerified = dbProfile?.github_verified === true;
   const githubUsername = (dbProfile?.github_username ?? "")
     .replace(/^@/, "")
     .trim();
+  const githubVerified =
+    dbProfile?.github_verified === true && Boolean(githubUsername);
+  const ownershipVerified = dbProfile?.verification_status === "verified";
   const canEnableTalentPool = canEnableTalentPoolVisibility({
     githubVerified,
+    ownershipVerified,
     scores: [
       dbProfile?.production_score,
       dbProfile?.audit_score,
       candidateProductionAudit?.productionScore,
     ],
   });
+  const talentPoolSwitchOn = isVisibleInPool && canEnableTalentPool;
   const visibilityToggleDisabled =
-    isTogglingVisibility || (!isVisibleInPool && !canEnableTalentPool);
+    isTogglingVisibility || !canEnableTalentPool;
 
   // --- DERIVED VALUES FOR THE SHAREABLE BUSINESS PROFILE CARD ---
   const businessInitials =
@@ -5086,6 +5108,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             {githubVerified ? (
                               <p className="text-xs font-medium text-emerald-400">
                                 ✓ Linked: @{githubUsername || "github"}
+                                {ownershipVerified
+                                  ? " · Ownership verified"
+                                  : " · Ownership unverified"}
                               </p>
                             ) : (
                               <div className="space-y-2">
@@ -5108,7 +5133,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           <button
                             type="button"
                             role="switch"
-                            aria-checked={isVisibleInPool}
+                            aria-checked={talentPoolSwitchOn}
                             aria-label="Visible to Employers"
                             disabled={visibilityToggleDisabled}
                             onClick={() => {
@@ -5121,14 +5146,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
  : "opacity-50 cursor-not-allowed"
  : "cursor-pointer"
  } ${
- isVisibleInPool ? "bg-emerald-500" : "bg-panel"
+ talentPoolSwitchOn ? "bg-emerald-500" : "bg-panel"
  }`}
                           >
                             <span
                               aria-hidden="true"
                               className="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
                               style={{
-                                transform: isVisibleInPool
+                                transform: talentPoolSwitchOn
                                   ? "translateX(1.25rem)"
                                   : "translateX(0)",
                               }}

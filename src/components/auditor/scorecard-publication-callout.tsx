@@ -23,30 +23,30 @@ import { createClient } from "@/utils/supabase/client";
 const DIAGNOSTIC_BULLETS = [
   {
     icon: Lock,
-    text: "100% Private Sandbox — Hidden from employers until you choose to publish",
+    text: "Zero public exposure: Completely hidden from employers until you meet the threshold.",
   },
   {
     icon: History,
-    text: "Continuous Audit History — Re-run anytime as you commit fixes",
+    text: "Continuous re-scanning: Run a fresh audit anytime as you commit improvements.",
   },
   {
     icon: ListChecks,
-    text: "Step-by-Step Remediation — Keep this action list saved to your dashboard",
+    text: "Actionable remediation: Keep the specific CI, testing, and schema fixes saved to your dashboard.",
   },
 ] as const;
 
 const VERIFIED_BULLETS = [
   {
     icon: Radar,
-    text: "Talent Network Inbound — Get discovered by founders hiring vetted builders",
+    text: "Direct founder inbound: Get discovered by hiring teams seeking vetted builders.",
   },
   {
     icon: BadgeCheck,
-    text: "Embeddable Proof of Work — Add a verified badge to your GitHub README",
+    text: "Public proof-of-work: Share a verified audit link highlighting your architecture and tests.",
   },
   {
     icon: FolderGit2,
-    text: "Verified Dossier — Showcase real commit history and production architecture",
+    text: "Verified authorship: Link your GitHub account to confirm direct ownership of the commits.",
   },
 ] as const;
 
@@ -147,15 +147,15 @@ export default function ScorecardPublicationCallout({
   }
 
   const title = canPublish
-    ? "Claim your verified score and join the talent network"
-    : "Save this diagnostic and track your score as you fix issues";
+    ? "You qualified for the Provix Talent Pool (75+)"
+    : "Keep this score private while you patch it";
   const subtitle = canPublish
-    ? "You met the production hygiene threshold. Claim this repository to bypass resume screens."
-    : "Scores below 75 remain 100% private. Save your baseline to track improvements as you add tests and CI workflows.";
+    ? "Showcase a codebase that meets verified production engineering standards."
+    : "Scores under 75 remain unlisted until you choose to make them visible.";
   const bullets = canPublish ? VERIFIED_BULLETS : DIAGNOSTIC_BULLETS;
   const buttonLabel = canPublish
-    ? "Claim Verified Dossier →"
-    : "Save Private Benchmark & Create Profile →";
+    ? "Claim Repository & Profile →"
+    : "Save Private Audit & Create Profile →";
 
   return (
     <section
@@ -184,7 +184,7 @@ export default function ScorecardPublicationCallout({
           ) : (
             <Lock className="h-3.5 w-3.5" aria-hidden />
           )}
-          {canPublish ? "Verified talent badge" : "Private diagnostic"}
+          {canPublish ? "Talent pool" : "Private audit"}
         </p>
         <h3 className="mt-4 text-2xl font-extrabold tracking-tight text-zinc-50 sm:text-3xl">
           {title}

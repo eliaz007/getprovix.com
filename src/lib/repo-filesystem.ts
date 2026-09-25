@@ -37,6 +37,8 @@ export type RepoFilesystemEvidence = {
   source_file_count: number;
   unit_test_file_count: number;
   has_e2e_tools: boolean;
+  /** *.ts/*.tsx/*.js/*.jsx source files, excluding tests and *.d.ts. */
+  executable_source_count: number;
   ci_depth: CiPipelineDepth;
   unhandled_async_count: number;
   resilience_sampled: boolean;
@@ -45,6 +47,7 @@ export type RepoFilesystemEvidence = {
   ci_has_tests?: boolean;
   ci_has_build?: boolean;
   ci_has_deploy?: boolean;
+  ci_has_monorepo_pipeline?: boolean;
   /** True once API route handler source was read. */
   route_contracts_sampled?: boolean;
   /** Every sampled route parses input with a runtime schema (Zod or equivalent). */
@@ -229,6 +232,7 @@ export function emptyRepoFilesystemEvidence(): RepoFilesystemEvidence {
     source_file_count: 0,
     unit_test_file_count: 0,
     has_e2e_tools: false,
+    executable_source_count: 0,
     ci_depth: "none",
     unhandled_async_count: 0,
     resilience_sampled: false,
@@ -251,6 +255,19 @@ const SOURCE_FILE_EXT =
   /\.(tsx?|jsx?|mts|cts|mjs|cjs|py|go|rs|java|kt|rb|php|cs|swift|dart)$/i;
 const UNIT_TEST_FILE =
   /\.(tests?|spec)\.[cm]?[jt]sx?$/i;
+
+const EXECUTABLE_CODE_FILE = /\.(tsx|ts|jsx|js|mts|cts|mjs|cjs)$/i;
+
+/** App/library source that can be executed. Excludes declarations, docs, and assets. */
+export function isExecutableCodeFile(path: string): boolean {
+  if (isNoisePath(path) || isTestPath(path) || isTestConfigPath(path)) {
+    return false;
+  }
+  if (/\.d\.ts$/i.test(path)) {
+    return false;
+  }
+  return EXECUTABLE_CODE_FILE.test(path);
+}
 
 export function isSourceFile(path: string): boolean {
   if (isNoisePath(path) || isTestPath(path) || isTestConfigPath(path)) {
@@ -449,6 +466,7 @@ export function classifyRepoFilesystem(
     source_file_count: unique.filter(isSourceFile).length,
     unit_test_file_count: unique.filter(isUnitTestFile).length,
     has_e2e_tools: hasE2eTooling(unique),
+    executable_source_count: unique.filter(isExecutableCodeFile).length,
     ci_depth: inferCiDepthFromPaths(ciWorkflowPaths),
     unhandled_async_count: 0,
     resilience_sampled: false,
@@ -541,6 +559,9 @@ export function parseRepoFilesystemEvidence(
       allKnownPaths.filter(isUnitTestFile).length,
     has_e2e_tools:
       record.has_e2e_tools === true || hasE2eTooling(allKnownPaths),
+    executable_source_count:
+      asCount(record.executable_source_count) ||
+      allKnownPaths.filter(isExecutableCodeFile).length,
     ci_depth: ciDepth,
     unhandled_async_count: asCount(record.unhandled_async_count),
     resilience_sampled: record.resilience_sampled === true,
@@ -548,6 +569,12 @@ export function parseRepoFilesystemEvidence(
     ci_has_tests: record.ci_has_tests === true ? true : record.ci_has_tests === false ? false : undefined,
     ci_has_build: record.ci_has_build === true ? true : record.ci_has_build === false ? false : undefined,
     ci_has_deploy: record.ci_has_deploy === true ? true : record.ci_has_deploy === false ? false : undefined,
+    ci_has_monorepo_pipeline:
+      record.ci_has_monorepo_pipeline === true
+        ? true
+        : record.ci_has_monorepo_pipeline === false
+          ? false
+          : undefined,
     route_contracts_sampled: record.route_contracts_sampled === true,
     route_schema_validation:
       record.route_schema_validation === true
