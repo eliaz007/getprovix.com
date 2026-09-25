@@ -1,7 +1,7 @@
 import { clampScore0to100 } from "@/lib/score-scale";
+import { scoreTesting } from "@/lib/production-audit-metrics";
 import {
-  isSmokeOrE2eTestPath,
-  isTestConfigPath,
+  isUnitTestFile,
   type RepoFilesystemEvidence,
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
@@ -216,30 +216,62 @@ function coreArtifactFlags(
   };
 }
 
-export function classifyTestSuites(
-  testsPresent: boolean,
+function testCoverageRatio(
   filesystem?: RepoFilesystemEvidence | null
-): { status: string; tone: ChecklistTone } {
-  if (!filesystem) {
-    return testsPresent
-      ? { status: "Full coverage", tone: "pass" }
-      : { status: "No tests", tone: "fail" };
+): number | null {
+  if (!filesystem?.inspected) {
+    return null;
   }
 
-  const paths = filesystem.test_paths;
+  const testFiles =
+    typeof filesystem.unit_test_file_count === "number"
+      ? filesystem.unit_test_file_count
+      : filesystem.test_paths.filter(isUnitTestFile).length;
+  if (testFiles === 0) {
+    return 0;
+  }
+
+  const sourceFiles = Math.max(
+    filesystem.source_file_count,
+    filesystem.file_count - testFiles,
+    testFiles
+  );
+  return testFiles / sourceFiles;
+}
+
+export function classifyTestSuites(
+  testsPresent: boolean,
+  filesystem?: RepoFilesystemEvidence | null,
+  testingScore?: number | null
+): { status: string; tone: ChecklistTone } {
+  const paths = filesystem?.test_paths ?? [];
   if (!testsPresent && paths.length === 0) {
     return { status: "No tests", tone: "fail" };
   }
 
-  const substantive = paths.filter(
-    (path) => !isTestConfigPath(path) && !isSmokeOrE2eTestPath(path)
-  );
+  const ratio = testCoverageRatio(filesystem);
+  const score =
+    typeof testingScore === "number" && Number.isFinite(testingScore)
+      ? clampScore0to100(testingScore)
+      : filesystem?.inspected
+        ? scoreTesting(filesystem)
+        : testsPresent
+          ? 50
+          : 0;
 
-  if (substantive.length >= 3) {
+  if (score < 30 || (ratio != null && ratio < 0.15)) {
+    return { status: "Coverage Gaps", tone: "warn" };
+  }
+
+  if (score < 75 && !(ratio != null && ratio >= 0.35)) {
+    return { status: "Partial Suite", tone: "warn" };
+  }
+
+  if (score >= 75 || (ratio != null && ratio >= 0.35)) {
     return { status: "Full coverage", tone: "pass" };
   }
 
-  return { status: "Minimal (Smoke Only)", tone: "warn" };
+  return { status: "Partial Suite", tone: "warn" };
 }
 
 export function classifyCommitCadence(
@@ -265,9 +297,14 @@ export function buildExecutiveChecklist(input: {
   scoreCap?: ScoreCapAudit | null;
   filesystem?: RepoFilesystemEvidence | null;
   commitDates?: string[] | null;
+  testingScore?: number | null;
 }): ExecutiveChecklistItem[] {
   const artifacts = coreArtifactFlags(input.scoreCap, input.filesystem);
-  const tests = classifyTestSuites(artifacts.tests, input.filesystem);
+  const tests = classifyTestSuites(
+    artifacts.tests,
+    input.filesystem,
+    input.testingScore
+  );
   const cadence = classifyCommitCadence(input.commitDates);
 
   return [

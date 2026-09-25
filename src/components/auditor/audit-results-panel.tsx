@@ -136,7 +136,7 @@ describe('Production Smoke Test', () => {
 });
 `;
 
-type RemediationId = "ci" | "tests" | "error_handling";
+type RemediationId = "ci" | "tests" | "error_handling" | "ci_depth" | "tests_coverage";
 
 type RemediationDrawer = {
   filePath: string;
@@ -170,7 +170,7 @@ const SECTION_LABEL =
 
 const TONE_PILL: Record<ChecklistTone, string> = {
   pass: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
-  warn: "bg-violet-500/10 text-violet-400 border border-violet-500/20",
+  warn: "bg-amber-500/10 text-amber-300 border border-amber-500/25",
   fail: "bg-red-500/10 text-red-400 border border-red-500/20",
 };
 
@@ -183,8 +183,8 @@ const TONE_STYLES: Record<
     status: "text-emerald-300",
   },
   warn: {
-    iconWrap: "border-violet-500/30 bg-violet-500/10 text-violet-400",
-    status: "text-violet-300",
+    iconWrap: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+    status: "text-amber-200",
   },
   fail: {
     iconWrap: "border-rose-500/30 bg-rose-500/10 text-rose-400",
@@ -329,6 +329,12 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
       error_handling:
         (result?.filesystem?.error_handling_paths?.length ?? 0) > 0,
     };
+    const metrics = resolveProductionAuditMetrics({
+      metrics: result?.metrics,
+      filesystem: result?.filesystem ?? null,
+    });
+    const testingScore = clampScore0to100(metrics.testing);
+    const devopsScore = clampScore0to100(metrics.devops);
 
     const fixes: ActionableFix[] = [];
 
@@ -348,6 +354,14 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
           content: CI_WORKFLOW_TEMPLATE,
         },
       });
+    } else if (devopsScore < 85) {
+      fixes.push({
+        id: "ci_depth",
+        title: "CI/CD needs stronger PR automation",
+        deductionLabel: `${devopsScore}/100`,
+        summary:
+          "Configure automated test runs and build validations on pull requests in GitHub Actions.",
+      });
     }
 
     if (!artifacts.tests) {
@@ -365,6 +379,13 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
             "Install Vitest (`npm i -D vitest`) and add this baseline smoke test to verify application environment initialization.",
           content: SMOKE_TEST_TEMPLATE,
         },
+      });
+    } else if (testingScore < 75) {
+      fixes.push({
+        id: "tests_coverage",
+        title: "Expand test coverage",
+        deductionLabel: `${testingScore}/100`,
+        summary: `Expand unit and integration test coverage across critical routes and utility functions (currently scored at ${testingScore}/100).`,
       });
     }
 
@@ -1140,6 +1161,7 @@ function safeDeriveAuditView(result: AuditResult): {
         scoreCap: result?.scoreCap,
         filesystem,
         commitDates: result?.commitDates ?? [],
+        testingScore: metrics.testing,
       }),
       visibleRedFlags: (result?.redFlags ?? []).filter(
         (item) => !result?.scoreCap?.applied || !isFilesystemCapRedFlag(item)
