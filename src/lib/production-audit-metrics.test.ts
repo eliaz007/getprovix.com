@@ -5,6 +5,7 @@ import {
 } from "./audit-readiness";
 import {
   computeProductionAuditMetrics,
+  scoreArchitecture,
   scoreDevops,
   scoreResilience,
   scoreTesting,
@@ -52,6 +53,7 @@ describe("four-pillar production audit", () => {
     const metrics = computeProductionAuditMetrics(filesystem);
     expect(metrics.resilience).toBe(65);
     expect(metrics.architecture).toBeGreaterThan(60);
+    expect(metrics.architecture).toBeLessThanOrEqual(82);
     expect(metrics.testing).toBeGreaterThan(0);
     expect(metrics.devops).toBeGreaterThan(0);
     expect(metrics.productionScore).toBe(
@@ -143,7 +145,7 @@ describe("four-pillar production audit", () => {
     };
 
     expect(scoreTesting({ ...filesystem, unit_test_file_count: 0 })).toBe(0);
-    expect(scoreTesting(token)).toBeLessThanOrEqual(35);
+    expect(scoreTesting(token)).toBeLessThan(20);
     expect(scoreTesting(token)).toBeGreaterThan(0);
     expect(scoreTesting(mid)).toBeGreaterThanOrEqual(65);
     expect(scoreTesting(mid)).toBeLessThanOrEqual(75);
@@ -157,9 +159,62 @@ describe("four-pillar production audit", () => {
     expect(scoreDevops({ ...filesystem, ci_workflow_paths: [], ci_depth: "none" })).toBe(0);
     expect(
       scoreDevops({ ...filesystem, ci_depth: "lint_build" })
-    ).toBe(50);
-    expect(scoreDevops({ ...filesystem, ci_depth: "tests" })).toBe(80);
-    expect(scoreDevops({ ...filesystem, ci_depth: "deploy" })).toBeGreaterThanOrEqual(95);
+    ).toBe(58);
+    expect(scoreDevops({ ...filesystem, ci_depth: "tests" })).toBe(58);
+    expect(
+      scoreDevops({
+        ...filesystem,
+        ci_depth: "tests",
+        ci_has_lint: true,
+        ci_has_tests: true,
+        ci_has_build: true,
+      })
+    ).toBeGreaterThanOrEqual(80);
+    expect(
+      scoreDevops({
+        ...filesystem,
+        ci_depth: "deploy",
+        ci_has_lint: true,
+        ci_has_tests: true,
+        ci_has_build: true,
+        ci_has_deploy: true,
+      })
+    ).toBeGreaterThanOrEqual(95);
+  });
+
+  it("caps resilience when routes use type assertions without schema parsing", () => {
+    const filesystem = classifyRepoFilesystem(
+      [...WEB_APP_PATHS, "src/app/error.tsx", "src/app/api/audit/route.ts"],
+      { inspected: true }
+    );
+    expect(
+      scoreResilience(
+        {
+          ...filesystem,
+          route_contracts_sampled: true,
+          route_schema_validation: false,
+          unvalidated_type_assertions: 4,
+          has_contract_boundaries: false,
+        },
+        "web_app"
+      )
+    ).toBeLessThanOrEqual(65);
+  });
+
+  it("allows architecture above 85 only with proven route contracts", () => {
+    const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
+      inspected: true,
+    });
+    expect(scoreArchitecture(filesystem)).toBeLessThanOrEqual(82);
+    expect(
+      scoreArchitecture({
+        ...filesystem,
+        route_contracts_sampled: true,
+        route_schema_validation: true,
+        unvalidated_type_assertions: 0,
+        has_contract_boundaries: true,
+      })
+    ).toBeGreaterThanOrEqual(85);
   });
 
   it("applies a 15-point resilience ding for one unhandled async call", () => {

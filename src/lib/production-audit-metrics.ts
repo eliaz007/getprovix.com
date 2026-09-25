@@ -150,8 +150,24 @@ export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
   };
 }
 
+/** Standard app scaffolding (tsconfig, src/, lint, framework config) cannot exceed this. */
+const ARCHITECTURE_SCAFFOLD_CAP = 82;
+
+function hasProvenArchitectureContracts(
+  evidence: RepoFilesystemEvidence
+): boolean {
+  return (
+    evidence.route_contracts_sampled === true &&
+    evidence.route_schema_validation === true &&
+    (evidence.unvalidated_type_assertions ?? 0) === 0 &&
+    evidence.has_contract_boundaries === true
+  );
+}
+
 /**
  * Architecture (0-100): structure, type safety, and modularity from the file tree.
+ * Scaffolding caps at 82. 85+ requires route-level schema validation, zero
+ * unvalidated `as Type` assertions, and complete contract boundaries.
  */
 export function scoreArchitecture(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
@@ -191,12 +207,25 @@ export function scoreArchitecture(evidence: RepoFilesystemEvidence): number {
     score += 10;
   }
 
-  return clampScore0to100(score);
+  const raw = clampScore0to100(score);
+  if (!hasProvenArchitectureContracts(evidence)) {
+    return Math.min(raw, ARCHITECTURE_SCAFFOLD_CAP);
+  }
+  return raw;
+}
+
+function ciGatesKnown(evidence: RepoFilesystemEvidence): boolean {
+  return (
+    typeof evidence.ci_has_lint === "boolean" ||
+    typeof evidence.ci_has_tests === "boolean" ||
+    typeof evidence.ci_has_build === "boolean"
+  );
 }
 
 /**
  * DevOps / CI (0-100): 0 only when no workflow exists.
- * lint/build only → 50; tests on PR → 80; multi-stage deploy/previews → 95–100.
+ * A workflow without lint + automated tests + a production build gate caps at 58.
+ * 80+ requires all three gates. Deploy on top of that gate reaches 95–100.
  */
 export function scoreDevops(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
@@ -207,16 +236,23 @@ export function scoreDevops(evidence: RepoFilesystemEvidence): number {
   const depth: CiPipelineDepth =
     evidence.ci_depth ?? (workflows.length === 0 ? "none" : "lint_build");
 
-  if (workflows.length === 0) {
+  if (workflows.length === 0 || depth === "none") {
     return 0;
   }
 
-  if (depth === "none" || depth === "lint_build") {
-    return 50;
+  const lint = evidence.ci_has_lint === true;
+  const tests = evidence.ci_has_tests === true;
+  const build = evidence.ci_has_build === true;
+  const deploy = evidence.ci_has_deploy === true || depth === "deploy";
+  const fullGate =
+    ciGatesKnown(evidence) && lint && tests && build;
+
+  if (!fullGate) {
+    return 58;
   }
 
-  if (depth === "tests") {
-    return 80;
+  if (!deploy) {
+    return 85;
   }
 
   const githubWorkflows = workflows.filter(isGithubWorkflowPath);
@@ -230,7 +266,7 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
 
 /**
  * Testing (0-100): 0 only when no *.test.* / *.spec.* files exist.
- * Token coverage (<10%) is capped at 35. 10–30% maps to 65–75.
+ * Token coverage (<10%) stays below 20. 10–30% maps to 65–75.
  * >30% with Playwright/Cypress reaches 85–100.
  */
 export function scoreTesting(evidence: RepoFilesystemEvidence): number {
@@ -255,7 +291,7 @@ export function scoreTesting(evidence: RepoFilesystemEvidence): number {
   const hasE2e = evidence.has_e2e_tools === true;
 
   if (ratio < 0.1) {
-    return clampScore0to100(Math.round(10 + (ratio / 0.1) * 25));
+    return Math.min(19, clampScore0to100(Math.round((ratio / 0.1) * 19)));
   }
 
   if (ratio <= 0.3) {
@@ -278,10 +314,25 @@ export function scoreTestAssertionDensity(
   return scoreTesting(evidence);
 }
 
+/** Routes that cast payloads with `as Type` and skip schema parsing cannot exceed this. */
+const RESILIENCE_UNVALIDATED_ROUTE_CAP = 65;
+
+function routesLackSchemaValidation(evidence: RepoFilesystemEvidence): boolean {
+  if (evidence.route_contracts_sampled !== true) {
+    return false;
+  }
+  if (evidence.route_schema_validation === true) {
+    return false;
+  }
+  return (evidence.unvalidated_type_assertions ?? 0) > 0 ||
+    evidence.route_schema_validation === false;
+}
+
 /**
  * Resilience (0-100): start at 100 and deduct proportionally.
  * Missing root error boundaries in a web app: −35.
  * Each unhandled async/fetch without try/catch: −15, max −50.
+ * Route handlers that use `as Type` without runtime schema parsing cap at 65.
  */
 export function scoreResilience(
   evidence: RepoFilesystemEvidence,
@@ -301,6 +352,9 @@ export function scoreResilience(
     score -= 35;
   }
   score -= Math.min(50, unhandled * 15);
+  if (routesLackSchemaValidation(evidence)) {
+    score = Math.min(score, RESILIENCE_UNVALIDATED_ROUTE_CAP);
+  }
 
   return clampScore0to100(score);
 }

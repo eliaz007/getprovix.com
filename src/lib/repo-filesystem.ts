@@ -40,6 +40,19 @@ export type RepoFilesystemEvidence = {
   ci_depth: CiPipelineDepth;
   unhandled_async_count: number;
   resilience_sampled: boolean;
+  /** Set after workflow file contents are read. Unknown when omitted. */
+  ci_has_lint?: boolean;
+  ci_has_tests?: boolean;
+  ci_has_build?: boolean;
+  ci_has_deploy?: boolean;
+  /** True once API route handler source was read. */
+  route_contracts_sampled?: boolean;
+  /** Every sampled route parses input with a runtime schema (Zod or equivalent). */
+  route_schema_validation?: boolean;
+  /** `as Type` assertions in sampled route handlers. */
+  unvalidated_type_assertions?: number;
+  /** Every sampled route has a schema contract and zero bare type assertions. */
+  has_contract_boundaries?: boolean;
 };
 
 export type FilesystemScorePolicy = {
@@ -531,6 +544,19 @@ export function parseRepoFilesystemEvidence(
     ci_depth: ciDepth,
     unhandled_async_count: asCount(record.unhandled_async_count),
     resilience_sampled: record.resilience_sampled === true,
+    ci_has_lint: record.ci_has_lint === true ? true : record.ci_has_lint === false ? false : undefined,
+    ci_has_tests: record.ci_has_tests === true ? true : record.ci_has_tests === false ? false : undefined,
+    ci_has_build: record.ci_has_build === true ? true : record.ci_has_build === false ? false : undefined,
+    ci_has_deploy: record.ci_has_deploy === true ? true : record.ci_has_deploy === false ? false : undefined,
+    route_contracts_sampled: record.route_contracts_sampled === true,
+    route_schema_validation:
+      record.route_schema_validation === true
+        ? true
+        : record.route_schema_validation === false
+          ? false
+          : undefined,
+    unvalidated_type_assertions: asCount(record.unvalidated_type_assertions),
+    has_contract_boundaries: record.has_contract_boundaries === true,
   };
 }
 

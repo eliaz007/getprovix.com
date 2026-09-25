@@ -1,4 +1,6 @@
 import {
+  analyzeCiGates,
+  analyzeRouteContracts,
   analyzeWorkflowDepth,
   countUnhandledAsyncCalls,
   preferSourceSamplePaths,
@@ -1009,16 +1011,32 @@ async function enrichFilesystemFromContents(
     readableWorkflows.length > 0
       ? analyzeWorkflowDepth(readableWorkflows)
       : evidence.ci_depth;
+  const gates =
+    readableWorkflows.length > 0 ? analyzeCiGates(readableWorkflows) : null;
   const unhandled = readableSources.reduce(
     (sum, text) => sum + countUnhandledAsyncCalls(text),
     0
+  );
+  const contracts = analyzeRouteContracts(
+    sourcePaths.flatMap((path, index) => {
+      const text = sourceTexts[index];
+      return text ? [{ path, text }] : [];
+    })
   );
 
   return {
     ...evidence,
     ci_depth: contentDepth,
+    ci_has_lint: gates?.hasLint,
+    ci_has_tests: gates?.hasTests,
+    ci_has_build: gates?.hasBuild,
+    ci_has_deploy: gates?.hasDeploy,
     unhandled_async_count: unhandled,
     resilience_sampled: readableSources.length > 0,
+    route_contracts_sampled: contracts.sampled,
+    route_schema_validation: contracts.schemaValidated,
+    unvalidated_type_assertions: contracts.unvalidatedAssertions,
+    has_contract_boundaries: contracts.completeContracts,
   };
 }
 

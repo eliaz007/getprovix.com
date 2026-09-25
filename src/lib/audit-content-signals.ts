@@ -65,6 +65,82 @@ export function countUnhandledAsyncCalls(source: string): number {
   return Math.max(0, total - handled);
 }
 
+export type CiGateReport = {
+  hasLint: boolean;
+  hasTests: boolean;
+  hasBuild: boolean;
+  hasDeploy: boolean;
+};
+
+const CI_LINT =
+  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+lint|npx\s+eslint|eslint|biome\s+check)\b/;
+const CI_TESTS =
+  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+test|npx\s+(?:vitest|jest|playwright|cypress)|vitest|jest|playwright|cypress|pytest|go test|cargo test)\b/;
+const CI_BUILD =
+  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+build|next\s+build|npx\s+next\s+build)\b/;
+const CI_DEPLOY =
+  /\b(deploy|preview|vercel|netlify|flyctl|wrangler|pulumi|gh-pages)\b|terraform\s+apply|environment:\s*(production|preview)/;
+
+/** Lint, test, and production-build steps actually present in workflow YAML. */
+export function analyzeCiGates(contents: string[]): CiGateReport {
+  const joined = contents.join("\n").toLowerCase();
+  return {
+    hasLint: CI_LINT.test(joined),
+    hasTests: CI_TESTS.test(joined),
+    hasBuild: CI_BUILD.test(joined),
+    hasDeploy: CI_DEPLOY.test(joined),
+  };
+}
+
+export type RouteContractReport = {
+  sampled: boolean;
+  schemaValidated: boolean;
+  unvalidatedAssertions: number;
+  completeContracts: boolean;
+};
+
+const ROUTE_HANDLER = /\/api\/.+\/route\.[cm]?[jt]sx?$/i;
+const SCHEMA_PARSE =
+  /\b(z\.(?:object|strictObject)|safeParse\s*\(|from\s+["']zod["']|valibot|yup\.|ajv|superstruct)\b/;
+const TYPE_ASSERTION = /\bas\s+(?!const\b)[A-Z][A-Za-z0-9_]*/g;
+
+/** Route handlers need runtime schema parsing, not `as Type` casts. */
+export function analyzeRouteContracts(
+  files: Array<{ path: string; text: string }>
+): RouteContractReport {
+  const routes = files.filter((file) => ROUTE_HANDLER.test(file.path));
+  if (routes.length === 0) {
+    return {
+      sampled: false,
+      schemaValidated: false,
+      unvalidatedAssertions: 0,
+      completeContracts: false,
+    };
+  }
+
+  let unvalidatedAssertions = 0;
+  let schemaRoutes = 0;
+  for (const route of routes) {
+    const cleaned = stripNoise(route.text);
+    const hasSchema = SCHEMA_PARSE.test(cleaned);
+    const assertions = cleaned.match(TYPE_ASSERTION)?.length ?? 0;
+    unvalidatedAssertions += assertions;
+    if (hasSchema && assertions === 0) {
+      schemaRoutes += 1;
+    }
+  }
+
+  const completeContracts =
+    schemaRoutes === routes.length && unvalidatedAssertions === 0;
+
+  return {
+    sampled: true,
+    schemaValidated: completeContracts,
+    unvalidatedAssertions,
+    completeContracts,
+  };
+}
+
 export function analyzeWorkflowDepth(contents: string[]): CiPipelineDepth {
   if (contents.length === 0) {
     return "none";
