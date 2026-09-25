@@ -28,11 +28,15 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="relative mx-auto flex max-w-6xl flex-col overflow-x-clip px-6 pb-20 pt-16 sm:pt-24">
+      <main className="relative mx-auto flex max-w-6xl flex-col px-6 pb-20 pt-16 sm:pt-24 md:overflow-x-clip">
         <section className="relative mx-auto max-w-4xl text-center">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute top-10 left-1/2 -z-10 h-[450px] w-[720px] -translate-x-1/2 rounded-full bg-radial-[ellipse_at_center] from-violet-600/28 via-indigo-600/12 via-40% to-transparent to-70% blur-[140px]"
+            className="pointer-events-none absolute top-16 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full md:top-10 md:-z-10 md:h-[450px] md:w-[720px] md:blur-[140px]"
+            style={{
+              background:
+                "radial-gradient(ellipse at center, rgba(124, 58, 237, 0.28), rgba(79, 70, 229, 0.12) 40%, transparent 70%)",
+            }}
           />
           <p className="mb-5 font-mono text-[11px] font-medium uppercase tracking-widest text-cyan-400">
             Don’t explain your code. Prove it.
