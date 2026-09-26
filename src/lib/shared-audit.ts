@@ -2,8 +2,6 @@ import type { AuditResult } from "@/app/api/audit/route";
 import { emptyScoreCapAudit } from "@/lib/repo-filesystem";
 import { createClient } from "@/utils/supabase/server";
 
-export const SHARE_AUDIT_ORIGIN = "https://getprovix.com";
-
 const AUDIT_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -13,10 +11,6 @@ export type SharedAuditView = {
   repoName: string | null;
   repoUrl: string | null;
 };
-
-export function shareAuditUrl(id: string): string {
-  return `${SHARE_AUDIT_ORIGIN}/audit/${id}`;
-}
 
 export function isSharedAuditId(value: string): boolean {
   return AUDIT_ID.test(value);

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
+import CopyShareLinkButton from "@/components/auditor/copy-share-link-button";
 import ProductionScorecard from "@/components/auditor/production-scorecard";
 import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
 import ScoreMeter from "@/components/ScoreMeter";
@@ -1158,7 +1159,7 @@ type AuditResultsPanelProps = {
   rescanning?: boolean;
   /** Public share page: scorecard only, no rescan or remediation inputs. */
   readOnly?: boolean;
-  /** History id used to build https://getprovix.com/audit/[id]. */
+  /** Saved audit id. The button copies `${window.location.origin}/audit/[id]`. */
   shareId?: string | null;
 };
 
@@ -1338,6 +1339,13 @@ function AuditResultsPanelView({
                   Talent Network Eligible
                 </span>
               )}
+              {!readOnly && shareId ? (
+                <CopyShareLinkButton
+                  path={`/audit/${shareId}`}
+                  label="Share Audit"
+                  prominent
+                />
+              ) : null}
             </div>
           </div>
           <div className="shrink-0 space-y-2 sm:text-right">
@@ -1364,7 +1372,6 @@ function AuditResultsPanelView({
           metrics={metrics}
           compact={false}
           benchmark={result.benchmark}
-          shareId={readOnly ? null : shareId}
         />
 
         <details className="group rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2">

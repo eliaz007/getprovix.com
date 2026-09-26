@@ -6,7 +6,6 @@ import {
   emptyProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
 import { formatCodebaseBenchmark, type CodebaseBenchmark } from "@/lib/codebase-benchmark";
-import CopyShareLinkButton from "@/components/auditor/copy-share-link-button";
 import { clampScore0to100 } from "@/lib/score-scale";
 
 const SECTION_LABEL =
@@ -90,7 +89,6 @@ function metricIssueCount(score: number, foundCount: number): number {
 
 type ProductionScorecardProps = {
   metrics?: ProductionAuditMetrics | null;
-  shareId?: string | null;
   className?: string;
   /** Dense single-row layout for profile settings / tight result panels. */
   compact?: boolean;
@@ -103,7 +101,6 @@ export default function ProductionScorecard({
   className = "",
   compact = true,
   benchmark = null,
-  shareId = null,
 }: ProductionScorecardProps) {
   const resolved = metrics ?? emptyProductionAuditMetrics();
   const productionScore = clampScore0to100(resolved.productionScore);
@@ -190,15 +187,7 @@ export default function ProductionScorecard({
               : "Repository file tree was not inspected, so production metrics stay at 0."}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <ProductionScoreVerifiedBadge score={productionScore} />
-          {shareId ? (
-            <CopyShareLinkButton
-              url={`https://getprovix.com/audit/${shareId}`}
-              label="Share Audit"
-            />
-          ) : null}
-        </div>
+        <ProductionScoreVerifiedBadge score={productionScore} />
       </div>
 
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
