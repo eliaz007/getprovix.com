@@ -1407,9 +1407,40 @@ export async function POST(request: Request) {
     }
   }
 
+  let shareId: string | null = null;
+  if (
+    access.user &&
+    payload.playground !== true &&
+    payload.isPublicTeaser !== true
+  ) {
+    const repoName =
+      parsedRepo?.owner && parsedRepo.repo
+        ? `${parsedRepo.owner}/${parsedRepo.repo}`
+        : null;
+    const { data: shared, error: shareError } = await access.supabase
+      .from("shared_audits")
+      .insert({
+        user_id: access.user.id,
+        payload: {
+          result: { ...result, benchmark },
+          repoName,
+          repoUrl: auditedRepoUrl,
+        },
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (shareError) {
+      console.error("[audit] shared audit insert failed:", shareError);
+    } else if (shared && typeof shared.id === "string") {
+      shareId = shared.id;
+    }
+  }
+
   return NextResponse.json({
     ...result,
     benchmark,
+    shareId,
     ...usage,
     verification_status: verificationStatus,
     ownership_verified: verificationStatus === "verified",

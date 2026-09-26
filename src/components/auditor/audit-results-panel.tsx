@@ -691,9 +691,6 @@ function RemediationSimulator({
           <p className="text-sm font-medium text-emerald-300">
             All Core Production Artifacts Verified
           </p>
-          <span className="ml-auto font-mono text-xs tabular-nums text-emerald-400/80">
-            {score}/100
-          </span>
         </div>
       </section>
     );
@@ -1159,6 +1156,10 @@ type AuditResultsPanelProps = {
   isEmployerView?: boolean;
   onRescan?: () => void;
   rescanning?: boolean;
+  /** Public share page: scorecard only, no rescan or remediation inputs. */
+  readOnly?: boolean;
+  /** History id used to build https://getprovix.com/audit/[id]. */
+  shareId?: string | null;
 };
 
 function safeDeriveAuditView(result: AuditResult): {
@@ -1276,6 +1277,8 @@ function AuditResultsPanelView({
   isEmployerView = false,
   onRescan,
   rescanning = false,
+  readOnly = false,
+  shareId = null,
 }: AuditResultsPanelProps) {
   const derived = safeDeriveAuditView(result);
   const {
@@ -1361,6 +1364,7 @@ function AuditResultsPanelView({
           metrics={metrics}
           compact={false}
           benchmark={result.benchmark}
+          shareId={readOnly ? null : shareId}
         />
 
         <details className="group rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2">
@@ -1425,7 +1429,7 @@ function AuditResultsPanelView({
         </details>
       </section>
 
-      {employerView ? (
+      {readOnly ? null : employerView ? (
         <TechnicalScreenGenerator prompts={screenPrompts} score={score} />
       ) : (
         <RemediationSimulator
@@ -1603,7 +1607,7 @@ function AuditResultsPanelView({
         </div>
       </details>
 
-      {employerView ? (
+      {readOnly ? null : employerView ? (
         <EmployerActionToolbar briefMarkdown={briefMarkdown} />
       ) : (
         <CandidateActionToolbar onRescan={onRescan} rescanning={rescanning} />

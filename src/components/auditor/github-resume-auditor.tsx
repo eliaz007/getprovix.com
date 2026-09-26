@@ -101,6 +101,7 @@ export default function GitHubResumeAuditor({
   const [loading, setLoading] = useState(false);
   const [stageIndex, setStageIndex] = useState(0);
   const [result, setResult] = useState<AuditResult | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [repoAccessStatus, setRepoAccessStatus] =
     useState<RepoAccessStatusKind | null>(null);
@@ -326,12 +327,14 @@ export default function GitHubResumeAuditor({
           inaccessibleRepo?: boolean;
           verification_status?: string;
           ownership_verified?: boolean;
+          shareId?: string | null;
         };
 
       if (isInvalidRepoFormatResponse(data)) {
         setLimitReached(Boolean(data.limit_reached));
         setRepoAccessStatus("invalid_format");
         setResult(null);
+        setShareId(null);
         return;
       }
 
@@ -340,6 +343,7 @@ export default function GitHubResumeAuditor({
         setRepoAccessStatus("unverified");
         setAccessUsername(unverifiedOwnershipUsername(data));
         setResult(null);
+        setShareId(null);
         return;
       }
 
@@ -353,6 +357,7 @@ export default function GitHubResumeAuditor({
         setLimitReached(Boolean(data.limit_reached));
         setRepoAccessStatus("private");
         setResult(null);
+        setShareId(null);
         return;
       }
 
@@ -368,6 +373,7 @@ export default function GitHubResumeAuditor({
       if (data.inaccessibleRepo) {
         setRepoAccessStatus("private");
         setResult(null);
+        setShareId(null);
         return;
       }
 
@@ -383,6 +389,7 @@ export default function GitHubResumeAuditor({
         inaccessibleRepo: false,
       };
       setResult(nextResult);
+      setShareId(typeof data.shareId === "string" ? data.shareId : null);
 
       const nextClaim = buildProductionAuditClaim({
         score: nextResult.score,
@@ -507,6 +514,7 @@ export default function GitHubResumeAuditor({
                 isEmployerView={isEmployerView}
                 onRescan={() => void runAudit()}
                 rescanning={loading}
+                shareId={shareId}
               />
             </div>
           )}
