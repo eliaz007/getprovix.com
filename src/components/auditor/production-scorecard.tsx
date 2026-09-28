@@ -114,7 +114,7 @@ export default function ProductionScorecard({
       >
         <div className="min-w-0">
           <p className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground text-zinc-500">
-            Production Scorecard
+            Codebase Score
           </p>
           <div className="flex items-center justify-between gap-3">
             <p
@@ -173,7 +173,7 @@ export default function ProductionScorecard({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className={`${SECTION_LABEL} mb-1`}>Production Scorecard</div>
+          <div className={`${SECTION_LABEL} mb-1`}>Codebase Score</div>
           <p className="text-sm font-semibold text-zinc-100">
             {formatCodebaseBenchmark(benchmark)}
           </p>

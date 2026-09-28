@@ -41,6 +41,37 @@ const navItemShellClass = "order-none w-full shrink-0";
 const sectionHeaderClass =
   "mb-1 block px-3 font-mono text-[10px] font-semibold uppercase tracking-widest text-zinc-500";
 
+function SidebarNavSkeleton() {
+  return (
+    <div
+      className="space-y-5"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading navigation</span>
+      <div className="space-y-0.5">
+        <div className="mb-1 h-2.5 w-20 rounded bg-white/10 animate-pulse motion-reduce:animate-none" />
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="flex items-center gap-3 px-3 py-2">
+            <div className="h-4 w-4 shrink-0 rounded bg-white/10 animate-pulse motion-reduce:animate-none" />
+            <div className="h-3 w-24 rounded bg-white/10 animate-pulse motion-reduce:animate-none" />
+          </div>
+        ))}
+      </div>
+      <div className="space-y-0.5">
+        <div className="mb-1 h-2.5 w-16 rounded bg-white/10 animate-pulse motion-reduce:animate-none" />
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="flex items-center gap-3 px-3 py-2">
+            <div className="h-4 w-4 shrink-0 rounded bg-white/10 animate-pulse motion-reduce:animate-none" />
+            <div className="h-3 w-28 rounded bg-white/10 animate-pulse motion-reduce:animate-none" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const ACTIVE_ITEM = "bg-white/[0.06] text-white font-medium rounded-lg";
 const INACTIVE_ITEM =
   "text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] rounded-lg";
@@ -632,6 +663,8 @@ function NavSection({
 export default function DashboardSidebar() {
   const pathname = usePathname();
   const {
+    accountRole,
+    authLoading,
     isBusinessAccount,
     isEmployeeAccount,
     isGuest,
@@ -639,6 +672,9 @@ export default function DashboardSidebar() {
     userId,
   } = useDashboardNav();
   const [pendingIntroCount, setPendingIntroCount] = useState(0);
+
+  const navRolePending =
+    authLoading || (userId != null && accountRole == null);
 
   const showCandidateNav =
     isGuest || (!isBusinessAccount && !isEmployeeAccount);
@@ -698,7 +734,9 @@ export default function DashboardSidebar() {
       <div>
         <SidebarBrand />
 
-        {showCandidateNav ? (
+        {navRolePending ? (
+          <SidebarNavSkeleton />
+        ) : showCandidateNav ? (
           <>
             <NavSection title="Workspace">
               {CANDIDATE_WORKSPACE_NAV.map((item) => (
