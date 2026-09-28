@@ -12,7 +12,11 @@ export function clearEmployerSignupIntent() {
 
 export async function handleGoogleSignIn(_nextPath?: string, accountKind?: "employer" | "candidate") {
   const supabase = createClient();
-  const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;
+  // Exact path, no query string. Supabase Auth only honors redirectTo when it
+  // matches an allow-listed Redirect URL; otherwise it falls back to the Site
+  // URL and the browser lands on /?code= with no session. The callback route
+  // sends a successful OAuth exchange to /dashboard.
+  const redirectTo = `${window.location.origin}/auth/callback`;
 
   if (accountKind === "employer") {
     rememberEmployerSignupIntent();
