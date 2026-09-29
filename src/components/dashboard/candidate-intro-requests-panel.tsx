@@ -14,6 +14,8 @@ import {
   type CandidateIntroRequestRow,
 } from "@/lib/candidate-intro-requests";
 import { formatRelativeTime } from "@/lib/format-relative-time";
+import Button from "@/components/ui/Button";
+import PageHeader from "@/components/ui/PageHeader";
 
 const OBSIDIAN_CARD =
   "bg-zinc-900/50 border border-white/[0.08] rounded-xl p-5 shadow-xl backdrop-blur-md";
@@ -74,18 +76,11 @@ export default function CandidateIntroRequestsPanel({
 
   return (
     <div className="text-zinc-100">
-      <div className="mb-8">
-        <p className="font-mono text-xs font-medium uppercase tracking-widest text-zinc-500">
-          Intro Requests
-        </p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-white">
-          Intro Requests
-        </h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Review employer introduction requests and approve the ones you want to
-          pursue.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Intro Requests"
+        title="Intro Requests"
+        description="Review employer introduction requests and approve the ones you want to pursue."
+      />
 
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className={OBSIDIAN_CARD}>
@@ -162,13 +157,14 @@ export default function CandidateIntroRequestsPanel({
       ) : error ? (
         <div className="rounded-xl border border-red-500/20 bg-[#131316]/90 p-10 text-center shadow-xl backdrop-blur-md">
           <p className="text-sm font-medium text-red-200">{error}</p>
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={onRetry}
-            className="mt-4 cursor-pointer rounded-lg border border-white/[0.08] bg-[#1A1A1E] px-4 py-2 text-xs font-semibold text-zinc-200 transition-all hover:border-violet-500/30 hover:text-violet-300"
+            className="mt-4"
           >
             Retry
-          </button>
+          </Button>
         </div>
       ) : requests.length === 0 ? (
         <div className={`${OBSIDIAN_CARD} p-10 text-center`}>
@@ -249,15 +245,16 @@ export default function CandidateIntroRequestsPanel({
 
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-3 text-xs text-zinc-400">
                   {isDismissed ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
                       onClick={() => void onDismiss(request.id, false)}
                       disabled={isResponding}
-                      className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/[0.08] px-4 py-2 font-mono text-[11px] font-medium text-zinc-200 transition-all hover:border-violet-500/30 hover:text-violet-300 disabled:opacity-60"
+                      className="ml-auto"
                     >
                       <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                       {isResponding ? "Saving..." : "Restore"}
-                    </button>
+                    </Button>
                   ) : (
                     <>
                       {!isPending ? (
@@ -270,34 +267,33 @@ export default function CandidateIntroRequestsPanel({
                         <span className="min-w-0 flex-1" />
                       )}
                       <div className="flex flex-wrap items-center justify-end gap-2">
-                        <button
+                        <Button
                           type="button"
+                          variant="secondary"
                           aria-label="Dismiss intro request"
                           onClick={() => void onDismiss(request.id, true)}
                           disabled={isResponding}
-                          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/[0.08] px-4 py-2 font-mono text-[11px] font-medium text-zinc-400 transition-all hover:border-white/[0.14] hover:text-zinc-200 disabled:opacity-60"
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                           {isResponding ? "Saving..." : "Dismiss"}
-                        </button>
+                        </Button>
                         {isPending ? (
                           <>
-                            <button
+                            <Button
                               type="button"
+                              variant="secondary"
                               onClick={() => void onRespond(request.id, "decline")}
                               disabled={isResponding}
-                              className="cursor-pointer rounded-lg border border-white/[0.08] px-4 py-2 font-mono text-[11px] font-medium text-zinc-400 transition-all hover:text-zinc-200 disabled:opacity-60"
                             >
                               Decline
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
                               onClick={() => void onRespond(request.id, "accept")}
                               disabled={isResponding}
-                              className="cursor-pointer rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-500 disabled:opacity-60"
                             >
                               {isResponding ? "Saving..." : "Accept Intro"}
-                            </button>
+                            </Button>
                           </>
                         ) : null}
                       </div>

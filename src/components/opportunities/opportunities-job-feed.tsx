@@ -15,6 +15,9 @@ import {
 } from "@/lib/opportunity-match";
 import { clampScore0to100 } from "@/lib/score-scale";
 import ScoreMeter from "@/components/ScoreMeter";
+import Button from "@/components/ui/Button";
+import FormLabel from "@/components/ui/FormLabel";
+import PageHeader from "@/components/ui/PageHeader";
 
 export type OpportunitiesJobFeedProps = {
   jobs: JobRow[];
@@ -107,24 +110,22 @@ export default function OpportunitiesJobFeed({
   return (
     <div className="text-zinc-100">
       <div className="mb-8">
-        <p className="font-mono text-xs font-medium uppercase tracking-widest text-zinc-500">
-          Talent Network
-        </p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-white">
-          Provix Talent Network
-        </h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          {isGuest
-            ? "Browse openings, companies, and requirements. Sign in when you are ready to express interest."
-            : "Open roles matched to your verified stack. Connect directly with hiring teams."}
-        </p>
+        <PageHeader
+          className="mb-0"
+          eyebrow="Talent Network"
+          title="Provix Talent Network"
+          description={
+            isGuest
+              ? "Browse openings, companies, and requirements. Sign in when you are ready to express interest."
+              : "Open roles matched to your verified stack. Connect directly with hiring teams."
+          }
+        />
         {enableAiMatch ? (
           <div className="mt-5">
-            <button
+            <Button
               type="button"
               onClick={() => onRunAiMatch?.()}
               disabled={!canRunAiMatch}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {aiMatchRunning ? (
                 <LoaderCircle
@@ -139,7 +140,7 @@ export default function OpportunitiesJobFeed({
                 : hasAiMatchResults
                   ? "Re-run Provix AI Match"
                   : "Run Provix AI Match"}
-            </button>
+            </Button>
             {aiMatchRunning ? (
               <p className="mt-2 text-xs leading-relaxed text-zinc-400">
                 Scoring your audited skills against active listings. This can
@@ -224,12 +225,14 @@ export default function OpportunitiesJobFeed({
       </div>
 
       <div className="mb-6 rounded-xl border border-white/[0.08] bg-zinc-900/50 p-4 shadow-xl backdrop-blur-md">
+        <FormLabel htmlFor="opportunities-search">Search</FormLabel>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
               <Search className="h-4 w-4" aria-hidden="true" />
             </span>
             <input
+              id="opportunities-search"
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -413,15 +416,11 @@ export default function OpportunitiesJobFeed({
                 )}
 
                 <div className="mt-3 flex items-center justify-between border-t border-white/[0.06] pt-3 text-xs text-zinc-400">
-                  <button
+                  <Button
                     type="button"
                     onClick={() => onExpressInterest(job)}
                     disabled={alreadyApplied}
-                    className={`ml-auto flex items-center gap-1.5 rounded-md px-4 py-2 font-mono text-[11px] font-medium tracking-tight transition-colors duration-200 ease-out ${
-                      alreadyApplied
-                        ? "cursor-not-allowed border border-white/[0.08] bg-zinc-900/50 text-zinc-400"
-                        : "cursor-pointer bg-violet-600 text-white shadow-sm hover:bg-violet-500"
-                    }`}
+                    className="ml-auto"
                   >
                     {alreadyApplied ? (
                       <>
@@ -431,7 +430,7 @@ export default function OpportunitiesJobFeed({
                     ) : (
                       "Express Interest"
                     )}
-                  </button>
+                  </Button>
                 </div>
               </div>
             );

@@ -34,6 +34,9 @@ import {
   unverifiedOwnershipUsername,
 } from "@/lib/inaccessible-public-audit";
 import Toast from "@/components/Toast";
+import Button from "@/components/ui/Button";
+import FormLabel from "@/components/ui/FormLabel";
+import PageHeader from "@/components/ui/PageHeader";
 import { canBypassProvixTokenChallenge } from "@/lib/provix-token";
 import { createClient } from "@/utils/supabase/client";
 import {
@@ -61,14 +64,8 @@ const AUDIT_STAGES = [
 
 const GLASS_CARD =
   "bg-[#131316]/90 border border-white/[0.08] backdrop-blur-xl rounded-xl shadow-2xl p-6 sm:p-7";
-const FIELD_LABEL =
-  "mb-2 block text-[11px] font-semibold uppercase tracking-wider text-zinc-500";
 const TERMINAL_INPUT =
   "w-full bg-[#070709] border border-white/[0.09] text-zinc-100 rounded-lg px-3.5 py-2.5 font-mono text-sm placeholder:text-zinc-600 focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/20 focus:outline-none transition-all";
-const PRIMARY_CTA =
-  "w-full cursor-pointer bg-[#F4F4F6] hover:bg-white text-[#0B0B0D] font-semibold py-2.5 px-4 rounded-lg text-sm shadow-[0_1px_2px_rgba(0,0,0,0.5)] flex items-center justify-center gap-2 transition-all disabled:cursor-not-allowed disabled:opacity-50";
-const EYEBROW_BADGE =
-  "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono tracking-widest uppercase bg-violet-500/10 text-violet-300 border border-violet-500/25 mb-3";
 
 export default function GitHubResumeAuditor({
   initialGithubUrl = "",
@@ -539,22 +536,17 @@ export default function GitHubResumeAuditor({
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <div className={EYEBROW_BADGE}>
-            <ShieldCheck className="h-3 w-3" aria-hidden="true" />
-            {isEmployerView ? "Evaluation & Screening" : "Career Accelerator"}
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-zinc-50">
-            Code & Resume Auditor
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-zinc-500">
-            {isEmployerView
-              ? "Deep-audit a candidate GitHub repository for architectural deficits, then generate targeted technical screen questions."
-              : "Deep-audit your GitHub artifacts, or private/enterprise project write-ups, against resume claims for founder-ready credibility."}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow={
+          isEmployerView ? "Evaluation & Screening" : "Career Accelerator"
+        }
+        title="Code & Resume Auditor"
+        description={
+          isEmployerView
+            ? "Deep-audit a candidate GitHub repository for architectural deficits, then generate targeted technical screen questions."
+            : "Deep-audit your GitHub artifacts, or private/enterprise project write-ups, against resume claims for founder-ready credibility."
+        }
+      />
 
       <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
         <div className={`${GLASS_CARD} min-w-0 space-y-4`}>
@@ -567,10 +559,11 @@ export default function GitHubResumeAuditor({
             />
           ) : null}
           <div>
-            <label className={FIELD_LABEL}>
+            <FormLabel htmlFor="audit-target-role">
               Target Role / Tech Stack
-            </label>
+            </FormLabel>
             <input
+              id="audit-target-role"
               type="text"
               value={targetRole}
               onChange={(e) => setTargetRole(e.target.value)}
@@ -580,16 +573,17 @@ export default function GitHubResumeAuditor({
           </div>
 
           <div>
-            <label className={FIELD_LABEL}>
+            <FormLabel htmlFor="audit-github-url">
               GitHub Profile / Repo URL
               {isPrivateWork ? (
                 <span className="ml-1 font-sans font-medium normal-case tracking-normal text-zinc-600">
                   (optional)
                 </span>
               ) : null}
-            </label>
+            </FormLabel>
             <div className="relative">
               <input
+                id="audit-github-url"
                 type="url"
                 inputMode="url"
                 autoComplete="url"
@@ -649,10 +643,11 @@ export default function GitHubResumeAuditor({
 
           {!isEmployerView ? (
             <div>
-              <label className={FIELD_LABEL}>
+              <FormLabel htmlFor="audit-compensation-level">
                 Target Compensation & Level
-              </label>
+              </FormLabel>
               <select
+                id="audit-compensation-level"
                 value={compensationLevel}
                 onChange={(e) =>
                   setCompensationLevel(
@@ -722,11 +717,11 @@ export default function GitHubResumeAuditor({
             </div>
           )}
 
-          <button
+          <Button
             type="button"
             onClick={() => void runAudit()}
             disabled={loading || !canSubmit || limitReached || auditLocked}
-            className={PRIMARY_CTA}
+            className="w-full"
           >
             {loading ? (
               <>
@@ -739,7 +734,7 @@ export default function GitHubResumeAuditor({
                 Run AI Audit
               </>
             )}
-          </button>
+          </Button>
         </div>
 
         <div className="min-h-0">

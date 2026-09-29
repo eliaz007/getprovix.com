@@ -12,6 +12,9 @@ import {
   Terminal,
 } from "lucide-react";
 import type { InterviewSimulatorResult } from "@/app/api/interview-simulator/route";
+import Button from "@/components/ui/Button";
+import FormLabel from "@/components/ui/FormLabel";
+import PageHeader from "@/components/ui/PageHeader";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 const INTERVIEW_ROUNDS = [
@@ -133,27 +136,20 @@ export default function InterviewPrepPage() {
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-10">
-        <div className="mb-8">
-          <div className="inline-flex items-center gap-2 text-brand text-xs font-bold uppercase tracking-widest mb-2">
-            <Terminal className="w-4 h-4" aria-hidden />
-            Career Accelerator
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
-            Interview Simulator
-          </h1>
-          <p className="text-textMuted text-sm mt-2 max-w-2xl">
-            Rehearse technical, architecture, and behavioral rounds with
-            hiring-manager-grade questions and cheat sheets.
-          </p>
-        </div>
+        <PageHeader
+          eyebrow="Career Accelerator"
+          title="Interview Simulator"
+          description="Rehearse technical, architecture, and behavioral rounds with hiring-manager-grade questions and cheat sheets."
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-7 space-y-5">
             <div>
-              <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide">
+              <FormLabel htmlFor="interview-target-job-title">
                 Target Job Title
-              </label>
+              </FormLabel>
               <input
+                id="interview-target-job-title"
                 type="text"
                 value={targetJobTitle}
                 onChange={(e) => setTargetJobTitle(e.target.value)}
@@ -163,10 +159,11 @@ export default function InterviewPrepPage() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide">
+              <FormLabel htmlFor="interview-core-tech-stack">
                 Core Tech Stack
-              </label>
+              </FormLabel>
               <input
+                id="interview-core-tech-stack"
                 type="text"
                 value={coreTechStack}
                 onChange={(e) => setCoreTechStack(e.target.value)}
@@ -176,10 +173,11 @@ export default function InterviewPrepPage() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide">
+              <FormLabel htmlFor="interview-round">
                 Interview Round
-              </label>
+              </FormLabel>
               <select
+                id="interview-round"
                 value={interviewRound}
                 onChange={(e) =>
                   setInterviewRound(
@@ -197,10 +195,11 @@ export default function InterviewPrepPage() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase tracking-wide">
+              <FormLabel htmlFor="interview-company-type">
                 Company Type
-              </label>
+              </FormLabel>
               <select
+                id="interview-company-type"
                 value={companyType}
                 onChange={(e) =>
                   setCompanyType(
@@ -217,11 +216,11 @@ export default function InterviewPrepPage() {
               </select>
             </div>
 
-            <button
+            <Button
               type="button"
               onClick={() => void generateSimulation()}
               disabled={loading || !canSubmit}
-              className="w-full bg-brand hover:bg-brandHover disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2"
+              className="w-full"
             >
               {loading ? (
                 <>
@@ -234,7 +233,7 @@ export default function InterviewPrepPage() {
                   Generate Interview Simulation
                 </>
               )}
-            </button>
+            </Button>
           </div>
 
           <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-6 min-h-[480px]">
