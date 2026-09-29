@@ -10,16 +10,10 @@ type PageHeaderProps = {
 export default function PageHeader({
   title,
   description,
-  eyebrow,
   className,
 }: PageHeaderProps) {
   return (
     <header className={cn("mb-8", className)}>
-      {eyebrow ? (
-        <p className="mb-2 text-xs font-bold uppercase tracking-widest text-brand">
-          {eyebrow}
-        </p>
-      ) : null}
       <h1 className="text-3xl font-extrabold tracking-tight text-textMain">
         {title}
       </h1>
