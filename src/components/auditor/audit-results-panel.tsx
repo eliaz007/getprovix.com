@@ -1402,10 +1402,15 @@ function AuditResultsPanelView({
               <li>
                 <span className="font-medium text-zinc-300">Testing (25%).</span>{" "}
                 0 when no <span className="font-mono">*.test.*</span> or{" "}
-                <span className="font-mono">*.spec.*</span> file exists. Test
-                files divided by source files under 10% stays at or below 35.
-                10–30% maps to 65–75. Above 30% with Playwright or Cypress
-                reaches 85–100.
+                <span className="font-mono">*.spec.*</span> file exists in core
+                application or library paths. Test files divided by core source
+                files (excluding <span className="font-mono">examples/</span>,{" "}
+                <span className="font-mono">demo/</span>,{" "}
+                <span className="font-mono">samples/</span>,{" "}
+                <span className="font-mono">tutorials/</span>, and{" "}
+                <span className="font-mono">docs/</span>) under 10% stays at or
+                below 35. 10–30% maps to 65–75. Above 30% with Playwright or
+                Cypress reaches 85–100.
               </li>
               <li>
                 <span className="font-medium text-zinc-300">DevOps (20%).</span>{" "}

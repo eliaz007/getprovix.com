@@ -25,7 +25,7 @@ export function normalizeProofToken(value: string): string {
 }
 
 export function canonicalGitHubRepoUrl(owner: string, repo: string): string {
-  return `https://github.com/${owner}/${repo}`;
+  return `https://github.com/${owner.trim().toLowerCase()}/${repo.trim().toLowerCase()}`;
 }
 
 export async function hasPersistedProvixTokenVerification(
@@ -33,12 +33,12 @@ export async function hasPersistedProvixTokenVerification(
   userId: string,
   repoUrl: string
 ): Promise<boolean> {
+  const normalized = repoUrl.trim().toLowerCase();
   const { data, error } = await supabase
     .from("repo_verifications")
-    .select("is_verified")
+    .select("is_verified, repo_url")
     .eq("user_id", userId)
-    .eq("repo_url", repoUrl)
-    .maybeSingle();
+    .eq("is_verified", true);
 
   if (error) {
     if (!isSupabaseSchemaError(error)) {
@@ -47,5 +47,9 @@ export async function hasPersistedProvixTokenVerification(
     return false;
   }
 
-  return data?.is_verified === true;
+  return (data ?? []).some(
+    (row) =>
+      typeof row.repo_url === "string" &&
+      row.repo_url.trim().toLowerCase() === normalized
+  );
 }

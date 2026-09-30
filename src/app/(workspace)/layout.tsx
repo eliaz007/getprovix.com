@@ -11,8 +11,9 @@ import {
 import { isDashboardRootPath } from "@/lib/dashboard-account";
 
 /**
- * Nested AI tool routes never mount the root `/dashboard` page ContentGate.
- * Mark them ready here so route transitions do not wait on the profile page.
+ * Nested AI tool routes and /opportunities never mount the root `/dashboard`
+ * page ContentGate. Mark them ready here so route transitions do not wait on
+ * the profile page boot sequence.
  */
 function DashboardLayoutPerf() {
   const { authLoading } = useDashboardNav();
@@ -32,18 +33,18 @@ function DashboardLayoutPerf() {
 
 function DashboardRouteReady({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const isNestedToolRoute = !isDashboardRootPath(pathname);
+  const isNestedWorkspaceRoute = !isDashboardRootPath(pathname);
 
   return (
     <>
       <DashboardLayoutPerf />
-      {isNestedToolRoute ? <DashboardContentGate ready /> : null}
+      {isNestedWorkspaceRoute ? <DashboardContentGate ready /> : null}
       {children}
     </>
   );
 }
 
-export default function DashboardLayout({
+export default function WorkspaceLayout({
   children,
 }: {
   children: React.ReactNode;

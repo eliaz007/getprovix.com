@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  useLayoutEffect,
-  useRef,
-  type ReactNode,
-} from "react";
+import { type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import GuestAuthModal from "@/components/GuestAuthModal";
 import CompanySetupModal from "@/components/dashboard/CompanySetupModal";
@@ -13,30 +9,6 @@ import DashboardSidebar from "@/components/dashboard/dashboard-sidebar";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import GetVerifiedBanner from "@/components/GetVerifiedBanner";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
-
-function ContentFade({
-  trigger,
-  children,
-}: {
-  trigger: string;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.classList.remove("animate-fadeIn");
-    void el.offsetWidth;
-    el.classList.add("animate-fadeIn");
-  }, [trigger]);
-
-  return (
-    <div ref={ref} className="animate-fadeIn">
-      {children}
-    </div>
-  );
-}
 
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -58,7 +30,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   } = useDashboardNav();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0B0B0D] text-zinc-100 font-sans antialiased selection:bg-brand/30">
+    <div className="flex h-screen overflow-hidden bg-[#090A0F] text-zinc-100 font-sans antialiased selection:bg-brand/30">
       <aside className="hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-white/[0.08] bg-[#0E0E12] md:flex">
         <DashboardSidebar />
       </aside>
@@ -89,7 +61,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         </aside>
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#090A0F]">
         <MobileAppHeader
           onOpenMenu={() => setMobileNavOpen(true)}
           onSignIn={() => requireAuth()}
@@ -99,7 +71,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           initials={userInitials}
         />
 
-        <main className="relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#0B0B0D] text-zinc-100">
+        <main className="relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#090A0F] text-zinc-100">
           <div className="mx-auto min-h-screen w-full max-w-6xl p-8">
             {!isBusinessAccount ? <DossierClaimBanner /> : null}
             {!isGuest &&
@@ -110,7 +82,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
                 <GetVerifiedBanner userId={userId} />
               </div>
             ) : null}
-            <ContentFade trigger={pathname}>{children}</ContentFade>
+            <div key={pathname}>{children}</div>
           </div>
         </main>
       </div>

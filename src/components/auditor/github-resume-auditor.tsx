@@ -37,7 +37,11 @@ import Toast from "@/components/Toast";
 import Button from "@/components/ui/Button";
 import FormLabel from "@/components/ui/FormLabel";
 import PageHeader from "@/components/ui/PageHeader";
-import { canBypassProvixTokenChallenge } from "@/lib/provix-token";
+import {
+  canBypassProvixTokenChallenge,
+  canonicalGitHubRepoUrl,
+  hasPersistedProvixTokenVerification,
+} from "@/lib/provix-token";
 import { createClient } from "@/utils/supabase/client";
 import {
   hasUsableExternalProjects,
@@ -47,6 +51,7 @@ import {
   getGitHubUrlValidationMessage,
   hasUsableGitHubAuditTarget,
   isGitHubPlaceholderInput,
+  parseGitHubRepoPath,
   parseGitHubUrl,
 } from "@/lib/validate-github-url";
 import {
@@ -122,7 +127,29 @@ export default function GitHubResumeAuditor({
     setRepoAccessStatus(null);
     setAccessUsername(null);
     setIsTokenVerified(false);
-  }, [githubUrl]);
+
+    const parsed = parseGitHubRepoPath(githubUrl);
+    if (!sessionUser?.id || !parsed) {
+      return;
+    }
+
+    let cancelled = false;
+    const supabase = createClient();
+    const repoUrl = canonicalGitHubRepoUrl(parsed.owner, parsed.repo);
+    void hasPersistedProvixTokenVerification(
+      supabase,
+      sessionUser.id,
+      repoUrl
+    ).then((alreadyVerified) => {
+      if (!cancelled && alreadyVerified) {
+        setIsTokenVerified(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [githubUrl, sessionUser?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -550,7 +577,7 @@ export default function GitHubResumeAuditor({
 
       <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
         <div className={`${GLASS_CARD} min-w-0 space-y-4`}>
-          {needsTokenChallenge ? (
+          {needsTokenChallenge && !isTokenVerified ? (
             <RepoOwnershipVerifier
               repoUrl={ownershipRepoUrl}
               userId={sessionUser?.id}

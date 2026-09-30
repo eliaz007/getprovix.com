@@ -228,12 +228,11 @@ export async function persistVerifiedRepo(input: {
     };
   }
 
-  const { data: existing, error: lookupError } = await admin
+  const normalizedRepoUrl = input.repoUrl.trim().toLowerCase();
+  const { data: existingRows, error: lookupError } = await admin
     .from("repo_verifications")
-    .select("id, is_verified")
-    .eq("user_id", input.userId)
-    .eq("repo_url", input.repoUrl)
-    .maybeSingle();
+    .select("id, is_verified, repo_url")
+    .eq("user_id", input.userId);
 
   if (lookupError) {
     if (isSupabaseSchemaError(lookupError)) {
@@ -249,11 +248,18 @@ export async function persistVerifiedRepo(input: {
     };
   }
 
+  const existing = (existingRows ?? []).find(
+    (row) =>
+      typeof row.repo_url === "string" &&
+      row.repo_url.trim().toLowerCase() === normalizedRepoUrl
+  );
+
   if (existing?.id) {
     const { error: updateError } = await admin
       .from("repo_verifications")
       .update({
         token: input.token,
+        repo_url: normalizedRepoUrl,
         is_verified: true,
       })
       .eq("id", existing.id)
@@ -278,7 +284,7 @@ export async function persistVerifiedRepo(input: {
 
   const { error: insertError } = await admin.from("repo_verifications").insert({
     user_id: input.userId,
-    repo_url: input.repoUrl,
+    repo_url: normalizedRepoUrl,
     token: input.token,
     is_verified: true,
   });
@@ -296,10 +302,11 @@ export async function persistVerifiedRepo(input: {
       .from("repo_verifications")
       .update({
         token: input.token,
+        repo_url: normalizedRepoUrl,
         is_verified: true,
       })
       .eq("user_id", input.userId)
-      .eq("repo_url", input.repoUrl);
+      .ilike("repo_url", normalizedRepoUrl);
 
     if (conflictUpdateError) {
       console.error("[provix-token] conflict update failed:", conflictUpdateError.message);

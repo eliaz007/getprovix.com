@@ -6,6 +6,7 @@ import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
   buildProvixVerificationToken,
+  canonicalGitHubRepoUrl,
   hasPersistedProvixTokenVerification,
   PROVIX_FILENAME,
 } from "@/lib/provix-token";
@@ -46,7 +47,7 @@ export default function RepoOwnershipVerifier({
   const parsed = parseGitHubRepoPath(repoUrl);
   const canonicalRepoUrl =
     parsed != null
-      ? `https://github.com/${parsed.owner}/${parsed.repo}`
+      ? canonicalGitHubRepoUrl(parsed.owner, parsed.repo)
       : "";
 
   const [token, setToken] = useState(() =>

@@ -596,61 +596,55 @@ export default function PublicProductionAudit({
         <div
           className={
             showSignupCard
-              ? "grid grid-cols-1 gap-4 text-left lg:grid lg:grid-cols-12 lg:items-start lg:gap-6"
+              ? "grid grid-cols-1 gap-4 text-left lg:grid-cols-12 lg:items-start lg:gap-6"
               : "space-y-4 text-left"
           }
         >
-          <div
+          <section
             className={
-              showSignupCard ? "space-y-4 lg:col-span-7" : "space-y-4"
+              showSignupCard
+                ? "rounded-2xl border border-neutral-800/80 bg-[#0d0f17] p-5 lg:col-span-7"
+                : "rounded-2xl border border-neutral-800/80 bg-[#0d0f17] p-5"
             }
           >
-            <section className="rounded-2xl border border-neutral-800/80 bg-[#0d0f17] p-5">
-              <div className="flex items-center justify-between gap-3">
-                <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-                  Production Audit
-                </p>
-                <ProductionScoreVerifiedBadge score={score} />
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                Production Audit
+              </p>
+              <ProductionScoreVerifiedBadge score={score} />
+            </div>
 
-              <div className="mt-3 flex flex-wrap items-end gap-3">
-                <p className="font-mono text-3xl font-extrabold tabular-nums text-textMain">
-                  {score}
-                  <span className="ml-1 text-xs font-semibold text-textMuted">
-                    /100
-                  </span>
-                </p>
-                <div className="min-w-0 pb-0.5 text-xs text-textMuted">
-                  {repoLabel ? (
-                    <a
-                      href={breakdown.audited_repo_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-medium text-textMain hover:underline"
-                    >
-                      {repoLabel}
-                    </a>
-                  ) : null}
-                </div>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <p className="font-mono text-3xl font-extrabold tabular-nums text-textMain">
+                {score}
+                <span className="ml-1 text-xs font-semibold text-textMuted">
+                  /100
+                </span>
+              </p>
+              <div className="min-w-0 pb-0.5 text-xs text-textMuted">
+                {repoLabel ? (
+                  <a
+                    href={breakdown.audited_repo_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-textMain hover:underline"
+                  >
+                    {repoLabel}
+                  </a>
+                ) : null}
               </div>
+            </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <SubMetric label="CI/CD" score={breakdown.ci_cd_score} />
-                <SubMetric label="Tests" score={breakdown.test_density} />
-                <SubMetric label="Errors" score={breakdown.error_handling} />
-              </div>
-            </section>
-
-            <FindingsSection
-              strengths={strengths}
-              gaps={visibleRedFlags}
-              fixes={recommendations}
-            />
-          </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <SubMetric label="CI/CD" score={breakdown.ci_cd_score} />
+              <SubMetric label="Tests" score={breakdown.test_density} />
+              <SubMetric label="Errors" score={breakdown.error_handling} />
+            </div>
+          </section>
 
           {showSignupCard ? (
-            <div className="lg:col-span-5 lg:sticky lg:top-6 lg:self-start">
+            <div className="lg:col-span-5 lg:row-span-2 lg:sticky lg:top-6 lg:self-start">
               <ScorecardPublicationCallout
                 claim={claim}
                 onRequireAuth={(nextClaim) => {
@@ -665,6 +659,14 @@ export default function PublicProductionAudit({
               />
             </div>
           ) : null}
+
+          <div className={showSignupCard ? "lg:col-span-7" : undefined}>
+            <FindingsSection
+              strengths={strengths}
+              gaps={visibleRedFlags}
+              fixes={recommendations}
+            />
+          </div>
         </div>
       ) : null}
 

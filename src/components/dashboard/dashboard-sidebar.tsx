@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Briefcase,
   Building2,
@@ -303,17 +303,7 @@ function DashboardTabLink({
 
   let control: ReactNode;
 
-  if (tab === "opportunities") {
-    control = (
-      <Link
-        href={href}
-        onClick={() => setMobileNavOpen(false)}
-        className={navItemClass(isActive)}
-      >
-        {body}
-      </Link>
-    );
-  } else if (isGuest) {
+  if (isGuest && tab !== "opportunities") {
     control = (
       <button
         type="button"
@@ -326,29 +316,14 @@ function DashboardTabLink({
         {body}
       </button>
     );
-  } else if (tab === "my_profile") {
+  } else {
     control = (
       <Link
         href={href}
+        prefetch
         onClick={selectTab}
         className={navItemClass(isActive)}
       >
-        {body}
-      </Link>
-    );
-  } else if (isDashboardRootPath(pathname)) {
-    control = (
-      <button
-        type="button"
-        onClick={selectTab}
-        className={navItemClass(isActive)}
-      >
-        {body}
-      </button>
-    );
-  } else {
-    control = (
-      <Link href={href} onClick={selectTab} className={navItemClass(isActive)}>
         {body}
       </Link>
     );
@@ -391,6 +366,7 @@ function ProtectedNavLink({
   ) : (
     <Link
       href={href}
+      prefetch
       onClick={() => setMobileNavOpen(false)}
       className={navItemClass(isActive)}
     >
@@ -412,6 +388,7 @@ function SidebarBrand() {
   return (
     <Link
       href="/"
+      prefetch
       className="mb-6 flex items-center gap-2.5 px-3 py-1.5 transition-opacity hover:opacity-90"
     >
       <ProvixLogo className="h-6 w-6" showText={false} />
@@ -512,7 +489,6 @@ function SidebarAvatar({
 
 function SidebarUserFooter() {
   const pathname = usePathname();
-  const router = useRouter();
   const {
     isGuest,
     authLoading,
@@ -540,10 +516,11 @@ function SidebarUserFooter() {
     setProfileStudioSection("settings");
     setActiveTab("my_profile");
     setMobileNavOpen(false);
-    if (!isDashboardRootPath(pathname) && !isDashboardProfilePath(pathname)) {
-      router.push(dashboardTabHref("my_profile"));
-    }
   };
+
+  const settingsHref = dashboardTabHref("my_profile");
+  const needsSettingsNavigation =
+    !isDashboardRootPath(pathname) && !isDashboardProfilePath(pathname);
 
   if (isGuest && !authLoading) {
     return (
@@ -630,14 +607,26 @@ function SidebarUserFooter() {
             </span>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={openSettings}
-          aria-label="Account settings"
-          className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-[#1A1A1E] hover:text-zinc-200"
-        >
-          <Settings className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
-        </button>
+        {needsSettingsNavigation ? (
+          <Link
+            href={settingsHref}
+            prefetch
+            onClick={openSettings}
+            aria-label="Account settings"
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-[#1A1A1E] hover:text-zinc-200"
+          >
+            <Settings className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={openSettings}
+            aria-label="Account settings"
+            className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-[#1A1A1E] hover:text-zinc-200"
+          >
+            <Settings className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>
   );

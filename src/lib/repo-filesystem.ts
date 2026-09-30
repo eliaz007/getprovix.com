@@ -37,7 +37,7 @@ export type RepoFilesystemEvidence = {
   source_file_count: number;
   unit_test_file_count: number;
   has_e2e_tools: boolean;
-  /** *.ts/*.tsx/*.js/*.jsx source files, excluding tests and *.d.ts. */
+  /** *.ts/*.tsx/*.js/*.jsx core app/library source, excluding tests, *.d.ts, and demo/sample/docs trees. */
   executable_source_count: number;
   ci_depth: CiPipelineDepth;
   unhandled_async_count: number;
@@ -119,6 +119,10 @@ const MAX_SAMPLE_PATHS = 20;
 
 const NOISE_PATH =
   /(^|\/)(node_modules|dist|build|out|\.next|coverage|vendor|\.git|__pycache__|\.venv|venv)(\/|$)/i;
+
+/** Demo, sample, tutorial, and docs trees are not production application/library source. */
+const DEMO_OR_SAMPLE_PATH =
+  /(^|\/)(examples?|demos?|tutorials?|samples|docs)(\/|$)/i;
 
 const TEST_DIR =
   /(^|\/)(__tests?__|tests?|spec|e2e|cypress|testing|playwright)(\/|$)/i;
@@ -239,8 +243,12 @@ export function emptyRepoFilesystemEvidence(): RepoFilesystemEvidence {
   };
 }
 
+export function isDemoOrSamplePath(path: string): boolean {
+  return DEMO_OR_SAMPLE_PATH.test(path);
+}
+
 export function isNoisePath(path: string): boolean {
-  return NOISE_PATH.test(path);
+  return NOISE_PATH.test(path) || isDemoOrSamplePath(path);
 }
 
 export function isTestConfigPath(path: string): boolean {
@@ -258,7 +266,7 @@ const UNIT_TEST_FILE =
 
 const EXECUTABLE_CODE_FILE = /\.(tsx|ts|jsx|js|mts|cts|mjs|cjs)$/i;
 
-/** App/library source that can be executed. Excludes declarations, docs, and assets. */
+/** App/library source that can be executed. Excludes declarations, demos/samples/docs, and assets. */
 export function isExecutableCodeFile(path: string): boolean {
   if (isNoisePath(path) || isTestPath(path) || isTestConfigPath(path)) {
     return false;

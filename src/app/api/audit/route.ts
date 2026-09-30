@@ -142,7 +142,7 @@ RULES FOR YOUR AUDIT:
 8. FOUR-PILLAR WEIGHTED SCORE (proportional grades, no binary 0/100 drops):
    - Overall score = Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Each pillar is 0-100.
    - Architecture (35%): structure, type safety, modularity.
-   - Testing (25%): 0 only when no *.test.* / *.spec.* files exist. Token coverage (test/source ratio < 0.10) caps at 35. Ratio 0.10–0.30 maps to 65–75. Ratio > 0.30 with Playwright/Cypress reaches 85–100.
+   - Testing (25%): 0 only when no *.test.* / *.spec.* files exist among core application/library paths. The test/source ratio denominator counts only core executable source (*.ts/*.tsx/*.js/*.jsx), excluding examples/, example/, demo/, demos/, tutorials/, tutorial/, samples/, and docs/. Token coverage (test/source ratio < 0.10) caps at 35. Ratio 0.10–0.30 maps to 65–75. Ratio > 0.30 with Playwright/Cypress reaches 85–100.
    - DevOps / CI (20%): 0 only when no workflow files exist. Lint/build-only workflows score 50. Workflows that execute tests on PR score 80. Multi-stage deploy/preview pipelines score 95–100.
    - Resilience (20%): start at 100. Web apps missing root error.tsx / ErrorBoundary lose 35. Each unhandled async/await or fetch without try/catch loses 15, max −50. Floor at 0. A single unhandled error is 85, never 0.
    - A pillar is 0 only when the capability is genuinely absent. Superficial testing or resilience must be capped, not zeroed. Never cap the total score at 60 or 50. Never invent a missing-test or missing-CI failure because the repo is a monorepo or the runner is not Jest.

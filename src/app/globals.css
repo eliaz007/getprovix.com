@@ -11,7 +11,7 @@
 
 /* Theme colors must be concrete values — var(--background) bridges can circularize. */
 @theme inline {
-  --color-background: #000000;
+  --color-background: #090a0f;
   --color-surface: #0a0a0a;
   --color-panel: #141414;
   --color-border: rgba(255, 255, 255, 0.08);
@@ -39,10 +39,11 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    background: #090a0f;
   }
 
   body {
-    background: #000000;
+    background: #090a0f;
     color: #ededed;
     font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
     line-height: 1.6;

@@ -288,7 +288,8 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
 }
 
 /**
- * Testing (0-100). Ratios use executable *.ts/*.tsx/*.js/*.jsx files only.
+ * Testing (0-100). Ratios use core executable *.ts/*.tsx/*.js/*.jsx files only.
+ * Demo, sample, tutorial, and docs trees are excluded from the source denominator.
  * Fewer than 10% of those files tested stays under 20.
  * More than 50 source files with ratio under 0.08 caps at 15.
  * 50+ test files plus Playwright/Cypress scores 85–95.

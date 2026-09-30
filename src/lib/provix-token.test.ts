@@ -23,6 +23,13 @@ describe("provix token helpers", () => {
     ).toBe("provix-verify-a1b2c3d4");
   });
 
+  it("canonicalizes GitHub repo URLs in lowercase", async () => {
+    const { canonicalGitHubRepoUrl } = await import("./provix-token");
+    expect(canonicalGitHubRepoUrl("OctoCat", "Hello-World")).toBe(
+      "https://github.com/octocat/hello-world"
+    );
+  });
+
   it("bypasses the token challenge for GitHub OAuth or a verified profile", () => {
     expect(
       canBypassProvixTokenChallenge(

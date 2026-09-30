@@ -29,7 +29,7 @@ const geistMono = Geist_Mono({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#000000",
+  themeColor: "#090A0F",
   width: "device-width",
   initialScale: 1,
 };
@@ -165,15 +165,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full bg-[#090A0F] antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">
+      <body className="flex min-h-full flex-col bg-[#090A0F] font-sans text-[#ededed]">
         {/* Inline critical colors so the first paint is not a white flash while
             the shared ~100KB Tailwind sheet downloads on slow mobile. */}
         <style
           dangerouslySetInnerHTML={{
             __html:
-              "html,body{background:#08090d;color:#ededed}body{margin:0}",
+              "html,body{background:#090A0F;color:#ededed}body{margin:0}",
           }}
         />
         <script

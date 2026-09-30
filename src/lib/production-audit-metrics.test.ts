@@ -170,6 +170,34 @@ describe("four-pillar production audit", () => {
     expect(scoreTesting(thinLarge)).toBeLessThanOrEqual(15);
   });
 
+  it("excludes demo, sample, and docs trees from the test-to-source denominator", () => {
+    const bloated = classifyRepoFilesystem(
+      [
+        ...LIBRARY_PATHS,
+        "examples/basic/index.ts",
+        "examples/basic/widget.tsx",
+        "examples/basic/widget.test.ts",
+        "demo/playground.ts",
+        "demos/showcase/App.tsx",
+        "tutorial/getting-started.ts",
+        "tutorials/advanced/main.ts",
+        "samples/hello.ts",
+        "docs/guide.ts",
+        "example/legacy.ts",
+      ],
+      { inspected: true }
+    );
+    const coreOnly = classifyRepoFilesystem(LIBRARY_PATHS, { inspected: true });
+
+    expect(bloated.executable_source_count).toBe(
+      coreOnly.executable_source_count
+    );
+    expect(bloated.source_file_count).toBe(coreOnly.source_file_count);
+    expect(bloated.unit_test_file_count).toBe(coreOnly.unit_test_file_count);
+    expect(bloated.test_paths).toEqual(coreOnly.test_paths);
+    expect(scoreTesting(bloated)).toBe(scoreTesting(coreOnly));
+  });
+
   it("grades devops by pipeline depth instead of a binary drop", () => {
     const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
       inspected: true,

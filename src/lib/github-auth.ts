@@ -28,11 +28,29 @@ export async function handleGitHubLinkIdentity(nextPath = "/dashboard") {
       ? nextPath
       : "/dashboard";
 
-  return supabase.auth.linkIdentity({
+  // Requires Authentication → Providers / Auth settings → "Allow manual linking"
+  // in the Supabase Dashboard. Without it, GoTrue returns "Manual linking is disabled".
+  const result = await supabase.auth.linkIdentity({
     provider: "github",
     options: {
       redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(destination)}`,
       scopes: "read:user user:email",
     },
   });
+
+  if (
+    result.error &&
+    /manual linking is disabled/i.test(result.error.message)
+  ) {
+    return {
+      ...result,
+      error: {
+        ...result.error,
+        message:
+          "GitHub account linking is turned off for this project. Enable “Allow manual linking” in the Supabase Dashboard (Authentication settings), then try again.",
+      },
+    };
+  }
+
+  return result;
 }
