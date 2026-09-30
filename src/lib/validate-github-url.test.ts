@@ -5,6 +5,7 @@ import {
   normalizeGitHubAuditTarget,
   normalizeGitHubRepoSlug,
   parseGitHubRepoPath,
+  repoNamespaceMatchesGitHubUsername,
 } from "./validate-github-url";
 
 describe("strict GitHub repo slug validation", () => {
@@ -35,6 +36,22 @@ describe("strict GitHub repo slug validation", () => {
     expect(normalizeGitHubAuditTarget("github.com/owner/repo/")).toBe(
       "https://github.com/owner/repo"
     );
+  });
+
+  it("matches the repository namespace to a linked GitHub username", () => {
+    expect(
+      repoNamespaceMatchesGitHubUsername(
+        "https://github.com/Acme/widgets",
+        "acme"
+      )
+    ).toBe(true);
+    expect(repoNamespaceMatchesGitHubUsername("acme/widgets", "@ACME")).toBe(
+      true
+    );
+    expect(
+      repoNamespaceMatchesGitHubUsername("other/widgets", "acme")
+    ).toBe(false);
+    expect(repoNamespaceMatchesGitHubUsername("acme/widgets", "")).toBe(false);
   });
 
   it("detects username-only profile slugs", () => {

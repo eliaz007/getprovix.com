@@ -91,6 +91,25 @@ export function normalizeGitHubRepoSlug(input: string): string {
     .replace(/\/+$/g, "");
 }
 
+/** Case-insensitive match of a repo's owner segment to a linked GitHub login. */
+export function repoNamespaceMatchesGitHubUsername(
+  repo: string | null | undefined,
+  username: string | null | undefined
+): boolean {
+  const login = (username ?? "").trim().replace(/^@/, "").toLowerCase();
+  if (!login) {
+    return false;
+  }
+
+  const namespace = normalizeGitHubRepoSlug(repo ?? "")
+    .split("/")
+    .filter(Boolean)[0]
+    ?.trim()
+    .toLowerCase();
+
+  return Boolean(namespace) && namespace === login;
+}
+
 export function parseGitHubRepoPath(
   input: string
 ): { owner: string; repo: string } | null {

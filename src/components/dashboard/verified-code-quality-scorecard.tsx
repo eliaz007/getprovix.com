@@ -19,6 +19,7 @@ import {
   type ProductionAuditHistoryEntry,
   type ProductionAuditRecord,
 } from "@/lib/production-audit";
+import { repoNamespaceMatchesGitHubUsername } from "@/lib/validate-github-url";
 
 const SIGNED_IN_AUDITOR_PATH = "/dashboard/auditor";
 const PUBLIC_AUDITOR_PATH = "/audits";
@@ -50,9 +51,16 @@ async function persistOwnScoreVisibility(nextVisible: boolean): Promise<void> {
 
 function useEmployerScoreVisibility(
   record: ProductionAuditRecord | null,
-  onVisibilityChange?: (visible: boolean) => void
+  onVisibilityChange?: (visible: boolean) => void,
+  linkedGitHubUsername?: string | null
 ) {
   const isVerified = isVerifiedDossier(record);
+  const ownershipBadgeVerified =
+    isVerified ||
+    repoNamespaceMatchesGitHubUsername(
+      record?.breakdown.audited_repo_url,
+      linkedGitHubUsername
+    );
   const hasScore = Boolean(
     record &&
       (record.breakdown.audited_repo_url || record.productionScore > 0)
@@ -103,6 +111,7 @@ function useEmployerScoreVisibility(
   return {
     hasScore,
     isVerified,
+    ownershipBadgeVerified,
     score,
     canPublish,
     visible,
@@ -166,12 +175,27 @@ function OwnershipUnverifiedBadge() {
 export function AuditStatusBanner({
   record,
   onVisibilityChange,
+  linkedGitHubUsername,
 }: {
   record: ProductionAuditRecord | null;
   onVisibilityChange?: (visible: boolean) => void;
+  linkedGitHubUsername?: string | null;
 }) {
-  const { hasScore, isVerified, score, canPublish, visible, saving, error, toggleVisibility } =
-    useEmployerScoreVisibility(record, onVisibilityChange);
+  const {
+    hasScore,
+    isVerified,
+    ownershipBadgeVerified,
+    score,
+    canPublish,
+    visible,
+    saving,
+    error,
+    toggleVisibility,
+  } = useEmployerScoreVisibility(
+    record,
+    onVisibilityChange,
+    linkedGitHubUsername
+  );
 
   return (
     <div className="rounded-xl border border-border bg-panel px-3 py-2">
@@ -183,7 +207,7 @@ export function AuditStatusBanner({
               /100
             </span>
           </p>
-          {isVerified ? (
+          {ownershipBadgeVerified ? (
             <ProductionScoreVerifiedBadge score={score} />
           ) : hasScore ? (
             <OwnershipUnverifiedBadge />
@@ -201,7 +225,7 @@ export function AuditStatusBanner({
           </div>
         ) : null}
       </div>
-      {hasScore && !isVerified ? (
+      {hasScore && !ownershipBadgeVerified ? (
         <p className="mt-1 text-sm text-zinc-400">{OWNERSHIP_UNVERIFIED_MESSAGE}</p>
       ) : null}
       {error ? (
@@ -274,10 +298,12 @@ function AuditHistoryList({
 export default function VerifiedCodeQualityScorecard({
   record,
   onVisibilityChange,
+  linkedGitHubUsername,
   compact = true,
 }: {
   record: ProductionAuditRecord | null;
   onVisibilityChange?: (visible: boolean) => void;
+  linkedGitHubUsername?: string | null;
   compact?: boolean;
 }) {
   const router = useRouter();
@@ -286,8 +312,21 @@ export default function VerifiedCodeQualityScorecard({
     pathname === SIGNED_IN_AUDITOR_PATH ||
     pathname === PUBLIC_AUDITOR_PATH ||
     pathname.startsWith(`${SIGNED_IN_AUDITOR_PATH}/`);
-  const { hasScore, isVerified, score, canPublish, visible, saving, error, toggleVisibility } =
-    useEmployerScoreVisibility(record, onVisibilityChange);
+  const {
+    hasScore,
+    isVerified,
+    ownershipBadgeVerified,
+    score,
+    canPublish,
+    visible,
+    saving,
+    error,
+    toggleVisibility,
+  } = useEmployerScoreVisibility(
+    record,
+    onVisibilityChange,
+    linkedGitHubUsername
+  );
   const repo = record?.breakdown.audited_repo_url
     ? formatAuditedRepoLabel(record.breakdown.audited_repo_url)
     : "";
@@ -401,7 +440,7 @@ export default function VerifiedCodeQualityScorecard({
               /100
             </span>
           </p>
-          {isVerified ? (
+          {ownershipBadgeVerified ? (
             <ProductionScoreVerifiedBadge score={score} />
           ) : hasScore ? (
             <OwnershipUnverifiedBadge />
@@ -426,7 +465,7 @@ export default function VerifiedCodeQualityScorecard({
           </label>
         ) : null}
       </div>
-      {hasScore && !isVerified ? (
+      {hasScore && !ownershipBadgeVerified ? (
         <p className="mt-1.5 text-sm text-zinc-400">
           {OWNERSHIP_UNVERIFIED_MESSAGE}
         </p>

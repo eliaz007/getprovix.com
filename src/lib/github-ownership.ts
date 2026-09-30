@@ -1,5 +1,9 @@
 import { githubUsernameFromUser } from "@/lib/github-identity";
-import { parseGitHubUrl } from "@/lib/validate-github-url";
+import {
+  parseGitHubRepoPath,
+  parseGitHubUrl,
+  repoNamespaceMatchesGitHubUsername,
+} from "@/lib/validate-github-url";
 import { readJsonResponse } from "@/lib/read-json-response";
 import type { User } from "@supabase/supabase-js";
 
@@ -128,6 +132,31 @@ function emailMatchesGitHubAccount(email: string, username: string): boolean {
   );
 }
 
+export function githubCommitMatchesLinkedUsername(
+  commit: unknown,
+  username: string
+): boolean {
+  if (!commit || typeof commit !== "object") {
+    return false;
+  }
+
+  const login = username.trim().toLowerCase();
+  if (!login) {
+    return false;
+  }
+
+  const record = commit as {
+    author?: { login?: string | null } | null;
+    commit?: { author?: { email?: string | null } | null } | null;
+  };
+  const authorLogin = record.author?.login;
+  if (typeof authorLogin === "string" && authorLogin.trim()) {
+    return authorLogin.trim().toLowerCase() === login;
+  }
+
+  return emailMatchesGitHubAccount(record.commit?.author?.email ?? "", username);
+}
+
 async function commitsMatchGitHubAccount(
   owner: string,
   repo: string,
@@ -151,19 +180,9 @@ async function commitsMatchGitHubAccount(
     return false;
   }
 
-  const login = username.trim().toLowerCase();
-  return commits.some((commit) => {
-    if (!commit || typeof commit !== "object") {
-      return false;
-    }
-    const record = commit as {
-      author?: { login?: string | null } | null;
-      commit?: { author?: { email?: string | null } | null } | null;
-    };
-    const authorLogin = record.author?.login?.trim().toLowerCase() ?? "";
-    const email = record.commit?.author?.email?.trim() ?? "";
-    return authorLogin === login || emailMatchesGitHubAccount(email, username);
-  });
+  return commits.some((commit) =>
+    githubCommitMatchesLinkedUsername(commit, username)
+  );
 }
 
 export async function userHasAuthoredCommits(
@@ -196,15 +215,16 @@ export async function verifyGitHubRepoOwnership(input: {
   repoUrl: string;
 }): Promise<RepoOwnershipVerification> {
   const username = githubUsernameFromUser(input.user);
-  const parsed = parseGitHubUrl(input.repoUrl);
-  const owner = parsed?.owner ?? null;
-  const repo = parsed?.repo ?? null;
+  const parsedPath = parseGitHubRepoPath(input.repoUrl);
+  const parsedUrl = parseGitHubUrl(input.repoUrl);
+  const owner = parsedPath?.owner ?? parsedUrl?.owner ?? null;
+  const repo = parsedPath?.repo ?? parsedUrl?.repo ?? null;
 
   if (!username || !owner || !repo) {
     return unverifiedOwnership({ username, owner, repo });
   }
 
-  if (username.toLowerCase() === owner.toLowerCase()) {
+  if (repoNamespaceMatchesGitHubUsername(`${owner}/${repo}`, username)) {
     return {
       verified: true,
       method: "owner",

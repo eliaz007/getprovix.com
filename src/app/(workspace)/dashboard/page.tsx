@@ -125,6 +125,7 @@ import {
   getGitHubUrlValidationMessage,
   isValidGitHubUrl,
   normalizeGitHubUrl,
+  repoNamespaceMatchesGitHubUsername,
 } from "@/lib/validate-github-url";
 import { buildFallbackMatch, isCannedMatchScore, scoreTalentMatch, type MatchResult } from "@/lib/match-heuristic";
 import {
@@ -4010,6 +4011,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const githubVerified =
     dbProfile?.github_verified === true && Boolean(githubUsername);
   const ownershipVerified = dbProfile?.verification_status === "verified";
+  const ownershipBadgeVerified =
+    ownershipVerified ||
+    repoNamespaceMatchesGitHubUsername(
+      candidateProductionAudit?.breakdown.audited_repo_url,
+      githubUsername
+    );
   const canEnableTalentPool = canEnableTalentPoolVisibility({
     githubVerified,
     ownershipVerified,
@@ -5108,7 +5115,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             {githubVerified ? (
                               <p className="text-xs font-medium text-emerald-400">
                                 ✓ Linked: @{githubUsername || "github"}
-                                {ownershipVerified
+                                {ownershipBadgeVerified
                                   ? " · Ownership verified"
                                   : " · Ownership unverified"}
                               </p>
@@ -5174,6 +5181,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           <VerifiedCodeQualityScorecard
                             compact
                             record={candidateProductionAudit}
+                            linkedGitHubUsername={githubUsername}
                             onVisibilityChange={(nextVisible) => {
                               setDbProfile((prev) =>
                                 prev
