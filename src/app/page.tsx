@@ -28,8 +28,8 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="relative mx-auto flex max-w-6xl flex-col px-6 pb-20 pt-16 sm:pt-24 md:overflow-x-clip">
-        <section className="relative mx-auto max-w-4xl text-center">
+      <main className="relative mx-auto flex max-w-6xl flex-col px-6 pb-20 pt-16 sm:pt-24">
+        <section className="relative mx-auto max-w-4xl overflow-x-clip text-center">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute top-16 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full md:top-10 md:-z-10 md:h-[450px] md:w-[720px] md:blur-[140px]"

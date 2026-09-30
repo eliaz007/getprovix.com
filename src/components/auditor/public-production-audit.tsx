@@ -110,6 +110,44 @@ function FindingList({
   );
 }
 
+function FindingsSection({
+  strengths,
+  gaps,
+  fixes,
+}: {
+  strengths: string[];
+  gaps: string[];
+  fixes: string[];
+}) {
+  const groups = [
+    { title: "Verified strengths", items: strengths, tone: "pass" as const },
+    {
+      title: "Gaps and missing proof-of-work",
+      items: gaps,
+      tone: "warn" as const,
+    },
+    { title: "Actionable fixes", items: fixes, tone: "fix" as const },
+  ];
+
+  return (
+    <section className="rounded-2xl border border-neutral-800/80 bg-[#0d0f17] p-5">
+      <h3 className="text-sm font-bold tracking-tight text-textMain">
+        Findings
+      </h3>
+      <div className="mt-3 space-y-4">
+        {groups.map((group) => (
+          <FindingList
+            key={group.title}
+            title={group.title}
+            items={group.items}
+            tone={group.tone}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function PublicProductionAudit({
   initialRepoUrl = "",
   embedded = false,
@@ -408,6 +446,7 @@ export default function PublicProductionAudit({
       !inaccessibleRepo &&
       !ownershipUnverified
   );
+  const showSignupCard = isPublicTeaser && viewerSignedIn === false;
 
   useEffect(() => {
     onHasResultsChange?.(hasResults);
@@ -554,80 +593,77 @@ export default function PublicProductionAudit({
       breakdown &&
       !inaccessibleRepo &&
       !ownershipUnverified ? (
-        <div className="space-y-4 text-left">
-          <section className="rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-                Production Audit
-              </p>
-              <ProductionScoreVerifiedBadge score={score} />
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-              <p className="font-mono text-3xl font-extrabold tabular-nums text-textMain">
-                {score}
-                <span className="ml-1 text-xs font-semibold text-textMuted">
-                  /100
-                </span>
-              </p>
-              <div className="min-w-0 pb-0.5 text-xs text-textMuted">
-                {repoLabel ? (
-                  <a
-                    href={breakdown.audited_repo_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium text-textMain hover:underline"
-                  >
-                    {repoLabel}
-                  </a>
-                ) : null}
+        <div
+          className={
+            showSignupCard
+              ? "grid grid-cols-1 gap-4 text-left lg:grid lg:grid-cols-12 lg:items-start lg:gap-6"
+              : "space-y-4 text-left"
+          }
+        >
+          <div
+            className={
+              showSignupCard ? "space-y-4 lg:col-span-7" : "space-y-4"
+            }
+          >
+            <section className="rounded-2xl border border-neutral-800/80 bg-[#0d0f17] p-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                  Production Audit
+                </p>
+                <ProductionScoreVerifiedBadge score={score} />
               </div>
-            </div>
 
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <SubMetric label="CI/CD" score={breakdown.ci_cd_score} />
-              <SubMetric label="Tests" score={breakdown.test_density} />
-              <SubMetric label="Errors" score={breakdown.error_handling} />
-            </div>
-          </section>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <p className="font-mono text-3xl font-extrabold tabular-nums text-textMain">
+                  {score}
+                  <span className="ml-1 text-xs font-semibold text-textMuted">
+                    /100
+                  </span>
+                </p>
+                <div className="min-w-0 pb-0.5 text-xs text-textMuted">
+                  {repoLabel ? (
+                    <a
+                      href={breakdown.audited_repo_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-textMain hover:underline"
+                    >
+                      {repoLabel}
+                    </a>
+                  ) : null}
+                </div>
+              </div>
 
-          <section className="rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-4">
-            <h3 className="text-sm font-bold tracking-tight text-textMain">
-              Findings
-            </h3>
-            <div className="mt-3 space-y-4">
-              <FindingList
-                title="Verified strengths"
-                items={strengths}
-                tone="pass"
-              />
-              <FindingList
-                title="Gaps and missing proof-of-work"
-                items={visibleRedFlags}
-                tone="warn"
-              />
-              <FindingList
-                title="Actionable fixes"
-                items={recommendations}
-                tone="fix"
-              />
-            </div>
-          </section>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <SubMetric label="CI/CD" score={breakdown.ci_cd_score} />
+                <SubMetric label="Tests" score={breakdown.test_density} />
+                <SubMetric label="Errors" score={breakdown.error_handling} />
+              </div>
+            </section>
 
-          {isPublicTeaser && viewerSignedIn === false ? (
-            <ScorecardPublicationCallout
-              claim={claim}
-              onRequireAuth={(nextClaim) => {
-                cachePendingProductionAudit(nextClaim);
-                openAuthModal({
-                  description:
-                    "Sign in with GitHub to verify you authored this repository and publish your dossier.",
-                  nextPath: "/dashboard",
-                  intent: CLAIM_AUDIT_INTENT,
-                });
-              }}
+            <FindingsSection
+              strengths={strengths}
+              gaps={visibleRedFlags}
+              fixes={recommendations}
             />
+          </div>
+
+          {showSignupCard ? (
+            <div className="lg:col-span-5 lg:sticky lg:top-6 lg:self-start">
+              <ScorecardPublicationCallout
+                claim={claim}
+                onRequireAuth={(nextClaim) => {
+                  cachePendingProductionAudit(nextClaim);
+                  openAuthModal({
+                    description:
+                      "Sign in with GitHub to verify you authored this repository and publish your dossier.",
+                    nextPath: "/dashboard",
+                    intent: CLAIM_AUDIT_INTENT,
+                  });
+                }}
+              />
+            </div>
           ) : null}
         </div>
       ) : null}

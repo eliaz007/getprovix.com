@@ -3,12 +3,13 @@
 import { useState } from "react";
 import {
   BadgeCheck,
+  FileSearch,
   FolderGit2,
-  History,
-  ListChecks,
   Loader2,
   Lock,
   Radar,
+  Wrench,
+  type LucideIcon,
 } from "lucide-react";
 import DossierVerifiedCard from "@/components/auditor/dossier-verified-card";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
@@ -22,16 +23,19 @@ import { createClient } from "@/utils/supabase/client";
 
 const DIAGNOSTIC_BULLETS = [
   {
+    icon: FileSearch,
+    title: "In-Depth Code Diagnostics",
+    text: "Unlock file-by-file AST breakdowns of missing error handlers, untested edge cases, and CI pipeline failures.",
+  },
+  {
+    icon: Wrench,
+    title: "Automated Fix Blueprints",
+    text: "Get ready-to-copy GitHub Action workflows, unit test mocks, and schema configurations tailored to this exact repo.",
+  },
+  {
     icon: Lock,
-    text: "Zero public exposure: Completely hidden from employers until you meet the threshold.",
-  },
-  {
-    icon: History,
-    text: "Continuous re-scanning: Run a fresh audit anytime as you commit improvements.",
-  },
-  {
-    icon: ListChecks,
-    text: "Actionable remediation: Keep the specific CI, testing, and schema fixes saved to your dashboard.",
+    title: "100% Private Sandbox",
+    text: "Your score stays strictly private while you iterate. Re-scan on every commit with zero public paper trail until you cross 75.",
   },
 ] as const;
 
@@ -52,17 +56,25 @@ const VERIFIED_BULLETS = [
 
 function CalloutBullet({
   icon: Icon,
+  title,
   text,
 }: {
-  icon: typeof Lock;
+  icon: LucideIcon;
+  title?: string;
   text: string;
 }) {
   return (
-    <li className="flex items-start gap-3 text-sm leading-relaxed text-zinc-200">
+    <li className="flex items-start gap-3 text-sm leading-relaxed text-zinc-300">
       <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/10 bg-black/40 text-zinc-100">
         <Icon className="h-3.5 w-3.5" aria-hidden />
       </span>
-      <span>{text}</span>
+      <span>
+        {title ? (
+          <span className="font-semibold text-zinc-100">{title}</span>
+        ) : null}
+        {title ? " — " : null}
+        {text}
+      </span>
     </li>
   );
 }
@@ -147,22 +159,22 @@ export default function ScorecardPublicationCallout({
   }
 
   const title = canPublish
-    ? "You qualified for the Provix Talent Pool (75+)"
-    : "Keep this score private while you patch it";
+    ? "You qualified for a Verified Profile (75+)"
+    : "Patch this repo to 75+ to unlock founder discovery";
   const subtitle = canPublish
     ? "Showcase a codebase that meets verified production engineering standards."
-    : "Scores under 75 remain unlisted until you choose to make them visible.";
+    : "Keep your score private while you patch the codebase. Re-scan anytime to qualify for verified status.";
   const bullets = canPublish ? VERIFIED_BULLETS : DIAGNOSTIC_BULLETS;
   const buttonLabel = canPublish
     ? "Claim Repository & Profile →"
-    : "Save Private Audit & Create Profile →";
+    : "Save Private Audit & Start Patching →";
 
   return (
     <section
-      className={`relative overflow-hidden rounded-2xl border p-6 sm:p-8 ${
+      className={`relative h-full overflow-hidden rounded-2xl border p-5 sm:p-6 ${
         canPublish
           ? "border-emerald-400/30 bg-emerald-500/[0.07]"
-          : "border-white/10 bg-[#0d0f17]"
+          : "border-neutral-800/80 bg-[#0d0f17]"
       }`}
     >
       <div
@@ -181,12 +193,10 @@ export default function ScorecardPublicationCallout({
         >
           {canPublish ? (
             <BadgeCheck className="h-3.5 w-3.5" aria-hidden />
-          ) : (
-            <Lock className="h-3.5 w-3.5" aria-hidden />
-          )}
-          {canPublish ? "Talent pool" : "Private audit"}
+          ) : null}
+          {canPublish ? "Verified profile" : "Staging mode"}
         </p>
-        <h3 className="mt-4 text-2xl font-extrabold tracking-tight text-zinc-50 sm:text-3xl">
+        <h3 className="mt-4 text-xl font-extrabold tracking-tight text-zinc-50 sm:text-2xl">
           {title}
         </h3>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-300 sm:text-base">
@@ -195,8 +205,9 @@ export default function ScorecardPublicationCallout({
         <ul className="mt-5 space-y-3">
           {bullets.map((bullet) => (
             <CalloutBullet
-              key={bullet.text}
+              key={"title" in bullet ? bullet.title : bullet.text}
               icon={bullet.icon}
+              title={"title" in bullet ? bullet.title : undefined}
               text={bullet.text}
             />
           ))}
@@ -205,7 +216,7 @@ export default function ScorecardPublicationCallout({
           type="button"
           disabled={status === "saving"}
           onClick={() => void persistOrSignUp(canPublish)}
-          className={`mt-6 inline-flex w-full cursor-pointer items-center justify-center rounded-lg px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[20rem] ${
+          className={`mt-6 inline-flex w-full cursor-pointer items-center justify-center rounded-lg px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
             canPublish
               ? "bg-emerald-600 hover:bg-emerald-500"
               : "bg-brand hover:bg-brandHover"
