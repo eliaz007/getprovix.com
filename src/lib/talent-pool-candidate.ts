@@ -2,6 +2,7 @@ import {
   normalizeAuditChecks,
   type AuditCheck,
 } from "@/lib/audit-checks";
+import { parseExecutiveBrief, type ExecutiveBrief } from "@/lib/executive-brief";
 import type { GitHubAuditContext } from "@/lib/github-audit";
 import {
   resolveProductionAuditMetrics,
@@ -93,6 +94,7 @@ export type DeepScreeningResult = {
   github_audit?: GitHubAuditContext | null;
   scoreCap?: ScoreCapAudit | null;
   metrics?: ProductionAuditMetrics | null;
+  executiveBrief?: ExecutiveBrief | null;
 };
 
 export type ScreeningJobContext = {
@@ -245,6 +247,10 @@ export function coerceDeepScreeningResult(
       filesystem
     ),
     metrics,
+    executiveBrief:
+      parseExecutiveBrief(result.executiveBrief) ??
+      parseExecutiveBrief(result.github_audit?.executiveBrief) ??
+      null,
   };
 }
 

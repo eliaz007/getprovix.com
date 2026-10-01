@@ -1,4 +1,5 @@
 import type { AuditResult } from "@/app/api/audit/route";
+import { parseExecutiveBrief } from "@/lib/executive-brief";
 import { emptyScoreCapAudit } from "@/lib/repo-filesystem";
 import { createClient } from "@/utils/supabase/server";
 
@@ -67,6 +68,7 @@ export function parseSharedAuditPayload(
       raw.benchmark && isRecord(raw.benchmark)
         ? (raw.benchmark as AuditResult["benchmark"])
         : null,
+    executiveBrief: parseExecutiveBrief(raw.executiveBrief),
   };
 
   return {

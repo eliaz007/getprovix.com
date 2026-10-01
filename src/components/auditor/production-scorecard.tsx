@@ -1,9 +1,11 @@
 "use client";
 
 import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
+import type { ExecutiveBrief, RecommendedRoleBand } from "@/lib/executive-brief";
 import {
   type ProductionAuditMetrics,
   emptyProductionAuditMetrics,
+  weightedProductionScore,
 } from "@/lib/production-audit-metrics";
 import { formatCodebaseBenchmark, type CodebaseBenchmark } from "@/lib/codebase-benchmark";
 import { clampScore0to100 } from "@/lib/score-scale";
@@ -94,19 +96,118 @@ type ProductionScorecardProps = {
   compact?: boolean;
   /** Live rank against completed production audits. Hidden math stays off the compact card. */
   benchmark?: CodebaseBenchmark | null;
+  executiveBrief?: ExecutiveBrief | null;
+  /** Employer dossiers lead with the founder brief. Candidate audits lead with the peer review. */
+  audience?: "candidate" | "employer";
 };
+
+function roleBandClass(band: RecommendedRoleBand): string {
+  if (band === "Mid-Level") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  }
+  if (band === "Early-Stage Generalist") {
+    return "border-violet-500/30 bg-violet-500/10 text-violet-200";
+  }
+  if (band === "Intern / Junior") {
+    return "border-orange-500/30 bg-orange-500/10 text-orange-200";
+  }
+  return "border-rose-500/30 bg-rose-500/10 text-rose-200";
+}
+
+function EngineeringBriefCards({
+  brief,
+  audience,
+}: {
+  brief: ExecutiveBrief;
+  audience: "candidate" | "employer";
+}) {
+  const staffReview = (
+    <section className="rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-3 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+          Technical Peer Review
+        </p>
+        <span className="text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+          FOR CANDIDATES
+        </span>
+      </div>
+      <p className="mt-1 text-xs leading-snug text-zinc-500">
+        Actionable engineering feedback to improve code health.
+      </p>
+      <p className="mt-2 text-sm leading-relaxed text-zinc-200">
+        {brief.developerSummary}
+      </p>
+    </section>
+  );
+  const executiveBrief = (
+    <section
+      className={`rounded-lg border px-3 py-3 ${
+        audience === "employer"
+          ? "border-violet-500/30 bg-violet-500/10"
+          : "border-zinc-800/80 bg-zinc-950/70"
+      }`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            Founder Hiring Verdict
+          </p>
+          <span className="text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            FOR HIRING TEAMS
+          </span>
+        </div>
+        <span
+          className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${roleBandClass(
+            brief.recommendedRoleBand
+          )}`}
+        >
+          {brief.recommendedRoleBand}
+        </span>
+      </div>
+      <p className="mt-1 text-xs leading-snug text-zinc-500">
+        Production risk evaluation for founders and recruiters.
+      </p>
+      <p className="mt-2 text-sm leading-relaxed text-zinc-100">
+        {brief.employerSummary}
+      </p>
+    </section>
+  );
+
+  return (
+    <div className="mt-4 space-y-3">
+      {audience === "employer" ? (
+        <>
+          {executiveBrief}
+          {staffReview}
+        </>
+      ) : (
+        <>
+          {staffReview}
+          {executiveBrief}
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function ProductionScorecard({
   metrics,
   className = "",
   compact = true,
   benchmark = null,
+  executiveBrief = null,
+  audience = "candidate",
 }: ProductionScorecardProps) {
   const resolved = metrics ?? emptyProductionAuditMetrics();
   const productionScore = clampScore0to100(resolved.productionScore);
   const inspected = resolved.evidence.inspected;
-  const weightSummary = `Weighted ${Math.round(resolved.weights.architecture * 100)}% architecture · ${Math.round(resolved.weights.testing * 100)}% tests · ${Math.round(resolved.weights.devops * 100)}% DevOps · ${Math.round(resolved.weights.resilience * 100)}% resilience.`;
-
+  const upstreamPenalty = Math.max(0, resolved.upstreamDerivativePenalty ?? 0);
+  const weightedTotal = weightedProductionScore({
+    architecture: resolved.architecture,
+    testing: resolved.testing,
+    devops: resolved.devops,
+    resilience: resolved.resilience,
+  });
   if (compact) {
     return (
       <div
@@ -131,6 +232,15 @@ export default function ProductionScorecard({
               ? `Secondary codebase index · ${resolved.evidence.fileCount} paths`
               : "Run a GitHub audit to compute architecture, tests, CI, and resilience."}
           </p>
+          {upstreamPenalty > 0 ? (
+            <p className="mt-1 font-mono text-[11px] tabular-nums text-zinc-500">
+              Weighted total {weightedTotal}/100 − {upstreamPenalty} upstream fork
+              or template = {productionScore}/100
+            </p>
+          ) : null}
+          {executiveBrief ? (
+            <EngineeringBriefCards brief={executiveBrief} audience={audience} />
+          ) : null}
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -177,18 +287,19 @@ export default function ProductionScorecard({
           <p className="text-sm font-semibold text-zinc-100">
             {formatCodebaseBenchmark(benchmark)}
           </p>
-          <p className="mt-1 text-sm leading-relaxed text-zinc-400">
-            {inspected
-              ? `Secondary sub-index from ${resolved.evidence.fileCount} inspected path${
-                  resolved.evidence.fileCount === 1 ? "" : "s"
-                }${
-                  resolved.evidence.truncated ? " (truncated tree)" : ""
-                }. ${weightSummary}`
-              : "Repository file tree was not inspected, so production metrics stay at 0."}
-          </p>
+          {!inspected ? (
+            <p className="mt-1 text-sm leading-relaxed text-zinc-400">
+              Repository file tree was not inspected, so production metrics stay
+              at 0.
+            </p>
+          ) : null}
         </div>
         <ProductionScoreVerifiedBadge score={productionScore} />
       </div>
+
+      {executiveBrief ? (
+        <EngineeringBriefCards brief={executiveBrief} audience={audience} />
+      ) : null}
 
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {METRIC_ROWS.map((row) => {
@@ -225,8 +336,11 @@ export default function ProductionScorecard({
         })}
       </ul>
       <p className="font-mono text-[11px] tabular-nums text-zinc-500">
-        Weighted total {productionScore}/100 = round(architecture×35% + testing×25% +
+        Weighted total {weightedTotal}/100 = round(architecture×35% + testing×25% +
         DevOps×20% + resilience×20%)
+        {upstreamPenalty > 0
+          ? ` · Upstream fork or generated template −${upstreamPenalty} · Headline ${productionScore}/100`
+          : ""}
       </p>
     </div>
   );

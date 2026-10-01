@@ -22,6 +22,12 @@ export const UNVERIFIED_OWNERSHIP_BANNER_TITLE =
 export const UNVERIFIED_OWNERSHIP_BANNER_BODY =
   "We found this repository, but your authenticated GitHub profile does not have authored commits here. You can only audit projects you created or contributed to.";
 
+export const LOW_CONTRIBUTION_WARNING =
+  "Linked GitHub account has fewer than 3 commits and under 40% of recent history.";
+
+const MIN_AUTHORED_COMMITS = 3;
+const MIN_RECENT_AUTHOR_SHARE = 0.4;
+
 export type GitHubRepoProbe =
   | { status: "not_found"; owner: string; repo: string }
   | {
@@ -83,6 +89,7 @@ export type RepoOwnershipVerification = {
   owner: string | null;
   repo: string | null;
   isFork: boolean;
+  lowContributionWarning: boolean;
 };
 
 function githubHeaders(): HeadersInit {
@@ -116,6 +123,7 @@ export function unverifiedOwnership(
     owner: null,
     repo: null,
     isFork: false,
+    lowContributionWarning: false,
     ...overrides,
   };
 }
@@ -185,6 +193,96 @@ async function commitsMatchGitHubAccount(
   );
 }
 
+export function contributionIsLow(input: {
+  authoredDistinct: number;
+  recentCount: number;
+  recentAuthored: number;
+}): boolean {
+  const share =
+    input.recentCount > 0 ? input.recentAuthored / input.recentCount : 0;
+  return !(
+    input.authoredDistinct >= MIN_AUTHORED_COMMITS ||
+    share >= MIN_RECENT_AUTHOR_SHARE
+  );
+}
+
+function countDistinctCommits(commits: unknown[]): number {
+  const shas = new Set<string>();
+  for (const commit of commits) {
+    if (!commit || typeof commit !== "object") {
+      continue;
+    }
+    const sha = (commit as { sha?: unknown }).sha;
+    if (typeof sha === "string" && sha.trim()) {
+      shas.add(sha.trim().toLowerCase());
+    }
+  }
+  return shas.size > 0 ? shas.size : commits.length;
+}
+
+async function readCommitList(response: Response): Promise<unknown[] | null> {
+  if (!response.ok) {
+    return null;
+  }
+  try {
+    const body = await readJsonResponse(response);
+    return Array.isArray(body) ? body : null;
+  } catch (error) {
+    console.error("[github-ownership] commit list parse failed:", error);
+    return null;
+  }
+}
+
+/** At least 3 authored commits, or 40% of the latest 20. A failed read does not warn. */
+export async function assessContribution(
+  owner: string,
+  repo: string,
+  username: string,
+  branch?: string | null
+): Promise<{ lowContributionWarning: boolean }> {
+  const login = username.trim();
+  if (!login) {
+    return { lowContributionWarning: false };
+  }
+
+  const authoredParams = new URLSearchParams({
+    author: login,
+    per_page: "3",
+  });
+  const recentParams = new URLSearchParams({ per_page: "20" });
+  if (branch?.trim()) {
+    authoredParams.set("sha", branch.trim());
+    recentParams.set("sha", branch.trim());
+  }
+
+  const base = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits`;
+
+  try {
+    const [authoredResponse, recentResponse] = await Promise.all([
+      githubGet(`${base}?${authoredParams.toString()}`),
+      githubGet(`${base}?${recentParams.toString()}`),
+    ]);
+    const authored = await readCommitList(authoredResponse);
+    const recent = await readCommitList(recentResponse);
+    if (!authored || !recent) {
+      return { lowContributionWarning: false };
+    }
+
+    return {
+      lowContributionWarning: contributionIsLow({
+        authoredDistinct: countDistinctCommits(authored),
+        recentCount: recent.length,
+        recentAuthored: recent.filter((commit) =>
+          githubCommitMatchesLinkedUsername(commit, login)
+        ).length,
+      }),
+    };
+  } catch (error) {
+    console.error("[github-ownership] contribution check failed:", error);
+    return { lowContributionWarning: false };
+  }
+}
+
 export async function userHasAuthoredCommits(
   owner: string,
   repo: string,
@@ -225,6 +323,7 @@ export async function verifyGitHubRepoOwnership(input: {
   }
 
   if (repoNamespaceMatchesGitHubUsername(`${owner}/${repo}`, username)) {
+    const contribution = await assessContribution(owner, repo, username);
     return {
       verified: true,
       method: "owner",
@@ -232,6 +331,7 @@ export async function verifyGitHubRepoOwnership(input: {
       owner,
       repo,
       isFork: false,
+      lowContributionWarning: contribution.lowContributionWarning,
     };
   }
 
@@ -254,7 +354,15 @@ export async function verifyGitHubRepoOwnership(input: {
     console.error("[github-ownership] repo lookup failed:", error);
   }
 
+  let lowContributionWarning = false;
   try {
+    const contribution = await assessContribution(
+      owner,
+      repo,
+      username,
+      isFork ? defaultBranch : null
+    );
+    lowContributionWarning = contribution.lowContributionWarning;
     const authored = await userHasAuthoredCommits(
       owner,
       repo,
@@ -277,11 +385,25 @@ export async function verifyGitHubRepoOwnership(input: {
         owner,
         repo,
         isFork,
+        lowContributionWarning,
       };
     }
   } catch (error) {
     console.error("[github-ownership] commit authorship lookup failed:", error);
+    return unverifiedOwnership({
+      username,
+      owner,
+      repo,
+      isFork,
+      lowContributionWarning,
+    });
   }
 
-  return unverifiedOwnership({ username, owner, repo, isFork });
+  return unverifiedOwnership({
+    username,
+    owner,
+    repo,
+    isFork,
+    lowContributionWarning,
+  });
 }

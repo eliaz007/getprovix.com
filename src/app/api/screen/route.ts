@@ -22,6 +22,12 @@ import {
   isProfileUuid,
   resolvedProfileId,
 } from "@/lib/resolve-candidate-profile";
+import {
+  deterministicMetricsPayload,
+  finalizeExecutiveBrief,
+  parseExecutiveBrief,
+  type ExecutiveBrief,
+} from "@/lib/executive-brief";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   applyFilesystemScoreCap,
@@ -32,8 +38,11 @@ import {
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import {
+  applyUpstreamDerivativePenalty,
   computeProductionAuditMetrics,
   emptyProductionAuditMetrics,
+  UPSTREAM_DERIVATIVE_PENALTY,
+  UPSTREAM_DERIVATIVE_WARNING,
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
 import {
@@ -105,6 +114,7 @@ export type ScreenResult = {
   github_audit?: GitHubAuditContext | null;
   scoreCap: ScoreCapAudit;
   metrics: ProductionAuditMetrics;
+  executiveBrief: ExecutiveBrief | null;
 };
 
 const SYSTEM_PROMPT = `You are a rigorous Technical & Academic Auditor for Provix employer screening.
@@ -168,7 +178,12 @@ Return strict JSON only in this exact structure:
       "title": "API & Data Resiliency Check (Check 3)",
       "summary": "1-3 sentence paragraph"
     }
-  ]
+  ],
+  "executiveBrief": {
+    "employerSummary": "2-3 concise sentences on production risk and team fit for a founder",
+    "developerSummary": "2-3 direct sentences of peer review plus the highest-leverage architectural fix",
+    "recommendedRoleBand": "Intern / Junior | Mid-Level | Early-Stage Generalist | Needs Hardening"
+  }
 }
 
 Also generate an Employer Interview Cheat Sheet:
@@ -181,6 +196,10 @@ Rules:
 - checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown. Do not mention handle-vs-name mismatch.
 - artifact_analysis should match Check 1. technical_depth_summary remains a separate overall depth paragraph.
 - interview_questions: exactly 3 objects; categories should vary (e.g., Architecture / Process, Metric Verification, Technical Depth).
+- executiveBrief is required. Use deterministicMetrics as the only source for productionScore, is_upstream_derivative, architectureScore, testScore, devopsScore, and resilienceScore. Do not recompute those numbers.
+  - employerSummary: 2-3 concise sentences for a founder. Cover production risk and whether this person fits a small team. Mention the upstream-fork deduction when is_upstream_derivative is true.
+  - developerSummary: 2-3 direct sentences of objective peer review. Name the highest-leverage architectural fix.
+  - recommendedRoleBand: follow deterministicMetrics.roleBandRule. Mid-Level only when productionScore >= 75 and testScore >= 65 and resilienceScore >= 80. Early-Stage Generalist when productionScore >= 75 but tests or resilience miss that bar. Intern / Junior when productionScore < 75 and either testScore >= 65 or resilienceScore >= 80. Otherwise Needs Hardening.
 - Do not include extra keys or markdown fences.`;
 
 const SCREEN_CHECK_SCHEMA = {
@@ -235,6 +254,31 @@ const SCREEN_RESPONSE_SCHEMA = {
         "Exactly three artifact checks: Artifact Analysis, Architecture Review, and API & Data Resiliency.",
       items: SCREEN_CHECK_SCHEMA,
     },
+    executiveBrief: {
+      type: Type.OBJECT,
+      properties: {
+        employerSummary: {
+          type: Type.STRING,
+          description:
+            "2-3 concise sentences on production risk and team fit for a founder.",
+        },
+        developerSummary: {
+          type: Type.STRING,
+          description:
+            "2-3 direct sentences of peer review and the highest-leverage architectural fix.",
+        },
+        recommendedRoleBand: {
+          type: Type.STRING,
+          description:
+            "Intern / Junior, Mid-Level, Early-Stage Generalist, or Needs Hardening. Follow deterministicMetrics.roleBandRule.",
+        },
+      },
+      required: [
+        "employerSummary",
+        "developerSummary",
+        "recommendedRoleBand",
+      ],
+    },
   },
   required: [
     "integrity_score",
@@ -243,15 +287,37 @@ const SCREEN_RESPONSE_SCHEMA = {
     "technical_depth_summary",
     "interview_questions",
     "checks",
+    "executiveBrief",
   ],
 };
 
 const MODEL_CANDIDATES = [
-  "gemini-2.5-flash",
-  "gemini-1.5-flash",
   "gemini-3.6-flash",
-  "gemini-2.0-flash",
+  "gemini-3.5-flash-lite",
 ] as const;
+
+function isGeminiUnavailableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const record = error as { status?: unknown; message?: unknown };
+  if (record.status === 503) {
+    return true;
+  }
+  const message =
+    typeof record.message === "string"
+      ? record.message
+      : error instanceof Error
+        ? error.message
+        : "";
+  return /"code"\s*:\s*503|"status"\s*:\s*"UNAVAILABLE"|high demand/i.test(
+    message
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const HANDLE_MISMATCH_PATTERN =
   /\b(mismatch|does not match|doesn't match|do not match|don't match|inconsistent|discrepan|unrelated|not (the )?same|differs? from|no(t)? overlap)\b/i;
@@ -360,34 +426,68 @@ function applyScreenFilesystemCap(
     8
   );
 
-  const metrics = computeProductionAuditMetrics(githubAudit?.filesystem);
+  let metrics = computeProductionAuditMetrics(githubAudit?.filesystem);
   let integrity_score = capped.score;
+  let timeline_flags = capped.redFlags;
+  let scoreCap = capped.scoreCap;
 
   if (metrics.evidence.inspected) {
     integrity_score = metrics.productionScore;
     const reCapped = applyFilesystemScoreCap(
       {
         score: integrity_score,
-        redFlags: capped.redFlags,
+        redFlags: timeline_flags,
       },
       githubAudit?.filesystem,
       8
     );
-    return {
-      ...result,
-      integrity_score: reCapped.score,
-      timeline_flags: reCapped.redFlags,
-      scoreCap: reCapped.scoreCap,
-      metrics,
-    };
+    integrity_score = reCapped.score;
+    timeline_flags = reCapped.redFlags;
+    scoreCap = reCapped.scoreCap;
   }
+
+  if (githubAudit?.is_upstream_derivative) {
+    if (metrics.evidence.inspected) {
+      integrity_score = applyUpstreamDerivativePenalty(integrity_score, true);
+      metrics = {
+        ...metrics,
+        productionScore: integrity_score,
+        upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
+      };
+    } else {
+      integrity_score = applyUpstreamDerivativePenalty(integrity_score, true);
+    }
+    if (!timeline_flags.includes(UPSTREAM_DERIVATIVE_WARNING)) {
+      timeline_flags = [...timeline_flags, UPSTREAM_DERIVATIVE_WARNING];
+    }
+  }
+
+  const isUpstreamDerivative = githubAudit?.is_upstream_derivative === true;
+  const executiveBrief = finalizeExecutiveBrief({
+    draft: result.executiveBrief,
+    productionScore: metrics.evidence.inspected
+      ? metrics.productionScore
+      : integrity_score,
+    architectureScore: metrics.architecture,
+    testScore: metrics.testing,
+    devopsScore: metrics.devops,
+    resilienceScore: metrics.resilience,
+    isUpstreamDerivative,
+  });
+  const github_audit = result.github_audit
+    ? { ...result.github_audit, executiveBrief }
+    : githubAudit
+      ? { ...githubAudit, executiveBrief }
+      : null;
 
   return {
     ...result,
-    integrity_score: capped.score,
-    timeline_flags: capped.redFlags,
-    scoreCap: capped.scoreCap,
+    integrity_score,
+    timeline_flags,
+    scoreCap,
     metrics,
+    executiveBrief,
+    github_audit,
   };
 }
 
@@ -531,6 +631,7 @@ function normalizeScreenResult(
     scoreCap:
       parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(restoredScore),
     metrics: emptyProductionAuditMetrics(),
+    executiveBrief: parseExecutiveBrief(record.executiveBrief),
   };
 }
 
@@ -635,6 +736,7 @@ function buildFallbackScreen(
       ]),
       github_audit: githubAudit,
       scoreCap: emptyScoreCapAudit(clampIntegrityScore(integrity_score)),
+      executiveBrief: null,
     },
     githubAudit
   );
@@ -871,6 +973,28 @@ async function generateGeminiScreen(
         description: (job.description ?? "").slice(0, 400),
       },
       scorePolicy: buildFilesystemScorePolicy(githubAudit?.filesystem),
+      deterministicMetrics: (() => {
+        const isUpstreamDerivative = githubAudit?.is_upstream_derivative === true;
+        let promptMetrics = computeProductionAuditMetrics(githubAudit?.filesystem);
+        if (promptMetrics.evidence.inspected && isUpstreamDerivative) {
+          promptMetrics = {
+            ...promptMetrics,
+            productionScore: applyUpstreamDerivativePenalty(
+              promptMetrics.productionScore,
+              true
+            ),
+            upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
+          };
+        }
+        return deterministicMetricsPayload({
+          productionScore: promptMetrics.productionScore,
+          isUpstreamDerivative,
+          architectureScore: promptMetrics.architecture,
+          testScore: promptMetrics.testing,
+          devopsScore: promptMetrics.devops,
+          resilienceScore: promptMetrics.resilience,
+        });
+      })(),
       codeFirst: true,
       resumeOptional: true,
       github_audit: githubAuditHasFetchedArtifacts(githubAudit) && githubAudit
@@ -892,35 +1016,51 @@ async function generateGeminiScreen(
   let lastError: unknown;
 
   for (const model of MODEL_CANDIDATES) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: userPrompt,
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-          responseMimeType: "application/json",
-          responseSchema: SCREEN_RESPONSE_SCHEMA,
-          temperature: 0,
-        },
-      });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: userPrompt,
+          config: {
+            systemInstruction: SYSTEM_PROMPT,
+            responseMimeType: "application/json",
+            responseSchema: SCREEN_RESPONSE_SCHEMA,
+            temperature: 0,
+          },
+        });
 
-      const text = response.text?.trim();
+        const text = response.text?.trim();
 
-      if (!text) {
-        throw new Error(`Gemini (${model}) returned an empty response.`);
+        if (!text) {
+          throw new Error(`Gemini (${model}) returned an empty response.`);
+        }
+
+        const normalized = normalizeScreenResult(
+          JSON.parse(text),
+          candidate,
+          job
+        );
+        return applyScreenFilesystemCap(
+          {
+            ...normalized,
+            github_audit: githubAudit,
+          },
+          githubAudit
+        );
+      } catch (error) {
+        lastError = error;
+        console.error(
+          `Gemini screen failed for model ${model}${
+            attempt > 0 ? " (retry)" : ""
+          }:`,
+          error
+        );
+        if (attempt === 0 && isGeminiUnavailableError(error)) {
+          await sleep(1000);
+          continue;
+        }
+        break;
       }
-
-      const normalized = normalizeScreenResult(JSON.parse(text), candidate, job);
-      return applyScreenFilesystemCap(
-        {
-          ...normalized,
-          github_audit: githubAudit,
-        },
-        githubAudit
-      );
-    } catch (error) {
-      lastError = error;
-      console.error(`Gemini screen failed for model ${model}:`, error);
     }
   }
 

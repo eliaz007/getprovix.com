@@ -2,6 +2,7 @@ import {
   isEmployeeRole,
   isEmployerRole,
 } from "@/lib/dashboard-account";
+import { parseExecutiveBrief } from "@/lib/executive-brief";
 import {
   githubAuditHasFetchedArtifacts,
   type GitHubAuditContext,
@@ -135,6 +136,17 @@ function readGitHubAuditContext(value: unknown): GitHubAuditContext | null {
     repo: typeof record.repo === "string" ? record.repo : "",
     stars: typeof record.stars === "number" ? record.stars : null,
     forks: typeof record.forks === "number" ? record.forks : null,
+    is_fork: record.is_fork === true,
+    parent_full_name:
+      typeof record.parent_full_name === "string" && record.parent_full_name.trim()
+        ? record.parent_full_name.trim()
+        : null,
+    template_repository:
+      typeof record.template_repository === "string" &&
+      record.template_repository.trim()
+        ? record.template_repository.trim()
+        : null,
+    is_upstream_derivative: record.is_upstream_derivative === true,
     created_at: typeof record.created_at === "string" ? record.created_at : null,
     language: typeof record.language === "string" ? record.language : null,
     commit_count_sampled:
@@ -152,6 +164,7 @@ function readGitHubAuditContext(value: unknown): GitHubAuditContext | null {
         )
       : [],
     filesystem: parseRepoFilesystemEvidence(record.filesystem),
+    executiveBrief: parseExecutiveBrief(record.executiveBrief),
   };
 }
 

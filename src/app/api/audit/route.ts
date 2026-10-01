@@ -45,6 +45,12 @@ import {
 } from "@/lib/ip-rate-limit";
 import { extractResumeTextFromFile } from "@/lib/parse-resume";
 import { RESUME_TEXT_LIMIT } from "@/lib/resume-file";
+import {
+  deterministicMetricsPayload,
+  finalizeExecutiveBrief,
+  parseExecutiveBrief,
+  type ExecutiveBrief,
+} from "@/lib/executive-brief";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   isProductionReadyAudit,
@@ -64,8 +70,11 @@ import {
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import {
+  applyUpstreamDerivativePenalty,
   computeProductionAuditMetrics,
   emptyProductionAuditMetrics,
+  UPSTREAM_DERIVATIVE_PENALTY,
+  UPSTREAM_DERIVATIVE_WARNING,
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
 import {
@@ -80,6 +89,7 @@ import {
   probeGitHubRepository,
   REPO_NOT_FOUND_OR_PRIVATE,
   REPO_NOT_FOUND_OR_PRIVATE_MESSAGE,
+  LOW_CONTRIBUTION_WARNING,
   UNVERIFIED_OWNERSHIP,
   UNVERIFIED_OWNERSHIP_MESSAGE,
   verifyGitHubRepoOwnership,
@@ -127,6 +137,7 @@ export type AuditResult = {
   inaccessibleRepo?: boolean;
   /** Rank of this production score among completed audits. Null when the count is unavailable. */
   benchmark?: CodebaseBenchmark | null;
+  executiveBrief: ExecutiveBrief | null;
 };
 
 const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws. Strict penalties are required — and every hard deduction must come with a concrete repair plan the candidate can implement.
@@ -174,7 +185,12 @@ Return strict JSON only:
       "title": "API & Data Resiliency Check (Check 3)",
       "summary": "1-3 sentence paragraph"
     }
-  ]
+  ],
+  "executiveBrief": {
+    "employerSummary": "2-3 concise sentences on production risk and team fit for a founder",
+    "developerSummary": "2-3 direct sentences of peer review plus the highest-leverage architectural fix",
+    "recommendedRoleBand": "Intern / Junior | Mid-Level | Early-Stage Generalist | Needs Hardening"
+  }
 }
 
 JSON field rules:
@@ -186,6 +202,10 @@ JSON field rules:
   - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims. Treat README as a claim sheet, not as a substitute for files. Stale but real history is an informational "stable" tag (rule 11), not a score deduction.
   - Check 2 architecture_review: folder/module structure from the file tree or technical-breakdown architecture and whether the candidate shows real system design, not a template. Monorepo package maps count as architecture, not as a flaw.
   - Check 3 api_resiliency: API design, data handling, error handling, tests, and production standards. Pass/fail tests, CI, and error handling from scorePolicy.coreArtifacts and the listed filesystem paths, including nested packages and alternative runners.
+- executiveBrief is required. Use deterministicMetrics as the only source for productionScore, is_upstream_derivative, architectureScore, testScore, devopsScore, and resilienceScore. Do not recompute those numbers.
+  - employerSummary: 2-3 concise sentences for a founder. Cover production risk and whether this person fits a small team. Mention the upstream-fork deduction when is_upstream_derivative is true.
+  - developerSummary: 2-3 direct sentences of objective peer review. Name the highest-leverage architectural fix.
+  - recommendedRoleBand: copy deterministicMetrics.roleBandRule exactly. Mid-Level only when productionScore >= 75 and testScore >= 65 and resilienceScore >= 80. Early-Stage Generalist when productionScore >= 75 but tests or resilience miss that bar. Intern / Junior when productionScore < 75 and either testScore >= 65 or resilienceScore >= 80. Otherwise Needs Hardening.
 - No markdown, no extra keys. Never use the banned buzzwords above.`;
 
 const AUDIT_CHECK_SCHEMA = {
@@ -232,16 +252,69 @@ const AUDIT_RESPONSE_SCHEMA = {
         "Exactly three artifact checks: Artifact Analysis, Architecture Review, and API & Data Resiliency.",
       items: AUDIT_CHECK_SCHEMA,
     },
+    executiveBrief: {
+      type: Type.OBJECT,
+      properties: {
+        employerSummary: {
+          type: Type.STRING,
+          description:
+            "2-3 concise sentences on production risk and team fit for a founder.",
+        },
+        developerSummary: {
+          type: Type.STRING,
+          description:
+            "2-3 direct sentences of peer review and the highest-leverage architectural fix.",
+        },
+        recommendedRoleBand: {
+          type: Type.STRING,
+          description:
+            "Intern / Junior, Mid-Level, Early-Stage Generalist, or Needs Hardening. Follow deterministicMetrics.roleBandRule.",
+        },
+      },
+      required: [
+        "employerSummary",
+        "developerSummary",
+        "recommendedRoleBand",
+      ],
+    },
   },
-  required: ["score", "strengths", "redFlags", "recommendations", "checks"],
+  required: [
+    "score",
+    "strengths",
+    "redFlags",
+    "recommendations",
+    "checks",
+    "executiveBrief",
+  ],
 };
 
 const MODEL_CANDIDATES = [
-  "gemini-1.5-flash",
-  "gemini-2.0-flash",
-  "gemini-2.5-flash",
   "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
 ] as const;
+
+function isGeminiUnavailableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const record = error as { status?: unknown; message?: unknown };
+  if (record.status === 503) {
+    return true;
+  }
+  const message =
+    typeof record.message === "string"
+      ? record.message
+      : error instanceof Error
+        ? error.message
+        : "";
+  return /"code"\s*:\s*503|"status"\s*:\s*"UNAVAILABLE"|high demand/i.test(
+    message
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function clampScore(value: unknown): number {
   return clampScore0to100(value, 0);
@@ -529,6 +602,7 @@ function normalizeAuditResult(raw: unknown): AuditResult {
     metrics: emptyProductionAuditMetrics(),
     filesystem: optionalFilesystem(record.filesystem),
     commitDates: normalizeCommitDates(record.commitDates ?? record.commit_dates),
+    executiveBrief: parseExecutiveBrief(record.executiveBrief),
   };
 }
 
@@ -782,8 +856,32 @@ async function generateGeminiAudit(
     ? null
     : strongestFilesystemEvidence(githubArtifacts?.artifacts ?? []);
   const scorePolicy = buildFilesystemScorePolicy(filesystemEvidence);
+  const isUpstreamDerivative = Boolean(
+    !usedExternalFallback &&
+      githubArtifacts?.artifacts.some((artifact) => artifact.is_upstream_derivative)
+  );
+  let promptMetrics = computeProductionAuditMetrics(filesystemEvidence);
+  if (promptMetrics.evidence.inspected && isUpstreamDerivative) {
+    promptMetrics = {
+      ...promptMetrics,
+      productionScore: applyUpstreamDerivativePenalty(
+        promptMetrics.productionScore,
+        true
+      ),
+      upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
+    };
+  }
+  const deterministicMetrics = deterministicMetricsPayload({
+    productionScore: promptMetrics.productionScore,
+    isUpstreamDerivative,
+    architectureScore: promptMetrics.architecture,
+    testScore: promptMetrics.testing,
+    devopsScore: promptMetrics.devops,
+    resilienceScore: promptMetrics.resilience,
+  });
 
   const userPrompt = JSON.stringify({
+    deterministicMetrics,
     targetRole: body.targetRole?.trim() ?? "",
     githubUrl,
     resumeText: (body.resumeSummary ?? "").slice(0, RESUME_TEXT_LIMIT),
@@ -808,6 +906,10 @@ async function generateGeminiAudit(
           repo: artifact.repo,
           stars: artifact.stars,
           forks: artifact.forks,
+          is_fork: artifact.is_fork,
+          parent_full_name: artifact.parent_full_name,
+          template_repository: artifact.template_repository,
+          is_upstream_derivative: artifact.is_upstream_derivative,
           created_at: artifact.created_at,
           language: artifact.language,
           commit_count_sampled: artifact.commit_count_sampled,
@@ -828,28 +930,40 @@ async function generateGeminiAudit(
   let lastError: unknown;
 
   for (const model of MODEL_CANDIDATES) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: userPrompt,
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-          responseMimeType: "application/json",
-          responseSchema: AUDIT_RESPONSE_SCHEMA,
-          temperature: 0,
-        },
-      });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: userPrompt,
+          config: {
+            systemInstruction: SYSTEM_PROMPT,
+            responseMimeType: "application/json",
+            responseSchema: AUDIT_RESPONSE_SCHEMA,
+            temperature: 0,
+          },
+        });
 
-      const text = response.text?.trim();
+        const text = response.text?.trim();
 
-      if (!text) {
-        throw new Error(`Gemini (${model}) returned an empty response.`);
+        if (!text) {
+          throw new Error(`Gemini (${model}) returned an empty response.`);
+        }
+
+        return normalizeAuditResult(JSON.parse(text));
+      } catch (error) {
+        lastError = error;
+        console.error(
+          `Gemini audit failed for model ${model}${
+            attempt > 0 ? " (retry)" : ""
+          }:`,
+          error
+        );
+        if (attempt === 0 && isGeminiUnavailableError(error)) {
+          await sleep(1000);
+          continue;
+        }
+        break;
       }
-
-      return normalizeAuditResult(JSON.parse(text));
-    } catch (error) {
-      lastError = error;
-      console.error(`Gemini audit failed for model ${model}:`, error);
     }
   }
 
@@ -1271,7 +1385,7 @@ export async function POST(request: Request) {
     githubArtifacts?.artifacts ?? []
   );
   const commitDates = commitDatesFromArtifacts(githubArtifacts);
-  const metrics = computeProductionAuditMetrics(
+  let metrics = computeProductionAuditMetrics(
     usedExternalFallback ? null : filesystem
   );
   result = attachAuditEvidence(
@@ -1290,6 +1404,39 @@ export async function POST(request: Request) {
     );
     result = { ...result, metrics };
   }
+
+  const isUpstreamDerivative = Boolean(
+    githubArtifacts?.artifacts.some((artifact) => artifact.is_upstream_derivative)
+  );
+  if (metrics.evidence.inspected && isUpstreamDerivative) {
+    const penalized = applyUpstreamDerivativePenalty(result.score, true);
+    metrics = {
+      ...metrics,
+      productionScore: penalized,
+      upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
+    };
+    result = {
+      ...result,
+      score: penalized,
+      metrics,
+      redFlags: result.redFlags.includes(UPSTREAM_DERIVATIVE_WARNING)
+        ? result.redFlags
+        : [...result.redFlags, UPSTREAM_DERIVATIVE_WARNING],
+    };
+  }
+
+  result = {
+    ...result,
+    executiveBrief: finalizeExecutiveBrief({
+      draft: result.executiveBrief,
+      productionScore: metrics.productionScore,
+      architectureScore: metrics.architecture,
+      testScore: metrics.testing,
+      devopsScore: metrics.devops,
+      resilienceScore: metrics.resilience,
+      isUpstreamDerivative: metrics.upstreamDerivativePenalty > 0,
+    }),
+  };
 
   result = {
     ...result,
@@ -1334,6 +1481,7 @@ export async function POST(request: Request) {
   );
 
   let verificationStatus: DossierVerificationStatus = "unverified";
+  let lowContributionWarning = false;
   if (access.user && isPublicGitHubClaim && payload.isPublicTeaser !== true) {
     try {
       const ownership = await verifyGitHubRepoOwnership({
@@ -1341,6 +1489,16 @@ export async function POST(request: Request) {
         repoUrl: auditedRepoUrl,
       });
       verificationStatus = ownership.verified ? "verified" : "unverified";
+      lowContributionWarning = ownership.lowContributionWarning === true;
+      if (
+        lowContributionWarning &&
+        !result.redFlags.includes(LOW_CONTRIBUTION_WARNING)
+      ) {
+        result = {
+          ...result,
+          redFlags: [...result.redFlags, LOW_CONTRIBUTION_WARNING],
+        };
+      }
     } catch (error) {
       console.error("[audit] ownership verification threw:", error);
       verificationStatus = "unverified";
@@ -1356,6 +1514,12 @@ export async function POST(request: Request) {
         hasUsableExternalProjects(payload.externalProjects)))
   ) {
     if (verificationStatus === "verified" || workIsPrivate) {
+      const primaryArtifact = githubArtifacts?.artifacts.find((artifact) =>
+        githubAuditHasFetchedArtifacts(artifact)
+      );
+      if (primaryArtifact && result.executiveBrief) {
+        primaryArtifact.executiveBrief = result.executiveBrief;
+      }
       try {
         await persistOwnIntegrityAudit(
           access.supabase,
@@ -1444,5 +1608,6 @@ export async function POST(request: Request) {
     ...usage,
     verification_status: verificationStatus,
     ownership_verified: verificationStatus === "verified",
+    lowContributionWarning,
   });
 }

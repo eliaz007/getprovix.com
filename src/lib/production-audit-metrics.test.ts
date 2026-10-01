@@ -4,6 +4,7 @@ import {
   scoreCommitHistoryPenalty,
 } from "./audit-readiness";
 import {
+  applyUpstreamDerivativePenalty,
   computeProductionAuditMetrics,
   scoreArchitecture,
   scoreDevops,
@@ -285,5 +286,12 @@ describe("four-pillar production audit", () => {
     expect(
       scoreResilience({ ...filesystem, unhandled_async_count: 4 }, "web_app")
     ).toBe(50);
+  });
+
+  it("subtracts 30 from an upstream fork or template and floors at 0", () => {
+    expect(applyUpstreamDerivativePenalty(92, false)).toBe(92);
+    expect(applyUpstreamDerivativePenalty(92, true)).toBe(62);
+    expect(applyUpstreamDerivativePenalty(20, true)).toBe(0);
+    expect(applyUpstreamDerivativePenalty(0, true)).toBe(0);
   });
 });

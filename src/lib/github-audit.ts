@@ -18,6 +18,7 @@ import {
   WORKSPACE_ROOT_DIRS,
   type RepoFilesystemEvidence,
 } from "@/lib/repo-filesystem";
+import type { ExecutiveBrief } from "@/lib/executive-brief";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 export type GitHubAuditContext = {
@@ -26,6 +27,12 @@ export type GitHubAuditContext = {
   repo: string;
   stars: number | null;
   forks: number | null;
+  /** GitHub `fork` flag: this repo was forked from another repository. */
+  is_fork: boolean;
+  parent_full_name: string | null;
+  /** `template_repository.full_name` when this repo was generated from a template. */
+  template_repository: string | null;
+  is_upstream_derivative: boolean;
   created_at: string | null;
   language: string | null;
   commit_count_sampled: number;
@@ -33,6 +40,7 @@ export type GitHubAuditContext = {
   readme_excerpt: string | null;
   fetch_warnings: string[];
   filesystem: RepoFilesystemEvidence;
+  executiveBrief: ExecutiveBrief | null;
 };
 
 export function emptyGitHubAuditContext(
@@ -43,6 +51,10 @@ export function emptyGitHubAuditContext(
     repo: "",
     stars: null,
     forks: null,
+    is_fork: false,
+    parent_full_name: null,
+    template_repository: null,
+    is_upstream_derivative: false,
     created_at: null,
     language: null,
     commit_count_sampled: 0,
@@ -50,6 +62,7 @@ export function emptyGitHubAuditContext(
     readme_excerpt: null,
     fetch_warnings: [],
     filesystem: emptyRepoFilesystemEvidence(),
+    executiveBrief: null,
     ...overrides,
   };
 }
@@ -1232,11 +1245,40 @@ async function fetchRepoFilesystem(
 type RepoMetadataFetch = {
   stars: number | null;
   forks: number | null;
+  isFork: boolean;
+  parentFullName: string | null;
+  templateRepository: string | null;
   created_at: string | null;
   language: string | null;
   defaultBranch: string | null;
   warnings: string[];
 };
+
+function emptyRepoMetadata(warnings: string[]): RepoMetadataFetch {
+  return {
+    stars: null,
+    forks: null,
+    isFork: false,
+    parentFullName: null,
+    templateRepository: null,
+    created_at: null,
+    language: null,
+    defaultBranch: null,
+    warnings,
+  };
+}
+
+function upstreamFullName(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const fullName = (value as { full_name?: unknown }).full_name;
+  if (typeof fullName !== "string") {
+    return null;
+  }
+  const trimmed = fullName.trim();
+  return trimmed || null;
+}
 
 async function fetchRepoMetadata(
   base: string,
@@ -1247,21 +1289,17 @@ async function fetchRepoMetadata(
     const repoResponse = await githubFetch(base);
 
     if (!repoResponse.ok) {
-      return {
-        stars: null,
-        forks: null,
-        created_at: null,
-        language: null,
-        defaultBranch: null,
-        warnings: [
-          `Repo metadata request failed (${repoResponse.status}) for ${owner}/${repo}.`,
-        ],
-      };
+      return emptyRepoMetadata([
+        `Repo metadata request failed (${repoResponse.status}) for ${owner}/${repo}.`,
+      ]);
     }
 
     const repoData = (await readJsonResponse(repoResponse)) as {
       stargazers_count?: number;
       forks_count?: number;
+      fork?: boolean;
+      parent?: unknown;
+      template_repository?: unknown;
       created_at?: string;
       language?: string | null;
       default_branch?: string | null;
@@ -1270,6 +1308,9 @@ async function fetchRepoMetadata(
     return {
       stars: repoData.stargazers_count ?? null,
       forks: repoData.forks_count ?? null,
+      isFork: repoData.fork === true,
+      parentFullName: upstreamFullName(repoData.parent),
+      templateRepository: upstreamFullName(repoData.template_repository),
       created_at: repoData.created_at ?? null,
       language: repoData.language ?? null,
       defaultBranch: repoData.default_branch?.trim() || null,
@@ -1277,16 +1318,9 @@ async function fetchRepoMetadata(
     };
   } catch (error) {
     console.error("[github-audit] GitHub repo fetch failed:", error);
-    return {
-      stars: null,
-      forks: null,
-      created_at: null,
-      language: null,
-      defaultBranch: null,
-      warnings: [
-        "Repository metadata timed out or dropped. Retry the live audit to fetch GitHub artifacts.",
-      ],
-    };
+    return emptyRepoMetadata([
+      "Repository metadata timed out or dropped. Retry the live audit to fetch GitHub artifacts.",
+    ]);
   }
 }
 
@@ -1388,6 +1422,12 @@ async function fetchRepoAudit(
     repo,
     stars: metadata.stars,
     forks: metadata.forks,
+    is_fork: metadata.isFork,
+    parent_full_name: metadata.parentFullName,
+    template_repository: metadata.templateRepository,
+    is_upstream_derivative: Boolean(
+      metadata.isFork || metadata.templateRepository
+    ),
     created_at: metadata.created_at,
     language: metadata.language,
     commit_count_sampled: commitSummaries.commits.length,
@@ -1395,6 +1435,7 @@ async function fetchRepoAudit(
     readme_excerpt: readme.excerpt,
     fetch_warnings: warnings,
     filesystem,
+    executiveBrief: null,
   };
 }
 

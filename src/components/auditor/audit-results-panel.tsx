@@ -1372,6 +1372,8 @@ function AuditResultsPanelView({
           metrics={metrics}
           compact={false}
           benchmark={result.benchmark}
+          executiveBrief={result.executiveBrief}
+          audience={employerView ? "employer" : "candidate"}
         />
 
         <details className="group rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2">

@@ -28,6 +28,8 @@ export type ProductionAuditMetrics = {
   devops: number;
   resilience: number;
   productionScore: number;
+  /** 30 when the repo is a fork or generated template; otherwise 0. */
+  upstreamDerivativePenalty: number;
   /** @deprecated Alias of devops — kept for persisted / UI consumers. */
   ciCdHealth: number;
   /** @deprecated Alias of testing. */
@@ -130,6 +132,7 @@ export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
       resilience: 0,
       productionScore: 0,
     }),
+    upstreamDerivativePenalty: 0,
     evidence: {
       inspected: false,
       truncated: false,
@@ -415,6 +418,21 @@ export function weightedProductionScore(parts: {
   );
 }
 
+export const UPSTREAM_DERIVATIVE_PENALTY = 30;
+export const UPSTREAM_DERIVATIVE_WARNING =
+  "Repository is an upstream fork or generated template.";
+
+/** Subtract 30 from the headline grade when the repo is a fork or template. Floors at 0. */
+export function applyUpstreamDerivativePenalty(
+  score: number,
+  isUpstreamDerivative: boolean
+): number {
+  if (!isUpstreamDerivative) {
+    return clampScore0to100(score);
+  }
+  return clampScore0to100(score - UPSTREAM_DERIVATIVE_PENALTY);
+}
+
 export function computeProductionAuditMetrics(
   evidence: RepoFilesystemEvidence | null | undefined
 ): ProductionAuditMetrics {
@@ -451,6 +469,7 @@ export function computeProductionAuditMetrics(
       resilience,
       productionScore,
     }),
+    upstreamDerivativePenalty: 0,
     evidence: {
       inspected: true,
       truncated: Boolean(normalized.truncated),
@@ -591,6 +610,10 @@ export function parseProductionAuditMetrics(
       resilience,
       productionScore: storedScore,
     }),
+    upstreamDerivativePenalty:
+      asCount(record.upstreamDerivativePenalty) > 0
+        ? UPSTREAM_DERIVATIVE_PENALTY
+        : 0,
     evidence: {
       inspected: evidenceRecord?.inspected === true,
       truncated: evidenceRecord?.truncated === true,

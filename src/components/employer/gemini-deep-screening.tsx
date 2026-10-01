@@ -696,7 +696,14 @@ export default function GeminiDeepScreening({
             )}
           </div>
 
-          <ProductionScorecard metrics={result.metrics} compact />
+          <ProductionScorecard
+            metrics={result.metrics}
+            compact
+            audience="employer"
+            executiveBrief={
+              result.executiveBrief ?? result.github_audit?.executiveBrief ?? null
+            }
+          />
 
           {!hasAuditedCodebase ? (
             <>
