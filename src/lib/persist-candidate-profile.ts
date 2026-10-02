@@ -219,66 +219,46 @@ export async function persistCandidatePoolVisibility(
   error: { message?: string; code?: string } | null;
   userMessage: string | null;
 }> {
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-
-  if (sessionError) {
-    return {
+  try {
+    const {
+      data: { session },
       error: sessionError,
-      userMessage: sessionError.message,
-    };
-  }
+    } = await supabase.auth.getSession();
 
-  if (!session?.user?.id) {
-    return {
-      error: { message: "No active session. Please sign in again." },
-      userMessage: "You must be logged in to update visibility.",
-    };
-  }
+    if (sessionError) {
+      return {
+        error: sessionError,
+        userMessage: sessionError.message,
+      };
+    }
 
-  if (session.user.id !== userId) {
-    return {
-      error: { message: "Session user does not match profile owner." },
-      userMessage: "Could not update visibility for this account.",
-    };
-  }
+    if (!session?.user?.id) {
+      return {
+        error: { message: "No active session. Please sign in again." },
+        userMessage: "You must be logged in to update visibility.",
+      };
+    }
 
-  if (isVisibleInPool) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("github_verified, github_username, verification_status, production_score, audit_score")
-      .eq("id", userId)
-      .maybeSingle();
+    if (session.user.id !== userId) {
+      return {
+        error: { message: "Session user does not match profile owner." },
+        userMessage: "Could not update visibility for this account.",
+      };
+    }
 
-    const scores = [
-      typeof profile?.production_score === "number"
-        ? profile.production_score
-        : null,
-      typeof profile?.audit_score === "number" ? profile.audit_score : null,
-    ];
-
-    if (
-      !canEnableTalentPoolVisibility({
-        githubVerified:
-          profile?.github_verified === true &&
-          Boolean(profile?.github_username?.trim()),
-        ownershipVerified: profile?.verification_status === "verified",
-        scores,
-      })
-    ) {
-      let historyScore: number | null = null;
-      const history = await supabase
-        .from("production_audit_history")
-        .select("production_score")
-        .eq("user_id", userId)
-        .gte("production_score", 75)
-        .limit(1)
+    if (isVisibleInPool) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("github_verified, github_username, verification_status, production_score, audit_score")
+        .eq("id", userId)
         .maybeSingle();
-      if (typeof history.data?.production_score === "number") {
-        historyScore = history.data.production_score;
-      }
+
+      const scores = [
+        typeof profile?.production_score === "number"
+          ? profile.production_score
+          : null,
+        typeof profile?.audit_score === "number" ? profile.audit_score : null,
+      ];
 
       if (
         !canEnableTalentPoolVisibility({
@@ -286,50 +266,85 @@ export async function persistCandidatePoolVisibility(
             profile?.github_verified === true &&
             Boolean(profile?.github_username?.trim()),
           ownershipVerified: profile?.verification_status === "verified",
-          scores: [...scores, historyScore],
+          scores,
         })
       ) {
-        return {
-          error: { message: TALENT_POOL_CONNECT_GITHUB_MESSAGE },
-          userMessage:
-            profile?.github_verified === true
-              ? TALENT_POOL_SCORE_REQUIRED_MESSAGE
-              : TALENT_POOL_CONNECT_GITHUB_MESSAGE,
-        };
+        let historyScore: number | null = null;
+        const history = await supabase
+          .from("production_audit_history")
+          .select("production_score")
+          .eq("user_id", userId)
+          .gte("production_score", 75)
+          .limit(1)
+          .maybeSingle();
+        if (typeof history.data?.production_score === "number") {
+          historyScore = history.data.production_score;
+        }
+
+        if (
+          !canEnableTalentPoolVisibility({
+            githubVerified:
+              profile?.github_verified === true &&
+              Boolean(profile?.github_username?.trim()),
+            ownershipVerified: profile?.verification_status === "verified",
+            scores: [...scores, historyScore],
+          })
+        ) {
+          return {
+            error: { message: TALENT_POOL_CONNECT_GITHUB_MESSAGE },
+            userMessage:
+              profile?.github_verified === true
+                ? TALENT_POOL_SCORE_REQUIRED_MESSAGE
+                : TALENT_POOL_CONNECT_GITHUB_MESSAGE,
+          };
+        }
       }
     }
-  }
 
-  const payload: ProfilePayload = {
-    is_visible_in_pool: isVisibleInPool,
-    visible_to_employers: isVisibleInPool,
-  };
+    const payload: ProfilePayload = {
+      is_visible_in_pool: isVisibleInPool,
+      visible_to_employers: isVisibleInPool,
+    };
 
-  let { error } = await supabase
-    .from("profiles")
-    .update(payload)
-    .eq("id", userId);
+    let { error } = await supabase
+      .from("profiles")
+      .update(payload)
+      .eq("id", userId);
 
-  if (
-    error &&
-    (isMissingColumnError(error) || isSupabaseSchemaError(error))
-  ) {
-    const mentioned = findMentionedColumn(error, [
-      "visible_to_employers",
-    ]);
-    if (mentioned) {
-      ({ error } = await supabase
-        .from("profiles")
-        .update({ is_visible_in_pool: isVisibleInPool })
-        .eq("id", userId));
+    if (
+      error &&
+      (isMissingColumnError(error) || isSupabaseSchemaError(error))
+    ) {
+      const mentioned = findMentionedColumn(error, [
+        "visible_to_employers",
+      ]);
+      if (mentioned) {
+        ({ error } = await supabase
+          .from("profiles")
+          .update({ is_visible_in_pool: isVisibleInPool })
+          .eq("id", userId));
+      }
     }
-  }
 
-  if (error) {
-    return { error, userMessage: formatPersistError(error) };
-  }
+    if (error) {
+      return { error, userMessage: formatPersistError(error) };
+    }
 
-  return { error: null, userMessage: null };
+    return { error: null, userMessage: null };
+  } catch (error) {
+    console.error(
+      "[persist-candidate-profile] persistCandidatePoolVisibility failed:",
+      error
+    );
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Could not update visibility. Please try again.";
+    return {
+      error: { message },
+      userMessage: message,
+    };
+  }
 }
 
 export async function persistCandidateProfile(
@@ -341,123 +356,152 @@ export async function persistCandidateProfile(
   error: { message?: string; code?: string } | null;
   userMessage: string | null;
 }> {
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-
-  if (sessionError) {
-    return {
-      data: null,
+  try {
+    const {
+      data: { session },
       error: sessionError,
-      userMessage: sessionError.message,
-    };
-  }
+    } = await supabase.auth.getSession();
 
-  if (!session?.user?.id) {
-    return {
-      data: null,
-      error: { message: "No active session. Please sign in again." },
-      userMessage: "You must be logged in to save your profile.",
-    };
-  }
-
-  if (session.user.id !== userId) {
-    return {
-      data: null,
-      error: { message: "Session user does not match profile owner." },
-      userMessage: "Could not save profile for this account.",
-    };
-  }
-
-  if ("bio" in payload) {
-    const bioValue = typeof payload.bio === "string" ? payload.bio : "";
-    const bioError = getCandidateBioValidationError(bioValue);
-    if (bioError) {
+    if (sessionError) {
       return {
         data: null,
-        error: { message: bioError },
-        userMessage: bioError,
+        error: sessionError,
+        userMessage: sessionError.message,
       };
     }
-  }
 
-  if ("skills" in payload) {
-    const parsedSkills = parseCandidateSkills(
-      payload.skills as string[] | string | null | undefined
-    );
-    const skillsError = getCandidateSkillsValidationError(parsedSkills);
-    if (skillsError) {
+    if (!session?.user?.id) {
       return {
         data: null,
-        error: { message: skillsError },
-        userMessage: skillsError,
+        error: { message: "No active session. Please sign in again." },
+        userMessage: "You must be logged in to save your profile.",
       };
     }
-    payload = { ...payload, skills: parsedSkills };
-  }
 
-  if ("education" in payload) {
-    const parsedEducation = parseEducationEntries(payload.education);
-    const educationError = getEducationValidationError(parsedEducation, {
-      isSelfTaught: Boolean(payload.is_self_taught),
-    });
-    if (educationError) {
+    if (session.user.id !== userId) {
       return {
         data: null,
-        error: { message: educationError },
-        userMessage: educationError,
+        error: { message: "Session user does not match profile owner." },
+        userMessage: "Could not save profile for this account.",
       };
     }
-    payload = {
-      ...payload,
-      education: serializeEducationEntries(parsedEducation),
-    };
-  }
 
-  let attemptPayload: ProfilePayload = { ...payload };
-  const maxAttempts = Object.keys(attemptPayload).length + 3;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    let result = await runProfileWrite(supabase, userId, attemptPayload, "update");
-
-    if (!result.error && !result.data) {
-      result = await runProfileWrite(supabase, userId, attemptPayload, "upsert");
+    if ("bio" in payload) {
+      const bioValue = typeof payload.bio === "string" ? payload.bio : "";
+      const bioError = getCandidateBioValidationError(bioValue);
+      if (bioError) {
+        return {
+          data: null,
+          error: { message: bioError },
+          userMessage: bioError,
+        };
+      }
     }
 
-    if (!result.error && result.data) {
-      const educationPatch: ProfilePayload = {};
-      for (const key of [
-        "university",
-        "school",
-        "major",
-        "degree",
-        "gpa",
-        "graduation_year",
-        "education",
-        "is_self_taught",
-      ] as const) {
-        if (key in attemptPayload) {
-          educationPatch[key] = attemptPayload[key];
+    if ("skills" in payload) {
+      const parsedSkills = parseCandidateSkills(
+        payload.skills as string[] | string | null | undefined
+      );
+      const skillsError = getCandidateSkillsValidationError(parsedSkills);
+      if (skillsError) {
+        return {
+          data: null,
+          error: { message: skillsError },
+          userMessage: skillsError,
+        };
+      }
+      payload = { ...payload, skills: parsedSkills };
+    }
+
+    if ("education" in payload) {
+      const parsedEducation = parseEducationEntries(payload.education);
+      const educationError = getEducationValidationError(parsedEducation, {
+        isSelfTaught: Boolean(payload.is_self_taught),
+      });
+      if (educationError) {
+        return {
+          data: null,
+          error: { message: educationError },
+          userMessage: educationError,
+        };
+      }
+      payload = {
+        ...payload,
+        education: serializeEducationEntries(parsedEducation),
+      };
+    }
+
+    let attemptPayload: ProfilePayload = { ...payload };
+    const maxAttempts = Object.keys(attemptPayload).length + 3;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      let result = await runProfileWrite(supabase, userId, attemptPayload, "update");
+
+      if (!result.error && !result.data) {
+        result = await runProfileWrite(supabase, userId, attemptPayload, "upsert");
+      }
+
+      if (!result.error && result.data) {
+        const educationPatch: ProfilePayload = {};
+        for (const key of [
+          "university",
+          "school",
+          "major",
+          "degree",
+          "gpa",
+          "graduation_year",
+          "education",
+          "is_self_taught",
+        ] as const) {
+          if (key in attemptPayload) {
+            educationPatch[key] = attemptPayload[key];
+          }
+        }
+
+        if (Object.keys(educationPatch).length > 0) {
+          await supabase
+            .from("profiles")
+            .update(educationPatch)
+            .eq("user_id", userId);
+        }
+
+        return { data: result.data, error: null, userMessage: null };
+      }
+
+      if (
+        result.error &&
+        !isMissingColumnError(result.error) &&
+        !isUniqueViolation(result.error) &&
+        !isSupabaseSchemaError(result.error)
+      ) {
+        return {
+          data: null,
+          error: result.error,
+          userMessage: formatPersistError(result.error),
+        };
+      }
+
+      if (result.error && isUniqueViolation(result.error) && attemptPayload.profile_slug) {
+        const { profile_slug: _removed, ...rest } = attemptPayload;
+        attemptPayload = rest;
+        continue;
+      }
+
+      if (
+        result.error &&
+        (isMissingColumnError(result.error) || isSupabaseSchemaError(result.error))
+      ) {
+        const keyToDrop = findMentionedColumn(
+          result.error,
+          Object.keys(attemptPayload)
+        );
+        if (keyToDrop && keyToDrop in attemptPayload) {
+          const { [keyToDrop]: _removed, ...rest } = attemptPayload;
+          attemptPayload = rest;
+          continue;
         }
       }
 
-      if (Object.keys(educationPatch).length > 0) {
-        await supabase
-          .from("profiles")
-          .update(educationPatch)
-          .eq("user_id", userId);
-      }
-
-      return { data: result.data, error: null, userMessage: null };
-    }
-
-    if (
-      result.error &&
-      !isMissingColumnError(result.error) &&
-      !isUniqueViolation(result.error) &&
-      !isSupabaseSchemaError(result.error)
-    ) {
       return {
         data: null,
         error: result.error,
@@ -465,37 +509,24 @@ export async function persistCandidateProfile(
       };
     }
 
-    if (result.error && isUniqueViolation(result.error) && attemptPayload.profile_slug) {
-      const { profile_slug: _removed, ...rest } = attemptPayload;
-      attemptPayload = rest;
-      continue;
-    }
-
-    if (
-      result.error &&
-      (isMissingColumnError(result.error) || isSupabaseSchemaError(result.error))
-    ) {
-      const keyToDrop = findMentionedColumn(
-        result.error,
-        Object.keys(attemptPayload)
-      );
-      if (keyToDrop && keyToDrop in attemptPayload) {
-        const { [keyToDrop]: _removed, ...rest } = attemptPayload;
-        attemptPayload = rest;
-        continue;
-      }
-    }
-
     return {
       data: null,
-      error: result.error,
-      userMessage: formatPersistError(result.error),
+      error: { message: "Profile save failed after retries." },
+      userMessage: "Could not save profile. Please try again.",
+    };
+  } catch (error) {
+    console.error(
+      "[persist-candidate-profile] persistCandidateProfile failed:",
+      error
+    );
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Could not save profile. Please try again.";
+    return {
+      data: null,
+      error: { message },
+      userMessage: message,
     };
   }
-
-  return {
-    data: null,
-    error: { message: "Profile save failed after retries." },
-    userMessage: "Could not save profile. Please try again.",
-  };
 }

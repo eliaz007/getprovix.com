@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAccountRole } from "@/lib/account-role";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireApiUser } from "@/lib/api-auth";
@@ -11,13 +13,13 @@ import {
 } from "@/lib/job-applicants";
 import { parseJobListInput } from "@/lib/jobs";
 import type { MatchResult } from "@/lib/match-heuristic";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import {
   employerIdentityIds,
   fetchProfileForCandidateId,
   fetchProfilesForCandidateIds,
 } from "@/lib/resolve-candidate-profile";
 import { isSupabaseSchemaError, schemaErrorMentionsColumn } from "@/lib/supabase-schema-errors";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -323,6 +325,11 @@ export async function GET(request: Request) {
 const APPLICATION_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const rejectApplicantBodySchema = z.object({
+  applicationId: z.string().optional(),
+  status: z.string().optional(),
+});
+
 export async function PATCH(request: Request) {
   const access = await requireApiUser(request);
   if (access instanceof NextResponse) {
@@ -344,13 +351,16 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = (await request.json().catch(() => null)) as {
-    applicationId?: string;
-    status?: string;
-  } | null;
+  const parsedBody = await parseJsonWithSchema(
+    request,
+    rejectApplicantBodySchema
+  );
+  if (!parsedBody.ok) {
+    return parsedBody.response;
+  }
 
-  const applicationId = body?.applicationId?.trim() ?? "";
-  const status = body?.status?.trim().toLowerCase() ?? "";
+  const applicationId = parsedBody.data.applicationId?.trim() ?? "";
+  const status = parsedBody.data.status?.trim().toLowerCase() ?? "";
 
   if (!APPLICATION_UUID_PATTERN.test(applicationId) || status !== "rejected") {
     return NextResponse.json({ error: "Invalid status update." }, { status: 400 });

@@ -160,41 +160,49 @@ export async function fetchProfilesForCandidateIds(
   selectColumns = "*"
 ): Promise<Map<string, Record<string, unknown>>> {
   const map = new Map<string, Record<string, unknown>>();
-  const ids = uniqueCandidateIds(candidateIds);
-  if (ids.length === 0) {
+  try {
+    const ids = uniqueCandidateIds(candidateIds);
+    if (ids.length === 0) {
+      return map;
+    }
+
+    const select = withIdColumn(selectColumns);
+
+    const byId = await selectProfilesByColumn(supabase, "id", ids, select);
+    for (const row of byId) {
+      indexProfileRow(map, row);
+    }
+
+    for (const column of AUTH_LINK_QUERY_COLUMNS) {
+      const rows = await selectProfilesByColumn(
+        supabase,
+        column,
+        ids,
+        select === "*" ? "*" : withIdColumn(`${select}, ${column}`)
+      );
+      for (const row of rows) {
+        const linkedId = asTrimmedId(row[column]);
+        indexProfileRow(map, row, linkedId ? [linkedId] : []);
+      }
+    }
+
+    const uniqueRows = [...new Map(
+      [...map.values()].map((row) => [asTrimmedId(row.id) ?? JSON.stringify(row), row])
+    ).values()];
+    const hydratedRows = await hydrateRowsWithEducation(supabase, uniqueRows);
+    const hydrated = new Map<string, Record<string, unknown>>();
+    for (const row of hydratedRows) {
+      indexProfileRow(hydrated, row);
+    }
+
+    return hydrated.size > 0 ? hydrated : map;
+  } catch (error) {
+    console.error(
+      "[resolve-candidate-profile] fetchProfilesForCandidateIds failed:",
+      error
+    );
     return map;
   }
-
-  const select = withIdColumn(selectColumns);
-
-  const byId = await selectProfilesByColumn(supabase, "id", ids, select);
-  for (const row of byId) {
-    indexProfileRow(map, row);
-  }
-
-  for (const column of AUTH_LINK_QUERY_COLUMNS) {
-    const rows = await selectProfilesByColumn(
-      supabase,
-      column,
-      ids,
-      select === "*" ? "*" : withIdColumn(`${select}, ${column}`)
-    );
-    for (const row of rows) {
-      const linkedId = asTrimmedId(row[column]);
-      indexProfileRow(map, row, linkedId ? [linkedId] : []);
-    }
-  }
-
-  const uniqueRows = [...new Map(
-    [...map.values()].map((row) => [asTrimmedId(row.id) ?? JSON.stringify(row), row])
-  ).values()];
-  const hydratedRows = await hydrateRowsWithEducation(supabase, uniqueRows);
-  const hydrated = new Map<string, Record<string, unknown>>();
-  for (const row of hydratedRows) {
-    indexProfileRow(hydrated, row);
-  }
-
-  return hydrated.size > 0 ? hydrated : map;
 }
 
 export async function fetchProfileForCandidateId(
@@ -202,13 +210,21 @@ export async function fetchProfileForCandidateId(
   candidateId: string | null | undefined,
   selectColumns = "*"
 ): Promise<Record<string, unknown> | null> {
-  const id = asTrimmedId(candidateId);
-  if (!id) {
+  try {
+    const id = asTrimmedId(candidateId);
+    if (!id) {
+      return null;
+    }
+
+    const map = await fetchProfilesForCandidateIds(supabase, [id], selectColumns);
+    return map.get(id) ?? null;
+  } catch (error) {
+    console.error(
+      "[resolve-candidate-profile] fetchProfileForCandidateId failed:",
+      error
+    );
     return null;
   }
-
-  const map = await fetchProfilesForCandidateIds(supabase, [id], selectColumns);
-  return map.get(id) ?? null;
 }
 
 export async function employerHasApplicantForProfile(
@@ -217,55 +233,63 @@ export async function employerHasApplicantForProfile(
   profile: Record<string, unknown> | null,
   extraIds: Array<string | null | undefined> = []
 ): Promise<boolean> {
-  const ids = uniqueCandidateIds([
-    ...profileRowLookupKeys(profile),
-    ...extraIds,
-  ]);
-  if (ids.length === 0) {
-    return false;
-  }
+  try {
+    const ids = uniqueCandidateIds([
+      ...profileRowLookupKeys(profile),
+      ...extraIds,
+    ]);
+    if (ids.length === 0) {
+      return false;
+    }
 
-  const { data: applications, error } = await supabase
-    .from("job_applications")
-    .select("job_id")
-    .in("candidate_id", ids);
+    const { data: applications, error } = await supabase
+      .from("job_applications")
+      .select("job_id")
+      .in("candidate_id", ids);
 
-  if (error) {
+    if (error) {
+      console.error(
+        "[resolve-candidate-profile] job_applications lookup failed:",
+        error.message
+      );
+      return false;
+    }
+
+    const jobIds = [
+      ...new Set(
+        (applications ?? [])
+          .map((row) => asTrimmedId(row.job_id))
+          .filter(Boolean)
+      ),
+    ] as string[];
+
+    if (jobIds.length === 0) {
+      return false;
+    }
+
+    const { data: jobs, error: jobsError } = await supabase
+      .from("jobs")
+      .select("id")
+      .in("id", jobIds)
+      .eq("employer_id", employerId)
+      .limit(1);
+
+    if (jobsError) {
+      console.error(
+        "[resolve-candidate-profile] jobs ownership lookup failed:",
+        jobsError.message
+      );
+      return false;
+    }
+
+    return (jobs ?? []).length > 0;
+  } catch (error) {
     console.error(
-      "[resolve-candidate-profile] job_applications lookup failed:",
-      error.message
+      "[resolve-candidate-profile] employerHasApplicantForProfile failed:",
+      error
     );
     return false;
   }
-
-  const jobIds = [
-    ...new Set(
-      (applications ?? [])
-        .map((row) => asTrimmedId(row.job_id))
-        .filter(Boolean)
-    ),
-  ] as string[];
-
-  if (jobIds.length === 0) {
-    return false;
-  }
-
-  const { data: jobs, error: jobsError } = await supabase
-    .from("jobs")
-    .select("id")
-    .in("id", jobIds)
-    .eq("employer_id", employerId)
-    .limit(1);
-
-  if (jobsError) {
-    console.error(
-      "[resolve-candidate-profile] jobs ownership lookup failed:",
-      jobsError.message
-    );
-    return false;
-  }
-
-  return (jobs ?? []).length > 0;
 }
 
 export function hydrateScreenCandidateFromProfile(

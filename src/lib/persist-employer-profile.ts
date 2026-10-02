@@ -113,31 +113,44 @@ export async function persistEmployerProfile(
     "businessName" | "industry" | "companyBio" | "workEmail" | "phone"
   >
 ): Promise<{ error: { message?: string } | null; isVerified: boolean }> {
-  const payload = buildEmployerProfileUpdatePayload(input);
-  const nextEmail = (payload.contact_email ?? "").toString().trim().toLowerCase();
+  try {
+    const payload = buildEmployerProfileUpdatePayload(input);
+    const nextEmail = (payload.contact_email ?? "").toString().trim().toLowerCase();
 
-  const { data: current } = await supabase
-    .from("profiles")
-    .select("contact_email, email, is_verified")
-    .eq("id", userId)
-    .maybeSingle();
+    const { data: current } = await supabase
+      .from("profiles")
+      .select("contact_email, email, is_verified")
+      .eq("id", userId)
+      .maybeSingle();
 
-  const previousEmail = (
-    current?.contact_email?.trim() ||
-    current?.email?.trim() ||
-    ""
-  ).toLowerCase();
-  const emailChanged = Boolean(nextEmail) && nextEmail !== previousEmail;
-  const stillVerified = current?.is_verified === true && !emailChanged;
+    const previousEmail = (
+      current?.contact_email?.trim() ||
+      current?.email?.trim() ||
+      ""
+    ).toLowerCase();
+    const emailChanged = Boolean(nextEmail) && nextEmail !== previousEmail;
+    const stillVerified = current?.is_verified === true && !emailChanged;
 
-  if (emailChanged && current?.is_verified === true) {
-    payload.is_verified = false;
+    if (emailChanged && current?.is_verified === true) {
+      payload.is_verified = false;
+    }
+
+    const { error } = await updateEmployerProfile(supabase, userId, payload);
+
+    return {
+      error,
+      isVerified: stillVerified,
+    };
+  } catch (error) {
+    console.error("[persist-employer-profile] persistEmployerProfile failed:", error);
+    return {
+      error: {
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not save employer profile.",
+      },
+      isVerified: false,
+    };
   }
-
-  const { error } = await updateEmployerProfile(supabase, userId, payload);
-
-  return {
-    error,
-    isVerified: stillVerified,
-  };
 }

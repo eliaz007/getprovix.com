@@ -1,12 +1,14 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireAiApiAccess } from "@/lib/api-auth";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 
-type EssayReviewRequestBody = {
-  prompt?: string;
-  draft?: string;
-  targetSchool?: string;
-};
+const essayReviewBodySchema = z.object({
+  prompt: z.string().trim().min(1),
+  draft: z.string().trim().min(1),
+  targetSchool: z.string().optional(),
+});
 
 export type LineFeedback = {
   originalText: string;
@@ -210,22 +212,6 @@ function buildFallbackReview(
   };
 }
 
-function isValidRequestBody(
-  body: unknown
-): body is { prompt: string; draft: string; targetSchool?: string } {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const record = body as EssayReviewRequestBody;
-  return (
-    typeof record.prompt === "string" &&
-    record.prompt.trim().length > 0 &&
-    typeof record.draft === "string" &&
-    record.draft.trim().length > 0
-  );
-}
-
 async function generateGeminiEssayReview(
   prompt: string,
   draft: string,
@@ -288,25 +274,12 @@ export async function POST(request: Request) {
     return denied;
   }
 
-  let body: unknown;
-
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(request, essayReviewBodySchema);
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  if (!isValidRequestBody(body)) {
-    return NextResponse.json(
-      {
-        error:
-          "Request body must include non-empty prompt and draft strings.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const { prompt, draft, targetSchool } = body;
+  const { prompt, draft, targetSchool } = parsedBody.data;
 
   try {
     const result = await generateGeminiEssayReview(prompt, draft, targetSchool);

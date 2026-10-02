@@ -15,23 +15,28 @@ type AdminApiAccess = {
 export async function requireAdminApiAccess(): Promise<
   AdminApiAccess | NextResponse
 > {
-  const authClient = await createClient();
-  const {
-    data: { user },
-  } = await authClient.auth.getUser();
+  try {
+    const authClient = await createClient();
+    const {
+      data: { user },
+    } = await authClient.auth.getUser();
 
-  if (!user) {
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!isAdminUser(user)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const serviceClient = createServiceRoleClient();
+    const dataClient = serviceClient ?? authClient;
+
+    return { user, dataClient };
+  } catch (error) {
+    console.error("[admin-api-auth] requireAdminApiAccess failed:", error);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  if (!isAdminUser(user)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const serviceClient = createServiceRoleClient();
-  const dataClient = serviceClient ?? authClient;
-
-  return { user, dataClient };
 }
 
 export function parseIntroRequestId(body: {

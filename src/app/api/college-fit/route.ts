@@ -1,15 +1,17 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { parseGpa4Scale } from "@/lib/gpa";
 import { requireAiApiAccess } from "@/lib/api-auth";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 
-type CollegeFitRequestBody = {
-  gpa?: string;
-  testScores?: string;
-  major?: string;
-  locationPreference?: string;
-  budgetPreference?: string;
-};
+const collegeFitBodySchema = z.object({
+  gpa: z.string().trim().min(1),
+  major: z.string().trim().min(1),
+  testScores: z.string().optional(),
+  locationPreference: z.string().optional(),
+  budgetPreference: z.string().optional(),
+});
 
 export type SchoolFit = {
   name: string;
@@ -679,28 +681,6 @@ function buildFallbackReport(credentials: ParsedCredentials): CollegeFitResult {
   };
 }
 
-function isValidRequestBody(
-  body: unknown
-): body is {
-  gpa: string;
-  major: string;
-  testScores?: string;
-  locationPreference?: string;
-  budgetPreference?: string;
-} {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const record = body as CollegeFitRequestBody;
-  return (
-    typeof record.gpa === "string" &&
-    record.gpa.trim().length > 0 &&
-    typeof record.major === "string" &&
-    record.major.trim().length > 0
-  );
-}
-
 async function generateGeminiCollegeFit(
   credentials: ParsedCredentials
 ): Promise<CollegeFitResult> {
@@ -753,22 +733,13 @@ export async function POST(request: Request) {
     return denied;
   }
 
-  let body: unknown;
-
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(request, collegeFitBodySchema);
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  if (!isValidRequestBody(body)) {
-    return NextResponse.json(
-      { error: "Request body must include non-empty gpa and major strings." },
-      { status: 400 }
-    );
-  }
-
-  const { gpa, major, testScores, locationPreference, budgetPreference } = body;
+  const { gpa, major, testScores, locationPreference, budgetPreference } =
+    parsedBody.data;
   const credentials = buildParsedCredentials(
     gpa,
     major,

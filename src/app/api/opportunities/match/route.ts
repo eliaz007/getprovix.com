@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { fetchGitHubAudit } from "@/lib/github-audit";
 import { requireAiApiAccess } from "@/lib/api-auth";
 import {
@@ -9,8 +10,14 @@ import {
   type OpportunityMatchJobPayload,
 } from "@/lib/opportunity-match";
 import { normalizeStringArray } from "@/lib/match-heuristic";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 
 export type { OpportunityMatchResult } from "@/lib/opportunity-match";
+
+const opportunityMatchBodySchema = z.object({
+  candidate: z.looseObject({}),
+  job: z.looseObject({}),
+});
 
 const SYSTEM_PROMPT = `You are Provix's candidate opportunity matching engine.
 
@@ -59,29 +66,6 @@ const MODEL_CANDIDATES = [
   "gemini-2.5-flash",
   "gemini-2.0-flash",
 ] as const;
-
-function isValidRequestBody(
-  body: unknown
-): body is {
-  candidate: OpportunityMatchCandidatePayload;
-  job: OpportunityMatchJobPayload;
-} {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const record = body as {
-    candidate?: OpportunityMatchCandidatePayload;
-    job?: OpportunityMatchJobPayload;
-  };
-
-  return (
-    !!record.candidate &&
-    typeof record.candidate === "object" &&
-    !!record.job &&
-    typeof record.job === "object"
-  );
-}
 
 function resolveGitHubUrl(
   candidate: OpportunityMatchCandidatePayload
@@ -179,25 +163,17 @@ export async function POST(request: Request) {
     return denied;
   }
 
-  let body: unknown;
-
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(
+    request,
+    opportunityMatchBodySchema
+  );
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  if (!isValidRequestBody(body)) {
-    return NextResponse.json(
-      {
-        error:
-          "Request body must include candidate and job objects with the expected fields.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const { candidate, job } = body;
+  const candidate =
+    parsedBody.data.candidate as OpportunityMatchCandidatePayload;
+  const job = parsedBody.data.job as OpportunityMatchJobPayload;
   const githubUrl = resolveGitHubUrl(candidate);
   let githubAudit = null;
 

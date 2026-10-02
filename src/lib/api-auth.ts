@@ -47,29 +47,38 @@ function createAccessTokenClient(accessToken: string): SupabaseClient {
 export async function requireApiUser(
   request?: Request
 ): Promise<ApiUserAccess | NextResponse> {
-  const cookieClient = await createClient();
-  const {
-    data: { user },
-  } = await cookieClient.auth.getUser();
-
-  if (user) {
-    return { user, supabase: cookieClient };
-  }
-
-  const accessToken = readBearerToken(request);
-  if (accessToken) {
-    const tokenClient = createAccessTokenClient(accessToken);
+  try {
+    const cookieClient = await createClient();
     const {
-      data: { user: tokenUser },
-      error: tokenError,
-    } = await tokenClient.auth.getUser(accessToken);
+      data: { user },
+    } = await cookieClient.auth.getUser();
 
-    if (tokenUser && !tokenError) {
-      return { user: tokenUser, supabase: tokenClient };
+    if (user) {
+      return { user, supabase: cookieClient };
     }
-  }
 
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const accessToken = readBearerToken(request);
+    if (accessToken) {
+      try {
+        const tokenClient = createAccessTokenClient(accessToken);
+        const {
+          data: { user: tokenUser },
+          error: tokenError,
+        } = await tokenClient.auth.getUser(accessToken);
+
+        if (tokenUser && !tokenError) {
+          return { user: tokenUser, supabase: tokenClient };
+        }
+      } catch (error) {
+        console.error("[api-auth] bearer token validation failed:", error);
+      }
+    }
+
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    console.error("[api-auth] requireApiUser failed:", error);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 }
 
 export async function requireAiApiUser(): Promise<ApiUserAccess | NextResponse> {
@@ -94,31 +103,36 @@ export async function requireAiApiUser(): Promise<ApiUserAccess | NextResponse> 
 export async function rejectUnlessVerifiedEmployer(
   access: ApiUserAccess
 ): Promise<NextResponse | null> {
-  const viewerRow = await fetchProfileForCandidateId(
-    access.supabase,
-    access.user.id,
-    "role, is_verified"
-  );
-  const viewerRole = resolveAccountRole(
-    typeof viewerRow?.role === "string" ? viewerRow.role : null,
-    access.user
-  );
+  try {
+    const viewerRow = await fetchProfileForCandidateId(
+      access.supabase,
+      access.user.id,
+      "role, is_verified"
+    );
+    const viewerRole = resolveAccountRole(
+      typeof viewerRow?.role === "string" ? viewerRow.role : null,
+      access.user
+    );
 
-  if (!isEmployerRole(viewerRole)) {
+    if (!isEmployerRole(viewerRole)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (!canAccessTalentPool(viewerRole, viewerRow?.is_verified === true)) {
+      return NextResponse.json(
+        {
+          error:
+            "A verified corporate work email is required to use employer dashboard features.",
+        },
+        { status: 403 }
+      );
+    }
+
+    return null;
+  } catch (error) {
+    console.error("[api-auth] employer verification lookup failed:", error);
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-
-  if (!canAccessTalentPool(viewerRole, viewerRow?.is_verified === true)) {
-    return NextResponse.json(
-      {
-        error:
-          "A verified corporate work email is required to use employer dashboard features.",
-      },
-      { status: 403 }
-    );
-  }
-
-  return null;
 }
 
 export async function requireVerifiedEmployer(

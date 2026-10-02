@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireApiUser } from "@/lib/api-auth";
 import { resolveAccountRole } from "@/lib/account-role";
@@ -11,14 +12,15 @@ import {
 } from "@/lib/employer-email-verification";
 import { sendEmployerVerificationEmail } from "@/lib/send-employer-verification-email";
 import { consumeRateLimit, tooManyRequestsResponse } from "@/lib/ip-rate-limit";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { fetchProfileForCandidateId } from "@/lib/resolve-candidate-profile";
 import { normalizeEmail } from "@/lib/validate-email";
 
 export const runtime = "nodejs";
 
-type VerifyEmailBody = {
-  email?: string;
-};
+const verifyEmailBodySchema = z.object({
+  email: z.string().optional(),
+});
 
 export async function POST(request: Request) {
   const access = await requireApiUser(request);
@@ -49,14 +51,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  let body: VerifyEmailBody;
-  try {
-    body = (await request.json()) as VerifyEmailBody;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(request, verifyEmailBodySchema);
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  const workEmail = normalizeEmail(body.email ?? "").toLowerCase();
+  const workEmail = normalizeEmail(parsedBody.data.email ?? "").toLowerCase();
   const emailError = getCorporateWorkEmailValidationMessage(workEmail);
   if (emailError) {
     return NextResponse.json({ error: emailError }, { status: 400 });

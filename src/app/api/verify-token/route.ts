@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireApiUser } from "@/lib/api-auth";
 import { consumeRateLimit, tooManyRequestsResponse } from "@/lib/ip-rate-limit";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { canonicalGitHubRepoUrl } from "@/lib/provix-token";
 import {
   findMatchingProvixFile,
@@ -14,11 +16,11 @@ export const dynamic = "force-dynamic";
 const VERIFY_LIMIT = 8;
 const VERIFY_WINDOW_MS = 10 * 60 * 1000;
 
-type VerifyTokenBody = {
-  owner?: unknown;
-  repo?: unknown;
-  expectedToken?: unknown;
-};
+const verifyTokenBodySchema = z.object({
+  owner: z.string().optional(),
+  repo: z.string().optional(),
+  expectedToken: z.string().optional(),
+});
 
 function readStringField(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -40,16 +42,12 @@ export async function POST(request: Request) {
       return tooManyRequestsResponse(limited.retryAfterSec);
     }
 
-    let body: VerifyTokenBody;
-    try {
-      body = (await request.json()) as VerifyTokenBody;
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid JSON body.", success: false, verified: false },
-        { status: 400 }
-      );
+    const parsedBody = await parseJsonWithSchema(request, verifyTokenBodySchema);
+    if (!parsedBody.ok) {
+      return parsedBody.response;
     }
 
+    const body = parsedBody.data;
     const owner = readStringField(body.owner);
     const repo = readStringField(body.repo);
     const expectedToken = readStringField(body.expectedToken);

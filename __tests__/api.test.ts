@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   INACCESSIBLE_PUBLIC_REPO_MESSAGE,
   isInaccessiblePublicAudit,
@@ -30,6 +31,10 @@ import {
   isNetworkDropError,
 } from "@/lib/talent-pool-candidate";
 import { parseIntroRequestId } from "@/lib/admin-api-auth";
+import {
+  formatZodErrorDetails,
+  parseJsonWithSchema,
+} from "@/lib/parse-request-json";
 
 describe("API error handling and input validation", () => {
   it("validates GitHub audit URL inputs before handlers run", () => {
@@ -71,9 +76,9 @@ describe("API error handling and input validation", () => {
       })
     ).toBe("walter");
 
-    expect(
-      isInvalidRepoFormatResponse({ error: INVALID_REPO_FORMAT })
-    ).toBe(true);
+    expect(isInvalidRepoFormatResponse({ error: INVALID_REPO_FORMAT })).toBe(
+      true
+    );
     expect(
       isPrivateOrNotFoundAuditResponse({
         error: REPO_NOT_FOUND_OR_PRIVATE,
@@ -127,5 +132,66 @@ describe("API error handling and input validation", () => {
     expect(response.headers.get("Retry-After")).toBe(
       String(blocked.retryAfterSec)
     );
+  });
+
+  it("rejects invalid JSON bodies with Zod schema details", async () => {
+    const schema = z.object({
+      repo_url: z.string().min(1),
+      token: z.string().min(1),
+    });
+
+    const invalidJson = await parseJsonWithSchema(
+      new Request("https://getprovix.com/api/verify-repo", {
+        method: "POST",
+        body: "{not-json",
+        headers: { "Content-Type": "application/json" },
+      }),
+      schema
+    );
+    expect(invalidJson.ok).toBe(false);
+    if (!invalidJson.ok) {
+      expect(invalidJson.response.status).toBe(400);
+      await expect(invalidJson.response.json()).resolves.toMatchObject({
+        error: "Invalid JSON body.",
+      });
+    }
+
+    const invalidShape = await parseJsonWithSchema(
+      new Request("https://getprovix.com/api/verify-repo", {
+        method: "POST",
+        body: JSON.stringify({ repo_url: "" }),
+        headers: { "Content-Type": "application/json" },
+      }),
+      schema
+    );
+    expect(invalidShape.ok).toBe(false);
+    if (!invalidShape.ok) {
+      expect(invalidShape.response.status).toBe(400);
+      const payload = await invalidShape.response.json();
+      expect(payload.error).toBe("Invalid request payload.");
+      expect(Array.isArray(payload.details)).toBe(true);
+      expect(payload.details.length).toBeGreaterThan(0);
+    }
+
+    const valid = await parseJsonWithSchema(
+      new Request("https://getprovix.com/api/verify-repo", {
+        method: "POST",
+        body: JSON.stringify({
+          repo_url: "https://github.com/acme/widgets",
+          token: "abc",
+        }),
+        headers: { "Content-Type": "application/json" },
+      }),
+      schema
+    );
+    expect(valid.ok).toBe(true);
+    if (valid.ok) {
+      expect(valid.data.token).toBe("abc");
+    }
+
+    const details = formatZodErrorDetails(
+      schema.safeParse({ repo_url: 1 }).error!
+    );
+    expect(details.some((item) => item.includes("repo_url"))).toBe(true);
   });
 });

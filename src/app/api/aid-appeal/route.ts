@@ -1,13 +1,15 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireAiApiAccess } from "@/lib/api-auth";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 
-type AidAppealRequestBody = {
-  collegeName?: string;
-  currentOffer?: string;
-  appealReason?: string;
-  contextDetails?: string;
-};
+const aidAppealBodySchema = z.object({
+  collegeName: z.string().trim().min(1),
+  currentOffer: z.string().optional(),
+  appealReason: z.string().trim().min(1),
+  contextDetails: z.string().trim().min(1),
+});
 
 export type StrategyScore =
   | "Strong Leverage"
@@ -233,29 +235,6 @@ Sincerely,
   };
 }
 
-function isValidRequestBody(
-  body: unknown
-): body is {
-  collegeName: string;
-  currentOffer?: string;
-  appealReason: string;
-  contextDetails: string;
-} {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const record = body as AidAppealRequestBody;
-  return (
-    typeof record.collegeName === "string" &&
-    record.collegeName.trim().length > 0 &&
-    typeof record.appealReason === "string" &&
-    record.appealReason.trim().length > 0 &&
-    typeof record.contextDetails === "string" &&
-    record.contextDetails.trim().length > 0
-  );
-}
-
 async function generateGeminiAidAppeal(
   collegeName: string,
   currentOffer: string | undefined,
@@ -317,32 +296,20 @@ export async function POST(request: Request) {
     return denied;
   }
 
-  let body: unknown;
-
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(request, aidAppealBodySchema);
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  if (!isValidRequestBody(body)) {
-    return NextResponse.json(
-      {
-        error:
-          "Request body must include collegeName, appealReason, and contextDetails.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const { collegeName, currentOffer, appealReason, contextDetails } = body;
+  const { collegeName, currentOffer, appealReason, contextDetails } =
+    parsedBody.data;
 
   try {
     const result = await generateGeminiAidAppeal(
-      collegeName.trim(),
+      collegeName,
       currentOffer?.trim(),
-      appealReason.trim(),
-      contextDetails.trim()
+      appealReason,
+      contextDetails
     );
     return NextResponse.json(result);
   } catch (error) {

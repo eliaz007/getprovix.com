@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import {
   buildFallbackMatch,
   normalizeMatchResult,
@@ -9,8 +10,14 @@ import {
   type MatchResult,
 } from "@/lib/match-heuristic";
 import { requireAiApiAccess } from "@/lib/api-auth";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 
 export type { MatchResult };
+
+const matchRequestBodySchema = z.object({
+  candidate: z.looseObject({}),
+  job: z.looseObject({}),
+});
 
 const SYSTEM_PROMPT = `Score how well this candidate fits the employer's job and search query.
 Use skills, tech stack, required skills, bio, job title, job description, tags, and searchQuery.
@@ -39,26 +46,6 @@ const MODEL_CANDIDATES = [
   "gemini-3.6-flash",
   "gemini-2.0-flash",
 ] as const;
-
-function isValidRequestBody(
-  body: unknown
-): body is { candidate: MatchCandidatePayload; job: MatchJobPayload } {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const record = body as {
-    candidate?: MatchCandidatePayload;
-    job?: MatchJobPayload;
-  };
-
-  return (
-    !!record.candidate &&
-    typeof record.candidate === "object" &&
-    !!record.job &&
-    typeof record.job === "object"
-  );
-}
 
 async function generateGeminiMatch(
   apiKey: string,
@@ -140,25 +127,13 @@ export async function POST(request: Request) {
     return denied;
   }
 
-  let body: unknown;
-
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(request, matchRequestBodySchema);
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  if (!isValidRequestBody(body)) {
-    return NextResponse.json(
-      {
-        error:
-          "Request body must include candidate and job objects with the expected fields.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const { candidate, job } = body;
+  const candidate = parsedBody.data.candidate as MatchCandidatePayload;
+  const job = parsedBody.data.job as MatchJobPayload;
   const apiKey = process.env.GEMINI_API_KEY?.trim();
 
   if (!apiKey) {

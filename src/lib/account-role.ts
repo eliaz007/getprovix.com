@@ -291,25 +291,32 @@ export async function syncEmployerProfileAfterSignup(
   userId: string,
   email?: string | null
 ): Promise<void> {
-  const workEmail = email?.trim() || null;
-  const payload: Record<string, unknown> = {
-    id: userId,
-    role: "employer",
-    is_visible_in_pool: false,
-    is_verified: false,
-  };
+  try {
+    const workEmail = email?.trim() || null;
+    const payload: Record<string, unknown> = {
+      id: userId,
+      role: "employer",
+      is_visible_in_pool: false,
+      is_verified: false,
+    };
 
-  if (workEmail) {
-    payload.email = workEmail;
-    payload.contact_email = workEmail;
-  }
+    if (workEmail) {
+      payload.email = workEmail;
+      payload.contact_email = workEmail;
+    }
 
-  const { error } = await supabase.from("profiles").upsert(payload, {
-    onConflict: "id",
-  });
+    const { error } = await supabase.from("profiles").upsert(payload, {
+      onConflict: "id",
+    });
 
-  if (error) {
-    console.warn("Employer profile sync after signup failed:", error.message);
+    if (error) {
+      console.warn("Employer profile sync after signup failed:", error.message);
+    }
+  } catch (error) {
+    console.error(
+      "[account-role] syncEmployerProfileAfterSignup failed:",
+      error
+    );
   }
 }
 
@@ -328,18 +335,22 @@ export async function persistEmployerAccount(
   userId: string,
   email?: string | null
 ): Promise<void> {
-  const { error: metadataError } = await supabase.auth.updateUser({
-    data: {
-      role: "employer",
-      account_type: "business",
-    },
-  });
+  try {
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: {
+        role: "employer",
+        account_type: "business",
+      },
+    });
 
-  if (metadataError) {
-    console.warn("Employer metadata update failed:", metadataError.message);
+    if (metadataError) {
+      console.warn("Employer metadata update failed:", metadataError.message);
+    }
+
+    await syncEmployerProfileAfterSignup(supabase, userId, email);
+  } catch (error) {
+    console.error("[account-role] persistEmployerAccount failed:", error);
   }
-
-  await syncEmployerProfileAfterSignup(supabase, userId, email);
 }
 
 /** Read only profiles.role — metadata is not a substitute for Pattern 2 onboarding. */
@@ -347,43 +358,48 @@ export async function loadProfileAccountKind(
   supabase: unknown,
   userId: string
 ): Promise<AccountKind | null> {
-  const client = supabase as {
-    from: (table: string) => {
-      select: (columns: string) => {
-        eq: (
-          column: string,
-          value: string
-        ) => {
-          maybeSingle: () => PromiseLike<{
-            data: { role?: string | null } | null;
-          }>;
+  try {
+    const client = supabase as {
+      from: (table: string) => {
+        select: (columns: string) => {
+          eq: (
+            column: string,
+            value: string
+          ) => {
+            maybeSingle: () => PromiseLike<{
+              data: { role?: string | null } | null;
+            }>;
+          };
         };
       };
     };
-  };
 
-  const { data: byId } = await client
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .maybeSingle();
+    const { data: byId } = await client
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
 
-  const fromId = normalizeAccountKind(
-    typeof byId?.role === "string" ? byId.role : null
-  );
-  if (fromId) {
-    return fromId;
+    const fromId = normalizeAccountKind(
+      typeof byId?.role === "string" ? byId.role : null
+    );
+    if (fromId) {
+      return fromId;
+    }
+
+    const { data: byUserId } = await client
+      .from("profiles")
+      .select("role")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    return normalizeAccountKind(
+      typeof byUserId?.role === "string" ? byUserId.role : null
+    );
+  } catch (error) {
+    console.error("[account-role] loadProfileAccountKind failed:", error);
+    return null;
   }
-
-  const { data: byUserId } = await client
-    .from("profiles")
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  return normalizeAccountKind(
-    typeof byUserId?.role === "string" ? byUserId.role : null
-  );
 }
 
 export async function persistAccountRole(
@@ -392,97 +408,112 @@ export async function persistAccountRole(
   role: AccountKind,
   email?: string | null
 ): Promise<{ error: string | null }> {
-  if (role === "employer") {
-    await persistEmployerAccount(supabase, userId, email);
-    return { error: null };
-  }
+  try {
+    if (role === "employer") {
+      await persistEmployerAccount(supabase, userId, email);
+      return { error: null };
+    }
 
-  const { error: metadataError } = await supabase.auth.updateUser({
-    data: {
-      role: "candidate",
-      account_type: "candidate",
-    },
-  });
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: {
+        role: "candidate",
+        account_type: "candidate",
+      },
+    });
 
-  if (metadataError) {
-    console.warn("Candidate metadata update failed:", metadataError.message);
-  }
+    if (metadataError) {
+      console.warn("Candidate metadata update failed:", metadataError.message);
+    }
 
-  const workEmail = email?.trim() || null;
-  const lookupClient = supabase as unknown as {
-    from: (table: string) => {
-      select: (columns: string) => {
-        or: (
-          filter: string
-        ) => {
-          limit: (count: number) => {
-            maybeSingle: () => PromiseLike<{
-              data: { id?: string | null } | null;
-            }>;
+    const workEmail = email?.trim() || null;
+    const lookupClient = supabase as unknown as {
+      from: (table: string) => {
+        select: (columns: string) => {
+          or: (
+            filter: string
+          ) => {
+            limit: (count: number) => {
+              maybeSingle: () => PromiseLike<{
+                data: { id?: string | null } | null;
+              }>;
+            };
           };
         };
       };
     };
-  };
 
-  const { data: existing } = await lookupClient
-    .from("profiles")
-    .select("id")
-    .or(`id.eq.${userId},user_id.eq.${userId}`)
-    .limit(1)
-    .maybeSingle();
+    const { data: existing } = await lookupClient
+      .from("profiles")
+      .select("id")
+      .or(`id.eq.${userId},user_id.eq.${userId}`)
+      .limit(1)
+      .maybeSingle();
 
-  const payload: Record<string, unknown> = {
-    id: typeof existing?.id === "string" ? existing.id : userId,
-    user_id: userId,
-    role: "candidate",
-    is_visible_in_pool: false,
-  };
+    const payload: Record<string, unknown> = {
+      id: typeof existing?.id === "string" ? existing.id : userId,
+      user_id: userId,
+      role: "candidate",
+      is_visible_in_pool: false,
+    };
 
-  if (workEmail) {
-    payload.email = workEmail;
-    payload.contact_email = workEmail;
+    if (workEmail) {
+      payload.email = workEmail;
+      payload.contact_email = workEmail;
+    }
+
+    const { error } = await supabase.from("profiles").upsert(payload, {
+      onConflict: "id",
+    });
+
+    if (error) {
+      console.warn("Candidate profile role save failed:", error.message);
+      return { error: error.message ?? "Could not save your account type." };
+    }
+
+    return { error: null };
+  } catch (error) {
+    console.error("[account-role] persistAccountRole failed:", error);
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not save your account type.",
+    };
   }
-
-  const { error } = await supabase.from("profiles").upsert(payload, {
-    onConflict: "id",
-  });
-
-  if (error) {
-    console.warn("Candidate profile role save failed:", error.message);
-    return { error: error.message ?? "Could not save your account type." };
-  }
-
-  return { error: null };
 }
 
 export async function loadStoredAccountRole(
   supabase: unknown,
   user: User
 ): Promise<string | null> {
-  const client = supabase as {
-    from: (table: string) => {
-      select: (columns: string) => {
-        eq: (
-          column: string,
-          value: string
-        ) => {
-          maybeSingle: () => PromiseLike<{
-            data: { role?: string | null } | null;
-          }>;
+  try {
+    const client = supabase as {
+      from: (table: string) => {
+        select: (columns: string) => {
+          eq: (
+            column: string,
+            value: string
+          ) => {
+            maybeSingle: () => PromiseLike<{
+              data: { role?: string | null } | null;
+            }>;
+          };
         };
       };
     };
-  };
 
-  const { data } = await client
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
+    const { data } = await client
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
 
-  return resolveAccountRole(
-    typeof data?.role === "string" ? data.role : null,
-    user
-  );
+    return resolveAccountRole(
+      typeof data?.role === "string" ? data.role : null,
+      user
+    );
+  } catch (error) {
+    console.error("[account-role] loadStoredAccountRole failed:", error);
+    return resolveAccountRole(null, user);
+  }
 }

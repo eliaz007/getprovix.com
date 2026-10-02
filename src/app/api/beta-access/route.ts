@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { createClient } from "@/utils/supabase/server";
 
-type BetaAccessBody = {
-  company_name?: string;
-  work_email?: string;
-};
+const betaAccessBodySchema = z.object({
+  company_name: z.string().optional(),
+  work_email: z.string().optional(),
+});
 
 type SupabaseErrorLike = {
   code?: string;
@@ -155,14 +157,12 @@ async function unlockEmployerProfile(
 }
 
 export async function POST(request: Request) {
-  let body: BetaAccessBody;
-
-  try {
-    body = (await request.json()) as BetaAccessBody;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(request, betaAccessBodySchema);
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
+  const body = parsedBody.data;
   const companyName = body.company_name?.trim() ?? "";
   const workEmail = body.work_email?.trim() ?? "";
 

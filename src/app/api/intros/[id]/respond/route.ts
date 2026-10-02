@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import {
   toCandidateIntroStatus,
   type CandidateIntroStatus,
 } from "@/lib/candidate-intro-requests";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { getPublicProfileBaseUrl } from "@/lib/profile-url";
 import {
   fetchCandidateIntroRequestById,
@@ -14,6 +16,11 @@ import { sendIntroEmail } from "@/lib/send-intro-email";
 import { createClient } from "@/utils/supabase/server";
 
 type IntroRespondAction = "accept" | "decline";
+
+const respondBodySchema = z.object({
+  action: z.string().optional(),
+  token: z.string().optional(),
+});
 
 function parseAction(value: string | null): IntroRespondAction | null {
   const normalized = (value ?? "").trim().toLowerCase();
@@ -233,10 +240,12 @@ export async function POST(
 ) {
   try {
     const { id } = await context.params;
-    const body = (await request.json()) as {
-      action?: string;
-      token?: string;
-    };
+    const parsedBody = await parseJsonWithSchema(request, respondBodySchema);
+    if (!parsedBody.ok) {
+      return parsedBody.response;
+    }
+
+    const body = parsedBody.data;
     const action = parseAction(body.action ?? null);
 
     if (!id?.trim() || !action) {

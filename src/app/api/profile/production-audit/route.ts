@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireApiUser } from "@/lib/api-auth";
 import {
   REPO_OWNERSHIP_ERROR,
   verifyGitHubRepoOwnership,
 } from "@/lib/github-ownership";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import {
   PUBLIC_SCORECARD_THRESHOLD,
   PRIVATE_AUDITED_REPO_LABEL,
@@ -21,6 +23,16 @@ import { parseGitHubUrl } from "@/lib/validate-github-url";
 import { clampScore0to100 } from "@/lib/score-scale";
 
 export const runtime = "nodejs";
+
+const postProductionAuditBodySchema = z.object({
+  production_score: z.unknown().optional(),
+  audit_breakdown: z.looseObject({}),
+  is_publicly_visible: z.boolean().optional(),
+});
+
+const patchProductionAuditBodySchema = z.object({
+  is_publicly_visible: z.boolean(),
+});
 
 function jsonServerError(error: unknown, fallback: string) {
   console.error(error);
@@ -108,16 +120,17 @@ async function postProductionAudit(request: Request) {
     return access;
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(
+    request,
+    postProductionAuditBodySchema
+  );
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  const record = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
-  const breakdown = parseProductionAuditBreakdown(record?.audit_breakdown);
-  if (!record || !breakdown) {
+  const record = parsedBody.data;
+  const breakdown = parseProductionAuditBreakdown(record.audit_breakdown);
+  if (!breakdown) {
     return NextResponse.json(
       { error: "A production audit payload is required." },
       { status: 400 }
@@ -230,21 +243,15 @@ async function patchProductionAudit(request: Request) {
     return access;
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(
+    request,
+    patchProductionAuditBodySchema
+  );
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  const record = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
-  const isPubliclyVisible = parseVisibilityFlag(record?.is_publicly_visible);
-  if (isPubliclyVisible === undefined) {
-    return NextResponse.json(
-      { error: "is_publicly_visible is required." },
-      { status: 400 }
-    );
-  }
+  const isPubliclyVisible = parsedBody.data.is_publicly_visible;
 
   let result = await persistScorecardVisibility(
     access.supabase,

@@ -86,19 +86,24 @@ export async function getSharedAudit(
     return null;
   }
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("shared_audits")
-    .select("id, payload")
-    .eq("id", id)
-    .maybeSingle();
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("shared_audits")
+      .select("id, payload")
+      .eq("id", id)
+      .maybeSingle();
 
-  if (error || !data || typeof data.id !== "string") {
-    if (error) {
-      console.error("[shared-audit] public read failed:", error.message);
+    if (error || !data || typeof data.id !== "string") {
+      if (error) {
+        console.error("[shared-audit] public read failed:", error.message);
+      }
+      return null;
     }
+
+    return parseSharedAuditPayload(data.id, data.payload);
+  } catch (error) {
+    console.error("[shared-audit] public read threw:", error);
     return null;
   }
-
-  return parseSharedAuditPayload(data.id, data.payload);
 }

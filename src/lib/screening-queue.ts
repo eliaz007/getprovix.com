@@ -40,23 +40,34 @@ async function writeRow(
   userId: string,
   values: Record<string, unknown>
 ): Promise<{ error: QueueError; missingStatusColumn: boolean }> {
-  const { error } = await supabase
-    .from("candidate_screenings")
-    .update(values)
-    .eq("id", id)
-    .eq("created_by", userId);
-
-  if (error && error.code === "42703" && "status" in values) {
-    const { status: _status, ...withoutStatus } = values;
-    const retry = await supabase
+  try {
+    const { error } = await supabase
       .from("candidate_screenings")
-      .update(withoutStatus)
+      .update(values)
       .eq("id", id)
       .eq("created_by", userId);
-    return { error: retry.error, missingStatusColumn: true };
-  }
 
-  return { error, missingStatusColumn: false };
+    if (error && error.code === "42703" && "status" in values) {
+      const { status: _status, ...withoutStatus } = values;
+      const retry = await supabase
+        .from("candidate_screenings")
+        .update(withoutStatus)
+        .eq("id", id)
+        .eq("created_by", userId);
+      return { error: retry.error, missingStatusColumn: true };
+    }
+
+    return { error, missingStatusColumn: false };
+  } catch (error) {
+    console.error("[screening-queue] writeRow failed:", error);
+    return {
+      error: {
+        message:
+          error instanceof Error ? error.message : "Could not update screening.",
+      },
+      missingStatusColumn: false,
+    };
+  }
 }
 
 export async function enqueuePendingScreening(
@@ -71,98 +82,108 @@ export async function enqueuePendingScreening(
   | { ok: true; row: EnqueuedScreening }
   | { ok: false; unavailable: boolean; error: string }
 > {
-  const candidateKey = args.candidateKey.trim();
-  const runId = crypto.randomUUID();
-  const auditData = pendingAudit(runId, args.input, "pending");
-  const values = {
-    candidate_key: candidateKey,
-    created_by: args.userId,
-    profile_id: args.profileId,
-    integrity_score: null,
-    status: "pending" satisfies ScreeningQueueStatus,
-    audit_data: auditData,
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data: existing, error: lookupError } = await supabase
-    .from("candidate_screenings")
-    .select("id")
-    .eq("created_by", args.userId)
-    .eq("candidate_key", candidateKey)
-    .maybeSingle();
-
-  if (isSchemaMiss(lookupError)) {
-    return {
-      ok: false,
-      unavailable: true,
-      error: lookupError?.message ?? "candidate_screenings is unavailable.",
+  try {
+    const candidateKey = args.candidateKey.trim();
+    const runId = crypto.randomUUID();
+    const auditData = pendingAudit(runId, args.input, "pending");
+    const values = {
+      candidate_key: candidateKey,
+      created_by: args.userId,
+      profile_id: args.profileId,
+      integrity_score: null,
+      status: "pending" satisfies ScreeningQueueStatus,
+      audit_data: auditData,
+      updated_at: new Date().toISOString(),
     };
-  }
 
-  if (lookupError) {
-    return {
-      ok: false,
-      unavailable: false,
-      error: lookupError.message,
-    };
-  }
+    const { data: existing, error: lookupError } = await supabase
+      .from("candidate_screenings")
+      .select("id")
+      .eq("created_by", args.userId)
+      .eq("candidate_key", candidateKey)
+      .maybeSingle();
 
-  if (existing?.id) {
-    const written = await writeRow(supabase, existing.id, args.userId, values);
-    if (written.error) {
+    if (isSchemaMiss(lookupError)) {
       return {
         ok: false,
-        unavailable: isSchemaMiss(written.error),
-        error: written.error.message ?? "Could not queue screening.",
+        unavailable: true,
+        error: lookupError?.message ?? "candidate_screenings is unavailable.",
       };
     }
 
-    return {
-      ok: true,
-      row: { id: existing.id, candidateKey, runId },
-    };
-  }
+    if (lookupError) {
+      return {
+        ok: false,
+        unavailable: false,
+        error: lookupError.message,
+      };
+    }
 
-  const inserted = await supabase
-    .from("candidate_screenings")
-    .insert(values)
-    .select("id")
-    .maybeSingle();
+    if (existing?.id) {
+      const written = await writeRow(supabase, existing.id, args.userId, values);
+      if (written.error) {
+        return {
+          ok: false,
+          unavailable: isSchemaMiss(written.error),
+          error: written.error.message ?? "Could not queue screening.",
+        };
+      }
 
-  if (inserted.error?.code === "42703") {
-    const { status: _status, ...withoutStatus } = values;
-    const retry = await supabase
+      return {
+        ok: true,
+        row: { id: existing.id, candidateKey, runId },
+      };
+    }
+
+    const inserted = await supabase
       .from("candidate_screenings")
-      .insert(withoutStatus)
+      .insert(values)
       .select("id")
       .maybeSingle();
 
-    if (retry.error || !retry.data?.id) {
+    if (inserted.error?.code === "42703") {
+      const { status: _status, ...withoutStatus } = values;
+      const retry = await supabase
+        .from("candidate_screenings")
+        .insert(withoutStatus)
+        .select("id")
+        .maybeSingle();
+
+      if (retry.error || !retry.data?.id) {
+        return {
+          ok: false,
+          unavailable: isSchemaMiss(retry.error),
+          error: retry.error?.message ?? "Could not queue screening.",
+        };
+      }
+
+      return {
+        ok: true,
+        row: { id: retry.data.id, candidateKey, runId },
+      };
+    }
+
+    if (inserted.error || !inserted.data?.id) {
       return {
         ok: false,
-        unavailable: isSchemaMiss(retry.error),
-        error: retry.error?.message ?? "Could not queue screening.",
+        unavailable: isSchemaMiss(inserted.error),
+        error: inserted.error?.message ?? "Could not queue screening.",
       };
     }
 
     return {
       ok: true,
-      row: { id: retry.data.id, candidateKey, runId },
+      row: { id: inserted.data.id, candidateKey, runId },
     };
-  }
-
-  if (inserted.error || !inserted.data?.id) {
+  } catch (error) {
+    console.error("[screening-queue] enqueuePendingScreening failed:", error);
     return {
       ok: false,
-      unavailable: isSchemaMiss(inserted.error),
-      error: inserted.error?.message ?? "Could not queue screening.",
+      unavailable: false,
+      error:
+        error instanceof Error ? error.message : "Could not queue screening.",
     };
   }
-
-  return {
-    ok: true,
-    row: { id: inserted.data.id, candidateKey, runId },
-  };
 }
 
 export async function readQueuedRunId(
@@ -170,19 +191,24 @@ export async function readQueuedRunId(
   screeningId: string,
   userId: string
 ): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("candidate_screenings")
-    .select("audit_data")
-    .eq("id", screeningId)
-    .eq("created_by", userId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from("candidate_screenings")
+      .select("audit_data")
+      .eq("id", screeningId)
+      .eq("created_by", userId)
+      .maybeSingle();
 
-  if (error || !data?.audit_data || typeof data.audit_data !== "object") {
+    if (error || !data?.audit_data || typeof data.audit_data !== "object") {
+      return null;
+    }
+
+    const runId = (data.audit_data as { run_id?: unknown }).run_id;
+    return typeof runId === "string" ? runId : null;
+  } catch (error) {
+    console.error("[screening-queue] readQueuedRunId failed:", error);
     return null;
   }
-
-  const runId = (data.audit_data as { run_id?: unknown }).run_id;
-  return typeof runId === "string" ? runId : null;
 }
 
 export async function markScreeningProcessing(
@@ -194,18 +220,23 @@ export async function markScreeningProcessing(
     input: ScreeningJobInput;
   }
 ): Promise<boolean> {
-  const current = await readQueuedRunId(supabase, args.screeningId, args.userId);
-  if (current && current !== args.runId) {
+  try {
+    const current = await readQueuedRunId(supabase, args.screeningId, args.userId);
+    if (current && current !== args.runId) {
+      return false;
+    }
+
+    const written = await writeRow(supabase, args.screeningId, args.userId, {
+      status: "processing",
+      audit_data: pendingAudit(args.runId, args.input, "processing"),
+      updated_at: new Date().toISOString(),
+    });
+
+    return !written.error;
+  } catch (error) {
+    console.error("[screening-queue] markScreeningProcessing failed:", error);
     return false;
   }
-
-  const written = await writeRow(supabase, args.screeningId, args.userId, {
-    status: "processing",
-    audit_data: pendingAudit(args.runId, args.input, "processing"),
-    updated_at: new Date().toISOString(),
-  });
-
-  return !written.error;
 }
 
 export async function completeScreeningRun(
@@ -219,20 +250,25 @@ export async function completeScreeningRun(
     auditData: Record<string, unknown>;
   }
 ): Promise<boolean> {
-  const current = await readQueuedRunId(supabase, args.screeningId, args.userId);
-  if (current && current !== args.runId) {
+  try {
+    const current = await readQueuedRunId(supabase, args.screeningId, args.userId);
+    if (current && current !== args.runId) {
+      return false;
+    }
+
+    const written = await writeRow(supabase, args.screeningId, args.userId, {
+      status: "completed",
+      profile_id: args.profileId,
+      integrity_score: args.integrityScore,
+      audit_data: args.auditData,
+      updated_at: new Date().toISOString(),
+    });
+
+    return !written.error;
+  } catch (error) {
+    console.error("[screening-queue] completeScreeningRun failed:", error);
     return false;
   }
-
-  const written = await writeRow(supabase, args.screeningId, args.userId, {
-    status: "completed",
-    profile_id: args.profileId,
-    integrity_score: args.integrityScore,
-    audit_data: args.auditData,
-    updated_at: new Date().toISOString(),
-  });
-
-  return !written.error;
 }
 
 export async function failScreeningRun(
@@ -245,20 +281,24 @@ export async function failScreeningRun(
     input: ScreeningJobInput;
   }
 ): Promise<void> {
-  const current = await readQueuedRunId(supabase, args.screeningId, args.userId);
-  if (current && current !== args.runId) {
-    return;
-  }
+  try {
+    const current = await readQueuedRunId(supabase, args.screeningId, args.userId);
+    if (current && current !== args.runId) {
+      return;
+    }
 
-  await writeRow(supabase, args.screeningId, args.userId, {
-    status: "failed",
-    integrity_score: null,
-    audit_data: {
+    await writeRow(supabase, args.screeningId, args.userId, {
       status: "failed",
-      run_id: args.runId,
-      error: args.error,
-      job_input: args.input,
-    },
-    updated_at: new Date().toISOString(),
-  });
+      integrity_score: null,
+      audit_data: {
+        status: "failed",
+        run_id: args.runId,
+        error: args.error,
+        job_input: args.input,
+      },
+      updated_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("[screening-queue] failScreeningRun failed:", error);
+  }
 }

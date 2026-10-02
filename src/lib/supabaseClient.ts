@@ -42,12 +42,17 @@ export async function readBrowserSession(
   client: SupabaseClient,
   timeoutMs = AUTH_SESSION_TIMEOUT_MS
 ) {
-  return Promise.race([
-    client.auth.getSession(),
-    new Promise<never>((_, reject) => {
-      window.setTimeout(() => {
-        reject(new Error("supabase getSession timed out"));
-      }, timeoutMs);
-    }),
-  ]);
+  try {
+    return await Promise.race([
+      client.auth.getSession(),
+      new Promise<never>((_, reject) => {
+        window.setTimeout(() => {
+          reject(new Error("supabase getSession timed out"));
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    console.error("[supabaseClient] getSession failed:", error);
+    return { data: { session: null }, error: error as Error };
+  }
 }

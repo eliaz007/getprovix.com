@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { getStripe } from "@/lib/stripe";
 import { createClient } from "@/utils/supabase/server";
 
-type CheckoutBody = {
-  candidateId?: string;
-  jobId?: string;
-  applicationId?: string;
-};
+const checkoutBodySchema = z.object({
+  candidateId: z.string().optional(),
+  jobId: z.string().optional(),
+  applicationId: z.string().optional(),
+});
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -26,7 +28,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await request.json()) as CheckoutBody;
+    const parsedBody = await parseJsonWithSchema(request, checkoutBodySchema);
+    if (!parsedBody.ok) {
+      return parsedBody.response;
+    }
+
+    const body = parsedBody.data;
     const candidateId = body.candidateId?.trim() ?? "";
     const jobId = body.jobId?.trim() ?? "";
     const applicationId = body.applicationId?.trim() ?? "";

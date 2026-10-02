@@ -1,6 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireAiApiAccess } from "@/lib/api-auth";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 
 export type InterviewSimulatorRequestBody = {
   targetJobTitle?: string;
@@ -8,6 +10,21 @@ export type InterviewSimulatorRequestBody = {
   interviewRound?: string;
   companyType?: string;
 };
+
+const interviewSimulatorBodySchema = z
+  .object({
+    targetJobTitle: z.string().optional(),
+    coreTechStack: z.string().optional(),
+    interviewRound: z.string().optional(),
+    companyType: z.string().optional(),
+  })
+  .refine(
+    (data) => !!data.targetJobTitle?.trim() || !!data.coreTechStack?.trim(),
+    {
+      message:
+        "Provide at least a target job title or core tech stack to simulate.",
+    }
+  );
 
 export type InterviewQuestion = {
   question: string;
@@ -144,17 +161,6 @@ function normalizeInterviewResult(raw: unknown): InterviewSimulatorResult {
     technicalTrap,
     closingQuestion,
   };
-}
-
-function isValidRequestBody(
-  body: unknown
-): body is InterviewSimulatorRequestBody {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const record = body as InterviewSimulatorRequestBody;
-  return !!record.targetJobTitle?.trim() || !!record.coreTechStack?.trim();
 }
 
 function buildFallbackInterview(
@@ -379,25 +385,15 @@ export async function POST(request: Request) {
     return denied;
   }
 
-  let body: unknown;
-
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(
+    request,
+    interviewSimulatorBodySchema
+  );
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  if (!isValidRequestBody(body)) {
-    return NextResponse.json(
-      {
-        error:
-          "Provide at least a target job title or core tech stack to simulate.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const payload = body as InterviewSimulatorRequestBody;
+  const payload = parsedBody.data;
 
   try {
     const result = await generateGeminiInterview(payload);

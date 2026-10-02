@@ -1,9 +1,15 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { deleteOwnedJob } from "@/lib/jobs";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { createClient } from "@/utils/supabase/server";
 
 type JobStatus = "active" | "paused";
+
+const patchJobBodySchema = z.object({
+  status: z.unknown().optional(),
+});
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -35,8 +41,12 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid job id." }, { status: 400 });
     }
 
-    const body = (await request.json()) as { status?: unknown };
-    const status = normalizeJobStatus(body.status);
+    const parsedBody = await parseJsonWithSchema(request, patchJobBodySchema);
+    if (!parsedBody.ok) {
+      return parsedBody.response;
+    }
+
+    const status = normalizeJobStatus(parsedBody.data.status);
 
     if (!status) {
       return NextResponse.json(

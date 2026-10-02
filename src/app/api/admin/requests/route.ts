@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireAdminApiAccess } from "@/lib/admin-api-auth";
 import {
   fetchIntroRequests,
@@ -10,6 +11,7 @@ import {
   normalizeIntroPipelineStatus,
   type IntroPipelineStatus,
 } from "@/lib/intro-request-status";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import {
   DEFAULT_CANDIDATE_BONUS,
   FLAT_FEE_THRESHOLD,
@@ -112,12 +114,16 @@ export async function GET() {
   }
 }
 
-type PatchIntroRequestBody = {
-  requestId?: string;
-  status?: string;
-  agreed_first_year_compensation?: number | string | null;
-  candidate_bonus_allocated?: number | string | null;
-};
+const patchIntroRequestBodySchema = z.object({
+  requestId: z.string().optional(),
+  status: z.string().optional(),
+  agreed_first_year_compensation: z
+    .union([z.number(), z.string(), z.null()])
+    .optional(),
+  candidate_bonus_allocated: z
+    .union([z.number(), z.string(), z.null()])
+    .optional(),
+});
 
 function isValidPipelineStatus(status: string): status is IntroPipelineStatus {
   return INTRO_PIPELINE_STATUSES.some((entry) => entry.value === status);
@@ -130,7 +136,15 @@ export async function PATCH(request: Request) {
       return access;
     }
 
-    const body = (await request.json()) as PatchIntroRequestBody;
+    const parsedBody = await parseJsonWithSchema(
+      request,
+      patchIntroRequestBodySchema
+    );
+    if (!parsedBody.ok) {
+      return parsedBody.response;
+    }
+
+    const body = parsedBody.data;
     const requestId = body.requestId?.trim() ?? "";
     const nextStatus = normalizeIntroPipelineStatus(body.status);
 

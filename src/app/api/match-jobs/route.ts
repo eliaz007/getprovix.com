@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireAiApiAccess } from "@/lib/api-auth";
 import {
   alignMatchesToJobs,
@@ -18,8 +19,14 @@ import {
   type JobMatchResult,
   type ParsedJobListing,
 } from "@/lib/job-match";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 
 export const maxDuration = 60;
+
+const matchJobsRequestBodySchema = z.object({
+  candidate: z.looseObject({}).optional(),
+  jobs: z.array(z.unknown()),
+});
 
 const SYSTEM_PROMPT = `You are Provix AI Job Match — a skill-matching engine for verified engineering candidates.
 
@@ -83,20 +90,6 @@ const MODEL_CANDIDATES = [
 ] as const;
 
 const GEMINI_RATE_LIMIT_RETRY_MS = 1000;
-
-type MatchJobsRequestBody = {
-  candidate?: JobMatchCandidatePayload;
-  jobs?: unknown;
-};
-
-function isValidRequestBody(body: unknown): body is MatchJobsRequestBody {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const record = body as MatchJobsRequestBody;
-  return Array.isArray(record.jobs);
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -213,26 +206,17 @@ export async function POST(request: Request) {
     return denied;
   }
 
-  let body: unknown;
-
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(
+    request,
+    matchJobsRequestBodySchema
+  );
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  if (!isValidRequestBody(body)) {
-    return NextResponse.json(
-      {
-        error:
-          "Request body must include a jobs array and candidate object with audited skills and experience tier.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const candidate = body.candidate ?? {};
-  const jobs = parseJobListings(body.jobs);
+  const candidate = (parsedBody.data.candidate ??
+    {}) as JobMatchCandidatePayload;
+  const jobs = parseJobListings(parsedBody.data.jobs);
 
   if (jobs.length === 0) {
     return NextResponse.json({ matches: [] } satisfies JobMatchResult);

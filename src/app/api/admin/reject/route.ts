@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import {
   parseIntroRequestId,
   requireAdminApiAccess,
 } from "@/lib/admin-api-auth";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 
-type AdminActionBody = {
-  id?: string;
-  requestId?: string;
-  introId?: string;
-};
+const adminActionBodySchema = z.object({
+  id: z.string().optional(),
+  requestId: z.string().optional(),
+  introId: z.string().optional(),
+});
 
 export async function POST(request: Request) {
   try {
@@ -17,8 +19,12 @@ export async function POST(request: Request) {
       return access;
     }
 
-    const body = (await request.json()) as AdminActionBody;
-    const requestId = parseIntroRequestId(body);
+    const parsedBody = await parseJsonWithSchema(request, adminActionBodySchema);
+    if (!parsedBody.ok) {
+      return parsedBody.response;
+    }
+
+    const requestId = parseIntroRequestId(parsedBody.data);
 
     if (!requestId) {
       return NextResponse.json(

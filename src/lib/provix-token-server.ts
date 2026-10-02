@@ -217,117 +217,128 @@ export async function persistVerifiedRepo(input: {
   | { ok: true; alreadyVerified: boolean }
   | { ok: false; response: NextResponse }
 > {
-  const admin = createServiceRoleClient();
-  if (!admin) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Verification is temporarily unavailable.", verified: false, success: false },
-        { status: 503 }
-      ),
-    };
-  }
+  try {
+    const admin = createServiceRoleClient();
+    if (!admin) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Verification is temporarily unavailable.", verified: false, success: false },
+          { status: 503 }
+        ),
+      };
+    }
 
-  const normalizedRepoUrl = input.repoUrl.trim().toLowerCase();
-  const { data: existingRows, error: lookupError } = await admin
-    .from("repo_verifications")
-    .select("id, is_verified, repo_url")
-    .eq("user_id", input.userId);
+    const normalizedRepoUrl = input.repoUrl.trim().toLowerCase();
+    const { data: existingRows, error: lookupError } = await admin
+      .from("repo_verifications")
+      .select("id, is_verified, repo_url")
+      .eq("user_id", input.userId);
 
-  if (lookupError) {
-    if (isSupabaseSchemaError(lookupError)) {
+    if (lookupError) {
+      if (isSupabaseSchemaError(lookupError)) {
+        return { ok: false, response: missingTableResponse() };
+      }
+      console.error("[provix-token] lookup failed:", lookupError.message);
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Could not update repository verification.", verified: false, success: false },
+          { status: 500 }
+        ),
+      };
+    }
+
+    const existing = (existingRows ?? []).find(
+      (row) =>
+        typeof row.repo_url === "string" &&
+        row.repo_url.trim().toLowerCase() === normalizedRepoUrl
+    );
+
+    if (existing?.id) {
+      const { error: updateError } = await admin
+        .from("repo_verifications")
+        .update({
+          token: input.token,
+          repo_url: normalizedRepoUrl,
+          is_verified: true,
+        })
+        .eq("id", existing.id)
+        .eq("user_id", input.userId);
+
+      if (updateError) {
+        if (isSupabaseSchemaError(updateError)) {
+          return { ok: false, response: missingTableResponse() };
+        }
+        console.error("[provix-token] update failed:", updateError.message);
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: "Could not update repository verification.", verified: false, success: false },
+            { status: 500 }
+          ),
+        };
+      }
+
+      return { ok: true, alreadyVerified: existing.is_verified === true };
+    }
+
+    const { error: insertError } = await admin.from("repo_verifications").insert({
+      user_id: input.userId,
+      repo_url: normalizedRepoUrl,
+      token: input.token,
+      is_verified: true,
+    });
+
+    if (!insertError) {
+      return { ok: true, alreadyVerified: false };
+    }
+
+    if (isSupabaseSchemaError(insertError)) {
       return { ok: false, response: missingTableResponse() };
     }
-    console.error("[provix-token] lookup failed:", lookupError.message);
+
+    if (insertError.code === "23505") {
+      const { error: conflictUpdateError } = await admin
+        .from("repo_verifications")
+        .update({
+          token: input.token,
+          repo_url: normalizedRepoUrl,
+          is_verified: true,
+        })
+        .eq("user_id", input.userId)
+        .ilike("repo_url", normalizedRepoUrl);
+
+      if (conflictUpdateError) {
+        console.error("[provix-token] conflict update failed:", conflictUpdateError.message);
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: "Could not update repository verification.", verified: false, success: false },
+            { status: 500 }
+          ),
+        };
+      }
+
+      return { ok: true, alreadyVerified: false };
+    }
+
+    console.error("[provix-token] insert failed:", insertError.message);
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "Could not update repository verification.", verified: false, success: false },
+        { error: "Could not save repository verification.", verified: false, success: false },
+        { status: 500 }
+      ),
+    };
+  } catch (error) {
+    console.error("[provix-token] persistVerifiedRepo failed:", error);
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Could not save repository verification.", verified: false, success: false },
         { status: 500 }
       ),
     };
   }
-
-  const existing = (existingRows ?? []).find(
-    (row) =>
-      typeof row.repo_url === "string" &&
-      row.repo_url.trim().toLowerCase() === normalizedRepoUrl
-  );
-
-  if (existing?.id) {
-    const { error: updateError } = await admin
-      .from("repo_verifications")
-      .update({
-        token: input.token,
-        repo_url: normalizedRepoUrl,
-        is_verified: true,
-      })
-      .eq("id", existing.id)
-      .eq("user_id", input.userId);
-
-    if (updateError) {
-      if (isSupabaseSchemaError(updateError)) {
-        return { ok: false, response: missingTableResponse() };
-      }
-      console.error("[provix-token] update failed:", updateError.message);
-      return {
-        ok: false,
-        response: NextResponse.json(
-          { error: "Could not update repository verification.", verified: false, success: false },
-          { status: 500 }
-        ),
-      };
-    }
-
-    return { ok: true, alreadyVerified: existing.is_verified === true };
-  }
-
-  const { error: insertError } = await admin.from("repo_verifications").insert({
-    user_id: input.userId,
-    repo_url: normalizedRepoUrl,
-    token: input.token,
-    is_verified: true,
-  });
-
-  if (!insertError) {
-    return { ok: true, alreadyVerified: false };
-  }
-
-  if (isSupabaseSchemaError(insertError)) {
-    return { ok: false, response: missingTableResponse() };
-  }
-
-  if (insertError.code === "23505") {
-    const { error: conflictUpdateError } = await admin
-      .from("repo_verifications")
-      .update({
-        token: input.token,
-        repo_url: normalizedRepoUrl,
-        is_verified: true,
-      })
-      .eq("user_id", input.userId)
-      .ilike("repo_url", normalizedRepoUrl);
-
-    if (conflictUpdateError) {
-      console.error("[provix-token] conflict update failed:", conflictUpdateError.message);
-      return {
-        ok: false,
-        response: NextResponse.json(
-          { error: "Could not update repository verification.", verified: false, success: false },
-          { status: 500 }
-        ),
-      };
-    }
-
-    return { ok: true, alreadyVerified: false };
-  }
-
-  console.error("[provix-token] insert failed:", insertError.message);
-  return {
-    ok: false,
-    response: NextResponse.json(
-      { error: "Could not save repository verification.", verified: false, success: false },
-      { status: 500 }
-    ),
-  };
 }

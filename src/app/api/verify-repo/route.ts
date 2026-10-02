@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireApiUser } from "@/lib/api-auth";
 import { consumeRateLimit, tooManyRequestsResponse } from "@/lib/ip-rate-limit";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { canonicalGitHubRepoUrl } from "@/lib/provix-token";
 import {
   findMatchingProvixFile,
@@ -14,10 +16,10 @@ export const dynamic = "force-dynamic";
 const VERIFY_LIMIT = 8;
 const VERIFY_WINDOW_MS = 10 * 60 * 1000;
 
-type VerifyRepoBody = {
-  repo_url?: unknown;
-  token?: unknown;
-};
+const verifyRepoBodySchema = z.object({
+  repo_url: z.string().optional(),
+  token: z.string().optional(),
+});
 
 function jsonServerError(error: unknown, fallback: string) {
   console.error("[verify-repo]", error);
@@ -44,13 +46,12 @@ export async function POST(request: Request) {
       return tooManyRequestsResponse(limited.retryAfterSec);
     }
 
-    let body: VerifyRepoBody;
-    try {
-      body = (await request.json()) as VerifyRepoBody;
-    } catch {
-      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+    const parsedBody = await parseJsonWithSchema(request, verifyRepoBodySchema);
+    if (!parsedBody.ok) {
+      return parsedBody.response;
     }
 
+    const body = parsedBody.data;
     const repoUrlInput = readStringField(body.repo_url);
     const token = readStringField(body.token);
 

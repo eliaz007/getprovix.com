@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { after, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireAiApiUser, rejectUnlessVerifiedEmployer } from "@/lib/api-auth";
 import {
@@ -15,6 +16,7 @@ import {
   type GitHubAuditContext,
 } from "@/lib/github-audit";
 import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import {
   employerHasApplicantForProfile,
   fetchProfileForCandidateId,
@@ -91,6 +93,13 @@ type JobPayload = {
   location?: string;
   description?: string;
 };
+
+const screenRequestBodySchema = z.object({
+  candidate: z.looseObject({}),
+  job: z.looseObject({}),
+  candidate_key: z.string().optional(),
+  profile_id: z.string().optional(),
+});
 
 export type { GitHubAuditContext };
 
@@ -742,31 +751,6 @@ function buildFallbackScreen(
   );
 }
 
-function isValidRequestBody(
-  body: unknown
-): body is {
-  candidate: CandidatePayload;
-  job: JobPayload;
-  candidate_key?: string;
-  profile_id?: string;
-} {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const record = body as {
-    candidate?: CandidatePayload;
-    job?: JobPayload;
-  };
-
-  return (
-    !!record.candidate &&
-    typeof record.candidate === "object" &&
-    !!record.job &&
-    typeof record.job === "object"
-  );
-}
-
 async function persistScreeningResult(
   candidateKey: string | undefined,
   profileId: string | undefined,
@@ -1080,33 +1064,14 @@ export async function POST(request: Request) {
     return unverified;
   }
 
-  let body: unknown;
-
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  const parsedBody = await parseJsonWithSchema(request, screenRequestBodySchema);
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  if (!isValidRequestBody(body)) {
-    return NextResponse.json(
-      {
-        error:
-          "Request body must include candidate and job objects with the expected fields.",
-      },
-      { status: 400 }
-    );
-  }
-
-  const record = body as {
-    candidate: CandidatePayload;
-    job: JobPayload;
-    candidate_key?: string;
-    profile_id?: string;
-  };
-
-  const { job, candidate_key, profile_id } = record;
-  let { candidate } = record;
+  const { job: rawJob, candidate_key, profile_id } = parsedBody.data;
+  const job = rawJob as JobPayload;
+  let candidate = parsedBody.data.candidate as CandidatePayload;
 
   const lookupId =
     (profile_id && isProfileUuid(profile_id) ? profile_id.trim() : null) ||

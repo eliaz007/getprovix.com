@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createServiceRoleClient } from "@/lib/admin-access";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import {
   fetchCandidateIntroRequestById,
   updateCandidateIntroDismissed,
 } from "@/lib/respond-candidate-intro";
 import { createClient } from "@/utils/supabase/server";
+
+const dismissBodySchema = z.object({
+  dismissed: z.boolean(),
+});
 
 export async function POST(
   request: Request,
@@ -13,10 +19,14 @@ export async function POST(
   try {
     const { id } = await context.params;
     const introId = id?.trim() ?? "";
-    const body = (await request.json()) as { dismissed?: unknown };
-    const dismissed = body.dismissed;
+    const parsedBody = await parseJsonWithSchema(request, dismissBodySchema);
+    if (!parsedBody.ok) {
+      return parsedBody.response;
+    }
 
-    if (!introId || typeof dismissed !== "boolean") {
+    const dismissed = parsedBody.data.dismissed;
+
+    if (!introId) {
       return NextResponse.json(
         { error: "Intro id and dismissed are required." },
         { status: 400 }

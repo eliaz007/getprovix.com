@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createServiceRoleClient } from "@/lib/admin-access";
 import { requireVerifiedEmployer } from "@/lib/api-auth";
 import { isCorporateWorkEmail } from "@/lib/corporate-email";
@@ -7,50 +8,24 @@ import {
   buildIntroRequestInsertPayload,
   CANDIDATE_INTRO_REQUEST_COLUMNS,
 } from "@/lib/candidate-intro-requests";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { sendCandidateIntroRequestEmail } from "@/lib/send-intro-email";
 
-type IntroRequestBody = {
-  candidateId?: string;
-  candidateName?: string;
-  companyName?: string;
-  companyEmail?: string;
-  targetRole?: string;
-  compensationRange?: string;
-  termsAccepted?: boolean;
-};
-
-function isValidBody(body: unknown): body is Required<
-  Pick<
-    IntroRequestBody,
-    | "candidateId"
-    | "candidateName"
-    | "companyName"
-    | "companyEmail"
-    | "targetRole"
-    | "compensationRange"
-  >
-> & { termsAccepted: true } {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const record = body as IntroRequestBody;
-  return (
-    typeof record.candidateId === "string" &&
-    record.candidateId.trim().length > 0 &&
-    typeof record.candidateName === "string" &&
-    record.candidateName.trim().length > 0 &&
-    typeof record.companyName === "string" &&
-    record.companyName.trim().length > 0 &&
-    typeof record.companyEmail === "string" &&
-    isCorporateWorkEmail(record.companyEmail.trim()) &&
-    typeof record.targetRole === "string" &&
-    record.targetRole.trim().length > 0 &&
-    typeof record.compensationRange === "string" &&
-    record.compensationRange.trim().length > 0 &&
-    record.termsAccepted === true
-  );
-}
+const introRequestBodySchema = z.object({
+  candidateId: z.string().trim().min(1),
+  candidateName: z.string().trim().min(1),
+  companyName: z.string().trim().min(1),
+  companyEmail: z
+    .string()
+    .trim()
+    .min(1)
+    .refine((email) => isCorporateWorkEmail(email), {
+      message: "A valid corporate work email is required.",
+    }),
+  targetRole: z.string().trim().min(1),
+  compensationRange: z.string().trim().min(1),
+  termsAccepted: z.literal(true),
+});
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -67,15 +42,13 @@ export async function POST(request: Request) {
 
     const { user, supabase: authClient } = access;
 
-    const body = (await request.json()) as IntroRequestBody;
-    if (!isValidBody(body)) {
-      return NextResponse.json(
-        { error: "Invalid intro request payload." },
-        { status: 400 }
-      );
+    const parsedBody = await parseJsonWithSchema(request, introRequestBodySchema);
+    if (!parsedBody.ok) {
+      return parsedBody.response;
     }
 
-    const candidateId = body.candidateId.trim();
+    const body = parsedBody.data;
+    const candidateId = body.candidateId;
     if (!isUuid(candidateId)) {
       return NextResponse.json(
         { error: "A valid candidate profile id is required." },
@@ -89,11 +62,11 @@ export async function POST(request: Request) {
     const insertPayload = buildIntroRequestInsertPayload({
       userId: user.id,
       candidateId,
-      candidateName: body.candidateName.trim(),
-      companyName: body.companyName.trim(),
-      companyEmail: body.companyEmail.trim(),
-      targetRole: body.targetRole.trim(),
-      compensationRange: body.compensationRange.trim(),
+      candidateName: body.candidateName,
+      companyName: body.companyName,
+      companyEmail: body.companyEmail,
+      targetRole: body.targetRole,
+      compensationRange: body.compensationRange,
       tosAcceptedAt,
       responseToken,
     });

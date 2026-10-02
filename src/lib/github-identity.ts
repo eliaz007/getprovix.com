@@ -83,22 +83,27 @@ export async function syncGitHubIdentityToProfile(
   supabase: Pick<SupabaseClient, "from">,
   user: User | null | undefined
 ): Promise<GitHubProfileLink | null> {
-  if (!user?.id) {
+  try {
+    if (!user?.id) {
+      return null;
+    }
+
+    const link = githubLinkFromUser(user);
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        github_username: link.github_username,
+        github_verified: link.github_verified,
+      })
+      .or(`id.eq.${user.id},user_id.eq.${user.id}`);
+
+    if (error && !isSupabaseSchemaError(error)) {
+      console.error("[github-identity] profile sync failed:", error);
+    }
+
+    return link;
+  } catch (error) {
+    console.error("[github-identity] syncGitHubIdentityToProfile failed:", error);
     return null;
   }
-
-  const link = githubLinkFromUser(user);
-  const { error } = await supabase
-    .from("profiles")
-    .update({
-      github_username: link.github_username,
-      github_verified: link.github_verified,
-    })
-    .or(`id.eq.${user.id},user_id.eq.${user.id}`);
-
-  if (error && !isSupabaseSchemaError(error)) {
-    console.error("[github-identity] profile sync failed:", error);
-  }
-
-  return link;
 }

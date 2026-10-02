@@ -68,53 +68,63 @@ export async function persistEmployerVerifiedFlag(
   userId: string,
   email: string
 ): Promise<{ ok: boolean; profileId: string | null }> {
-  const normalizedEmail = email.trim().toLowerCase();
-  const nowIso = new Date().toISOString();
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    const nowIso = new Date().toISOString();
 
-  const rpc = await admin.rpc("mark_employer_email_verified", {
-    p_user_id: userId,
-    p_email: normalizedEmail,
-  });
+    const rpc = await admin.rpc("mark_employer_email_verified", {
+      p_user_id: userId,
+      p_email: normalizedEmail,
+    });
 
-  if (!rpc.error) {
-    const rpcRows = (Array.isArray(rpc.data) ? rpc.data : rpc.data ? [rpc.data] : []) as VerifiedProfileRow[];
-    if (rpcRows.some(rowIsVerified)) {
-      const verified = rpcRows.find(rowIsVerified);
-      return { ok: true, profileId: verified?.id ?? userId };
+    if (!rpc.error) {
+      const rpcRows = (Array.isArray(rpc.data) ? rpc.data : rpc.data ? [rpc.data] : []) as VerifiedProfileRow[];
+      if (rpcRows.some(rowIsVerified)) {
+        const verified = rpcRows.find(rowIsVerified);
+        return { ok: true, profileId: verified?.id ?? userId };
+      }
+    } else {
+      console.warn("[employer-verify] mark_employer_email_verified rpc:", rpc.error.message);
     }
-  } else {
-    console.warn("[employer-verify] mark_employer_email_verified rpc:", rpc.error.message);
+
+    const fullPatch = {
+      is_verified: true,
+      email_verified_at: nowIso,
+      contact_email: normalizedEmail || null,
+      email: normalizedEmail || null,
+    };
+
+    let updated = await updateIsVerifiedByUserId(admin, userId, fullPatch);
+    if (!updated.some(rowIsVerified)) {
+      updated = await updateIsVerifiedByUserId(admin, userId, { is_verified: true });
+    }
+
+    const confirmed = (await selectVerifiedRows(admin, userId)).find(rowIsVerified);
+    if (confirmed) {
+      return { ok: true, profileId: confirmed.id ?? userId };
+    }
+
+    console.error(
+      "[employer-verify] is_verified did not persist for user",
+      userId,
+      updated
+    );
+    return { ok: false, profileId: null };
+  } catch (error) {
+    console.error("[employer-verify] persistEmployerVerifiedFlag failed:", error);
+    return { ok: false, profileId: null };
   }
-
-  const fullPatch = {
-    is_verified: true,
-    email_verified_at: nowIso,
-    contact_email: normalizedEmail || null,
-    email: normalizedEmail || null,
-  };
-
-  let updated = await updateIsVerifiedByUserId(admin, userId, fullPatch);
-  if (!updated.some(rowIsVerified)) {
-    updated = await updateIsVerifiedByUserId(admin, userId, { is_verified: true });
-  }
-
-  const confirmed = (await selectVerifiedRows(admin, userId)).find(rowIsVerified);
-  if (confirmed) {
-    return { ok: true, profileId: confirmed.id ?? userId };
-  }
-
-  console.error(
-    "[employer-verify] is_verified did not persist for user",
-    userId,
-    updated
-  );
-  return { ok: false, profileId: null };
 }
 
 export async function employerIsVerifiedInDatabase(
   admin: SupabaseClient,
   userId: string
 ): Promise<boolean> {
-  const rows = await selectVerifiedRows(admin, userId);
-  return rows.some(rowIsVerified);
+  try {
+    const rows = await selectVerifiedRows(admin, userId);
+    return rows.some(rowIsVerified);
+  } catch (error) {
+    console.error("[employer-verify] employerIsVerifiedInDatabase failed:", error);
+    return false;
+  }
 }

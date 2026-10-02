@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import {
   CANONICAL_AUDIT_CHECKS,
   normalizeAuditChecks,
@@ -102,6 +103,7 @@ import {
   PRIVATE_AUDITED_REPO_LABEL,
   type DossierVerificationStatus,
 } from "@/lib/production-audit";
+import { parseJsonWithSchema } from "@/lib/parse-request-json";
 
 export const runtime = "nodejs";
 
@@ -116,6 +118,17 @@ export type AuditRequestBody = {
   isPublicTeaser?: boolean;
   externalProjects?: ExternalProjectRecord[];
 };
+
+const auditRequestBodySchema = z.object({
+  targetRole: z.string().optional(),
+  githubUrl: z.string().optional(),
+  resumeSummary: z.string().optional(),
+  compensationLevel: z.string().optional(),
+  workIsPrivate: z.unknown().optional(),
+  playground: z.boolean().optional(),
+  isPublicTeaser: z.boolean().optional(),
+  externalProjects: z.unknown().optional(),
+});
 
 export type { AuditCheck };
 
@@ -638,7 +651,9 @@ function parseJsonValue(value: string | undefined): unknown {
   }
 }
 
-function normalizeAuditRequestBody(body: AuditRequestBody): AuditRequestBody {
+function normalizeAuditRequestBody(
+  body: z.infer<typeof auditRequestBodySchema>
+): AuditRequestBody {
   return {
     targetRole: body.targetRole,
     githubUrl: body.githubUrl,
@@ -653,7 +668,7 @@ function normalizeAuditRequestBody(body: AuditRequestBody): AuditRequestBody {
 
 async function readAuditRequest(request: Request): Promise<
   | { ok: true; body: AuditRequestBody; resumeFile: File | null }
-  | { ok: false }
+  | { ok: false; response: NextResponse }
 > {
   const contentType = request.headers.get("content-type") ?? "";
 
@@ -681,19 +696,26 @@ async function readAuditRequest(request: Request): Promise<
             : null,
       };
     } catch {
-      return { ok: false };
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Invalid request body." },
+          { status: 400 }
+        ),
+      };
     }
   }
 
-  try {
-    const json = (await request.json()) as AuditRequestBody;
-    if (!json || typeof json !== "object") {
-      return { ok: false };
-    }
-    return { ok: true, body: normalizeAuditRequestBody(json), resumeFile: null };
-  } catch {
-    return { ok: false };
+  const parsed = await parseJsonWithSchema(request, auditRequestBodySchema);
+  if (!parsed.ok) {
+    return { ok: false, response: parsed.response };
   }
+
+  return {
+    ok: true,
+    body: normalizeAuditRequestBody(parsed.data),
+    resumeFile: null,
+  };
 }
 
 function buildFallbackAudit(
@@ -1118,7 +1140,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const parsed = await readAuditRequest(request);
   if (!parsed.ok) {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    return parsed.response;
   }
 
   const payload: AuditRequestBody = { ...parsed.body };

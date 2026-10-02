@@ -54,23 +54,32 @@ export async function loadDailyScanUsage(
   supabase: SupabaseClient,
   userId: string
 ): Promise<{ usage: DailyScanUsage; error: string | null }> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("daily_scans, last_scan_date")
-    .eq("id", userId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("daily_scans, last_scan_date")
+      .eq("id", userId)
+      .maybeSingle();
 
-  if (error) {
+    if (error) {
+      return {
+        usage: resolveDailyScanUsage(0, null),
+        error: error.message,
+      };
+    }
+
+    return {
+      usage: resolveDailyScanUsage(data?.daily_scans, data?.last_scan_date),
+      error: null,
+    };
+  } catch (error) {
+    console.error("[daily-scan-limit] load failed:", error);
     return {
       usage: resolveDailyScanUsage(0, null),
-      error: error.message,
+      error:
+        error instanceof Error ? error.message : "Could not load scan usage.",
     };
   }
-
-  return {
-    usage: resolveDailyScanUsage(data?.daily_scans, data?.last_scan_date),
-    error: null,
-  };
 }
 
 export async function incrementDailyScanUsage(
@@ -81,18 +90,23 @@ export async function incrementDailyScanUsage(
   const today = todayUtcDate();
   const nextCount = current.daily_scans + 1;
 
-  const { error } = await supabase
-    .from("profiles")
-    .update({
-      daily_scans: nextCount,
-      last_scan_date: today,
-    })
-    .eq("id", userId);
+  try {
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        daily_scans: nextCount,
+        last_scan_date: today,
+      })
+      .eq("id", userId);
 
-  if (error) {
-    console.error("[daily-scan-limit] increment failed:", error);
+    if (error) {
+      console.error("[daily-scan-limit] increment failed:", error);
+      return current;
+    }
+
+    return resolveDailyScanUsage(nextCount, today, today);
+  } catch (error) {
+    console.error("[daily-scan-limit] increment threw:", error);
     return current;
   }
-
-  return resolveDailyScanUsage(nextCount, today, today);
 }
