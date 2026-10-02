@@ -2,12 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 jobs:
-  lint-and-test:
+  lint-typecheck-test-build:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,8 +23,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Lint
         run: npm run lint
 
       - name: Test
         run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key-for-ci
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
