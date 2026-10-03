@@ -1183,13 +1183,16 @@ async function fetchRepoFilesystem(
           inspected: true,
           truncated: false,
         });
-        return enrichFilesystemFromContents(
-          classified,
-          paths,
-          owner,
-          repo,
-          commitSha
-        );
+        return {
+          ...(await enrichFilesystemFromContents(
+            classified,
+            paths,
+            owner,
+            repo,
+            commitSha
+          )),
+          audited_commit_sha: commitSha,
+        };
       }
 
       warnings.push(
@@ -1209,13 +1212,16 @@ async function fetchRepoFilesystem(
         inspected: true,
         truncated: true,
       });
-      return enrichFilesystemFromContents(
-        classified,
-        merged,
-        owner,
-        repo,
-        commitSha
-      );
+      return {
+        ...(await enrichFilesystemFromContents(
+          classified,
+          merged,
+          owner,
+          repo,
+          commitSha
+        )),
+        audited_commit_sha: commitSha,
+      };
     } catch (error) {
       if (error instanceof GithubContentReadError) {
         throw error;

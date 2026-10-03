@@ -30,12 +30,12 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   } = useDashboardNav();
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#090A0F] text-zinc-100 font-sans antialiased selection:bg-brand/30">
-      <aside className="hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-white/[0.08] bg-[#0E0E12] md:flex">
+    <div className="print-flow flex h-screen overflow-hidden bg-[#090A0F] text-zinc-100 font-sans antialiased selection:bg-brand/30 print:block print:h-auto print:overflow-hidden">
+      <aside className="hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-white/[0.08] bg-[#0E0E12] print:hidden! md:flex">
         <DashboardSidebar />
       </aside>
 
-      <div className="md:hidden">
+      <div className="print:hidden md:hidden">
         <button
           type="button"
           aria-label="Close navigation menu"
@@ -61,7 +61,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         </aside>
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#090A0F]">
+      <div className="print-flow flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#090A0F] print:block print:h-auto print:overflow-hidden">
         <MobileAppHeader
           onOpenMenu={() => setMobileNavOpen(true)}
           onSignIn={() => requireAuth()}
@@ -71,29 +71,33 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           initials={userInitials}
         />
 
-        <main className="relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#090A0F] text-zinc-100">
-          <div className="mx-auto min-h-screen w-full max-w-6xl p-8">
-            {!isBusinessAccount ? <DossierClaimBanner /> : null}
-            {!isGuest &&
-            isBusinessAccount &&
-            isVerifiedEmployer === false &&
-            !authLoading ? (
-              <div className="mb-6">
-                <GetVerifiedBanner userId={userId} />
-              </div>
-            ) : null}
+        <main className="print-flow relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#090A0F] text-zinc-100 print:h-auto print:overflow-hidden">
+          <div className="print-flow mx-auto min-h-screen w-full max-w-6xl p-8 print:min-h-0 print:max-w-none print:p-0">
+            <div className="print:hidden">
+              {!isBusinessAccount ? <DossierClaimBanner /> : null}
+              {!isGuest &&
+              isBusinessAccount &&
+              isVerifiedEmployer === false &&
+              !authLoading ? (
+                <div className="mb-6">
+                  <GetVerifiedBanner userId={userId} />
+                </div>
+              ) : null}
+            </div>
             <div key={pathname}>{children}</div>
           </div>
         </main>
       </div>
 
-      <GuestAuthModal
-        open={authModalOpen}
-        error={authModalError}
-        onClose={() => setAuthModalOpen(false)}
-        onError={setAuthModalError}
-      />
-      <CompanySetupModal />
+      <div className="print:hidden">
+        <GuestAuthModal
+          open={authModalOpen}
+          error={authModalError}
+          onClose={() => setAuthModalOpen(false)}
+          onError={setAuthModalError}
+        />
+        <CompanySetupModal />
+      </div>
     </div>
   );
 }

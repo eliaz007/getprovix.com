@@ -6780,13 +6780,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           {/* EMPLOYER: AI SCREEN CANDIDATE */}
           {showTalentPoolNav && activeTab === "evaluator" && (
             <div>
-              <div className="mb-8">
+              <div className="mb-8 print:hidden">
                 <h1 className="text-3xl font-extrabold tracking-tight text-textMain">Employer AI Screen</h1>
                 <p className="text-textMuted text-sm mt-2">Paste a candidate's resume or project links to generate a hiring summary.</p>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-7 space-y-5">
+              <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12 print:block print:gap-0">
+                <div className="card-edge space-y-5 rounded-2xl border border-border bg-panel p-7 print:hidden lg:col-span-6">
                   <input type="text" placeholder="Candidate Target Role" value={evalRole} onChange={(e) => setEvalRole(e.target.value)} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand" />
                   <input type="text" placeholder="Education / Major (Optional)" value={evalMajor} onChange={(e) => setEvalMajor(e.target.value)} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand" />
                   <textarea rows={5} placeholder="Paste Proof of Work or Resume details here..." value={evalAccomplishments} onChange={(e) => setEvalAccomplishments(e.target.value)} className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-textMain resize-none focus:outline-none focus:border-brand" />
@@ -6796,7 +6796,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </button>
                 </div>
 
-                <div className="lg:col-span-6 card-edge bg-panel rounded-2xl border border-border p-6 min-h-[360px]">
+                <div className="print-flow card-edge min-h-[360px] rounded-2xl border border-border bg-panel p-6 print:min-h-0 print:rounded-none print:border-0 print:bg-transparent print:p-0 print:shadow-none lg:col-span-6">
                   {employerAuditError ? (
                     <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300">
                       {employerAuditError}

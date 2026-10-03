@@ -56,6 +56,8 @@ export type RepoFilesystemEvidence = {
   unvalidated_type_assertions?: number;
   /** Every sampled route has a schema contract and zero bare type assertions. */
   has_contract_boundaries?: boolean;
+  /** HEAD SHA the file tree was pinned to. Absent when the audit predates pinning. */
+  audited_commit_sha?: string;
 };
 
 export type FilesystemScorePolicy = {
@@ -592,7 +594,16 @@ export function parseRepoFilesystemEvidence(
           : undefined,
     unvalidated_type_assertions: asCount(record.unvalidated_type_assertions),
     has_contract_boundaries: record.has_contract_boundaries === true,
+    audited_commit_sha: commitShaFromRecord(record.audited_commit_sha),
   };
+}
+
+function commitShaFromRecord(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const sha = value.trim().toLowerCase();
+  return /^[0-9a-f]{7,40}$/.test(sha) ? sha : undefined;
 }
 
 export function coreArtifactsPresent(evidence: RepoFilesystemEvidence | null | undefined): {

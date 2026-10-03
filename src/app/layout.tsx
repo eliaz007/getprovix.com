@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
 import VercelAnalytics from "@/components/vercel-analytics";
 import {
   SITE_DESCRIPTION,
@@ -25,6 +25,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
   display: "swap",
   // Mono is non-critical on first paint — don't compete with CSS on mobile.
+  preload: false,
+});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  display: "swap",
   preload: false,
 });
 
@@ -165,7 +172,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full bg-[#090A0F] antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} h-full bg-[#090A0F] antialiased`}
     >
       <body className="flex min-h-full flex-col bg-[#090A0F] font-sans text-[#ededed]">
         {/* Inline critical colors so the first paint is not a white flash while

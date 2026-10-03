@@ -142,6 +142,25 @@ export async function updateSession(request: NextRequest) {
     return redirectWithSessionCookies(request, supabaseResponse, "/");
   }
 
+  const isAdminConsole =
+    pathname.startsWith("/admin") &&
+    pathname !== "/admin/login" &&
+    !pathname.startsWith("/admin/login/");
+
+  if (isAdminConsole) {
+    if (!user) {
+      return redirectWithSessionCookies(
+        request,
+        supabaseResponse,
+        "/login",
+        `?next=${encodeURIComponent(pathname)}`
+      );
+    }
+    if (!isAdminUser(user)) {
+      return redirectWithSessionCookies(request, supabaseResponse, "/");
+    }
+  }
+
   if (user) {
     const employerRequest = isEmployerDashboardRequest(
       pathname,

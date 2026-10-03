@@ -462,7 +462,7 @@ export default function PublicProductionAudit({
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
-      <form onSubmit={onSubmit} className="w-full space-y-3">
+      <form onSubmit={onSubmit} className="w-full space-y-3 print:hidden">
         <div className="relative flex flex-col gap-2 overflow-hidden rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-1.5 transition-colors hover:border-neutral-700/80 sm:flex-row sm:items-stretch">
           <div className="pointer-events-none absolute -right-16 -top-16 h-32 w-32 rounded-full bg-violet-600/5 blur-2xl" />
           <label htmlFor="public-audit-repo" className="sr-only">

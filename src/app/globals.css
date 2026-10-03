@@ -158,3 +158,147 @@
     transform: none;
   }
 }
+
+.memo-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 0.75rem;
+  color: #f4f4f5;
+}
+
+.memo-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #3f3f46;
+  background: #27272a;
+  color: #f4f4f5;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.75rem;
+}
+
+/* Technical evaluation memo: one dark Letter sheet at ~90% of page height. */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0;
+  }
+
+  html,
+  body {
+    height: 279.4mm !important;
+    min-height: 0 !important;
+    max-height: 279.4mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #09090b !important;
+    color: #f4f4f5 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html *,
+  body * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  aside,
+  nav,
+  footer,
+  form,
+  button,
+  input,
+  select,
+  textarea,
+  #verification-dossier-card {
+    display: none !important;
+  }
+
+  .print-flow {
+    height: 279.4mm !important;
+    min-height: 0 !important;
+    max-height: 279.4mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #09090b !important;
+    color: #f4f4f5 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  #technical-evaluation-memo {
+    display: flex !important;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 48rem;
+    height: 251mm;
+    min-height: 251mm;
+    max-height: 251mm;
+    margin: 14.2mm auto 0 !important;
+    overflow: hidden;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-before: avoid;
+    break-after: avoid;
+    page-break-before: avoid;
+    page-break-after: avoid;
+    background: #09090b !important;
+    color: #f4f4f5 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    font-family: var(--font-inter), Inter, ui-sans-serif, system-ui, sans-serif !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #technical-evaluation-memo > div {
+    flex: 1 1 auto;
+    min-height: 0;
+    background: #09090b !important;
+    color: #f4f4f5 !important;
+  }
+
+  #technical-evaluation-memo .memo-fill {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  #technical-evaluation-memo .text-\[\#a1a1aa\],
+  #technical-evaluation-memo .text-zinc-400 {
+    color: #a1a1aa !important;
+  }
+
+  #technical-evaluation-memo .memo-card {
+    background: #18181b !important;
+    border: 1px solid #27272a !important;
+    color: #f4f4f5 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #technical-evaluation-memo .memo-badge {
+    background: #27272a !important;
+    border: 1px solid #3f3f46 !important;
+    color: #f4f4f5 !important;
+    border-radius: 0.375rem;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #technical-evaluation-memo h1,
+  #technical-evaluation-memo h2,
+  #technical-evaluation-memo h3 {
+    color: #f4f4f5;
+    font-family: inherit;
+  }
+
+  #technical-evaluation-memo section,
+  #technical-evaluation-memo header,
+  #technical-evaluation-memo li {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

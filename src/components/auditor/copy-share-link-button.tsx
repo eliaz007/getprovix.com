@@ -53,8 +53,8 @@ export default function CopyShareLinkButton({
       onClick={() => void onCopy()}
       className={
         prominent
-          ? "inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand/70 bg-brand/20 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:border-brand hover:bg-brand/40"
-          : "inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-700/80 bg-zinc-950 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition-colors hover:bg-zinc-900"
+          ? "inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand/70 bg-brand/20 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:border-brand hover:bg-brand/40 print:hidden"
+          : "inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-700/80 bg-zinc-950 px-3 py-1.5 text-xs font-semibold text-zinc-100 transition-colors hover:bg-zinc-900 print:hidden"
       }
     >
       {copied ? (

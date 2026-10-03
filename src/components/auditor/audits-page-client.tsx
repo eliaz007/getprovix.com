@@ -93,14 +93,17 @@ export default function AuditsPageClient({
   }, []);
 
   return (
-    <div className="-mx-4 -my-8 min-h-[calc(100vh-3.5rem)] bg-[#0B0B0D] px-4 py-8">
+    <div className="print-flow -mx-4 -my-8 min-h-[calc(100vh-3.5rem)] bg-[#0B0B0D] px-4 py-8 print:m-0 print:min-h-0 print:p-0">
       <GitHubResumeAuditor
         key={`${initialGithubUrl}-${initialPrivateWork ? "private" : "public"}`}
         initialGithubUrl={initialGithubUrl}
         initialPrivateWork={initialPrivateWork}
         sidePanel={
           showScorecard ? (
-            <VerificationDossierPanel scorecard={scorecard} className="h-full" />
+            <VerificationDossierPanel
+              scorecard={scorecard}
+              className="h-full print:hidden"
+            />
           ) : undefined
         }
         scoreSummary={null}

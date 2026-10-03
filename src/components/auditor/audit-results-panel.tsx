@@ -13,6 +13,7 @@ import {
   Check,
   ChevronDown,
   Copy,
+  FileDown,
   Lock,
   RefreshCw,
   ShieldCheck,
@@ -21,6 +22,7 @@ import {
 import type { AuditResult } from "@/app/api/audit/route";
 import AuditChecksList from "@/components/auditor/audit-checks-list";
 import CopyShareLinkButton from "@/components/auditor/copy-share-link-button";
+import TechnicalEvaluationMemo from "@/components/auditor/technical-evaluation-memo";
 import ProductionScorecard from "@/components/auditor/production-scorecard";
 import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
 import ScoreMeter from "@/components/ScoreMeter";
@@ -1270,6 +1272,19 @@ function readinessBadgeClass(score: number): string {
     : FAIL_BADGE_CLASS;
 }
 
+function ExportDossierButton() {
+  return (
+    <button
+      type="button"
+      onClick={() => window.print()}
+      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand/70 bg-brand/20 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:border-brand hover:bg-brand/40 print:hidden"
+    >
+      <FileDown className="h-3.5 w-3.5" aria-hidden />
+      Export Dossier (PDF)
+    </button>
+  );
+}
+
 function AuditResultsPanelView({
   result,
   repoName,
@@ -1313,8 +1328,23 @@ function AuditResultsPanelView({
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <section className="space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 sm:p-6 backdrop-blur-sm">
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 print:max-w-none print:gap-0">
+      <TechnicalEvaluationMemo
+        handle={displayRepo}
+        targetStack={roleSpec}
+        verifiedOn={auditedLabel}
+        commitSha={filesystem?.audited_commit_sha ?? null}
+        score={score}
+        benchmark={result.benchmark}
+        metrics={metrics}
+        filesystem={filesystem}
+        checks={result.checks ?? []}
+        redFlags={visibleRedFlags}
+      />
+      <section
+        id="verification-dossier-card"
+        className="space-y-4 break-inside-avoid rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 backdrop-blur-sm print:hidden sm:p-6"
+      >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-3">
             <div className={SECTION_LABEL}>Executive Verdict</div>
@@ -1339,19 +1369,22 @@ function AuditResultsPanelView({
                   Talent Network Eligible
                 </span>
               )}
-              {!readOnly && shareId ? (
-                <CopyShareLinkButton
-                  path={`/audit/${shareId}`}
-                  label="Share Audit"
-                  prominent
-                />
-              ) : null}
+              <div className="dossier-actions inline-flex flex-wrap items-center gap-2 print:hidden">
+                {!readOnly && shareId ? (
+                  <CopyShareLinkButton
+                    path={`/audit/${shareId}`}
+                    label="Share Audit"
+                    prominent
+                  />
+                ) : null}
+                <ExportDossierButton />
+              </div>
             </div>
           </div>
           <div className="shrink-0 space-y-2 sm:text-right">
             <div className={SECTION_LABEL}>Readiness Score</div>
             <div className="flex items-baseline gap-1 sm:justify-end">
-              <span className="font-mono text-4xl font-black tabular-nums tracking-tight text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.08)] sm:text-5xl">
+              <span className="dossier-score font-mono text-4xl font-black tabular-nums tracking-tight text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.08)] sm:text-5xl">
                 {score}
               </span>
               <span className="text-base font-semibold text-zinc-400">/100</span>
@@ -1374,9 +1407,10 @@ function AuditResultsPanelView({
           benchmark={result.benchmark}
           executiveBrief={result.executiveBrief}
           audience={employerView ? "employer" : "candidate"}
+          className="break-inside-avoid print:break-inside-avoid print:shadow-none print:backdrop-blur-none"
         />
 
-        <details className="group rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2">
+        <details className="group rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2 print:hidden!">
           <summary className="cursor-pointer list-none text-xs font-medium text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
             <span className="inline-flex items-center gap-1.5">
               <ChevronDown
@@ -1443,17 +1477,21 @@ function AuditResultsPanelView({
         </details>
       </section>
 
-      {readOnly ? null : employerView ? (
-        <TechnicalScreenGenerator prompts={screenPrompts} score={score} />
-      ) : (
-        <RemediationSimulator
-          key={`${score}-${remediationItems.map((item) => item.id).join("-")}`}
-          score={score}
-          items={remediationItems}
-        />
+      {readOnly ? null : (
+        <div className="print:hidden">
+          {employerView ? (
+            <TechnicalScreenGenerator prompts={screenPrompts} score={score} />
+          ) : (
+            <RemediationSimulator
+              key={`${score}-${remediationItems.map((item) => item.id).join("-")}`}
+              score={score}
+              items={remediationItems}
+            />
+          )}
+        </div>
       )}
 
-      <section className="rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 sm:p-6 backdrop-blur-sm">
+      <section className="rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 backdrop-blur-sm print:hidden sm:p-6">
         <div className={`${SECTION_LABEL} mb-3`}>Executive Checklist</div>
         <ul className="space-y-2">
           {checklist.map((item) => {
@@ -1491,7 +1529,7 @@ function AuditResultsPanelView({
       </section>
 
       {!employerView ? (
-        <section>
+        <section className="print:hidden">
           <div className={`${SECTION_LABEL} mb-3 text-violet-400`}>
             Actionable Fixes
           </div>
@@ -1510,7 +1548,7 @@ function AuditResultsPanelView({
         </section>
       ) : null}
 
-      <details className="group rounded-xl border border-zinc-800/80 bg-zinc-950 backdrop-blur-sm">
+      <details className="group rounded-xl border border-zinc-800/80 bg-zinc-950 backdrop-blur-sm print:hidden">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-zinc-100 [&::-webkit-details-marker]:hidden">
           <span>View Raw Inspection Artifacts &amp; AST Logs</span>
           <ChevronDown
@@ -1621,10 +1659,14 @@ function AuditResultsPanelView({
         </div>
       </details>
 
-      {readOnly ? null : employerView ? (
-        <EmployerActionToolbar briefMarkdown={briefMarkdown} />
-      ) : (
-        <CandidateActionToolbar onRescan={onRescan} rescanning={rescanning} />
+      {readOnly ? null : (
+        <div className="print:hidden">
+          {employerView ? (
+            <EmployerActionToolbar briefMarkdown={briefMarkdown} />
+          ) : (
+            <CandidateActionToolbar onRescan={onRescan} rescanning={rescanning} />
+          )}
+        </div>
       )}
     </div>
   );

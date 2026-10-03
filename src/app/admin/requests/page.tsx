@@ -583,7 +583,15 @@ export default function AdminIntroRequestsPage() {
           <Link href="/" className="hover:opacity-90 transition-opacity shrink-0">
             <ProvixLogo />
           </Link>
-          <SignOutButton redirectTo="/" />
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin/audit"
+              className="text-sm font-medium text-textMuted transition-colors hover:text-textMain"
+            >
+              Unrestricted auditor
+            </Link>
+            <SignOutButton redirectTo="/" />
+          </div>
         </div>
       </header>
 

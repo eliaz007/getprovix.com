@@ -39,8 +39,8 @@ export default async function SharedAuditPage({ params }: SharedAuditPageProps) 
   }
 
   return (
-    <div className="min-h-screen bg-background text-textMuted">
-      <header className="border-b border-border">
+    <div className="print-flow min-h-screen bg-background text-textMuted print:min-h-0">
+      <header className="border-b border-border print:hidden">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
           <Link href="/" className="transition-opacity hover:opacity-90">
             <ProvixLogo />
@@ -49,7 +49,7 @@ export default async function SharedAuditPage({ params }: SharedAuditPageProps) 
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="mx-auto max-w-6xl px-6 py-10 print:max-w-none print:p-0">
         <AuditResultsPanel
           result={audit.result}
           repoName={audit.repoName ?? undefined}

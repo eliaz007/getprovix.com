@@ -114,7 +114,7 @@ function buildCandidateLinks(): NavLinkDef[] {
     },
     {
       key: "auditor",
-      label: "Auditor",
+      label: "Roster Verification",
       kind: "href",
       href: "/dashboard/auditor",
       isActive: isAuditorPath,
@@ -161,7 +161,7 @@ function buildEmployerLinks(showTalentPool: boolean): NavLinkDef[] {
         kind: "tab",
         tab: "evaluator",
       },
-      { key: "auditor", label: "Auditor", kind: "tab", tab: "auditor" }
+      { key: "auditor", label: "Roster Verification", kind: "tab", tab: "auditor" }
     );
   }
 
@@ -277,7 +277,7 @@ export default function DashboardTopNav() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#0B0B0D]/85 backdrop-blur-md">
+    <header className="sticky top-0 z-50 w-full border-b border-white/[0.08] bg-[#0B0B0D]/85 backdrop-blur-md print:hidden">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:gap-6 sm:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
           <Link

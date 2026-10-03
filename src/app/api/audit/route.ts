@@ -82,7 +82,7 @@ import {
   loadCodebaseBenchmark,
   type CodebaseBenchmark,
 } from "@/lib/codebase-benchmark";
-import { createServiceRoleClient } from "@/lib/admin-access";
+import { createServiceRoleClient, isAdminUser } from "@/lib/admin-access";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { isEmployerRole } from "@/lib/dashboard-account";
@@ -175,6 +175,7 @@ RULES FOR YOUR AUDIT:
 9. MONOREPOS AND ALTERNATIVE TEST RUNNERS: Nested packages under apps/, packages/, services/, libs/, modules/, or workspaces/ are valid production layouts. Tests, CI, and error-handling files inside those packages count. Jest, Vitest, Ava, Mocha, node:test, Pytest, Go testing, Playwright, Cypress, RSpec, JUnit, and similar runners count when their files or configs appear in filesystem.test_paths / ci_workflow_paths / error_handling_paths. Do not treat a missing repo-root /tests folder as a missing suite. If filesystem.truncated is true, do not assume nested package artifacts are absent just because they are not at the repository root; only treat an artifact as missing when scorePolicy lists it in missingCoreArtifacts.
 10. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts. Never say the audit could not be completed solely because GitHub is private.
 11. REPO ACTIVITY: Do not deduct any numerical quality points for commit age, inactivity, clustered commits, or a finished repository. You may mention an informational activity tag of "active" (recent commits) or "stable" (older / inactive). Never apply a History −25 or similar cadence penalty. When scorePolicy shows tests, CI, and error handling are present, the score should stay aligned with that production evidence.
+12. LANGUAGE-NATIVE RECOMMENDATIONS: The user payload includes primaryLanguage from GitHub repo metadata (and per-artifact language). You are analyzing a codebase whose primary language is that value (or "unknown" when missing). CRITICAL CONSTRAINT: every recommendation, actionable fix, and tool suggestion MUST strictly correspond to primaryLanguage and the detected toolchain in the file tree. Do NOT suggest JavaScript/TypeScript tools (next build, tsc, npm, eslint, Zod, Vitest, Playwright) unless primaryLanguage is JavaScript/TypeScript or the file tree clearly shows a JS/TS app. For Go: prefer go build ./..., golangci-lint run, go test -v ./.... For Python: prefer pytest, ruff, mypy. For Rust: prefer cargo check, cargo clippy, cargo test. Ensure all recommendations and developerSummary fixes reflect that ecosystem.
 
 Return strict JSON only:
 {
@@ -210,7 +211,7 @@ JSON field rules:
 - score: integer 0-100 from the four-pillar weighted model in rule 8. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling. Do not deduct for a missing resume. Do not deduct merely for a monorepo layout or a non-Jest test runner. Do not deduct for inactivity (rule 11).
 - strengths: 3-5 bullets. Each must cite a file path, file type, directory pattern, commit-history detail, live/documentation URL, or technical-breakdown detail from the provided artifacts. If you cannot cite it, omit it. Nested package paths and alternative test-runner files are valid citations. Do not cite README claims as proof of tests, CI, or error handling.
 - redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. If scorePolicy.missingCoreArtifacts is non-empty, say so. Do not red-flag a missing repo-root /tests folder when nested package tests or alternative runners are listed. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true. Never list a missing resume, CV, or experience summary as a red flag.
-- recommendations: exactly 3 constructive, actionable fixes. Each must name a concrete file, nested package path, config, or command, plus what evidence would lift the related penalty.
+- recommendations: exactly 3 constructive, actionable fixes. Each must name a concrete file, nested package path, config, or command from the primaryLanguage toolchain (rule 12), plus what evidence would lift the related penalty.
 - checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown, and must cite observed evidence. If scorePolicy says an artifact is missing, say so and deduct; if it is present in a nested package, credit it.
   - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims. Treat README as a claim sheet, not as a substitute for files. Stale but real history is an informational "stable" tag (rule 11), not a score deduction.
   - Check 2 architecture_review: folder/module structure from the file tree or technical-breakdown architecture and whether the candidate shows real system design, not a template. Monorepo package maps count as architecture, not as a flaw.
@@ -464,9 +465,18 @@ function refineActionableFixes(
   }
 
   const javascript = isJavaScriptFamily(input.language);
+  const language = (input.language ?? "").trim().toLowerCase();
   const testing = input.testingScore;
   const suppressNewTestFile =
     testing >= 70 || input.testFileCount >= 10;
+  const jsToolchainCopy =
+    /\b(next\s+build|npx\s+tsc|\btsc\b|\bnpm\b|\byarn\b|\bpnpm\b|\beslint\b|\bvitest\b|\bjest\b|\bzod\b|\bas Type\b)\b/i;
+  const goToolchainCopy =
+    /\b(go\s+build|go\s+test|golangci-lint|_test\.go)\b/i;
+  const pythonToolchainCopy =
+    /\b(pytest|ruff|mypy|tests\/test_|\.py\b)\b/i;
+  const rustToolchainCopy =
+    /\b(cargo\s+(check|clippy|test)|\.rs\b)\b/i;
 
   const cleaned = recommendations
     .map((item) => {
@@ -491,6 +501,26 @@ function refineActionableFixes(
       if (javascript && /\.(go|py)\b/i.test(item)) {
         return false;
       }
+      if (
+        language &&
+        !javascript &&
+        jsToolchainCopy.test(item) &&
+        !/\b(typescript|javascript|tsx|jsx)\b/i.test(item)
+      ) {
+        return false;
+      }
+      if (language === "go" && (pythonToolchainCopy.test(item) || rustToolchainCopy.test(item))) {
+        return false;
+      }
+      if (
+        (language === "python" || language === "jupyter notebook") &&
+        (goToolchainCopy.test(item) || rustToolchainCopy.test(item))
+      ) {
+        return false;
+      }
+      if (language === "rust" && (goToolchainCopy.test(item) || pythonToolchainCopy.test(item))) {
+        return false;
+      }
       if (input.hasReadme && README_COPY.test(item)) {
         return false;
       }
@@ -512,15 +542,33 @@ function refineActionableFixes(
       return true;
     });
 
-  if (input.needsSchemaValidation) {
+  if (javascript && input.needsSchemaValidation) {
     cleaned.unshift(
       "Add Zod schema parsing on API route handlers that currently cast JSON with `as Type`."
     );
   }
   if (input.needsBuildGate && input.devopsScore < 75) {
-    cleaned.unshift(
-      "Add a production build step (`next build` or `tsc`) to the CI workflow."
-    );
+    if (javascript) {
+      cleaned.unshift(
+        "Add a production build step (`next build` or `tsc`) to the CI workflow."
+      );
+    } else if (language === "go") {
+      cleaned.unshift(
+        "Add a CI step that runs `go build ./...` (and ideally `go test ./...`) on pull requests."
+      );
+    } else if (language === "python" || language === "jupyter notebook") {
+      cleaned.unshift(
+        "Add a CI step that runs `pytest` (and ideally `ruff check` or `mypy`) on pull requests."
+      );
+    } else if (language === "rust") {
+      cleaned.unshift(
+        "Add a CI step that runs `cargo check` and `cargo test` on pull requests."
+      );
+    } else {
+      cleaned.unshift(
+        "Add a CI workflow that runs this repository's native lint, test, and build commands on pull requests."
+      );
+    }
   }
   if (
     testing < 70 &&
@@ -540,12 +588,34 @@ function refineActionableFixes(
     }
   }
 
+  const languageCiFiller =
+    language === "go"
+      ? "Add a GitHub Actions workflow that runs `golangci-lint run`, `go test ./...`, and `go build ./...`."
+      : language === "python" || language === "jupyter notebook"
+        ? "Add a GitHub Actions workflow that runs `ruff check`, `pytest`, and a packaging/typecheck step."
+        : language === "rust"
+          ? "Add a GitHub Actions workflow that runs `cargo clippy`, `cargo test`, and `cargo check`."
+          : javascript
+            ? "Add a GitHub Actions workflow that runs lint, tests, and a production build."
+            : "Add a GitHub Actions workflow that runs this repo's native lint, test, and build commands.";
+
+  const languageResilienceFiller =
+    language === "go"
+      ? "Return structured errors from handlers and wrap failing I/O with idiomatic Go error handling instead of ignoring returned errors."
+      : language === "python" || language === "jupyter notebook"
+        ? "Catch and log exceptions at service boundaries; avoid bare `except:` that swallows failures."
+        : language === "rust"
+          ? "Propagate `Result`/`Option` at API boundaries instead of `.unwrap()` on fallible paths."
+          : javascript
+            ? "Wrap unvalidated route handlers in Zod parsing instead of `as Type` casts."
+            : "Add explicit error handling at the request/service boundary for this language's idioms.";
+
   const fillers = [
     input.hasReadme
       ? "Document the module boundaries already covered by the existing README."
       : "Add a concise README covering architecture, your contributions, and setup steps.",
-    "Add a GitHub Actions workflow that runs lint, tests, and a production build.",
-    "Wrap unvalidated route handlers in Zod parsing instead of `as Type` casts.",
+    languageCiFiller,
+    languageResilienceFiller,
   ].filter((item) => !(input.hasReadme && README_COPY.test(item)));
 
   for (const filler of fillers) {
@@ -901,9 +971,23 @@ async function generateGeminiAudit(
     devopsScore: promptMetrics.devops,
     resilienceScore: promptMetrics.resilience,
   });
+  const primaryLanguage =
+    primaryRepoLanguage(githubArtifacts)?.trim() || "unknown";
 
   const userPrompt = JSON.stringify({
     deterministicMetrics,
+    primaryLanguage,
+    languageConstraint: {
+      primaryLanguage,
+      rule:
+        "Every recommendation, actionable fix, and tool suggestion MUST match primaryLanguage and the detected toolchain. Do not suggest JS/TS tools unless the repo is JavaScript/TypeScript.",
+      examples: {
+        Go: ["go build ./...", "golangci-lint run", "go test -v ./..."],
+        Python: ["pytest", "ruff", "mypy"],
+        Rust: ["cargo check", "cargo clippy", "cargo test"],
+        TypeScript: ["next build", "tsc", "vitest", "eslint"],
+      },
+    },
     targetRole: body.targetRole?.trim() ?? "",
     githubUrl,
     resumeText: (body.resumeSummary ?? "").slice(0, RESUME_TEXT_LIMIT),
@@ -1144,18 +1228,23 @@ export async function POST(request: Request) {
   }
 
   const payload: AuditRequestBody = { ...parsed.body };
-  const access =
-    payload.isPublicTeaser === true
-      ? {
-          ok: true as const,
-          supabase: await createClient(),
-          user: null,
-          usage: resolveDailyScanUsage(0, null),
-        }
-      : await resolveAuditAccess();
+  const wantsUnrestrictedTeaser =
+    payload.isPublicTeaser === true || payload.playground === true;
+  const access = await resolveAuditAccess();
 
   if (!access.ok) {
     return access.response;
+  }
+
+  // Unrestricted ad-hoc scans are admin-only (moved off the public landing page).
+  if (wantsUnrestrictedTeaser && !isAdminUser(access.user)) {
+    return NextResponse.json(
+      {
+        error:
+          "Unrestricted repository audits are limited to platform admins. Builders verify their own repos from the dashboard.",
+      },
+      { status: 403 }
+    );
   }
 
   if (!access.user) {

@@ -33,7 +33,7 @@ export default function Button({
     <button
       type={type}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-semibold tracking-tight cursor-pointer",
+        "inline-flex cursor-pointer items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-semibold tracking-tight print:hidden",
         BUTTON_MOTION,
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "disabled:cursor-not-allowed disabled:opacity-50",

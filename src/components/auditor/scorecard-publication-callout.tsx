@@ -159,15 +159,15 @@ export default function ScorecardPublicationCallout({
   }
 
   const title = canPublish
-    ? "You qualified for a Verified Profile (75+)"
-    : "Patch this repo to 75+ to unlock founder discovery";
+    ? "Verified Pass — Founder Roster eligible (75+)"
+    : "Private diagnostic — below the 75 roster bar";
   const subtitle = canPublish
-    ? "Showcase a codebase that meets verified production engineering standards."
-    : "Keep your score private while you patch the codebase. Re-scan anytime to qualify for verified status.";
+    ? "This repository cleared Provix production standards. Publish it to the live Founder Roster so hiring teams can request intros."
+    : "This dossier stays private. Resolve the operational deficits below, then re-submit for verification before it can appear on the Founder Roster.";
   const bullets = canPublish ? VERIFIED_BULLETS : DIAGNOSTIC_BULLETS;
   const buttonLabel = canPublish
-    ? "Claim Repository & Profile →"
-    : "Save Private Audit & Start Patching →";
+    ? "Publish to Live Founder Roster →"
+    : "Keep Private & Fix Operational Deficits →";
 
   return (
     <section
@@ -194,7 +194,7 @@ export default function ScorecardPublicationCallout({
           {canPublish ? (
             <BadgeCheck className="h-3.5 w-3.5" aria-hidden />
           ) : null}
-          {canPublish ? "Verified profile" : "Staging mode"}
+          {canPublish ? "Verified Pass" : "Private audit"}
         </p>
         <h3 className="mt-4 text-xl font-extrabold tracking-tight text-zinc-50 sm:text-2xl">
           {title}

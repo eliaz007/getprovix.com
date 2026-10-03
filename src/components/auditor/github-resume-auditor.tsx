@@ -9,6 +9,7 @@ import ResumeFileUpload, {
 } from "@/components/ResumeFileUpload";
 import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
+import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
 import RepoOwnershipVerifier from "@/components/auditor/repo-ownership-verifier";
 import RepoAccessStatus, {
   VerifiedContributorMark,
@@ -458,7 +459,7 @@ export default function GitHubResumeAuditor({
   };
 
   const resultsPanel = (
-        <div className={`${GLASS_CARD} h-full min-h-[240px] lg:min-h-0`}>
+        <div className={`${GLASS_CARD} h-full min-h-[240px] lg:min-h-0 print:h-auto print:min-h-0 print:overflow-hidden print:rounded-none print:border-0 print:bg-transparent print:p-0 print:shadow-none print:backdrop-blur-none`}>
           {loading && (
             <div className="space-y-4">
               <div className="mb-1 text-sm font-bold text-zinc-100">
@@ -527,6 +528,17 @@ export default function GitHubResumeAuditor({
 
           {!loading && result && (
             <div className="space-y-4">
+              {!isEmployerView ? (
+                <ScorecardPublicationCallout
+                  claim={buildProductionAuditClaim({
+                    score: result.score,
+                    githubUrl: githubUrl.trim() || PRIVATE_AUDITED_REPO_LABEL,
+                    filesystem: result.filesystem,
+                    scoreCap: result.scoreCap,
+                    isPubliclyVisible: result.score >= 75,
+                  })}
+                />
+              ) : null}
               <AuditResultsPanel
                 result={result}
                 repoName={
@@ -549,12 +561,12 @@ export default function GitHubResumeAuditor({
                 <ShieldCheck className="h-6 w-6 text-zinc-300" aria-hidden="true" />
               </div>
               <h2 className="mb-2 text-base font-bold text-zinc-100">
-                Audit results will appear here
+                Verification results will appear here
               </h2>
               <p className="max-w-sm text-sm leading-relaxed text-zinc-500">
-                Provix runs Artifact Analysis, Architecture Review, and an API
-                & Data Resiliency Check, then produces a founder-ready
-                credibility score.
+                Submit a repository you own. Provix scores architecture, CI/CD,
+                and test resilience. Clear 75+ to publish onto the live Founder
+                Roster.
               </p>
             </div>
           )}
@@ -562,21 +574,26 @@ export default function GitHubResumeAuditor({
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5">
+    <div className="print-flow mx-auto w-full max-w-6xl space-y-5 print:max-w-none print:space-y-0">
       <PageHeader
+        className="print:hidden"
         eyebrow={
-          isEmployerView ? "Evaluation & Screening" : "Career Accelerator"
+          isEmployerView ? "Evaluation & Screening" : "Provix Roster Verification"
         }
-        title="Code & Resume Auditor"
+        title={
+          isEmployerView
+            ? "Candidate Repository Audit"
+            : "Provix Roster Verification"
+        }
         description={
           isEmployerView
             ? "Deep-audit a candidate GitHub repository for architectural deficits, then generate targeted technical screen questions."
-            : "Deep-audit your GitHub artifacts, or private/enterprise project write-ups, against resume claims for founder-ready credibility."
+            : "Submit a repository you own for production verification. Clear 75+ to publish onto the live Founder Roster; scores below that stay private with actionable remediation."
         }
       />
 
-      <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2">
-        <div className={`${GLASS_CARD} min-w-0 space-y-4`}>
+      <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2 print:block print:gap-0">
+        <div className={`${GLASS_CARD} min-w-0 space-y-4 print:hidden`}>
           {needsTokenChallenge && !isTokenVerified ? (
             <RepoOwnershipVerifier
               repoUrl={ownershipRepoUrl}
@@ -601,13 +618,22 @@ export default function GitHubResumeAuditor({
 
           <div>
             <FormLabel htmlFor="audit-github-url">
-              GitHub Profile / Repo URL
+              {isEmployerView
+                ? "GitHub Profile / Repo URL"
+                : "Your GitHub repository URL"}
               {isPrivateWork ? (
                 <span className="ml-1 font-sans font-medium normal-case tracking-normal text-zinc-600">
                   (optional)
                 </span>
               ) : null}
             </FormLabel>
+            {!isEmployerView && !isPrivateWork ? (
+              <p className="mb-2 text-xs leading-relaxed text-zinc-500">
+                Submit a public repository under your authenticated GitHub
+                account. Ownership is verified before the scan can publish to
+                the Founder Roster.
+              </p>
+            ) : null}
             <div className="relative">
               <input
                 id="audit-github-url"
@@ -620,7 +646,9 @@ export default function GitHubResumeAuditor({
                 placeholder={
                   isPrivateWork
                     ? "Optional — leave blank for private/enterprise work"
-                    : "https://github.com/owner/repository-name"
+                    : isEmployerView
+                      ? "https://github.com/owner/repository-name"
+                      : "https://github.com/your-username/your-repo"
                 }
                 aria-invalid={Boolean(githubValidationMessage)}
                 aria-describedby={
@@ -748,23 +776,27 @@ export default function GitHubResumeAuditor({
             type="button"
             onClick={() => void runAudit()}
             disabled={loading || !canSubmit || limitReached || auditLocked}
-            className="w-full"
+            className="w-full print:hidden"
           >
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                Running AI Audit...
+                {isEmployerView
+                  ? "Running AI Audit..."
+                  : "Verifying repository..."}
               </>
             ) : (
               <>
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
-                Run AI Audit
+                {isEmployerView
+                  ? "Run AI Audit"
+                  : "Submit Repository for Verification"}
               </>
             )}
           </Button>
         </div>
 
-        <div className="min-h-0">
+        <div className={`min-h-0 ${sidePanel ? "print:hidden" : ""}`}>
           {sidePanel ?? resultsPanel}
         </div>
       </div>

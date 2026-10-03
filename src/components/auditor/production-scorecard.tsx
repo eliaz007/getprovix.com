@@ -101,6 +101,45 @@ type ProductionScorecardProps = {
   audience?: "candidate" | "employer";
 };
 
+/** Split a 2–3 sentence brief into tight executive bullets. */
+function briefBullets(summary: string): string[] {
+  const cleaned = summary.replace(/\s+/g, " ").trim();
+  if (!cleaned) {
+    return [];
+  }
+
+  const chunks = cleaned
+    .split(/\n+|(?:^|\s)[•]\s+|(?:^|\s)[-*]\s+/)
+    .flatMap((chunk) =>
+      chunk
+        .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+        .map((sentence) => sentence.trim())
+        .filter(Boolean)
+    );
+
+  return chunks.length > 0 ? chunks : [cleaned];
+}
+
+function BriefBulletList({ summary }: { summary: string }) {
+  const bullets = briefBullets(summary);
+
+  return (
+    <ul className="mt-2 space-y-1 text-[12px] leading-snug text-zinc-200 print:mt-1 print:space-y-0.5 print:text-[10px] print:leading-tight">
+      {bullets.map((item, index) => (
+        <li
+          key={`${index}-${item.slice(0, 32)}`}
+          className="dossier-bullet flex items-start gap-1.5"
+        >
+          <span aria-hidden className="leading-snug">
+            •
+          </span>
+          <span>{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function roleBandClass(band: RecommendedRoleBand): string {
   if (band === "Mid-Level") {
     return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
@@ -122,7 +161,7 @@ function EngineeringBriefCards({
   audience: "candidate" | "employer";
 }) {
   const staffReview = (
-    <section className="rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-3 py-3">
+    <section className="rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-3 py-3 print:px-2 print:py-1.5">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
           Technical Peer Review
@@ -134,14 +173,12 @@ function EngineeringBriefCards({
       <p className="mt-1 text-xs leading-snug text-zinc-500">
         Actionable engineering feedback to improve code health.
       </p>
-      <p className="mt-2 text-sm leading-relaxed text-zinc-200">
-        {brief.developerSummary}
-      </p>
+      <BriefBulletList summary={brief.developerSummary} />
     </section>
   );
   const executiveBrief = (
     <section
-      className={`rounded-lg border px-3 py-3 ${
+      className={`rounded-lg border px-3 py-3 print:px-2 print:py-1.5 ${
         audience === "employer"
           ? "border-violet-500/30 bg-violet-500/10"
           : "border-zinc-800/80 bg-zinc-950/70"
@@ -167,9 +204,7 @@ function EngineeringBriefCards({
       <p className="mt-1 text-xs leading-snug text-zinc-500">
         Production risk evaluation for founders and recruiters.
       </p>
-      <p className="mt-2 text-sm leading-relaxed text-zinc-100">
-        {brief.employerSummary}
-      </p>
+      <BriefBulletList summary={brief.employerSummary} />
     </section>
   );
 
@@ -211,7 +246,7 @@ export default function ProductionScorecard({
   if (compact) {
     return (
       <div
-        className={`rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-5 backdrop-blur-sm ${className}`.trim()}
+        className={`dossier-card rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-5 backdrop-blur-sm ${className}`.trim()}
       >
         <div className="min-w-0">
           <p className="mb-1 block text-xs uppercase tracking-wider text-muted-foreground text-zinc-500">
@@ -279,7 +314,7 @@ export default function ProductionScorecard({
 
   return (
     <div
-      className={`space-y-3 rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-6 backdrop-blur-sm ${className}`.trim()}
+      className={`dossier-card space-y-3 rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-6 backdrop-blur-sm print:space-y-2 print:p-3 ${className}`.trim()}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -301,7 +336,7 @@ export default function ProductionScorecard({
         <EngineeringBriefCards brief={executiveBrief} audience={audience} />
       ) : null}
 
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 print:grid-cols-4 print:gap-1.5 lg:grid-cols-4">
         {METRIC_ROWS.map((row) => {
           const score = clampScore0to100(resolved[row.key]);
           const found = metricCount(resolved, row.countKey);
@@ -313,7 +348,7 @@ export default function ProductionScorecard({
           return (
             <li
               key={row.key}
-              className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2.5"
+              className="dossier-card rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2.5 print:px-2 print:py-1.5"
             >
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-zinc-100">{row.label}</p>

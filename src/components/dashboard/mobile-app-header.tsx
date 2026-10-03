@@ -30,7 +30,7 @@ export default function MobileAppHeader({
     : "Sign In";
 
   return (
-    <header className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.08] bg-[#0E0E12] px-4 py-3 md:hidden">
+    <header className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.08] bg-[#0E0E12] px-4 py-3 print:hidden md:hidden">
       <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"

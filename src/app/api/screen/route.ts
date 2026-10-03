@@ -157,6 +157,7 @@ FILE-SYSTEM EVIDENCE VS PROSE:
 - If scorePolicy.repoKind is "library", do not penalize missing React error boundaries; grade resilience from unhandled async/fetch only.
 - If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct 35 from resilience only — never cap the total score.
 - Do not deduct numerical points for commit age or inactivity.
+- LANGUAGE-NATIVE RECOMMENDATIONS: The user payload includes primaryLanguage from GitHub repo metadata. Every recommendation, interview coaching tip about tooling, and concrete fix MUST match that language and its toolchain. Do NOT suggest JavaScript/TypeScript tools (next build, tsc, npm, eslint, Zod) unless primaryLanguage is JavaScript/TypeScript or the file tree is clearly JS/TS. For Go prefer go build/test and golangci-lint; for Python prefer pytest/ruff/mypy; for Rust prefer cargo check/clippy/test.
 
 Return strict JSON only in this exact structure:
 {
@@ -926,6 +927,8 @@ async function generateGeminiScreen(
 
   const ai = new GoogleGenAI({ apiKey });
 
+  const primaryLanguage = githubAudit?.language?.trim() || "unknown";
+
   const userPrompt = JSON.stringify(
     {
       candidate: {
@@ -955,6 +958,18 @@ async function generateGeminiScreen(
         tags: normalizeStringArray(job.tags, 12),
         location: job.location ?? "",
         description: (job.description ?? "").slice(0, 400),
+      },
+      primaryLanguage,
+      languageConstraint: {
+        primaryLanguage,
+        rule:
+          "Every recommendation and tool suggestion MUST match primaryLanguage. Do not suggest JS/TS tools unless the repo is JavaScript/TypeScript.",
+        examples: {
+          Go: ["go build ./...", "golangci-lint run", "go test -v ./..."],
+          Python: ["pytest", "ruff", "mypy"],
+          Rust: ["cargo check", "cargo clippy", "cargo test"],
+          TypeScript: ["next build", "tsc", "vitest", "eslint"],
+        },
       },
       scorePolicy: buildFilesystemScorePolicy(githubAudit?.filesystem),
       deterministicMetrics: (() => {

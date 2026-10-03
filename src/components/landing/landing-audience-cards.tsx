@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { loginHrefForSignupRole } from "@/lib/login-href";
 
-type Audience = "employer" | "developer";
+const FOUNDER_MAILTO =
+  "mailto:elias@getprovix.com?subject=Provix%20Roster%20Inquiry";
 
 const cardClass =
   "group flex h-full cursor-pointer flex-col rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-6 text-left transition-colors duration-200 hover:border-neutral-700/80 disabled:cursor-wait sm:p-8";
@@ -15,64 +16,60 @@ const ctaClass =
 
 export default function LandingAudienceCards() {
   const router = useRouter();
-  const [pending, setPending] = useState<Audience | null>(null);
+  const [pending, setPending] = useState(false);
 
-  const openAudience = (kind: Audience) => {
+  const openBuilder = () => {
     if (pending) {
       return;
     }
 
-    setPending(kind);
-    router.push(loginHrefForSignupRole(kind));
+    setPending(true);
+    router.push(loginHrefForSignupRole("developer"));
   };
 
   return (
-    <section className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-      <button
-        type="button"
-        onClick={() => openAudience("employer")}
-        disabled={pending !== null}
-        className={cardClass}
-      >
-        <p className="font-mono text-[11px] tracking-widest text-violet-300">
-          // 01 FOUNDERS
-        </p>
-        <h2 className="mt-4 text-xl font-medium tracking-tight text-white">
-          Source pre-vetted builders using static code and repository integrity
-          analysis.
-        </h2>
-        <p className="mt-4 flex-1 text-sm leading-relaxed text-neutral-400">
-          Skip resume theater. Open the employer console to screen talent
-          against verified GitHub artifacts and repository integrity signals.
-        </p>
-        <span className={ctaClass}>
-          {pending === "employer" ? "Opening..." : "Enter Employer Console"}
-          <ArrowRight className="h-4 w-4 text-neutral-400" aria-hidden="true" />
-        </span>
-      </button>
+    <section className="mx-auto mt-16 w-full max-w-4xl">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+        <a href={FOUNDER_MAILTO} className={cardClass}>
+          <p className="font-mono text-[11px] tracking-widest text-violet-300">
+            // FOUNDERS
+          </p>
+          <h2 className="mt-4 text-xl font-semibold tracking-tight text-white">
+            Objective Code Telemetry Over Resumes
+          </h2>
+          <p className="mt-4 flex-1 text-sm leading-relaxed text-neutral-400">
+            Skip speculative resume screening. Inspect verified repository memos
+            revealing actual test coverage, error resilience, and deployment
+            pipelines before first contact.
+          </p>
+          <span className={ctaClass}>
+            Hiring Engineers?
+            <ArrowRight className="h-4 w-4 text-neutral-400" aria-hidden="true" />
+          </span>
+        </a>
 
-      <button
-        type="button"
-        onClick={() => openAudience("developer")}
-        disabled={pending !== null}
-        className={cardClass}
-      >
-        <p className="font-mono text-[11px] tracking-widest text-cyan-400">
-          // 02 DEVELOPERS
-        </p>
-        <h2 className="mt-4 text-xl font-medium tracking-tight text-white">
-          Run deep audits across public or private repos to prove founder-ready
-          credibility.
-        </h2>
-        <p className="mt-4 flex-1 text-sm leading-relaxed text-neutral-400">
-          Publish proof of work, keep your profile current, and show employers
-          what you have actually shipped — not what a resume claims.
-        </p>
-        <span className={ctaClass}>
-          {pending === "developer" ? "Opening..." : "Open Candidate Dashboard"}
-          <ArrowRight className="h-4 w-4 text-neutral-400" aria-hidden="true" />
-        </span>
-      </button>
+        <button
+          type="button"
+          onClick={openBuilder}
+          disabled={pending}
+          className={cardClass}
+        >
+          <p className="font-mono text-[11px] tracking-widest text-cyan-400">
+            // BUILDERS
+          </p>
+          <h2 className="mt-4 text-xl font-semibold tracking-tight text-white">
+            Production Proof Over LeetCode
+          </h2>
+          <p className="mt-4 flex-1 text-sm leading-relaxed text-neutral-400">
+            Let your codebase speak for itself. Benchmark your repository against
+            rigorous production standards and unlock direct founder introductions.
+          </p>
+          <span className={ctaClass}>
+            {pending ? "Opening..." : "Benchmark Your Repository"}
+            <ArrowRight className="h-4 w-4 text-neutral-400" aria-hidden="true" />
+          </span>
+        </button>
+      </div>
     </section>
   );
 }

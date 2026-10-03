@@ -29,7 +29,7 @@ export default function Toast({
 
   return (
     <div
-      className={`fixed z-50 bg-panel text-textMain text-xs font-medium px-4 py-3 rounded-xl flex items-center gap-3 border ${
+      className={`fixed z-50 bg-panel text-textMain text-xs font-medium px-4 py-3 rounded-xl flex items-center gap-3 border print:hidden ${
         isError ? "border-red-500/40" : "border-border"
       } ${className}`}
       role={isError ? "alert" : "status"}

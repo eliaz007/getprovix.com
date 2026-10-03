@@ -131,7 +131,7 @@ const ENGINEERING_TOOLS_NAV = [
   {
     key: "github-auditor",
     href: "/dashboard/auditor",
-    label: "Code Auditor",
+    label: "Roster Verification",
     icon: "Shield" as const,
   },
   {
@@ -188,7 +188,7 @@ const EMPLOYER_CONSOLE_NAV = [
   {
     key: "auditor",
     tab: "auditor" as const,
-    label: "Code & Resume Auditor",
+    label: "Roster Verification",
     icon: "Shield" as const,
   },
 ] as const;
@@ -524,7 +524,7 @@ function SidebarUserFooter() {
 
   if (isGuest && !authLoading) {
     return (
-      <div className="mt-auto border-t border-white/[0.08] pt-3">
+      <div className="mt-auto border-t border-white/[0.08] pt-3 print:hidden">
         <button
           type="button"
           onClick={() => {
@@ -575,7 +575,7 @@ function SidebarUserFooter() {
     : availabilityPresentation.dotClass;
 
   return (
-    <div className="mt-auto border-t border-white/[0.08] pt-3">
+    <div className="mt-auto border-t border-white/[0.08] pt-3 print:hidden">
       <div className="flex items-center gap-2.5 rounded-lg border border-white/[0.08] bg-[#131316]/90 px-2.5 py-2">
         <SidebarAvatar
           imageUrl={userAvatarUrl}

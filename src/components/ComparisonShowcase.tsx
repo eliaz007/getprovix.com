@@ -10,10 +10,10 @@ export default function ComparisonShowcase() {
       <div className="pointer-events-none absolute top-8 left-1/2 h-56 w-80 -translate-x-1/2 rounded-full bg-violet-600/5 blur-3xl" />
       <div className="relative mb-8 space-y-3 text-center">
         <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-          A better way to get hired.
+          Proof of work before first contact.
         </h2>
         <p className="mx-auto max-w-md text-xs text-neutral-400 sm:text-sm">
-          Compare the typical hiring funnel with code-first inbound.
+          Compare keyword screening with verified repository telemetry.
         </p>
         <div className="flex justify-center pt-2">
           <div className="inline-flex rounded-full border border-neutral-800/80 bg-[#0d0f17] p-1">
@@ -26,7 +26,7 @@ export default function ComparisonShowcase() {
                   : 'border-transparent text-neutral-400 hover:text-white'
               }`}
             >
-              Standard Job Boards
+              Resume Screens
             </button>
             <button
               type="button"
@@ -37,7 +37,7 @@ export default function ComparisonShowcase() {
                   : 'border-transparent text-neutral-400 hover:text-white'
               }`}
             >
-              Provix Talent Network
+              Provix Verification
             </button>
           </div>
         </div>
@@ -47,8 +47,8 @@ export default function ComparisonShowcase() {
         {activeTab === 'boards' ? (
           <div key="boards" className="animate-in fade-in duration-200 space-y-6">
             <div className="flex items-center justify-between border-b border-neutral-800/60 pb-3 font-mono text-xs">
-              <span className="text-neutral-400">Pipeline: Traditional Hiring Loop</span>
-              <span className="text-red-400/80">&lt; 5% response rate</span>
+              <span className="text-neutral-400">Pipeline: Keyword Screening</span>
+              <span className="text-red-400/80">&lt; 5% signal retained</span>
             </div>
             <div className="relative space-y-6 pl-6 before:absolute before:top-2 before:bottom-2 before:left-2 before:w-px before:bg-neutral-800">
               <div className="relative">
@@ -77,7 +77,7 @@ export default function ComparisonShowcase() {
         ) : (
           <div key="provix" className="animate-in fade-in duration-200 space-y-6">
             <div className="flex items-center justify-between border-b border-neutral-800/60 pb-3 font-mono text-xs">
-              <span className="text-cyan-400">Pipeline: Provix Talent Network</span>
+              <span className="text-cyan-400">Pipeline: Verified Repository Memos</span>
               <span className="flex items-center gap-1.5 text-emerald-400">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                 Verified Inbound
@@ -100,7 +100,7 @@ export default function ComparisonShowcase() {
               </div>
               <div className="relative">
                 <span className="absolute -left-6 top-1.5 h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_10px_rgba(167,139,250,0.7)] ring-4 ring-[#0d0f17]" />
-                <h4 className="text-sm font-medium text-white">Direct Founder & Lead Inbound</h4>
+                <h4 className="text-sm font-medium text-white">Direct Founder and Lead Inbound</h4>
                 <p className="mt-1 text-xs leading-relaxed text-neutral-400">
                   Founders contact you directly based on the exact tools, architectures, and engineering standards you ship with.
                 </p>

@@ -93,7 +93,7 @@ export default function PrivacyPage() {
           ))}
         </div>
 
-        <footer className="mt-12 pt-8 border-t border-border text-sm text-textMuted">
+        <footer className="mt-12 border-t border-border pt-8 text-sm text-textMuted print:hidden">
           Questions? Email{" "}
           <a
             href="mailto:support@getprovix.com"
