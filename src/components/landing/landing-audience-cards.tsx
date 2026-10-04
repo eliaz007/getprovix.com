@@ -24,7 +24,7 @@ export default function LandingAudienceCards() {
             // BUILDERS
           </p>
           <h2 className="mt-4 text-xl font-semibold tracking-tight text-white">
-            Production Proof Over LeetCode
+            Production Proof Over Interviews
           </h2>
           <p className="mt-4 text-sm leading-relaxed text-neutral-400">
             Let your codebase speak for itself. Benchmark your repository against

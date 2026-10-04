@@ -48,7 +48,7 @@ export default function Home() {
           <h1 className="text-4xl font-extrabold tracking-tight text-textMain sm:text-5xl lg:text-[3.25rem] lg:leading-[1.12]">
             The Verified Roster of High Signal Engineers
           </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-sm leading-relaxed text-zinc-400 md:text-base">
+          <p className="mx-auto mt-4 max-w-2xl text-base font-normal leading-relaxed text-zinc-300 md:text-lg">
             We benchmark public repositories for production architecture.
             Engineers who clear the bar get direct introductions to engineering
             leads.

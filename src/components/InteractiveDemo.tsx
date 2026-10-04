@@ -482,13 +482,9 @@ export default function InteractiveDemo() {
 
   return (
     <section className="mx-auto mt-10 w-full max-w-6xl print:hidden">
-      <div className="mt-14 mb-8 text-center">
-        <h3 className="text-xl font-bold tracking-tight text-white sm:text-2xl">
-          Explore Provix
-          <span className="mx-2 font-normal text-zinc-600">—</span>
-          <span className="font-medium text-zinc-400">Interactive Demo</span>
-        </h3>
-      </div>
+      <p className="mt-12 mb-6 text-center text-sm font-medium tracking-wide text-zinc-400">
+        Explore Provix — Interactive Demo
+      </p>
       <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#090A0F] text-zinc-100 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
         <div className="flex items-center gap-2 border-b border-white/[0.08] bg-[#0E0E12] px-4 py-3">
           <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" aria-hidden />
