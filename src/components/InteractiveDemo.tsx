@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
   Check,
   Clipboard,
@@ -483,14 +482,12 @@ export default function InteractiveDemo() {
 
   return (
     <section className="mx-auto mt-10 w-full max-w-6xl print:hidden">
-      <div className="my-6 flex justify-center">
-        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/40 bg-zinc-900 px-3.5 py-1.5 font-mono text-sm font-medium text-zinc-200 shadow-[0_0_15px_-3px_rgba(16,185,129,0.25)]">
-          <span className="relative flex h-2 w-2 shrink-0" aria-hidden>
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-          </span>
-          Explore Provix • Interactive Demo
-        </span>
+      <div className="mt-14 mb-8 text-center">
+        <h3 className="text-xl font-bold tracking-tight text-white sm:text-2xl">
+          Explore Provix
+          <span className="mx-2 font-normal text-zinc-600">—</span>
+          <span className="font-medium text-zinc-400">Interactive Demo</span>
+        </h3>
       </div>
       <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#090A0F] text-zinc-100 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
         <div className="flex items-center gap-2 border-b border-white/[0.08] bg-[#0E0E12] px-4 py-3">
@@ -510,8 +507,8 @@ export default function InteractiveDemo() {
           </div>
         </div>
 
-        <div className="flex min-h-[520px]">
-          <aside className="hidden w-56 shrink-0 flex-col border-r border-white/[0.08] bg-[#0E0E12] p-4 md:flex">
+        <div className="flex h-[600px] min-h-[600px] overflow-hidden">
+          <aside className="hidden h-full w-56 shrink-0 flex-col overflow-y-auto border-r border-white/[0.08] bg-[#0E0E12] p-4 md:flex">
             <div className="mb-6 flex items-center gap-2.5 px-3 py-1.5">
               <ProvixLogo className="h-6 w-6" showText={false} />
               <span className="text-base font-semibold tracking-tight text-white">
@@ -621,8 +618,8 @@ export default function InteractiveDemo() {
             </div>
           </aside>
 
-          <div className="flex min-w-0 flex-1 flex-col bg-[#090A0F]">
-            <div className="flex gap-1 overflow-x-auto border-b border-white/[0.08] px-3 py-2 md:hidden">
+          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#090A0F]">
+            <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-white/[0.08] px-3 py-2 md:hidden">
               {[
                 { id: "auditor" as const, label: "Audits" },
                 { id: "profile" as const, label: "Profile" },
@@ -644,7 +641,7 @@ export default function InteractiveDemo() {
               ))}
             </div>
 
-            <div className="flex flex-col gap-3 border-b border-white/[0.08] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+            <div className="flex shrink-0 flex-col gap-3 border-b border-white/[0.08] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
               <div className="min-w-0">
                 <h1 className="text-xl font-extrabold tracking-tight text-zinc-50 sm:text-2xl">
                   {header.title}
@@ -658,7 +655,7 @@ export default function InteractiveDemo() {
               </span>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
               {nav === "auditor" ? <ExecutiveVerdictCard /> : null}
 
               {nav === "profile" ? (
@@ -728,24 +725,6 @@ export default function InteractiveDemo() {
           </div>
         </div>
 
-        <div className="flex flex-col items-start justify-between gap-3 border-t border-white/[0.08] bg-[#0E0E12] px-4 py-4 sm:flex-row sm:items-center">
-          <p className="text-sm leading-relaxed text-zinc-400">
-            Ready to generate your verified developer dossier?
-          </p>
-          <Link
-            href="/login?next=/dashboard/auditor"
-            className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#F4F4F6] px-4 py-2.5 text-sm font-semibold text-[#0B0B0D] transition-colors hover:bg-white"
-          >
-            <svg
-              viewBox="0 0 16 16"
-              aria-hidden
-              className="h-4 w-4 fill-current"
-            >
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-            </svg>
-            Sign in with GitHub
-          </Link>
-        </div>
       </div>
     </section>
   );
