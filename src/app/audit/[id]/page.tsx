@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import CopyShareLinkButton from "@/components/auditor/copy-share-link-button";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
+import AutoPrintOnLoad from "@/components/auditor/auto-print-on-load";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { getSharedAudit } from "@/lib/shared-audit";
 import { buildPageMetadata } from "@/lib/site";
@@ -40,6 +42,9 @@ export default async function SharedAuditPage({ params }: SharedAuditPageProps) 
 
   return (
     <div className="print-flow min-h-screen bg-background text-textMuted print:min-h-0">
+      <Suspense fallback={null}>
+        <AutoPrintOnLoad />
+      </Suspense>
       <header className="border-b border-border print:hidden">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
           <Link href="/" className="transition-opacity hover:opacity-90">

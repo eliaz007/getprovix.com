@@ -1,6 +1,6 @@
 import Link from "next/link";
+import AdminUnlimitedAuditor from "@/components/admin/admin-unlimited-auditor";
 import { ProvixLogo } from "@/components/ProvixLogo";
-import PublicProductionAudit from "@/components/auditor/public-production-audit";
 import SignOutButton from "@/components/SignOutButton";
 import { buildPageMetadata } from "@/lib/site";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = buildPageMetadata(
   "Admin Repository Auditor",
-  "Platform-admin unrestricted production audits for any public repository.",
+  "Platform-admin unlimited production audits for any public repository.",
   "/admin/audit"
 );
 
@@ -41,16 +41,17 @@ export default function AdminAuditPage() {
             Protected admin route
           </p>
           <h1 className="text-3xl font-extrabold tracking-tight text-zinc-50 sm:text-4xl">
-            Unrestricted repository auditor
+            Unlimited repository auditor
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
-            Run ad-hoc production audits on any public repository. This surface
-            is not part of the public product and skips candidate authorship
-            gates used on the Provix Roster Verification flow.
+            Run the full production audit pipeline on any public repository.
+            Results are saved to shared audits, matched public profiles are
+            updated when a handle or GitHub owner resolves, and PDF export uses
+            the existing dossier print flow.
           </p>
         </div>
 
-        <PublicProductionAudit isPublicTeaser embedded={false} />
+        <AdminUnlimitedAuditor />
       </main>
     </div>
   );

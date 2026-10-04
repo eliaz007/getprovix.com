@@ -83,6 +83,10 @@ import {
   type CodebaseBenchmark,
 } from "@/lib/codebase-benchmark";
 import { createServiceRoleClient, isAdminUser } from "@/lib/admin-access";
+import {
+  applyAdminAuditCandidateLabel,
+  resolveAdminAuditTargetProfile,
+} from "@/lib/admin-audit-target";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { isEmployerRole } from "@/lib/dashboard-account";
@@ -99,11 +103,13 @@ import { parseGitHubUrl } from "@/lib/validate-github-url";
 import { hasPersistedProvixTokenVerification } from "@/lib/provix-token";
 import {
   buildProductionAuditClaim,
+  canPublishProductionScore,
   persistProfileProductionAudit,
   PRIVATE_AUDITED_REPO_LABEL,
   type DossierVerificationStatus,
 } from "@/lib/production-audit";
 import { parseJsonWithSchema } from "@/lib/parse-request-json";
+import { buildPublicProfileUrl } from "@/lib/profile-url";
 
 export const runtime = "nodejs";
 
@@ -116,6 +122,13 @@ export type AuditRequestBody = {
   playground?: boolean;
   /** Homepage teaser: score any public repo without authorship or session gates. */
   isPublicTeaser?: boolean;
+  /**
+   * Admin console: unlimited scan of any public repo. Bypasses daily limits,
+   * ownership gates, and credit usage; still persists share + target profile.
+   */
+  adminAudit?: boolean;
+  candidateName?: string;
+  candidateHandle?: string;
   externalProjects?: ExternalProjectRecord[];
 };
 
@@ -127,6 +140,9 @@ const auditRequestBodySchema = z.object({
   workIsPrivate: z.unknown().optional(),
   playground: z.boolean().optional(),
   isPublicTeaser: z.boolean().optional(),
+  adminAudit: z.boolean().optional(),
+  candidateName: z.string().optional(),
+  candidateHandle: z.string().optional(),
   externalProjects: z.unknown().optional(),
 });
 
@@ -732,6 +748,9 @@ function normalizeAuditRequestBody(
     workIsPrivate: parseWorkIsPrivate(body.workIsPrivate),
     playground: body.playground === true,
     isPublicTeaser: body.isPublicTeaser === true,
+    adminAudit: body.adminAudit === true,
+    candidateName: body.candidateName?.trim() || undefined,
+    candidateHandle: body.candidateHandle?.trim() || undefined,
     externalProjects: normalizeExternalProjects(body.externalProjects),
   };
 }
@@ -756,6 +775,9 @@ async function readAuditRequest(request: Request): Promise<
           workIsPrivate: parseWorkIsPrivate(formString(form, "workIsPrivate")),
           playground: formString(form, "playground") === "true",
           isPublicTeaser: formString(form, "isPublicTeaser") === "true",
+          adminAudit: formString(form, "adminAudit") === "true",
+          candidateName: formString(form, "candidateName"),
+          candidateHandle: formString(form, "candidateHandle"),
           externalProjects: normalizeExternalProjects(
             parseJsonValue(formString(form, "externalProjects"))
           ),
@@ -1228,16 +1250,26 @@ export async function POST(request: Request) {
   }
 
   const payload: AuditRequestBody = { ...parsed.body };
-  const wantsUnrestrictedTeaser =
-    payload.isPublicTeaser === true || payload.playground === true;
   const access = await resolveAuditAccess();
 
   if (!access.ok) {
     return access.response;
   }
 
+  const isAdminOperator = isAdminUser(access.user);
+  const isAdminAudit = payload.adminAudit === true && isAdminOperator;
+  const wantsUnrestrictedTeaser =
+    payload.isPublicTeaser === true || payload.playground === true;
+
+  if (payload.adminAudit === true && !isAdminOperator) {
+    return NextResponse.json(
+      { error: "Admin audits require an authenticated platform admin." },
+      { status: 403 }
+    );
+  }
+
   // Unrestricted ad-hoc scans are admin-only (moved off the public landing page).
-  if (wantsUnrestrictedTeaser && !isAdminUser(access.user)) {
+  if (wantsUnrestrictedTeaser && !isAdminOperator) {
     return NextResponse.json(
       {
         error:
@@ -1258,12 +1290,24 @@ export async function POST(request: Request) {
     }
   }
 
-  if (access.user && access.usage.limit_reached) {
+  // Admin unlimited audits never consume or block on the daily scan allowance.
+  if (access.user && access.usage.limit_reached && !isAdminAudit) {
     return NextResponse.json(
       { error: DAILY_LIMIT_API_MESSAGE, ...access.usage },
       { status: 429 }
     );
   }
+
+  const bumpUsage = async (): Promise<DailyScanUsage> => {
+    if (!access.user || isAdminAudit) {
+      return access.usage;
+    }
+    return incrementDailyScanUsage(
+      access.supabase,
+      access.user.id,
+      access.usage
+    );
+  };
 
   let storedProjects: ExternalProjectRecord[] = [];
   if (access.user) {
@@ -1356,11 +1400,6 @@ export async function POST(request: Request) {
     ? normalizeGitHubAuditTarget(payload.githubUrl)
     : "";
 
-  const usageForEarlyExit = async () =>
-    access.user
-      ? incrementDailyScanUsage(access.supabase, access.user.id, access.usage)
-      : access.usage;
-
   if (githubFetchUrl) {
     const parsedFetch = parseGitHubRepoPath(githubFetchUrl);
     if (!parsedFetch?.owner?.trim() || !parsedFetch?.repo?.trim()) {
@@ -1382,13 +1421,18 @@ export async function POST(request: Request) {
           isPrivateOrNotFound: true,
           repoUrl: githubFetchUrl,
           inaccessibleRepo: true,
-          ...(await usageForEarlyExit()),
+          ...(await bumpUsage()),
         },
         { status: 404 }
       );
     }
 
-    if (probe?.status === "found" && access.user && payload.isPublicTeaser !== true) {
+    if (
+      probe?.status === "found" &&
+      access.user &&
+      payload.isPublicTeaser !== true &&
+      !isAdminAudit
+    ) {
       const { data: roleRow } = await access.supabase
         .from("profiles")
         .select("role")
@@ -1416,7 +1460,7 @@ export async function POST(request: Request) {
               owner: probe.owner,
               username: ownership.username,
               message: UNVERIFIED_OWNERSHIP_MESSAGE,
-              ...(await usageForEarlyExit()),
+              ...(await bumpUsage()),
             },
             { status: 403 }
           );
@@ -1446,21 +1490,13 @@ export async function POST(request: Request) {
     (githubArtifacts === null || githubAuditLooksInaccessible(githubArtifacts));
 
   if (inaccessibleRepo) {
-    const usage = access.user
-      ? await incrementDailyScanUsage(
-          access.supabase,
-          access.user.id,
-          access.usage
-        )
-      : access.usage;
-
     return NextResponse.json(
       {
         isPrivateOrNotFound: true,
         repoUrl: githubFetchUrl,
         inaccessibleRepo: true,
         error: INACCESSIBLE_PUBLIC_REPO_MESSAGE,
-        ...usage,
+        ...(await bumpUsage()),
       },
       { status: 404 }
     );
@@ -1569,13 +1605,7 @@ export async function POST(request: Request) {
     }),
   };
 
-  const usage = access.user
-    ? await incrementDailyScanUsage(
-        access.supabase,
-        access.user.id,
-        access.usage
-      )
-    : access.usage;
+  const usage = await bumpUsage();
 
   const auditedRepoUrl = workIsPrivate
     ? PRIVATE_AUDITED_REPO_LABEL
@@ -1593,7 +1623,12 @@ export async function POST(request: Request) {
 
   let verificationStatus: DossierVerificationStatus = "unverified";
   let lowContributionWarning = false;
-  if (access.user && isPublicGitHubClaim && payload.isPublicTeaser !== true) {
+  if (
+    access.user &&
+    isPublicGitHubClaim &&
+    payload.isPublicTeaser !== true &&
+    !isAdminAudit
+  ) {
     try {
       const ownership = await verifyGitHubRepoOwnership({
         user: access.user,
@@ -1618,6 +1653,7 @@ export async function POST(request: Request) {
 
   if (
     access.user &&
+    !isAdminAudit &&
     payload.playground !== true &&
     payload.isPublicTeaser !== true &&
     (githubArtifactAuditSucceeded(githubArtifacts) ||
@@ -1682,17 +1718,68 @@ export async function POST(request: Request) {
     }
   }
 
+  let profileSlug: string | null = null;
+  let profileUrl: string | null = null;
+
+  if (isAdminAudit && access.user) {
+    verificationStatus = "verified";
+    const dataClient = benchmarkClient ?? access.supabase;
+    const canPublish = canPublishProductionScore(result.score);
+    const claim = buildProductionAuditClaim({
+      score: result.score,
+      githubUrl: auditedRepoUrl,
+      filesystem,
+      scoreCap: result.scoreCap,
+      isPubliclyVisible: canPublish,
+    });
+
+    try {
+      const target = await resolveAdminAuditTargetProfile(dataClient, {
+        candidateHandle: payload.candidateHandle,
+        githubOwner: parsedRepo?.owner ?? null,
+      });
+
+      if (target) {
+        const persisted = await persistProfileProductionAudit(
+          dataClient,
+          target.id,
+          claim,
+          {
+            isPubliclyVisible: canPublish,
+            enrollInTalentPool: canPublish,
+            verificationStatus: "verified",
+          }
+        );
+        await applyAdminAuditCandidateLabel(
+          dataClient,
+          target.id,
+          payload.candidateName
+        );
+        profileSlug = persisted.profileSlug ?? target.profileSlug;
+      }
+    } catch (error) {
+      console.error("[audit] admin target profile persist threw:", error);
+    }
+
+    if (profileSlug) {
+      profileUrl = buildPublicProfileUrl(profileSlug);
+    }
+  }
+
   let shareId: string | null = null;
   if (
     access.user &&
-    payload.playground !== true &&
-    payload.isPublicTeaser !== true
+    (isAdminAudit ||
+      (payload.playground !== true && payload.isPublicTeaser !== true))
   ) {
     const repoName =
       parsedRepo?.owner && parsedRepo.repo
         ? `${parsedRepo.owner}/${parsedRepo.repo}`
         : null;
-    const { data: shared, error: shareError } = await access.supabase
+    const shareClient = isAdminAudit
+      ? (benchmarkClient ?? access.supabase)
+      : access.supabase;
+    const { data: shared, error: shareError } = await shareClient
       .from("shared_audits")
       .insert({
         user_id: access.user.id,
@@ -1700,6 +1787,10 @@ export async function POST(request: Request) {
           result: { ...result, benchmark },
           repoName,
           repoUrl: auditedRepoUrl,
+          candidateName: payload.candidateName ?? null,
+          candidateHandle: payload.candidateHandle ?? null,
+          profileSlug,
+          adminAudit: isAdminAudit,
         },
       })
       .select("id")
@@ -1712,13 +1803,21 @@ export async function POST(request: Request) {
     }
   }
 
+  const reportUrl = shareId ? `/audit/${shareId}` : null;
+  const pdfUrl = shareId ? `/audit/${shareId}?print=1` : null;
+
   return NextResponse.json({
     ...result,
     benchmark,
     shareId,
+    reportUrl,
+    pdfUrl,
+    profileUrl,
+    profileSlug,
     ...usage,
     verification_status: verificationStatus,
     ownership_verified: verificationStatus === "verified",
     lowContributionWarning,
+    adminAudit: isAdminAudit,
   });
 }
