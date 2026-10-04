@@ -56,6 +56,17 @@ export default function Home() {
         </section>
 
         <InteractiveDemo />
+
+        <div className="mx-auto my-8 flex w-full justify-center print:hidden">
+          <Link
+            href="/login?next=/dashboard/auditor"
+            prefetch={false}
+            className="inline-flex min-h-12 cursor-pointer items-center justify-center rounded-lg bg-brand px-8 text-sm font-semibold tracking-tight text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-colors hover:bg-brandHover"
+          >
+            Benchmark Your Repository
+          </Link>
+        </div>
+
         <LandingHome />
       </main>
 
