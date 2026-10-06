@@ -3,6 +3,7 @@ import {
   isVerifiedOnProvix,
   type PublishedCandidateProfileRow,
 } from "@/lib/published-candidate-profile";
+import { PUBLIC_SCORECARD_THRESHOLD } from "@/lib/production-audit";
 
 type VerifiedOnProvixBadgeProps = {
   className?: string;
@@ -11,8 +12,8 @@ type VerifiedOnProvixBadgeProps = {
 };
 
 /**
- * Renders only when the candidate is Verified on Provix:
- * complete Profile Studio fields plus a successful GitHub integrity audit.
+ * Renders only when github_verified and production score ≥ 75.
+ * Otherwise returns null — no fallback / warning badges.
  */
 export default function VerifiedOnProvixPill({
   className = "",
@@ -29,7 +30,7 @@ export default function VerifiedOnProvixPill({
 
   return (
     <span
-      title="Complete profile with a successful GitHub or alternative project integrity audit"
+      title={`Linked GitHub and a ${PUBLIC_SCORECARD_THRESHOLD}+ production audit score`}
       className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-emerald-300 ${className}`}
     >
       <ShieldCheck className="h-3 w-3" aria-hidden />

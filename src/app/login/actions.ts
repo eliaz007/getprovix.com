@@ -142,6 +142,7 @@ export async function signUpWithEmail(
   redirect(
     resolvePostAuthDestination({
       role: rawData.role === "business" ? "employer" : "candidate",
+      setupComplete: rawData.role !== "candidate",
     })
   );
 }

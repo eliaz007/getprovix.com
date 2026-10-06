@@ -9,12 +9,13 @@ import {
 } from "@/lib/github-audit";
 import { parseRepoFilesystemEvidence } from "@/lib/repo-filesystem";
 import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
+import { canPublishProductionScore } from "@/lib/production-audit";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   hasUsableExternalProjects,
   normalizeExternalProjects,
 } from "@/lib/external-projects";
-import { isValidGitHubUrl } from "@/lib/validate-github-url";
+import { hasUsableGitHubAuditTarget } from "@/lib/validate-github-url";
 
 export type PublishedCandidateProfileRow = {
   id?: string | null;
@@ -42,6 +43,10 @@ export type PublishedCandidateProfileRow = {
   is_visible_in_pool?: boolean | string | number | null;
   visible_to_employers?: boolean | string | number | null;
   integrity_score?: number | string | null;
+  production_score?: number | string | null;
+  audit_score?: number | string | null;
+  github_verified?: boolean | null;
+  github_username?: string | null;
   audit_data?: unknown;
   github_audit?: unknown;
 };
@@ -97,7 +102,7 @@ export function hasCompleteRequiredProfileFields(
     hasAnyNonEmptyText(row.availability_status, row.availability) &&
     isNonEmptyText(row.work_preference) &&
     isNonEmptyText(row.timezone) &&
-    (hasCandidateGitHubProfile(row) || hasSuccessfulExternalProjectsAudit(row))
+    hasCandidateGitHubProfile(row)
   );
 }
 
@@ -247,20 +252,52 @@ export function hasSuccessfulExternalProjectsAudit(
   );
 }
 
+/** Highest usable production/audit score for Verified-on-Provix gating. */
+export function resolveHighestProductionScore(
+  row:
+    | Pick<PublishedCandidateProfileRow, "production_score" | "audit_score">
+    | null
+    | undefined
+): number | null {
+  if (!row) {
+    return null;
+  }
+
+  const scores = [row.production_score, row.audit_score]
+    .map((value) => readNumericScore(value))
+    .filter((value): value is number => value != null);
+
+  if (scores.length === 0) {
+    return null;
+  }
+
+  return Math.max(...scores);
+}
+
+/**
+ * Verified on Provix requires a complete profile, a linked GitHub identity,
+ * and a production audit score of 75+.
+ */
 export function isVerifiedOnProvix(
   row: PublishedCandidateProfileRow | null | undefined
 ): boolean {
-  return (
-    hasCompleteRequiredProfileFields(row) &&
-    (hasSuccessfulGitHubIntegrityAudit(row) ||
-      hasSuccessfulExternalProjectsAudit(row))
-  );
+  if (!hasCompleteRequiredProfileFields(row)) {
+    return false;
+  }
+
+  if (row?.github_verified !== true) {
+    return false;
+  }
+
+  const productionScore = resolveHighestProductionScore(row);
+  return productionScore != null && canPublishProductionScore(productionScore);
 }
 
 export function hasCandidateGitHubProfile(
   row: Pick<PublishedCandidateProfileRow, "portfolio_url">
 ): boolean {
-  return isValidGitHubUrl(row.portfolio_url ?? "");
+  // Featured repository (owner/repo) — profile-only URLs no longer satisfy completion.
+  return hasUsableGitHubAuditTarget(row.portfolio_url ?? "");
 }
 
 export function hasCandidateProofOfWork(

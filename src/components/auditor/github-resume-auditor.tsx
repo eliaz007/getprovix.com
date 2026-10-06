@@ -7,7 +7,8 @@ import type { AuditResult } from "@/app/api/audit/route";
 import ResumeFileUpload, {
   type StoredResumeMeta,
 } from "@/components/ResumeFileUpload";
-import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
+// Alternative/external project artifacts are disabled — GitHub URL only.
+// import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
 import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
 import RepoOwnershipVerifier from "@/components/auditor/repo-ownership-verifier";
@@ -24,7 +25,7 @@ import {
   notifyProductionAuditUpdated,
   parseDossierVerificationStatus,
   PRIVATE_AUDITED_REPO_LABEL,
-  PRIVATE_AUDIT_INTENT,
+  // PRIVATE_AUDIT_INTENT,
   productionAuditRecordFromClaim,
   type ProductionAuditRecord,
 } from "@/lib/production-audit";
@@ -44,10 +45,11 @@ import {
   hasPersistedProvixTokenVerification,
 } from "@/lib/provix-token";
 import { createClient } from "@/utils/supabase/client";
-import {
-  hasUsableExternalProjects,
-  type ExternalProjectRecord,
-} from "@/lib/external-projects";
+// Alternative/external project artifacts are disabled — GitHub URL only.
+// import {
+//   hasUsableExternalProjects,
+//   type ExternalProjectRecord,
+// } from "@/lib/external-projects";
 import {
   getGitHubUrlValidationMessage,
   hasUsableGitHubAuditTarget,
@@ -97,10 +99,12 @@ export default function GitHubResumeAuditor({
   );
   const [compensationLevel, setCompensationLevel] =
     useState<(typeof COMPENSATION_LEVELS)[number]>("Mid");
-  const [isPrivateWork, setIsPrivateWork] = useState(initialPrivateWork);
-  const [externalProjects, setExternalProjects] = useState<
-    ExternalProjectRecord[]
-  >([]);
+  // Private/enterprise alternative-artifact path disabled — GitHub required.
+  // const [isPrivateWork, setIsPrivateWork] = useState(initialPrivateWork);
+  // const [externalProjects, setExternalProjects] = useState<
+  //   ExternalProjectRecord[]
+  // >([]);
+  const isPrivateWork = false;
   const [loading, setLoading] = useState(false);
   const [stageIndex, setStageIndex] = useState(0);
   const [result, setResult] = useState<AuditResult | null>(null);
@@ -232,16 +236,17 @@ export default function GitHubResumeAuditor({
   }, []);
 
   useEffect(() => {
-    if (initialPrivateWork) {
-      setIsPrivateWork(true);
-    }
+    // Private-work / alternative-artifact entry points are disabled.
+    // if (initialPrivateWork) {
+    //   setIsPrivateWork(true);
+    // }
   }, [initialPrivateWork]);
 
   useEffect(() => {
-    const intent = new URLSearchParams(window.location.search).get("intent");
-    if (intent === PRIVATE_AUDIT_INTENT) {
-      setIsPrivateWork(true);
-    }
+    // const intent = new URLSearchParams(window.location.search).get("intent");
+    // if (intent === PRIVATE_AUDIT_INTENT) {
+    //   setIsPrivateWork(true);
+    // }
   }, []);
 
   const hasValidGithubInput = hasUsableGitHubAuditTarget(githubUrl);
@@ -250,15 +255,14 @@ export default function GitHubResumeAuditor({
     parsedGithub?.repo != null
       ? `https://github.com/${parsedGithub.owner}/${parsedGithub.repo}`
       : "";
-  const hasPrivateArtifacts =
-    isPrivateWork && hasUsableExternalProjects(externalProjects);
-  const canSubmit = hasValidGithubInput || hasPrivateArtifacts;
+  // const hasPrivateArtifacts =
+  //   isPrivateWork && hasUsableExternalProjects(externalProjects);
+  const canSubmit = hasValidGithubInput;
   const githubBypass =
     isEmployerView ||
     canBypassProvixTokenChallenge(sessionUser, profileGithubVerified);
   const needsTokenChallenge =
     !githubBypass &&
-    !isPrivateWork &&
     Boolean(sessionUser) &&
     Boolean(ownershipRepoUrl);
   const auditLocked = needsTokenChallenge && !isTokenVerified;
@@ -294,11 +298,7 @@ export default function GitHubResumeAuditor({
     if (loading || limitReached) {
       return;
     }
-    if (
-      githubUrl.trim() &&
-      !hasValidGithubInput &&
-      !hasPrivateArtifacts
-    ) {
+    if (githubUrl.trim() && !hasValidGithubInput) {
       setRepoAccessStatus("invalid_format");
       return;
     }
@@ -322,8 +322,8 @@ export default function GitHubResumeAuditor({
         formData.append("targetRole", targetRole.trim());
         formData.append("githubUrl", githubUrl.trim());
         formData.append("compensationLevel", compensationLevel);
-        formData.append("workIsPrivate", isPrivateWork ? "true" : "false");
-        formData.append("externalProjects", JSON.stringify(externalProjects));
+        formData.append("workIsPrivate", "false");
+        formData.append("externalProjects", JSON.stringify([]));
         formData.append("resumeFile", resumeFile);
         response = await fetch("/api/audit", {
           method: "POST",
@@ -337,8 +337,8 @@ export default function GitHubResumeAuditor({
             targetRole: targetRole.trim(),
             githubUrl: githubUrl.trim(),
             compensationLevel,
-            workIsPrivate: isPrivateWork,
-            externalProjects,
+            workIsPrivate: false,
+            externalProjects: [],
           }),
         });
       }
@@ -621,13 +621,8 @@ export default function GitHubResumeAuditor({
               {isEmployerView
                 ? "GitHub Profile / Repo URL"
                 : "Your GitHub repository URL"}
-              {isPrivateWork ? (
-                <span className="ml-1 font-sans font-medium normal-case tracking-normal text-zinc-600">
-                  (optional)
-                </span>
-              ) : null}
             </FormLabel>
-            {!isEmployerView && !isPrivateWork ? (
+            {!isEmployerView ? (
               <p className="mb-2 text-xs leading-relaxed text-zinc-500">
                 Submit a public repository under your authenticated GitHub
                 account. Ownership is verified before the scan can publish to
@@ -644,11 +639,9 @@ export default function GitHubResumeAuditor({
                 value={githubUrl}
                 onChange={(e) => setGithubUrl(e.target.value)}
                 placeholder={
-                  isPrivateWork
-                    ? "Optional — leave blank for private/enterprise work"
-                    : isEmployerView
-                      ? "https://github.com/owner/repository-name"
-                      : "https://github.com/your-username/your-repo"
+                  isEmployerView
+                    ? "https://github.com/owner/repository-name"
+                    : "https://github.com/your-username/your-repo"
                 }
                 aria-invalid={Boolean(githubValidationMessage)}
                 aria-describedby={
@@ -682,6 +675,7 @@ export default function GitHubResumeAuditor({
               }
               username={accessUsername}
             />
+            {/* Private / alternative-artifact path disabled — GitHub only.
             <label className="mt-3 flex cursor-pointer items-start gap-2.5">
               <input
                 type="checkbox"
@@ -694,6 +688,7 @@ export default function GitHubResumeAuditor({
                 GitHub repository to audit.
               </span>
             </label>
+            */}
           </div>
 
           {!isEmployerView ? (
@@ -720,6 +715,7 @@ export default function GitHubResumeAuditor({
             </div>
           ) : null}
 
+          {/* Alternative project artifacts disabled — GitHub URL only.
           {isPrivateWork && (
             <div className="border-t border-white/[0.08] pt-4">
               <ExternalProjectsForm onProjectsChange={setExternalProjects} />
@@ -731,6 +727,7 @@ export default function GitHubResumeAuditor({
               ) : null}
             </div>
           )}
+          */}
 
           {!isEmployerView ? (
             <div className="border-t border-white/[0.08] pt-1">
@@ -749,7 +746,7 @@ export default function GitHubResumeAuditor({
                     persistToProfile
                     localFallbackOnAuthError
                     initialFilename={storedResume?.filename ?? null}
-                    helperText="The auditor reads the parsed resume and checks it against GitHub artifacts or your saved project write-ups."
+                    helperText="The auditor reads the parsed resume and checks it against your GitHub repository artifacts."
                     onLocalFileChange={setResumeFile}
                     onPersisted={(meta) => {
                       setStoredResume(meta);

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isPublishedVerifiedCandidateProfile } from "@/lib/published-candidate-profile";
+import {
+  hasCompleteRequiredProfileFields,
+  isPublishedVerifiedCandidateProfile,
+  isVerifiedOnProvix,
+} from "@/lib/published-candidate-profile";
 
 function completeVerifiedRow(
   overrides: Record<string, unknown> = {}
@@ -16,6 +20,9 @@ function completeVerifiedRow(
     work_preference: "Remote",
     timezone: "America/Denver",
     portfolio_url: "https://github.com/ada/engine",
+    github_verified: true,
+    github_username: "ada",
+    production_score: 88,
     integrity_score: 88,
     is_visible_in_pool: true,
     audit_data: {
@@ -32,6 +39,56 @@ function completeVerifiedRow(
     ...overrides,
   };
 }
+
+describe("required profile fields", () => {
+  it("treats a featured owner/repo URL as the required GitHub field", () => {
+    expect(
+      hasCompleteRequiredProfileFields(completeVerifiedRow())
+    ).toBe(true);
+    expect(
+      hasCompleteRequiredProfileFields(
+        completeVerifiedRow({
+          portfolio_url: "https://github.com/ada",
+        })
+      )
+    ).toBe(false);
+  });
+});
+
+describe("Verified on Provix badge gate", () => {
+  it("requires github_verified and a 75+ production score", () => {
+    expect(isVerifiedOnProvix(completeVerifiedRow())).toBe(true);
+    expect(
+      isVerifiedOnProvix(
+        completeVerifiedRow({
+          github_verified: false,
+          production_score: 90,
+        })
+      )
+    ).toBe(false);
+    expect(
+      isVerifiedOnProvix(
+        completeVerifiedRow({
+          github_verified: true,
+          production_score: 63,
+          audit_score: 63,
+          integrity_score: 90,
+        })
+      )
+    ).toBe(false);
+    expect(
+      isVerifiedOnProvix(
+        completeVerifiedRow({
+          github_verified: true,
+          production_score: null,
+          audit_score: 76,
+          integrity_score: null,
+          audit_data: null,
+        })
+      )
+    ).toBe(true);
+  });
+});
 
 describe("published verified talent-pool eligibility", () => {
   it("includes published, complete, proof-backed candidates", () => {
@@ -55,6 +112,8 @@ describe("published verified talent-pool eligibility", () => {
           portfolio_url: "",
           integrity_score: null,
           audit_data: null,
+          production_score: null,
+          github_verified: false,
           is_visible_in_pool: true,
         })
       )
@@ -67,6 +126,39 @@ describe("published verified talent-pool eligibility", () => {
         completeVerifiedRow({
           is_visible_in_pool: false,
           visible_to_employers: false,
+        })
+      )
+    ).toBe(false);
+  });
+
+  it("treats a 75+ production score as verified proof-of-work only with GitHub linked", () => {
+    expect(
+      isPublishedVerifiedCandidateProfile(
+        completeVerifiedRow({
+          integrity_score: null,
+          audit_data: null,
+          production_score: 81,
+          github_verified: true,
+        })
+      )
+    ).toBe(true);
+    expect(
+      isPublishedVerifiedCandidateProfile(
+        completeVerifiedRow({
+          integrity_score: null,
+          audit_data: null,
+          production_score: 81,
+          github_verified: false,
+        })
+      )
+    ).toBe(false);
+    expect(
+      isPublishedVerifiedCandidateProfile(
+        completeVerifiedRow({
+          integrity_score: null,
+          audit_data: null,
+          production_score: 74,
+          github_verified: true,
         })
       )
     ).toBe(false);

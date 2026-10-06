@@ -46,7 +46,8 @@ import GuestAuthModal from "@/components/GuestAuthModal";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import ResumeFileUpload from "@/components/ResumeFileUpload";
-import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
+// Alternative/external project artifacts are disabled — GitHub URL only.
+// import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import VerifiedCodeQualityScorecard from "@/components/dashboard/verified-code-quality-scorecard";
 import ScoreTrendChart from "@/components/dashboard/score-trend-chart";
@@ -3980,6 +3981,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const publicProfileUrl = appOrigin
     ? `${appOrigin}/p/${profileSlug}`
     : `/p/${profileSlug}`;
+  const candidateProductionAudit = parseProductionAuditFromProfileRow(dbProfile);
+  const candidateProductionScore =
+    typeof dbProfile?.production_score === "number" &&
+    Number.isFinite(dbProfile.production_score)
+      ? dbProfile.production_score
+      : typeof dbProfile?.audit_score === "number" &&
+          Number.isFinite(dbProfile.audit_score)
+        ? dbProfile.audit_score
+        : (candidateProductionAudit?.productionScore ?? null);
   const candidateVerifiedOnProvix = isVerifiedOnProvix({
     full_name: profileData.name,
     name: profileData.name,
@@ -3998,8 +4008,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     portfolio_url: portfolioUrl || dbProfile?.portfolio_url,
     integrity_score: dbProfile?.integrity_score,
     audit_data: dbProfile?.audit_data,
+    production_score: candidateProductionScore,
+    audit_score: dbProfile?.audit_score,
+    github_verified: dbProfile?.github_verified === true,
+    github_username: dbProfile?.github_username,
   });
-  const candidateProductionAudit = parseProductionAuditFromProfileRow(dbProfile);
   const githubUsername = (dbProfile?.github_username ?? "")
     .replace(/^@/, "")
     .trim();
@@ -4954,8 +4967,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         )}
                         <p className="mt-2 text-[11px] text-textMuted">
                           Required to save your profile and appear in the Provix Talent Network.
-                          If your GitHub is private or empty, add project artifacts below so the
-                          AI auditor can still verify your work.
+                          Use a public GitHub profile or repository URL for proof-of-work audits.
                         </p>
                       </div>
                       <div>
@@ -4968,7 +4980,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           <ResumeFileUpload
                             persistToProfile
                             initialFilename={dbProfile?.resume_filename ?? null}
-                            helperText="Parsed on upload so the Code & Resume Auditor can cross-check claims against your repos or saved project artifacts."
+                            helperText="Parsed on upload so the Code & Resume Auditor can cross-check claims against your GitHub repositories."
                             onPersisted={(meta) => {
                               setDbProfile((prev) =>
                                 prev
@@ -4990,7 +5002,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       </div>
                     </div>
 
+                    {/* Alternative/external project artifacts disabled — GitHub URL only.
                     <ExternalProjectsForm />
+                    */}
 
                     <div>
                       <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">

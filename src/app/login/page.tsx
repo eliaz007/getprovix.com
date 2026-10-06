@@ -23,6 +23,7 @@ import {
   getStandardEmailValidationMessage,
   normalizeEmail,
 } from "@/lib/validate-email";
+import { hasCompletedCandidateSetup } from "@/lib/candidate-onboarding";
 import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
@@ -85,10 +86,24 @@ async function destinationAfterAuth(
       ? "employer"
       : profileKind;
   const params = new URLSearchParams(search);
+
+  let setupComplete: boolean | null = null;
+  if (role === "candidate") {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select(
+        "full_name, name, first_name, last_name, job_title, headline, bio, skills, experience_level, portfolio_url"
+      )
+      .eq("id", user.id)
+      .maybeSingle();
+    setupComplete = hasCompletedCandidateSetup(profile);
+  }
+
   const destination = resolvePostAuthDestination({
     role,
     requestedNext: params.get("next"),
     isAdmin: getPostLoginPath(user) === "/admin",
+    setupComplete,
   });
 
   return appendAuthQuery(destination, search);
@@ -126,8 +141,8 @@ export default function LoginPage() {
     }
 
     setError(
-      authError === "auth_failed"
-        ? "Google sign-in failed. Please try again."
+      authError === "auth_failed" || authError === "oauth_failed"
+        ? "Sign-in failed. Please try again."
         : authError
     );
     params.delete("error");

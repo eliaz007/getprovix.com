@@ -3,7 +3,11 @@
 import { useState } from "react";
 import { handleGitHubSignIn } from "@/lib/github-auth";
 
-function GitHubLogo({ className = "h-[18px] w-[18px]" }: { className?: string }) {
+export function GitHubLogo({
+  className = "h-[18px] w-[18px]",
+}: {
+  className?: string;
+}) {
   return (
     <svg
       className={className}

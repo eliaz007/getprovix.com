@@ -9,6 +9,7 @@ import {
 } from "@/lib/dashboard-account";
 import {
   CANDIDATE_DASHBOARD_PATH,
+  CANDIDATE_SETUP_PATH,
   EMPLOYER_DASHBOARD_PATH,
   isEmployerAllowedDashboardRequest,
   isEmployerDashboardRequest,
@@ -17,6 +18,13 @@ import {
   resolvePostAuthDestination,
   ROLE_ONBOARDING_PATH,
 } from "@/lib/account-role";
+import {
+  hasCompletedCandidateSetup,
+  isCandidateSetupPath,
+} from "@/lib/candidate-onboarding";
+
+const PROFILE_SETUP_SELECT =
+  "role, full_name, name, first_name, last_name, job_title, headline, bio, skills, experience_level, portfolio_url";
 
 const cookieOptions = {
   path: "/",
@@ -126,6 +134,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/update-password/");
   const isEmployer =
     pathname === "/employer" || pathname.startsWith("/employer/");
+  const onRoleOnboarding = isRoleOnboardingPath(pathname);
+  const onCandidateSetup = isCandidateSetupPath(pathname);
   const isProtectedRoute = isProtectedAppPath(pathname);
 
   // Unauthenticated users must be allowed to stay on /login (no redirect).
@@ -135,6 +145,15 @@ export async function updateSession(request: NextRequest) {
 
   if (isUpdatePassword) {
     return supabaseResponse;
+  }
+
+  if (!user && onCandidateSetup) {
+    return redirectWithSessionCookies(
+      request,
+      supabaseResponse,
+      "/login",
+      `?next=${encodeURIComponent(CANDIDATE_SETUP_PATH)}`
+    );
   }
 
   // Unsigned visitors never enter the app shell. Send them to the marketing page.
@@ -166,7 +185,6 @@ export async function updateSession(request: NextRequest) {
       pathname,
       request.nextUrl.search
     );
-    const onRoleOnboarding = isRoleOnboardingPath(pathname);
     const needsRole =
       isHome ||
       isLogin ||
@@ -174,17 +192,24 @@ export async function updateSession(request: NextRequest) {
       employerRequest ||
       isAuditorPath(pathname) ||
       onRoleOnboarding ||
+      onCandidateSetup ||
       (isProtectedRoute && !isLogin);
 
     let role: ReturnType<typeof normalizeAccountKind> = null;
+    let setupComplete = true;
+    let profileRow: Record<string, unknown> | null = null;
 
     if (needsRole) {
       try {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("role")
+          .select(PROFILE_SETUP_SELECT)
           .eq("id", user.id)
           .maybeSingle();
+        profileRow =
+          profile && typeof profile === "object"
+            ? (profile as Record<string, unknown>)
+            : null;
         role = normalizeAccountKind(
           typeof profile?.role === "string" ? profile.role : null
         );
@@ -192,12 +217,20 @@ export async function updateSession(request: NextRequest) {
         if (!role) {
           const { data: linkedProfile } = await supabase
             .from("profiles")
-            .select("role")
+            .select(PROFILE_SETUP_SELECT)
             .eq("user_id", user.id)
             .maybeSingle();
+          profileRow =
+            linkedProfile && typeof linkedProfile === "object"
+              ? (linkedProfile as Record<string, unknown>)
+              : profileRow;
           role = normalizeAccountKind(
             typeof linkedProfile?.role === "string" ? linkedProfile.role : null
           );
+        }
+
+        if (role === "candidate") {
+          setupComplete = hasCompletedCandidateSetup(profileRow);
         }
       } catch (err) {
         console.error("Account role check failed:", err);
@@ -208,7 +241,7 @@ export async function updateSession(request: NextRequest) {
         !isAdminUser(user) &&
         !onRoleOnboarding &&
         !isLogin &&
-        (isProtectedRoute || isHome)
+        (isProtectedRoute || isHome || onCandidateSetup)
       ) {
         return redirectWithSessionCookies(
           request,
@@ -219,7 +252,11 @@ export async function updateSession(request: NextRequest) {
 
       if (role && onRoleOnboarding) {
         const destination = new URL(
-          role === "employer" ? EMPLOYER_DASHBOARD_PATH : CANDIDATE_DASHBOARD_PATH,
+          role === "employer"
+            ? EMPLOYER_DASHBOARD_PATH
+            : setupComplete
+              ? CANDIDATE_DASHBOARD_PATH
+              : CANDIDATE_SETUP_PATH,
           request.url
         );
         return redirectWithSessionCookies(
@@ -230,12 +267,43 @@ export async function updateSession(request: NextRequest) {
         );
       }
 
+      if (
+        role === "candidate" &&
+        !setupComplete &&
+        !onCandidateSetup &&
+        !isLogin &&
+        (isProtectedRoute || isHome)
+      ) {
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          CANDIDATE_SETUP_PATH
+        );
+      }
+
+      if (role === "candidate" && setupComplete && onCandidateSetup) {
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          CANDIDATE_DASHBOARD_PATH
+        );
+      }
+
+      if (role === "employer" && onCandidateSetup) {
+        return redirectWithSessionCookies(
+          request,
+          supabaseResponse,
+          EMPLOYER_DASHBOARD_PATH
+        );
+      }
+
       if (isLogin) {
         const destination = new URL(
           resolvePostAuthDestination({
             role,
             requestedNext: request.nextUrl.searchParams.get("next"),
             isAdmin: isAdminUser(user),
+            setupComplete,
           }),
           request.url
         );

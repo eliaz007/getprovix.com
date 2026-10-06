@@ -1,6 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  OAUTH_NEXT_COOKIE,
+  isSafeOAuthNextPath,
+  resolveOAuthSuccessPath,
+} from "@/lib/auth-callback-url";
 import { EMPLOYER_SIGNUP_COOKIE } from "@/lib/google-auth";
 import { syncGitHubIdentityToProfile } from "@/lib/github-identity";
 
@@ -21,17 +26,41 @@ function resolveOrigin(request: NextRequest) {
   return origin;
 }
 
-function successPath(nextParam: string | null) {
-  // Password-recovery emails land here with next=/update-password.
-  // Google OAuth always continues to /dashboard.
+function readOAuthNextCookie(request: NextRequest): string | null {
+  const raw = request.cookies.get(OAUTH_NEXT_COOKIE)?.value;
+  if (!raw) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function clearAuthCookies(response: NextResponse) {
+  response.cookies.set(EMPLOYER_SIGNUP_COOKIE, "", {
+    path: "/",
+    maxAge: 0,
+  });
+  response.cookies.set(OAUTH_NEXT_COOKIE, "", {
+    path: "/",
+    maxAge: 0,
+  });
+}
+
+/** Prefer returning to the in-app page that started OAuth (e.g. /onboarding). */
+function buildFailedRedirectUrl(origin: string, nextPath: string): string {
   if (
-    nextParam === "/update-password" ||
-    nextParam?.startsWith("/update-password?")
+    isSafeOAuthNextPath(nextPath) &&
+    (nextPath.startsWith("/onboarding") || nextPath.startsWith("/dashboard"))
   ) {
-    return "/update-password";
+    const url = new URL(nextPath, origin);
+    url.searchParams.set("error", "oauth_failed");
+    return url.toString();
   }
 
-  return "/dashboard";
+  return `${origin}/login?error=oauth_failed`;
 }
 
 function createClient(request: NextRequest, response: NextResponse) {
@@ -64,51 +93,146 @@ function createClient(request: NextRequest, response: NextResponse) {
 }
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
+  const requestUrl = new URL(request.url);
+  const { searchParams } = requestUrl;
   const origin = resolveOrigin(request);
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type");
-  const failedUrl = `${origin}/login?error=auth_failed`;
+  const error = searchParams.get("error");
+  const errorDescription = searchParams.get("error_description");
+  const oauthError = error || errorDescription;
+  const nextPath = resolveOAuthSuccessPath(
+    searchParams.get("next"),
+    readOAuthNextCookie(request)
+  );
+  const failedUrl = buildFailedRedirectUrl(origin, nextPath);
 
-  if (!code && !(tokenHash && type)) {
-    console.error("OAuth exchange error:", "missing code");
-    return NextResponse.redirect(failedUrl);
+  const logGitHubAuthError = (
+    reason: string,
+    details: {
+      error?: unknown;
+      sessionUser?: unknown;
+    } = {}
+  ) => {
+    console.error("DEBUG GITHUB AUTH ERROR:", {
+      reason,
+      error: details.error ?? error,
+      errorDescription,
+      errorCode:
+        details.error &&
+        typeof details.error === "object" &&
+        details.error !== null &&
+        "code" in details.error
+          ? (details.error as { code?: unknown }).code
+          : error,
+      errorMessage:
+        details.error instanceof Error
+          ? details.error.message
+          : details.error &&
+              typeof details.error === "object" &&
+              details.error !== null &&
+              "message" in details.error
+            ? (details.error as { message?: unknown }).message
+            : errorDescription,
+      sessionUser: details.sessionUser ?? null,
+      url: requestUrl.toString(),
+      searchParams: Object.fromEntries(searchParams.entries()),
+      nextPath,
+      hasCode: Boolean(code),
+      hasTokenHash: Boolean(tokenHash),
+      type,
+    });
+  };
+
+  if (oauthError) {
+    logGitHubAuthError("oauth_provider_error");
+    const response = NextResponse.redirect(failedUrl);
+    clearAuthCookies(response);
+    return response;
   }
 
-  const response = NextResponse.redirect(
-    `${origin}${successPath(searchParams.get("next"))}`
-  );
+  if (!code && !(tokenHash && type)) {
+    logGitHubAuthError("missing_code");
+    const response = NextResponse.redirect(failedUrl);
+    clearAuthCookies(response);
+    return response;
+  }
+
+  const response = NextResponse.redirect(`${origin}${nextPath}`);
   const supabase = createClient(request, response);
 
   try {
     if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) {
-        console.error("OAuth exchange error:", error);
-        return NextResponse.redirect(failedUrl);
+      const { data: exchangeData, error: exchangeError } =
+        await supabase.auth.exchangeCodeForSession(code);
+      if (exchangeError) {
+        logGitHubAuthError("exchange_code_failed", {
+          error: exchangeError,
+          sessionUser: exchangeData?.user ?? null,
+        });
+        const failed = NextResponse.redirect(failedUrl);
+        clearAuthCookies(failed);
+        return failed;
       }
     } else if (tokenHash && type) {
-      const { error } = await supabase.auth.verifyOtp({
+      const { data: otpData, error: otpError } = await supabase.auth.verifyOtp({
         token_hash: tokenHash,
         type: type as EmailOtpType,
       });
-      if (error) {
-        console.error("OAuth exchange error:", error);
-        return NextResponse.redirect(failedUrl);
+      if (otpError) {
+        logGitHubAuthError("verify_otp_failed", {
+          error: otpError,
+          sessionUser: otpData?.user ?? null,
+        });
+        const failed = NextResponse.redirect(failedUrl);
+        clearAuthCookies(failed);
+        return failed;
       }
     }
 
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError) {
+      logGitHubAuthError("get_user_failed", {
+        error: userError,
+        sessionUser: userData?.user ?? null,
+      });
+    }
+
+    const identities =
+      userData.user?.identities?.map((identity) => ({
+        provider: identity.provider,
+        identity_id: identity.identity_id,
+        email: (identity.identity_data as { email?: string } | undefined)?.email,
+      })) ?? [];
+
+    console.info("DEBUG GITHUB AUTH SUCCESS:", {
+      userId: userData.user?.id ?? null,
+      email: userData.user?.email ?? null,
+      identities,
+      nextPath,
+      providers: (userData.user?.app_metadata as { providers?: unknown } | undefined)
+        ?.providers,
+    });
+
     await syncGitHubIdentityToProfile(supabase, userData.user);
-  } catch (error) {
-    console.error("OAuth exchange error:", error);
-    return NextResponse.redirect(failedUrl);
+  } catch (caught) {
+    let sessionUser: unknown = null;
+    try {
+      const { data } = await supabase.auth.getUser();
+      sessionUser = data.user;
+    } catch {
+      // ignore secondary lookup failures
+    }
+    logGitHubAuthError("callback_exception", {
+      error: caught,
+      sessionUser,
+    });
+    const failed = NextResponse.redirect(failedUrl);
+    clearAuthCookies(failed);
+    return failed;
   }
 
-  response.cookies.set(EMPLOYER_SIGNUP_COOKIE, "", {
-    path: "/",
-    maxAge: 0,
-  });
+  clearAuthCookies(response);
   return response;
 }

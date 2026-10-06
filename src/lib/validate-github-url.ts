@@ -41,7 +41,7 @@ const GITHUB_AUDIT_PLACEHOLDERS = new Set([
 ]);
 
 export const AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE =
-  "Please provide a valid GitHub repository or add a private project artifact to run an audit.";
+  "Please provide a valid GitHub repository URL to run an audit.";
 
 export const INVALID_REPO_FORMAT = "INVALID_REPO_FORMAT";
 export const INVALID_REPO_FORMAT_MESSAGE =

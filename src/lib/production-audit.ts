@@ -454,23 +454,23 @@ export async function persistProfileProductionAudit(
     !isVerified ||
     (options?.isPubliclyVisible === false && !enrollInTalentPool);
   const canPublish = isVerified && canPublishProductionScore(productionScore);
-  const githubVerified = roleRow?.github_verified === true;
 
   if (enrollInTalentPool && canPublish) {
     payload.is_in_talent_pool = true;
     payload.is_publicly_visible = true;
-    if (githubVerified) {
-      payload.is_visible_in_pool = true;
-      payload.visible_to_employers = true;
-    }
+    // 75+ is the gate for talent-network visibility.
+    payload.is_visible_in_pool = true;
+    payload.visible_to_employers = true;
   } else if (publishRequested && canPublish) {
     payload.is_publicly_visible = true;
-    if (githubVerified) {
-      payload.is_visible_in_pool = true;
-      payload.visible_to_employers = true;
-    }
+    payload.is_visible_in_pool = true;
+    payload.visible_to_employers = true;
   } else if (hideRequested || !canPublish) {
     payload.is_publicly_visible = false;
+    if (!canPublish) {
+      payload.is_visible_in_pool = false;
+      payload.visible_to_employers = false;
+    }
   }
 
   const profileId = typeof roleRow?.id === "string" ? roleRow.id : userId;
@@ -639,9 +639,12 @@ export async function persistScorecardVisibility(
     is_publicly_visible: nextVisible,
   };
 
-  if (nextVisible && roleRow?.github_verified === true) {
+  if (nextVisible) {
     payload.is_visible_in_pool = true;
     payload.visible_to_employers = true;
+  } else {
+    payload.is_visible_in_pool = false;
+    payload.visible_to_employers = false;
   }
 
   const profileId = typeof roleRow?.id === "string" ? roleRow.id : userId;

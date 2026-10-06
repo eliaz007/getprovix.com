@@ -57,6 +57,13 @@ describe("authentication and session validation", () => {
         requestedNext: "/dashboard?tab=talent",
       })
     ).toBe(CANDIDATE_DASHBOARD_PATH);
+    expect(
+      resolvePostAuthDestination({
+        role: "candidate",
+        setupComplete: false,
+        requestedNext: "/dashboard/profile",
+      })
+    ).toBe("/onboarding");
     expect(signupRoleFromSearch("?role=founder")).toBe("employer");
     expect(isEmployerAuthIntent("?next=/employer")).toBe(true);
   });
@@ -113,8 +120,12 @@ describe("authentication and session validation", () => {
         },
       },
     });
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: { cookie: "" },
+    });
     expect(buildOAuthCallbackUrl()).toBe(
-      "https://getprovix.com/auth/callback?next=%2Faudit"
+      "https://getprovix.com/auth/callback"
     );
 
     if (originalWindow) {

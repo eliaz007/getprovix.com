@@ -70,6 +70,12 @@ describe("authentication and session validation", () => {
     expect(
       resolvePostAuthDestination({
         role: "candidate",
+        setupComplete: false,
+      })
+    ).toBe("/onboarding");
+    expect(
+      resolvePostAuthDestination({
+        role: "candidate",
         requestedNext: "/dashboard/auditor",
         isAdmin: true,
       })
@@ -131,6 +137,7 @@ describe("authentication and session validation", () => {
     expect(getPostLoginPath(regular)).toBe("/dashboard");
 
     const originalWindow = globalThis.window;
+    const originalDocument = globalThis.document;
     Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: {
@@ -141,8 +148,12 @@ describe("authentication and session validation", () => {
         },
       },
     });
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: { cookie: "" },
+    });
     expect(buildOAuthCallbackUrl()).toBe(
-      "https://getprovix.com/auth/callback?next=%2Fopportunities"
+      "https://getprovix.com/auth/callback"
     );
 
     Object.defineProperty(globalThis, "window", {
@@ -156,7 +167,7 @@ describe("authentication and session validation", () => {
       },
     });
     expect(buildOAuthCallbackUrl()).toBe(
-      "https://getprovix.com/auth/callback?next=%2Fdashboard"
+      "https://getprovix.com/auth/callback"
     );
 
     Object.defineProperty(globalThis, "window", {
@@ -170,7 +181,7 @@ describe("authentication and session validation", () => {
       },
     });
     expect(buildOAuthCallbackUrl()).toBe(
-      "https://getprovix.com/auth/callback?next=%2Faudit"
+      "https://getprovix.com/auth/callback"
     );
 
     if (originalWindow) {
@@ -181,6 +192,12 @@ describe("authentication and session validation", () => {
     } else {
       // @ts-expect-error cleanup test window shim
       delete globalThis.window;
+    }
+    if (originalDocument) {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: originalDocument,
+      });
     }
   });
 });

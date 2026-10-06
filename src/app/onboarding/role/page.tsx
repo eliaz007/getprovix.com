@@ -88,7 +88,7 @@ export default function RoleOnboardingPage() {
         return;
       }
 
-      window.location.assign(role === "employer" ? "/employer" : "/dashboard");
+      window.location.assign(role === "employer" ? "/employer" : "/onboarding");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not save your account type."

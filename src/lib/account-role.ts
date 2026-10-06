@@ -1,4 +1,9 @@
 import type { User } from "@supabase/supabase-js";
+import {
+  CANDIDATE_SETUP_PATH,
+  hasCompletedCandidateSetup,
+  type CandidateSetupProfileRow,
+} from "@/lib/candidate-onboarding";
 
 export type AccountKind = "employer" | "candidate";
 
@@ -10,6 +15,9 @@ export const CANDIDATE_DASHBOARD_PATH = "/dashboard/profile";
 
 /** Post-auth role picker for GitHub/Google users whose profiles.role is unset. */
 export const ROLE_ONBOARDING_PATH = "/onboarding/role";
+
+/** Candidate setup form after choosing For Developers. */
+export { CANDIDATE_SETUP_PATH };
 
 const EMPLOYER_ONLY_TABS = new Set(["talent", "applicants", "evaluator"]);
 
@@ -190,6 +198,8 @@ export function resolvePostAuthDestination(input: {
   role: string | null | undefined;
   requestedNext?: string | null;
   isAdmin?: boolean;
+  /** When false, candidates must finish /onboarding before the dashboard. */
+  setupComplete?: boolean | null;
 }): string {
   if (input.isAdmin) {
     return "/admin";
@@ -200,11 +210,15 @@ export function resolvePostAuthDestination(input: {
     return ROLE_ONBOARDING_PATH;
   }
 
+  const employer = kind === "employer";
+  if (!employer && input.setupComplete === false) {
+    return CANDIDATE_SETUP_PATH;
+  }
+
   const requested = sanitizeInternalPath(input.requestedNext);
   const requestedUrl = requested
     ? new URL(requested, "https://getprovix.com")
     : null;
-  const employer = kind === "employer";
   const defaultDestination = employer
     ? EMPLOYER_DASHBOARD_PATH
     : CANDIDATE_DASHBOARD_PATH;
@@ -212,7 +226,8 @@ export function resolvePostAuthDestination(input: {
   if (
     !requestedUrl ||
     requestedUrl.pathname === "/" ||
-    isRoleOnboardingPath(requestedUrl.pathname)
+    isRoleOnboardingPath(requestedUrl.pathname) ||
+    requestedUrl.pathname === CANDIDATE_SETUP_PATH
   ) {
     return defaultDestination;
   }
@@ -229,6 +244,26 @@ export function resolvePostAuthDestination(input: {
   }
 
   return `${requestedUrl.pathname}${requestedUrl.search}`;
+}
+
+export function candidateDestinationAfterAuth(input: {
+  role: string | null | undefined;
+  profile?: CandidateSetupProfileRow | null;
+  requestedNext?: string | null;
+  isAdmin?: boolean;
+}): string {
+  const kind = normalizeAccountKind(input.role);
+  const setupComplete =
+    kind !== "candidate"
+      ? true
+      : hasCompletedCandidateSetup(input.profile ?? null);
+
+  return resolvePostAuthDestination({
+    role: input.role,
+    requestedNext: input.requestedNext,
+    isAdmin: input.isAdmin,
+    setupComplete,
+  });
 }
 
 function sanitizeInternalPath(value: string | null | undefined): string | null {
