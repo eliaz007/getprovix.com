@@ -14,6 +14,7 @@ import { sendEmployerVerificationEmail } from "@/lib/send-employer-verification-
 import { consumeRateLimit, tooManyRequestsResponse } from "@/lib/ip-rate-limit";
 import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { fetchProfileForCandidateId } from "@/lib/resolve-candidate-profile";
+import { SITE_URL } from "@/lib/site";
 import { normalizeEmail } from "@/lib/validate-email";
 
 export const runtime = "nodejs";
@@ -131,10 +132,7 @@ export async function POST(request: Request) {
     console.warn("[employer-verify] profile email update failed:", profileError);
   }
 
-  const confirmUrl = buildEmployerVerificationConfirmUrl(
-    new URL(request.url).origin,
-    token
-  );
+  const confirmUrl = buildEmployerVerificationConfirmUrl(SITE_URL, token);
   const { error: sendError } = await sendEmployerVerificationEmail({
     to: workEmail,
     confirmUrl,

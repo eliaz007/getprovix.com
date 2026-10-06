@@ -271,6 +271,11 @@ export function hasCandidateProofOfWork(
   );
 }
 
+/**
+ * Employer talent-pool eligibility: published (visible) + verified/complete.
+ * Bare signup profiles fail until required Profile Studio fields and proof-of-work
+ * audit are in place — matching the empty-state copy on /dashboard?tab=talent.
+ */
 export function isPublishedVerifiedCandidateProfile(
   row: PublishedCandidateProfileRow
 ): boolean {
@@ -278,11 +283,7 @@ export function isPublishedVerifiedCandidateProfile(
     return false;
   }
 
-  const visibilitySpecified =
-    row.is_visible_in_pool !== undefined ||
-    row.visible_to_employers !== undefined;
-
-  if (visibilitySpecified && !profileRowIsPublicToEmployers(row)) {
+  if (!profileRowIsPublicToEmployers(row)) {
     return false;
   }
 

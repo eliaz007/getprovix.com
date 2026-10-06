@@ -76,13 +76,18 @@ describe("email dispatcher helpers and payload validation", () => {
     expect(tokenHash).not.toBe(token);
 
     const confirmUrl = buildEmployerVerificationConfirmUrl(
-      "https://www.getprovix.com",
+      "https://getprovix.com",
       token
     );
     expect(confirmUrl.startsWith(
-      "https://www.getprovix.com/api/employer/verify-email/confirm?token="
+      "https://getprovix.com/verify-email?token="
     )).toBe(true);
     expect(new URL(confirmUrl).searchParams.get("token")).toBe(token);
+
+    // www origins are normalized to apex so email links stay spam-filter friendly.
+    expect(
+      buildEmployerVerificationConfirmUrl("https://www.getprovix.com", token)
+    ).toBe(confirmUrl);
 
     const html = buildEmployerVerificationEmailHtml({
       confirmUrl: 'https://example.com/confirm?x="1"',

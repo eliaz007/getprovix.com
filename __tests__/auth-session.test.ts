@@ -91,6 +91,7 @@ describe("authentication and session validation", () => {
     expect(shouldSkipMiddlewareAuth("/login")).toBe(true);
     expect(shouldSkipMiddlewareAuth("/dashboard")).toBe(false);
     expect(isPublicRoute("/audit")).toBe(true);
+    expect(isPublicRoute("/verify-email")).toBe(true);
     expect(isProtectedAppPath("/settings")).toBe(true);
 
     expect(isEmployerRole("employer")).toBe(true);

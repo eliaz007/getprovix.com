@@ -174,7 +174,6 @@ import {
   countActiveOpenings,
   getActiveJobs,
   isVisibleToEmployers,
-  profileRowIsPublicToEmployers,
 } from "@/lib/opportunities-metrics";
 import {
   DEFAULT_CANDIDATE_TIMEZONE,
@@ -186,7 +185,10 @@ import {
   type CandidateTimezone,
   type WorkPreference,
 } from "@/lib/work-preference";
-import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
+import {
+  isPublishedVerifiedCandidateProfile,
+  isVerifiedOnProvix,
+} from "@/lib/published-candidate-profile";
 import {
   claimPendingProductionAudit,
   claimPendingProductionAuditResult,
@@ -494,15 +496,7 @@ function canAccessTalentPool(
 }
 
 function isProfileEligibleForTalentPool(row: ProfileRecord): boolean {
-  if (!row.id?.trim()) {
-    return false;
-  }
-
-  if (isEmployerRole(row.role)) {
-    return false;
-  }
-
-  return profileRowIsPublicToEmployers(row);
+  return isPublishedVerifiedCandidateProfile(row);
 }
 
 function resolveProfileAvailability(
@@ -3468,7 +3462,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     void handleExpressInterestToJob(job);
   };
 
-  const savedProfilesCount = 8;
+  // Same eligibility set as the talent list (published + verified), before UI filters.
+  const savedProfilesCount = candidates.length;
   const scoredTalentMatches = scoredCandidates.filter(
     (candidate) => candidate.matchScore >= 80
   ).length;

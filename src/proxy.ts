@@ -23,7 +23,7 @@ export const config = {
      * /api/intros and other listed APIs still refresh the session.
      * Unsigned app-shell routes redirect to /. Matched /api routes never HTML-redirect.
      */
-    "/((?!_next/static|_next/image|favicon.ico|api|auth/callback|login(?:/|$)|privacy(?:/|$)|terms(?:/|$)|pricing(?:/|$)|update-password(?:/|$)|audit(?:/|$)|p(?:/|$)|robots\\.txt|sitemap\\.xml|$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api|auth/callback|login(?:/|$)|privacy(?:/|$)|terms(?:/|$)|pricing(?:/|$)|update-password(?:/|$)|verify-email(?:/|$)|audit(?:/|$)|p(?:/|$)|robots\\.txt|sitemap\\.xml|$).*)",
     "/api/intros/:path*",
     "/api/profile/:path*",
     "/api/talent-pool/:path*",

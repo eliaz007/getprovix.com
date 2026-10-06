@@ -6,6 +6,7 @@ import {
   employerIsVerifiedInDatabase,
   persistEmployerVerifiedFlag,
 } from "@/lib/persist-employer-verified";
+import { normalizeSiteUrl } from "@/lib/site";
 
 export const runtime = "nodejs";
 
@@ -20,20 +21,43 @@ function resolveRedirectOrigin(request: NextRequest): string {
   const isLocalEnv = process.env.NODE_ENV === "development";
 
   if (!isLocalEnv && forwardedHost) {
-    return `https://${forwardedHost}`;
+    return normalizeSiteUrl(`https://${forwardedHost}`);
   }
 
   if (envUrl) {
-    return envUrl;
+    return normalizeSiteUrl(envUrl);
   }
 
-  return new URL(request.url).origin;
+  return normalizeSiteUrl(new URL(request.url).origin);
 }
 
 function copyResponseCookies(from: NextResponse, to: NextResponse) {
   from.cookies.getAll().forEach((cookie) => {
     to.cookies.set(cookie);
   });
+}
+
+function wantsJsonResponse(request: NextRequest): boolean {
+  const accept = request.headers.get("accept") ?? "";
+  return accept.includes("application/json");
+}
+
+function verificationJson(
+  input: { verified: boolean; signedIn: boolean; error?: string },
+  cookieSource: NextResponse
+) {
+  const body = input.verified
+    ? { verified: true as const, signedIn: input.signedIn }
+    : {
+        verified: false as const,
+        signedIn: input.signedIn,
+        error: input.error ?? "invalid",
+      };
+  const response = NextResponse.json(body, {
+    status: input.verified ? 200 : 400,
+  });
+  copyResponseCookies(cookieSource, response);
+  return response;
 }
 
 function verificationRedirect(
@@ -65,6 +89,7 @@ function verificationRedirect(
 export async function GET(request: NextRequest) {
   const origin = resolveRedirectOrigin(request);
   const token = request.nextUrl.searchParams.get("token")?.trim() ?? "";
+  const preferJson = wantsJsonResponse(request);
 
   let cookieResponse = NextResponse.next({ request });
   let signedIn = false;
@@ -100,10 +125,18 @@ export async function GET(request: NextRequest) {
     console.warn("[employer-verify] session refresh during confirm failed:", error);
   }
 
+  const respond = (input: {
+    verified: boolean;
+    signedIn: boolean;
+    error?: string;
+  }) =>
+    preferJson
+      ? verificationJson(input, cookieResponse)
+      : verificationRedirect(origin, input, cookieResponse);
+
   const fail = (error: string) =>
-    verificationRedirect(origin, { verified: false, signedIn, error }, cookieResponse);
-  const succeed = () =>
-    verificationRedirect(origin, { verified: true, signedIn }, cookieResponse);
+    respond({ verified: false, signedIn, error });
+  const succeed = () => respond({ verified: true, signedIn });
 
   if (!token) {
     return fail("missing_token");

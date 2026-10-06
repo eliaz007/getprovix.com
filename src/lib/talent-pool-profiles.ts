@@ -5,7 +5,7 @@ import {
   parseIsSelfTaught,
 } from "@/lib/candidate-education";
 import { isEmployerRole } from "@/lib/dashboard-account";
-import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
+import { isPublishedVerifiedCandidateProfile } from "@/lib/published-candidate-profile";
 import {
   findMentionedColumn,
   isSupabaseSchemaError,
@@ -415,7 +415,8 @@ function filterTalentPoolRows(
   rows: TalentPoolProfileRow[]
 ): TalentPoolProfileRow[] {
   return rows.filter(
-    (row) => profileRowIsPublicToEmployers(row) && !isEmployerProfileRow(row)
+    (row) =>
+      !isEmployerProfileRow(row) && isPublishedVerifiedCandidateProfile(row)
   );
 }
 

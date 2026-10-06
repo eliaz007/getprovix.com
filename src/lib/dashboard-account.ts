@@ -159,6 +159,7 @@ const PUBLIC_EXACT_PATHS = new Set([
   "/terms",
   "/pricing",
   "/update-password",
+  "/verify-email",
   "/admin/login",
   "/icon",
   "/apple-icon",

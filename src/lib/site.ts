@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 
-function normalizeSiteUrl(raw: string): string {
+/** Prefer apex getprovix.com — strip www so email/canonical links stay consistent. */
+export function normalizeSiteUrl(raw: string): string {
   const trimmed = raw.replace(/\/$/, "");
-  // Apex redirects to www in Vercel — keep canonicals on www so search/share
-  // links do not pay an extra redirect hop on every first visit.
   try {
     const url = new URL(trimmed);
-    if (url.hostname === "getprovix.com") {
-      url.hostname = "www.getprovix.com";
+    if (url.hostname === "www.getprovix.com") {
+      url.hostname = "getprovix.com";
       return url.origin;
     }
   } catch {
@@ -17,7 +16,7 @@ function normalizeSiteUrl(raw: string): string {
 }
 
 export const SITE_URL = normalizeSiteUrl(
-  process.env.NEXT_PUBLIC_APP_URL ?? "https://www.getprovix.com"
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://getprovix.com"
 );
 
 export const SITE_NAME = "Provix";
