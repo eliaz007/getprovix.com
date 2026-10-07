@@ -3,8 +3,6 @@
 import { useState } from "react";
 import {
   Check,
-  Clipboard,
-  ClipboardCheck,
   Compass,
   FileDown,
   Link2,
@@ -38,10 +36,6 @@ const GLASS_CARD =
 const SCORE = 84;
 const MOCK_NAME = "Alex Rivera";
 const MOCK_HANDLE = "alex-rivera";
-const BADGE_MARKDOWN =
-  "[![Provix Verified](https://img.shields.io/badge/Provix-Verified%2084%2F100-10b981)](https://getprovix.com)";
-const BADGE_IMAGE =
-  "https://img.shields.io/badge/Provix-Verified%2084%2F100-10b981";
 
 const SKILLS = [
   "TypeScript",
@@ -261,44 +255,34 @@ function ExecutiveVerdictCard() {
 }
 
 function ReadmeBadgePanel() {
-  const [copied, setCopied] = useState(false);
-
-  const copyBadge = async () => {
-    try {
-      await navigator.clipboard.writeText(BADGE_MARKDOWN);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setCopied(false);
-    }
-  };
-
   return (
     <div className="space-y-4">
       <div className={`${GLASS_CARD} px-4 py-6 text-center`}>
-        <p className={`${SECTION_LABEL} mb-4`}>Live Shields.io preview</p>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={BADGE_IMAGE}
-          alt="Provix Verified 84/100"
-          className="mx-auto h-5"
-        />
+        <p className={`${SECTION_LABEL} mb-4`}>README Badge preview</p>
+        <div className="mx-auto inline-flex items-center gap-2 rounded-md border border-white/[0.08] bg-[#070709] px-3 py-1.5 opacity-60">
+          <Lock className="h-3.5 w-3.5 text-zinc-500" aria-hidden />
+          <span className="font-mono text-xs text-zinc-500">
+            Provix Verified — locked
+          </span>
+        </div>
       </div>
-      <div className="rounded-xl border border-white/[0.08] bg-[#070709] p-3">
-        <code className="block break-all font-mono text-[11px] leading-relaxed text-zinc-300">
-          {BADGE_MARKDOWN}
-        </code>
+      <div className="rounded-xl border border-dashed border-white/[0.1] bg-[#070709] p-4">
+        <p className="text-sm font-semibold text-zinc-200">
+          Badge generated only after verified repo run
+        </p>
+        <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+          Embed snippets are available after an authenticated repository audit —
+          not from this interactive demo preview.
+        </p>
         <button
           type="button"
-          onClick={() => void copyBadge()}
-          className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20"
+          disabled
+          aria-disabled="true"
+          title="Badge generated only after verified repo run"
+          className="mt-3 inline-flex cursor-not-allowed items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-zinc-500 opacity-70"
         >
-          {copied ? (
-            <ClipboardCheck className="h-3.5 w-3.5" aria-hidden />
-          ) : (
-            <Clipboard className="h-3.5 w-3.5" aria-hidden />
-          )}
-          {copied ? "Copied" : "Copy Markdown"}
+          <Lock className="h-3.5 w-3.5" aria-hidden />
+          Copy Markdown
         </button>
       </div>
     </div>
