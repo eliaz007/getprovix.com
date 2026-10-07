@@ -1,127 +1,187 @@
 import Link from "next/link";
 import { buildPageMetadata } from "@/lib/site";
-import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
-import { REPLACEMENT_GUARANTEE_DAYS } from "@/lib/placement-revenue";
 
 export const metadata = buildPageMetadata(
   "Terms of Service",
-  `Terms governing use of Provix, including a ${PUBLIC_PLACEMENT_TERMS_SUMMARY}`,
+  "Terms governing use of Provix, including repository benchmarking, candidate dossiers, and the talent network.",
   "/terms"
 );
 
-const sections = [
+type TermsSection = {
+  title: string;
+  intro?: string;
+  paragraphs?: string[];
+  bullets?: Array<{ label?: string; text: string }>;
+  bulletsLead?: string;
+};
+
+const sections: TermsSection[] = [
   {
-    title: "Acceptance of Terms",
-    paragraphs: [
-      "By accessing or using Provix, creating an account, or clicking to accept these Terms of Service, you agree to be bound by this agreement and our Privacy Policy. If you do not agree, do not use the platform.",
-      "If you use Provix on behalf of a company or other legal entity, you represent that you have authority to bind that entity to these terms, and \"you\" refers to that entity.",
-      "We may update these terms from time to time. Continued use of Provix after changes become effective constitutes acceptance of the revised terms.",
+    title: "1. Platform & Marketplace Structure",
+    intro:
+      "Provix operates an automated developer qualification platform and two-way talent marketplace connecting software engineers with founders and engineering leaders.",
+    bullets: [
+      {
+        label: "For Candidates:",
+        text: "We analyze submitted software repositories against production standards (architecture, tests, CI/CD, and error handling) to determine qualification for our verified talent roster.",
+      },
+      {
+        label: "For Hiring Teams:",
+        text: "We provide access to verified candidate dossiers, benchmark telemetry, and introduction channels.",
+      },
+      {
+        label: "Platform Role:",
+        text: "Provix is a venue for introductions. Provix is not an employer, recruiter of record, or contracting party to any eventual employment or consulting relationship formed between users. We make no representations or guarantees regarding candidate hiring, placement, or technical performance.",
+      },
     ],
   },
   {
-    title: "Description of Service",
-    paragraphs: [
-      "Provix is a candidate auditing and matchmaking platform that helps employers evaluate proof-of-work signals and helps candidates discover relevant opportunities.",
-      "The service includes automated repository and profile screening, integrity and match scoring, talent pool discovery, interview enablement features, and AI-assisted analysis delivered through the Provix dashboard and related APIs.",
-      `Provix provides informational and workflow tools to support hiring decisions. Except for the ${REPLACEMENT_GUARANTEE_DAYS}-day replacement guarantee on successful placements described below, we do not guarantee employment outcomes, candidate availability, or the accuracy of third-party data sources.`,
+    title: "2. Repository Ingestion & Intellectual Property",
+    bullets: [
+      {
+        label: "Permission to Analyze:",
+        text: "By connecting or submitting a repository (via GitHub or other git providers), you grant Provix a limited, non-exclusive license to clone, parse abstract syntax trees (ASTs), analyze dependencies, evaluate test coverage, and execute automated static scans on your code strictly to generate your benchmark score and dossier.",
+      },
+      {
+        label: "Your Code Ownership:",
+        text: "You retain full and exclusive ownership of all code, intellectual property, and proprietary repository contents. Provix does not claim any ownership rights over your software, and we do not use your private codebases to train public foundation models.",
+      },
+      {
+        label: "Dossiers & Telemetry:",
+        text: "If your repository meets qualification thresholds, your resulting readiness score, architectural breakdown, and non-sensitive repository metadata will be compiled into a candidate dossier visible to prospective hiring teams on the network.",
+      },
     ],
   },
   {
-    title: "User Accounts & Conduct",
-    paragraphs: [
-      "You are responsible for maintaining the confidentiality of your account credentials and for all activity that occurs under your account.",
-      "You agree to provide accurate, current, and complete profile information and to update it as needed. You must not impersonate another person or misrepresent your qualifications, experience, or affiliations.",
-      "Candidates must submit authentic repository, portfolio, and proof-of-work materials. You may not upload fraudulent data, manipulate audit signals, scrape the platform in unauthorized ways, or attempt to circumvent access controls, billing, or visibility settings.",
-      "Employers agree to use candidate information lawfully and only for legitimate recruiting, evaluation, and hiring purposes permitted by applicable law and the candidate's visibility settings.",
+    title: "3. Automated Benchmarking Disclaimers",
+    bullets: [
+      {
+        label: "Automated Nature:",
+        text: "Verification scores, readiness metrics, and architectural breakdowns are generated through automated algorithmic checks. They represent static point-in-time signals and do not constitute an exhaustive security audit, legal compliance certification, or human technical warranty.",
+      },
+      {
+        label: '"As Is" Basis:',
+        text: 'All benchmarks, scores, and platform recommendations are provided strictly on an "AS IS" and "AS AVAILABLE" basis. Hiring organizations are solely responsible for conducting their own technical due diligence before entering into any employment or contractual relationship.',
+      },
     ],
   },
   {
-    title: "Fees & Placement Terms",
-    paragraphs: [
-      `Provix is a contingency placement service. Employers pay no upfront subscription to browse profiles or run AI screening. When an employer hires a candidate through Provix, the fee is a ${PUBLIC_PLACEMENT_TERMS_SUMMARY}`,
-      "These placement terms apply to full-time hires made through the platform. Independent contractor or hourly engagements may be billed separately as disclosed at the time of engagement.",
+    title: "4. Acceptable Use",
+    bulletsLead: "You agree not to:",
+    bullets: [
+      {
+        text: "Submit codebases containing malicious payloads, viruses, ransomware, or intentionally obfuscated vulnerabilities.",
+      },
+      {
+        text: "Attempt to exploit, reverse-engineer, manipulate, or artificially inflate Provix benchmark scores.",
+      },
+      {
+        text: "Scrape, harvest, or bulk-export candidate dossiers, engineering contacts, or platform data without prior written consent.",
+      },
+      {
+        text: "Misrepresent your identity, repository ownership, or technical contributions.",
+      },
     ],
   },
   {
-    title: "Intellectual Property & Content Ownership",
+    title: "5. Termination & Suspension",
     paragraphs: [
-      "Provix and its licensors own all rights in the platform, including software, branding, design, documentation, and proprietary scoring methodologies, except for content you or other users provide.",
-      "You retain ownership of content you submit, including profile details, repository links, bios, and portfolio materials. By using Provix, you grant us a limited, non-exclusive license to host, process, display, and analyze that content solely to operate and improve the service.",
-      "Feedback you provide may be used by Provix without restriction or compensation. You may not copy, reverse engineer, or resell the platform or its outputs except as expressly permitted in writing.",
+      "We reserve the right to suspend or terminate accounts, remove repositories, or revoke verified roster status at any time if conduct violates these Terms or compromises platform security and integrity.",
     ],
   },
   {
-    title: "Limitation of Liability & Disclaimers",
+    title: "6. Limitation of Liability",
     paragraphs: [
-      "Provix is provided on an \"as is\" and \"as available\" basis. To the fullest extent permitted by law, we disclaim all warranties, whether express or implied, including merchantability, fitness for a particular purpose, and non-infringement.",
-      "AI-generated scores, summaries, interview prompts, and match results are assistive outputs and should not be treated as definitive hiring decisions. You remain responsible for independent verification and compliance with your internal policies and applicable law.",
-      "To the maximum extent permitted by law, Provix and its affiliates will not be liable for any indirect, incidental, special, consequential, or punitive damages, or for lost profits, data, goodwill, or business interruption arising from your use of the service.",
-      "Our total liability for any claim relating to the service will not exceed the greater of (a) the amount you paid Provix in the twelve months before the event giving rise to the claim, or (b) one hundred U.S. dollars (USD $100), except where such limitation is prohibited by law.",
+      "To the maximum extent permitted by applicable law, Provix, its founders, and affiliates shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, employment opportunities, or business goodwill arising from your use of or inability to access the Services.",
     ],
   },
   {
-    title: "Termination of Service",
+    title: "7. Modifications",
     paragraphs: [
-      "You may stop using Provix at any time. You may also request account closure by contacting support, subject to data retention requirements described in our Privacy Policy.",
-      "We may suspend or terminate your access immediately if you violate these terms, create security or legal risk, or use the platform in a fraudulent or abusive manner.",
-      "Upon termination, your right to use Provix ends. Provisions that by their nature should survive termination — including intellectual property, disclaimers, limitations of liability, and dispute-related terms — will remain in effect.",
-    ],
-  },
-  {
-    title: "Contact Info",
-    paragraphs: [
-      "Questions about these Terms of Service may be sent to support@provix.app.",
-      "We aim to respond to legal and account inquiries within a reasonable timeframe.",
+      'We may update these Terms periodically. Any modifications take effect upon updating the "Last Updated" date at the top of this document. Continued use of the Services signifies acceptance of the revised Terms.',
     ],
   },
 ];
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen bg-background text-textMuted">
-      <div className="max-w-3xl mx-auto px-6 py-16">
+    <div className="min-h-screen bg-zinc-950 text-zinc-400">
+      <div className="mx-auto max-w-3xl px-6 py-16">
         <Link
           href="/"
-          className="inline-flex items-center text-sm font-medium text-brand hover:text-brand transition-colors"
+          className="inline-flex items-center text-sm font-medium text-brand transition-colors hover:text-brand"
         >
           ← Back to Home
         </Link>
 
-        <header className="mt-8 mb-10">
-          <p className="text-xs font-semibold uppercase tracking-widest text-brand mb-3">
+        <header className="mb-10 mt-8">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-brand">
             Legal
           </p>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-textMain">
+          <h1 className="text-3xl font-extrabold tracking-tight text-zinc-100 sm:text-4xl">
             Terms of Service
           </h1>
-          <p className="mt-4 text-sm text-textMuted leading-relaxed">
-            Effective date: August 16, 2026. These terms govern your access to
-            and use of the Provix candidate auditing and matchmaking platform.
+          <div className="mt-4 space-y-1 text-sm leading-relaxed text-zinc-400">
+            <p>
+              <span className="font-semibold text-zinc-300">Last Updated:</span>{" "}
+              October 6, 2026
+            </p>
+            <p>
+              <span className="font-semibold text-zinc-300">Effective Date:</span>{" "}
+              October 6, 2026
+            </p>
+          </div>
+          <p className="mt-6 text-sm leading-relaxed text-zinc-400">
+            Welcome to Provix (&quot;Provix,&quot; &quot;we,&quot; &quot;us,&quot;
+            or &quot;our&quot;), accessible at getprovix.com and associated
+            domains. By accessing or using our platform, automated repository
+            benchmarks, candidate dossiers, and talent network (collectively, the
+            &quot;Services&quot;), you agree to be bound by these Terms of Service
+            (&quot;Terms&quot;).
           </p>
         </header>
 
         <div className="space-y-10">
           {sections.map((section) => (
-            <section key={section.title}>
-              <h2 className="text-xl font-bold text-textMain mb-3">
+            <section
+              key={section.title}
+              className="border-t border-zinc-800/80 pt-8 first:border-t-0 first:pt-0"
+            >
+              <h2 className="mb-3 text-xl font-bold text-zinc-100">
                 {section.title}
               </h2>
-              <div className="space-y-3 text-sm leading-relaxed text-textMuted">
-                {section.paragraphs.map((paragraph) => (
+              <div className="space-y-3 text-sm leading-relaxed text-zinc-400">
+                {section.intro ? <p>{section.intro}</p> : null}
+                {section.paragraphs?.map((paragraph) => (
                   <p key={paragraph}>{paragraph}</p>
                 ))}
+                {section.bulletsLead ? <p>{section.bulletsLead}</p> : null}
+                {section.bullets ? (
+                  <ul className="list-disc space-y-2 pl-5 marker:text-zinc-600">
+                    {section.bullets.map((bullet) => (
+                      <li key={`${bullet.label ?? ""}${bullet.text}`}>
+                        {bullet.label ? (
+                          <span className="font-semibold text-zinc-300">
+                            {bullet.label}{" "}
+                          </span>
+                        ) : null}
+                        {bullet.text}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
             </section>
           ))}
         </div>
 
-        <footer className="mt-12 border-t border-border pt-8 text-sm text-textMuted print:hidden">
+        <footer className="mt-12 border-t border-zinc-800 pt-8 text-sm text-zinc-400 print:hidden">
           Questions? Email{" "}
           <a
             href="mailto:support@getprovix.com"
-            className="text-brand hover:text-brand transition-colors"
+            className="text-brand transition-colors hover:text-brand"
           >
-            support@provix.app
+            support@getprovix.com
           </a>
           .
         </footer>

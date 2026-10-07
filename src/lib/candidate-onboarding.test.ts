@@ -4,7 +4,6 @@ import {
   getFeaturedRepoValidationMessage,
   hasCompletedCandidateSetup,
   hasFeaturedGitHubRepository,
-  parseSkillsInput,
 } from "@/lib/candidate-onboarding";
 
 describe("candidate onboarding setup gate", () => {
@@ -12,21 +11,11 @@ describe("candidate onboarding setup gate", () => {
     expect(hasCompletedCandidateSetup(null)).toBe(false);
     expect(
       hasCompletedCandidateSetup({
-        full_name: "Ada Lovelace",
-        job_title: "Engineer",
-        bio: "Builds proof-backed products.",
-        skills: ["TypeScript"],
-        experience_level: "Mid-Level",
         portfolio_url: "https://github.com/ada/engine",
       })
     ).toBe(true);
     expect(
       hasCompletedCandidateSetup({
-        full_name: "Ada Lovelace",
-        job_title: "Engineer",
-        bio: "Builds proof-backed products.",
-        skills: ["TypeScript"],
-        experience_level: "Mid-Level",
         portfolio_url: "https://github.com/ada",
       })
     ).toBe(false);
@@ -37,14 +26,6 @@ describe("candidate onboarding setup gate", () => {
     expect(getFeaturedRepoValidationMessage("https://github.com/ada")).toMatch(
       /full repository/i
     );
-  });
-
-  it("parses comma-separated skills", () => {
-    expect(parseSkillsInput(" TypeScript, Next.js , ,PostgreSQL ")).toEqual([
-      "TypeScript",
-      "Next.js",
-      "PostgreSQL",
-    ]);
   });
 
   it("builds the post-setup auditor redirect with featured repo", () => {

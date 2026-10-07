@@ -22,40 +22,11 @@ export type CandidateSetupProfileRow = {
 };
 
 export type CandidateOnboardingDraft = {
-  fullName: string;
-  jobTitle: string;
-  bio: string;
-  skillsInput: string;
-  experienceLevel: string;
+  fullName?: string;
+  jobTitle?: string;
   githubUrl: string;
+  contactEmail?: string;
 };
-
-function isNonEmptyText(value: unknown): boolean {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function hasDisplayName(row: CandidateSetupProfileRow): boolean {
-  return (
-    isNonEmptyText(row.full_name) ||
-    isNonEmptyText(row.name) ||
-    isNonEmptyText(row.first_name) ||
-    isNonEmptyText(row.last_name)
-  );
-}
-
-function hasRequiredSkills(skills: unknown): boolean {
-  if (typeof skills === "string") {
-    return skills.split(",").some((skill) => skill.trim().length > 0);
-  }
-
-  if (!Array.isArray(skills)) {
-    return false;
-  }
-
-  return skills.some(
-    (skill) => typeof skill === "string" && skill.trim().length > 0
-  );
-}
 
 /** Featured public repo required for onboarding + talent-pool completeness. */
 export function hasFeaturedGitHubRepository(
@@ -80,8 +51,8 @@ export function getFeaturedRepoValidationMessage(
 }
 
 /**
- * True when the /onboarding setup form fields are filled.
- * Used by middleware and post-auth routing to gate the full dashboard.
+ * True when the candidate has saved a featured owner/repo URL.
+ * Identity verification is enforced in the onboarding UI before save.
  */
 export function hasCompletedCandidateSetup(
   row: CandidateSetupProfileRow | null | undefined
@@ -90,25 +61,11 @@ export function hasCompletedCandidateSetup(
     return false;
   }
 
-  return (
-    hasDisplayName(row) &&
-    (isNonEmptyText(row.job_title) || isNonEmptyText(row.headline)) &&
-    isNonEmptyText(row.bio) &&
-    hasRequiredSkills(row.skills) &&
-    isNonEmptyText(row.experience_level) &&
-    hasFeaturedGitHubRepository(row.portfolio_url)
-  );
+  return hasFeaturedGitHubRepository(row.portfolio_url);
 }
 
 export function isCandidateSetupPath(pathname: string): boolean {
   return pathname === CANDIDATE_SETUP_PATH;
-}
-
-export function parseSkillsInput(value: string): string[] {
-  return value
-    .split(",")
-    .map((skill) => skill.trim())
-    .filter(Boolean);
 }
 
 /** Post-onboarding destination with featured repo prefilled in the auditor. */
