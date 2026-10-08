@@ -24,8 +24,17 @@ import AuditChecksList from "@/components/auditor/audit-checks-list";
 import CopyShareLinkButton from "@/components/auditor/copy-share-link-button";
 import TechnicalEvaluationMemo from "@/components/auditor/technical-evaluation-memo";
 import ProductionScorecard from "@/components/auditor/production-scorecard";
+import GitProvenanceBar from "@/components/auditor/git-provenance-bar";
+import SubsystemBlastRadiusMatrix from "@/components/auditor/subsystem-blast-radius-matrix";
+import HiringInterviewBattlePlan from "@/components/auditor/hiring-interview-battle-plan";
 import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
 import ScoreMeter from "@/components/ScoreMeter";
+import {
+  buildGitProvenance,
+  buildHiringBattlePlanProbes,
+  buildPillarSubLogs,
+  buildSubsystemBlastRadius,
+} from "@/lib/forensic-dossier";
 import {
   buildExecutiveChecklist,
   getReadinessBadge,
@@ -1326,20 +1335,41 @@ function AuditResultsPanelView({
       }),
     [badge.label, displayRepo, score, screenPrompts, visibleRedFlags]
   );
+  const provenance = useMemo(
+    () => buildGitProvenance(filesystem),
+    [filesystem]
+  );
+  const pillarSubLogs = useMemo(
+    () => buildPillarSubLogs({ metrics, filesystem }),
+    [metrics, filesystem]
+  );
+  const blastRows = useMemo(
+    () => buildSubsystemBlastRadius({ metrics, filesystem }),
+    [metrics, filesystem]
+  );
+  const battlePlanProbes = useMemo(
+    () => buildHiringBattlePlanProbes({ metrics, filesystem }),
+    [metrics, filesystem]
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 print:max-w-none print:gap-0">
+    <div className="flex w-full max-w-none flex-col gap-6 print:max-w-none print:gap-0">
       <TechnicalEvaluationMemo
         handle={displayRepo}
         targetStack={roleSpec}
         verifiedOn={auditedLabel}
         commitSha={filesystem?.audited_commit_sha ?? null}
+        branch={filesystem?.audited_branch ?? provenance.branch}
         score={score}
         benchmark={result.benchmark}
         metrics={metrics}
         filesystem={filesystem}
         checks={result.checks ?? []}
         redFlags={visibleRedFlags}
+        pillarSubLogs={pillarSubLogs}
+        blastRows={blastRows}
+        battlePlanProbes={battlePlanProbes}
+        provenance={provenance}
       />
       <section
         id="verification-dossier-card"
@@ -1347,7 +1377,7 @@ function AuditResultsPanelView({
       >
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-3">
-            <div className={SECTION_LABEL}>Executive Verdict</div>
+            <div className={SECTION_LABEL}>Engineering Diligence Dossier</div>
             <h2 className="truncate text-lg font-extrabold tracking-tight text-zinc-50 sm:text-xl">
               {displayRepo}
             </h2>
@@ -1399,6 +1429,8 @@ function AuditResultsPanelView({
           </div>
         </div>
 
+        <GitProvenanceBar provenance={provenance} />
+
         <ScoreMeter score={score} />
 
         <ProductionScorecard
@@ -1407,8 +1439,13 @@ function AuditResultsPanelView({
           benchmark={result.benchmark}
           executiveBrief={result.executiveBrief}
           audience={employerView ? "employer" : "candidate"}
+          pillarSubLogs={pillarSubLogs}
           className="break-inside-avoid print:break-inside-avoid print:shadow-none print:backdrop-blur-none"
         />
+
+        <div className="pt-1">
+          <SubsystemBlastRadiusMatrix rows={blastRows} />
+        </div>
 
         <details className="group rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2 print:hidden!">
           <summary className="cursor-pointer list-none text-xs font-medium text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
@@ -1658,6 +1695,10 @@ function AuditResultsPanelView({
           ) : null}
         </div>
       </details>
+
+      <div className="print:hidden">
+        <HiringInterviewBattlePlan probes={battlePlanProbes} />
+      </div>
 
       {readOnly ? null : (
         <div className="print:hidden">

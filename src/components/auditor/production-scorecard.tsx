@@ -2,6 +2,7 @@
 
 import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
 import type { ExecutiveBrief, RecommendedRoleBand } from "@/lib/executive-brief";
+import type { PillarSubLog } from "@/lib/forensic-dossier";
 import {
   type ProductionAuditMetrics,
   emptyProductionAuditMetrics,
@@ -99,6 +100,8 @@ type ProductionScorecardProps = {
   executiveBrief?: ExecutiveBrief | null;
   /** Employer dossiers lead with the founder brief. Candidate audits lead with the peer review. */
   audience?: "candidate" | "employer";
+  /** Terminal-style forensic receipts under each pillar (non-compact dossier). */
+  pillarSubLogs?: PillarSubLog[] | null;
 };
 
 /** Split a 2–3 sentence brief into tight executive bullets. */
@@ -232,11 +235,15 @@ export default function ProductionScorecard({
   benchmark = null,
   executiveBrief = null,
   audience = "candidate",
+  pillarSubLogs = null,
 }: ProductionScorecardProps) {
   const resolved = metrics ?? emptyProductionAuditMetrics();
   const productionScore = clampScore0to100(resolved.productionScore);
   const inspected = resolved.evidence.inspected;
   const upstreamPenalty = Math.max(0, resolved.upstreamDerivativePenalty ?? 0);
+  const subLogByPillar = new Map(
+    (pillarSubLogs ?? []).map((log) => [log.pillar, log] as const)
+  );
   const weightedTotal = weightedProductionScore({
     architecture: resolved.architecture,
     testing: resolved.testing,
@@ -314,7 +321,7 @@ export default function ProductionScorecard({
 
   return (
     <div
-      className={`dossier-card space-y-3 rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-6 backdrop-blur-sm print:space-y-2 print:p-3 ${className}`.trim()}
+      className={`dossier-card space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-5 backdrop-blur-sm print:space-y-2 print:p-3 sm:p-6 ${className}`.trim()}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -336,47 +343,46 @@ export default function ProductionScorecard({
         <EngineeringBriefCards brief={executiveBrief} audience={audience} />
       ) : null}
 
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 print:grid-cols-4 print:gap-1.5 lg:grid-cols-4">
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 print:grid-cols-2 print:gap-2 lg:grid-cols-4">
         {METRIC_ROWS.map((row) => {
           const score = clampScore0to100(resolved[row.key]);
           const found = metricCount(resolved, row.countKey);
           const issues = inspected ? metricIssueCount(score, found) : 0;
-          const weight = resolved.weights[row.key];
-          const weightPct = Math.round(weight * 100);
-          const contribution = score * weight;
+          const subLog = subLogByPillar.get(row.key);
 
           return (
             <li
               key={row.key}
-              className="dossier-card rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2.5 print:px-2 print:py-1.5"
+              className="dossier-card flex min-h-[8.5rem] flex-col rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-4 py-4 print:min-h-0 print:px-3 print:py-3"
             >
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-zinc-100">{row.label}</p>
+                <p className="text-sm font-semibold tracking-tight text-zinc-100">
+                  {row.label}
+                </p>
                 <span
-                  className={`font-mono text-sm font-bold tabular-nums ${getMetricTone(
+                  className={`font-mono text-lg font-bold tabular-nums ${getMetricTone(
                     score
                   )}`}
                 >
                   {score}
                 </span>
               </div>
-              <p className="mt-1 font-mono text-[11px] tabular-nums text-zinc-300">
-                {score} × {weightPct}% = {contribution.toFixed(1)} pts
-              </p>
-              <p className="mt-1 text-sm text-zinc-400">
-                {inspected ? `${issues} ${row.microLabel}` : "Not inspected"}
+              <p className="mt-3 text-[13px] leading-snug text-zinc-400">
+                {subLog?.summary ??
+                  (inspected
+                    ? `${issues} ${row.microLabel}`
+                    : "Not inspected")}
               </p>
             </li>
           );
         })}
       </ul>
-      <p className="font-mono text-[11px] tabular-nums text-zinc-500">
-        Weighted total {weightedTotal}/100 = round(architecture×35% + testing×25% +
-        DevOps×20% + resilience×20%)
-        {upstreamPenalty > 0
-          ? ` · Upstream fork or generated template −${upstreamPenalty} · Headline ${productionScore}/100`
-          : ""}
-      </p>
+      {upstreamPenalty > 0 ? (
+        <p className="font-mono text-[11px] tabular-nums text-zinc-500">
+          Upstream fork or generated template −{upstreamPenalty} · Headline{" "}
+          {productionScore}/100 (weighted {weightedTotal}/100)
+        </p>
+      ) : null}
     </div>
   );
 }

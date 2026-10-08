@@ -1192,6 +1192,7 @@ async function fetchRepoFilesystem(
             commitSha
           )),
           audited_commit_sha: commitSha,
+          audited_branch: branch,
         };
       }
 
@@ -1221,6 +1222,7 @@ async function fetchRepoFilesystem(
           commitSha
         )),
         audited_commit_sha: commitSha,
+        audited_branch: branch,
       };
     } catch (error) {
       if (error instanceof GithubContentReadError) {

@@ -58,6 +58,8 @@ export type RepoFilesystemEvidence = {
   has_contract_boundaries?: boolean;
   /** HEAD SHA the file tree was pinned to. Absent when the audit predates pinning. */
   audited_commit_sha?: string;
+  /** Branch ref used when pinning audited_commit_sha. */
+  audited_branch?: string;
 };
 
 export type FilesystemScorePolicy = {
@@ -595,6 +597,7 @@ export function parseRepoFilesystemEvidence(
     unvalidated_type_assertions: asCount(record.unvalidated_type_assertions),
     has_contract_boundaries: record.has_contract_boundaries === true,
     audited_commit_sha: commitShaFromRecord(record.audited_commit_sha),
+    audited_branch: branchFromRecord(record.audited_branch),
   };
 }
 
@@ -604,6 +607,17 @@ function commitShaFromRecord(value: unknown): string | undefined {
   }
   const sha = value.trim().toLowerCase();
   return /^[0-9a-f]{7,40}$/.test(sha) ? sha : undefined;
+}
+
+function branchFromRecord(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const branch = value.trim();
+  if (!branch || branch.length > 200 || /[\s\\]/.test(branch)) {
+    return undefined;
+  }
+  return branch;
 }
 
 export function coreArtifactsPresent(evidence: RepoFilesystemEvidence | null | undefined): {

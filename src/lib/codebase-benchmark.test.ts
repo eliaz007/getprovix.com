@@ -1,30 +1,41 @@
 import { describe, expect, it } from "vitest";
 import {
-  codebaseTopPercentile,
   formatCodebaseBenchmark,
+  getCalibratedBenchmark,
   VERIFIED_ENGINEERING_BENCHMARK,
 } from "./codebase-benchmark";
 
-describe("codebase benchmark percentile", () => {
-  it("ranks a lone leader as the top 1%", () => {
-    expect(codebaseTopPercentile(100, 99)).toBe(1);
+describe("calibrated codebase benchmark", () => {
+  it("maps score bands to industry reference labels", () => {
+    expect(getCalibratedBenchmark(95).label).toBe("Top 1% Codebase Benchmark");
+    expect(getCalibratedBenchmark(85).label).toBe("Top 10% Codebase Benchmark");
+    expect(getCalibratedBenchmark(78).label).toBe("Top 25% Codebase Benchmark");
+    expect(getCalibratedBenchmark(68).label).toBe("60th Percentile Benchmark");
+    expect(getCalibratedBenchmark(58).label).toBe("35th Percentile Benchmark");
+    expect(getCalibratedBenchmark(45).label).toBe("18th Percentile Benchmark");
+    expect(getCalibratedBenchmark(44).label).toBe(
+      "Tier III Benchmark (Baseline Architecture)"
+    );
   });
 
-  it("uses the share of audits at or above the current score", () => {
-    expect(codebaseTopPercentile(100, 50)).toBe(50);
+  it("never includes live sample-size suffixes", () => {
+    for (const score of [95, 85, 78, 68, 58, 45, 20]) {
+      const label = getCalibratedBenchmark(score).label;
+      expect(label).not.toMatch(/\(n\s*=/);
+      expect(label).not.toMatch(/audited repos/i);
+    }
   });
 
-  it("never reports 0%", () => {
-    expect(codebaseTopPercentile(10, 10)).toBe(1);
-    expect(codebaseTopPercentile(0, 0)).toBe(1);
+  it("formats null as the verified fallback", () => {
+    expect(formatCodebaseBenchmark(null)).toBe(VERIFIED_ENGINEERING_BENCHMARK);
+    expect(formatCodebaseBenchmark(undefined)).toBe(
+      VERIFIED_ENGINEERING_BENCHMARK
+    );
   });
 
-  it("falls back until ten completed audits exist", () => {
-    expect(
-      formatCodebaseBenchmark({ topPercentile: 12, totalAudits: 9 })
-    ).toBe(VERIFIED_ENGINEERING_BENCHMARK);
-    expect(
-      formatCodebaseBenchmark({ topPercentile: 12, totalAudits: 10 })
-    ).toBe("Top 12% Codebase Benchmark (n = 10 audited repos)");
+  it("formats calibrated labels directly", () => {
+    expect(formatCodebaseBenchmark(getCalibratedBenchmark(90))).toBe(
+      "Top 10% Codebase Benchmark"
+    );
   });
 });

@@ -1,11 +1,20 @@
 import type { AuditCheck } from "@/lib/audit-checks";
 import {
-  CODEBASE_BENCHMARK_MIN_SAMPLE,
+  formatCodebaseBenchmark,
   type CodebaseBenchmark,
 } from "@/lib/codebase-benchmark";
 import type { ProductionAuditMetrics } from "@/lib/production-audit-metrics";
 import type { RepoFilesystemEvidence } from "@/lib/repo-filesystem";
 import { clampScore0to100 } from "@/lib/score-scale";
+import {
+  buildGitProvenance,
+  buildHiringBattlePlanProbes,
+  buildPillarSubLogs,
+  buildSubsystemBlastRadius,
+  type BlastRadiusRow,
+  type GitProvenance,
+  type PillarSubLog,
+} from "@/lib/forensic-dossier";
 import {
   synthesizeAuditInsights,
   type AuditScanData,
@@ -23,6 +32,7 @@ type MemoInput = {
   targetStack: string;
   verifiedOn: string;
   commitSha: string | null;
+  branch?: string;
   score: number;
   benchmark: CodebaseBenchmark | null | undefined;
   metrics: ProductionAuditMetrics;
@@ -31,6 +41,10 @@ type MemoInput = {
   redFlags: string[];
   /** Screen-visible marketing preview. Default stays print-only. */
   showcase?: boolean;
+  pillarSubLogs?: PillarSubLog[];
+  blastRows?: BlastRadiusRow[];
+  battlePlanProbes?: [string, string];
+  provenance?: GitProvenance;
 };
 
 function shortPath(path: string): string {
@@ -39,10 +53,7 @@ function shortPath(path: string): string {
 }
 
 function percentileLabel(benchmark: CodebaseBenchmark | null | undefined): string {
-  if (!benchmark || benchmark.totalAudits < CODEBASE_BENCHMARK_MIN_SAMPLE) {
-    return "Verified benchmark";
-  }
-  return `Top ${benchmark.topPercentile}%`;
+  return formatCodebaseBenchmark(benchmark);
 }
 
 function shortSha(sha: string | null): string {
@@ -93,6 +104,30 @@ function toScanData(input: MemoInput): AuditScanData {
 export default function TechnicalEvaluationMemo(input: MemoInput) {
   const insights = synthesizeAuditInsights(toScanData(input));
   const showcase = input.showcase === true;
+  const provenance =
+    input.provenance ?? buildGitProvenance(input.filesystem);
+  const pillarSubLogs =
+    input.pillarSubLogs ??
+    buildPillarSubLogs({
+      metrics: input.metrics,
+      filesystem: input.filesystem,
+    });
+  const blastRows =
+    input.blastRows ??
+    buildSubsystemBlastRadius({
+      metrics: input.metrics,
+      filesystem: input.filesystem,
+    });
+  const battlePlanProbes =
+    input.battlePlanProbes ??
+    buildHiringBattlePlanProbes({
+      metrics: input.metrics,
+      filesystem: input.filesystem,
+    });
+  const subLogByPillar = new Map(
+    pillarSubLogs.map((log) => [log.pillar, log] as const)
+  );
+  const branch = input.branch?.trim() || provenance.branch;
 
   return (
     <article
@@ -107,13 +142,13 @@ export default function TechnicalEvaluationMemo(input: MemoInput) {
         className={
           showcase
             ? "mx-auto flex w-full flex-col gap-4 bg-[#09090b] p-5 sm:p-7"
-            : "mx-auto flex h-full w-full max-w-3xl flex-col gap-4 bg-[#09090b] p-7"
+            : "mx-auto flex h-full w-full max-w-5xl flex-col gap-4 bg-[#09090b] p-7"
         }
       >
         <header className="flex items-start justify-between gap-4 sm:gap-6">
           <div className="min-w-0">
             <p className="font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-[#a1a1aa]">
-              Technical Evaluation Memo
+              Provix Technical Evaluation Dossier
             </p>
             <h1 className="mt-2 truncate text-[1.5rem] font-semibold leading-none tracking-tight text-[#f4f4f5] sm:text-[1.85rem]">
               {input.handle}
@@ -122,8 +157,19 @@ export default function TechnicalEvaluationMemo(input: MemoInput) {
               <span className="memo-badge font-mono text-[11px]">
                 Verified {input.verifiedOn}
               </span>
-              <span className="memo-badge font-mono text-[11px]">{input.targetStack}</span>
-              <span className="memo-badge font-mono text-[11px]">{shortSha(input.commitSha)}</span>
+              <span className="memo-badge font-mono text-[11px]">
+                {input.targetStack}
+              </span>
+              <span className="memo-badge font-mono text-[11px]">
+                {branch}@{shortSha(input.commitSha)}
+              </span>
+              <span className="memo-badge font-mono text-[11px]">
+                {provenance.inspectedFiles} files · ~
+                {provenance.authoredLocEstimate.toLocaleString()} LOC est.
+              </span>
+              <span className="memo-badge font-mono text-[11px]">
+                {provenance.astEngine}
+              </span>
             </div>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
@@ -152,7 +198,9 @@ export default function TechnicalEvaluationMemo(input: MemoInput) {
                 <p className="font-mono text-[10px] font-medium uppercase tracking-wider text-[#a1a1aa]">
                   {cell.label}
                 </p>
-                <p className="mt-1 text-[12px] leading-5 text-[#f4f4f5]">{cell.value}</p>
+                <p className="mt-1 text-[12px] leading-5 text-[#f4f4f5]">
+                  {cell.value}
+                </p>
               </div>
             ))}
           </div>
@@ -160,25 +208,35 @@ export default function TechnicalEvaluationMemo(input: MemoInput) {
 
         <section>
           <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[#a1a1aa]">
-            Pillar Scorecard
+            Pillar Scorecard — Forensic Receipts
           </h2>
           <div
             className={
               showcase
-                ? "mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4"
-                : "mt-2 grid grid-cols-4 gap-3"
+                ? "mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2"
+                : "mt-2 grid grid-cols-2 gap-3"
             }
           >
-            {PILLARS.map((pillar) => (
-              <div key={pillar.key} className="memo-card px-3 py-4">
-                <p className="font-mono text-[10px] font-medium uppercase tracking-wider text-[#a1a1aa]">
-                  {pillar.label}
-                </p>
-                <p className="mt-3 font-mono text-4xl font-semibold leading-none tabular-nums text-[#f4f4f5]">
-                  {clampScore0to100(input.metrics[pillar.key])}
-                </p>
-              </div>
-            ))}
+            {PILLARS.map((pillar) => {
+              const log = subLogByPillar.get(pillar.key);
+              return (
+                <div key={pillar.key} className="memo-card px-3 py-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-mono text-[10px] font-medium uppercase tracking-wider text-[#a1a1aa]">
+                      {pillar.label}
+                    </p>
+                    <p className="font-mono text-2xl font-semibold leading-none tabular-nums text-[#f4f4f5]">
+                      {clampScore0to100(input.metrics[pillar.key])}
+                    </p>
+                  </div>
+                  {log ? (
+                    <p className="mt-3 text-[12px] leading-5 text-[#a1a1aa]">
+                      {log.summary}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -186,6 +244,45 @@ export default function TechnicalEvaluationMemo(input: MemoInput) {
           <p className="text-sm font-medium leading-6 text-[#f4f4f5]">
             {insights.verdict}
           </p>
+        </section>
+
+        <section>
+          <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[#a1a1aa]">
+            Codebase Breakdown
+          </h2>
+          <div className="memo-card mt-2 overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-left text-[11px]">
+              <thead>
+                <tr className="border-b border-[#27272a] font-mono text-[10px] uppercase tracking-wider text-[#a1a1aa]">
+                  <th className="px-3 py-2 font-medium">Area</th>
+                  <th className="px-3 py-2 font-medium">Can They Own This?</th>
+                  <th className="px-3 py-2 font-medium">Risk</th>
+                  <th className="px-3 py-2 font-medium">What We Found</th>
+                </tr>
+              </thead>
+              <tbody>
+                {blastRows.map((row) => (
+                  <tr
+                    key={row.subsystem}
+                    className="border-b border-[#27272a] last:border-0"
+                  >
+                    <td className="px-3 py-2 font-mono font-semibold text-[#f4f4f5]">
+                      {row.subsystem}
+                    </td>
+                    <td className="px-3 py-2 text-[#d4d4d8]">
+                      {row.evaluatedSeniority}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-[#f4f4f5]">
+                      {row.riskLevel}
+                    </td>
+                    <td className="px-3 py-2 text-[#a1a1aa]">
+                      {row.forensicFinding}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section
@@ -240,10 +337,10 @@ export default function TechnicalEvaluationMemo(input: MemoInput) {
 
         <section className="memo-card px-4 py-4">
           <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[#a1a1aa]">
-            Technical Interview Guide
+            Hiring Team Interview Battle Plan
           </h2>
           <ol className="mt-3 list-none space-y-2.5">
-            {insights.interviewQuestions.map((question, index) => (
+            {battlePlanProbes.map((question, index) => (
               <li key={question} className="flex items-start gap-3">
                 <span className="memo-badge mt-0.5 shrink-0 border-zinc-700 bg-zinc-800 font-mono text-[10px] text-zinc-100">
                   {index + 1}

@@ -10,7 +10,6 @@ import ResumeFileUpload, {
 // Alternative/external project artifacts are disabled — GitHub URL only.
 // import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
-import ScorecardPublicationCallout from "@/components/auditor/scorecard-publication-callout";
 import RepoOwnershipVerifier from "@/components/auditor/repo-ownership-verifier";
 import RepoAccessStatus, {
   VerifiedContributorMark,
@@ -527,32 +526,19 @@ export default function GitHubResumeAuditor({
           )}
 
           {!loading && result && (
-            <div className="space-y-4">
-              {!isEmployerView ? (
-                <ScorecardPublicationCallout
-                  claim={buildProductionAuditClaim({
-                    score: result.score,
-                    githubUrl: githubUrl.trim() || PRIVATE_AUDITED_REPO_LABEL,
-                    filesystem: result.filesystem,
-                    scoreCap: result.scoreCap,
-                    isPubliclyVisible: result.score >= 75,
-                  })}
-                />
-              ) : null}
-              <AuditResultsPanel
-                result={result}
-                repoName={
-                  parsedGithub?.repo
-                    ? `${parsedGithub.owner}/${parsedGithub.repo}`
-                    : parsedGithub?.owner
-                }
-                repoUrl={githubUrl.trim() || undefined}
-                isEmployerView={isEmployerView}
-                onRescan={() => void runAudit()}
-                rescanning={loading}
-                shareId={shareId}
-              />
-            </div>
+            <AuditResultsPanel
+              result={result}
+              repoName={
+                parsedGithub?.repo
+                  ? `${parsedGithub.owner}/${parsedGithub.repo}`
+                  : parsedGithub?.owner
+              }
+              repoUrl={githubUrl.trim() || undefined}
+              isEmployerView={isEmployerView}
+              onRescan={() => void runAudit()}
+              rescanning={loading}
+              shareId={shareId}
+            />
           )}
 
           {!loading && !result && !error && !repoAccessStatus && (
@@ -574,7 +560,7 @@ export default function GitHubResumeAuditor({
   );
 
   return (
-    <div className="print-flow mx-auto w-full max-w-6xl space-y-5 print:max-w-none print:space-y-0">
+    <div className="print-flow mx-auto w-full max-w-none space-y-5 print:max-w-none print:space-y-0">
       <PageHeader
         className="print:hidden"
         eyebrow={
@@ -592,8 +578,18 @@ export default function GitHubResumeAuditor({
         }
       />
 
-      <div className="grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2 print:block print:gap-0">
-        <div className={`${GLASS_CARD} min-w-0 space-y-4 print:hidden`}>
+      <div
+        className={
+          result && !sidePanel
+            ? "flex flex-col gap-5 print:block print:gap-0"
+            : "grid grid-cols-1 items-stretch gap-5 lg:grid-cols-2 print:block print:gap-0"
+        }
+      >
+        <div
+          className={`${GLASS_CARD} min-w-0 space-y-4 print:hidden ${
+            result && !sidePanel ? "lg:max-w-xl" : ""
+          }`}
+        >
           {needsTokenChallenge && !isTokenVerified ? (
             <RepoOwnershipVerifier
               repoUrl={ownershipRepoUrl}

@@ -1,4 +1,5 @@
 import type { AuditCheck } from "@/lib/audit-checks";
+import { getCalibratedBenchmark } from "@/lib/codebase-benchmark";
 import { emptyProductionAuditMetrics } from "@/lib/production-audit-metrics";
 import { emptyRepoFilesystemEvidence } from "@/lib/repo-filesystem";
 
@@ -51,7 +52,7 @@ export function buildSampleRosterMemoProps() {
     verifiedOn: "Sep 28, 2026",
     commitSha: filesystem.audited_commit_sha,
     score: 79,
-    benchmark: { topPercentile: 12, totalAudits: 48 },
+    benchmark: getCalibratedBenchmark(79),
     metrics,
     filesystem,
     checks: [] as AuditCheck[],

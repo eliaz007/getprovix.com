@@ -79,7 +79,7 @@ import {
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
 import {
-  loadCodebaseBenchmark,
+  getCalibratedBenchmark,
   type CodebaseBenchmark,
 } from "@/lib/codebase-benchmark";
 import { createServiceRoleClient, isAdminUser } from "@/lib/admin-access";
@@ -1705,18 +1705,10 @@ export async function POST(request: Request) {
     }
   }
 
+  const benchmark: CodebaseBenchmark = getCalibratedBenchmark(
+    result.metrics.productionScore
+  );
   const benchmarkClient = createServiceRoleClient();
-  let benchmark: CodebaseBenchmark | null = null;
-  if (benchmarkClient) {
-    try {
-      benchmark = await loadCodebaseBenchmark(
-        benchmarkClient,
-        result.metrics.productionScore
-      );
-    } catch (error) {
-      console.error("[audit] codebase benchmark threw:", error);
-    }
-  }
 
   let profileSlug: string | null = null;
   let profileUrl: string | null = null;
