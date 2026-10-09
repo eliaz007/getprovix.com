@@ -300,11 +300,14 @@ export default function VerifiedCodeQualityScorecard({
   onVisibilityChange,
   linkedGitHubUsername,
   compact = true,
+  showVisibilityToggle = true,
 }: {
   record: ProductionAuditRecord | null;
   onVisibilityChange?: (visible: boolean) => void;
   linkedGitHubUsername?: string | null;
   compact?: boolean;
+  /** Hide when a parent settings surface already owns employer visibility. */
+  showVisibilityToggle?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -410,13 +413,14 @@ export default function VerifiedCodeQualityScorecard({
     void loadHistory();
   }, [loadHistory, record?.productionScore, record?.breakdown.audited_at]);
 
-  const visibilityHint = !isVerified
-    ? null
-    : !canPublish
-      ? `Needs ${PUBLIC_SCORECARD_THRESHOLD}+`
-      : visible
-        ? "Visible"
-        : "Hidden";
+  const visibilityHint =
+    !showVisibilityToggle || !isVerified
+      ? null
+      : !canPublish
+        ? `Needs ${PUBLIC_SCORECARD_THRESHOLD}+`
+        : visible
+          ? "Visible"
+          : "Hidden";
 
   return (
     <section
@@ -452,7 +456,7 @@ export default function VerifiedCodeQualityScorecard({
             </span>
           )}
         </div>
-        {isVerified ? (
+        {isVerified && showVisibilityToggle ? (
           <label className="flex shrink-0 items-center gap-2 text-sm text-zinc-400">
             <span className="hidden sm:inline">Show to employers</span>
             <span className="sm:hidden">Employers</span>
@@ -511,7 +515,7 @@ export default function VerifiedCodeQualityScorecard({
         )}
       </div>
 
-      {error ? (
+      {error && showVisibilityToggle ? (
         <p className="mt-1 text-sm text-red-300" role="alert">
           {error}
         </p>

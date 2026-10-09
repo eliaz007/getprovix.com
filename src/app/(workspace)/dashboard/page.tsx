@@ -51,7 +51,6 @@ import ResumeFileUpload from "@/components/ResumeFileUpload";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import VerifiedCodeQualityScorecard from "@/components/dashboard/verified-code-quality-scorecard";
 import ScoreTrendChart from "@/components/dashboard/score-trend-chart";
-import ProductionScoreBadge from "@/components/employer/production-score-badge";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
 import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
 import { buildAlliterativeAliasIdentity } from "@/lib/alias-generator";
@@ -109,7 +108,6 @@ import { createClient, readBrowserSession } from "@/utils/supabase/client";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
-  AVAILABILITY_STATUS_OPTIONS,
   DEFAULT_AVAILABILITY_STATUS,
   getAvailabilityBadgeClass,
   normalizeAvailabilityStatus,
@@ -187,8 +185,31 @@ import {
   type WorkPreference,
 } from "@/lib/work-preference";
 import {
+  CONTRACT_HOURS_OPTIONS,
+  DEFAULT_MARKETPLACE_ENGAGEMENT_MODE,
+  formatContractBandwidthPill,
+  formatContractRatePill,
+  formatMarketplaceAuditScoreBadge,
+  formatMarketplaceAvailabilityLockedAlert,
+  formatMarketplaceEligibleBadge,
+  getPreferenceAvailabilityPresentation,
+  getProvixInclusiveHourlyRate,
+  isMarketplaceAvailabilityQualified,
+  isOnlyUsingDiagnosticTools,
+  marketplaceEngagementEmptyState,
+  marketplaceEngagementLabel,
+  normalizeContractHourlyRate,
+  normalizeContractHoursPerWeek,
+  normalizeOpenToContract,
+  normalizeOpenToFulltime,
+  resolveMarketplaceAuditScore,
+  type ContractHoursPerWeek,
+  type MarketplaceEngagementMode,
+} from "@/lib/contract-availability";
+import {
   isPublishedVerifiedCandidateProfile,
   isVerifiedOnProvix,
+  resolveHighestProductionScore,
 } from "@/lib/published-candidate-profile";
 import {
   claimPendingProductionAudit,
@@ -199,6 +220,7 @@ import {
   parseProductionAuditFromProfileRow,
   PRIVATE_AUDIT_INTENT,
   PRODUCTION_AUDIT_UPDATED_EVENT,
+  PUBLIC_SCORECARD_THRESHOLD,
   type ProductionAuditRecord,
 } from "@/lib/production-audit";
 import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadge";
@@ -416,6 +438,10 @@ type ProfileRecord = {
   country?: string | null;
   timezone?: string | null;
   work_preference?: string | null;
+  open_to_fulltime?: boolean | null;
+  open_to_contract?: boolean | null;
+  contract_hours_per_week?: string | null;
+  contract_hourly_rate?: number | null;
   role_type?: string | null;
   integrity_score?: number | null;
   audit_data?: unknown;
@@ -562,6 +588,8 @@ function mapProfileRowToTalentCandidate(
   const productionAudit = employerVisibleProductionAudit(
     parseProductionAuditFromProfileRow(row)
   );
+  const latestAuditScore =
+    productionAudit?.productionScore ?? resolveHighestProductionScore(row);
   const education = educationFromProfileRow(
     row as unknown as Record<string, unknown>
   );
@@ -613,6 +641,11 @@ function mapProfileRowToTalentCandidate(
     experienceLevel: row.experience_level?.trim() || "",
     roleType: row.role_type?.trim() || "",
     availability: availability || "",
+    openToFulltime: normalizeOpenToFulltime(row.open_to_fulltime),
+    openToContract: normalizeOpenToContract(row.open_to_contract),
+    contractHoursPerWeek:
+      normalizeContractHoursPerWeek(row.contract_hours_per_week) || null,
+    contractHourlyRate: normalizeContractHourlyRate(row.contract_hourly_rate),
     bio,
     github: portfolioUrl || "",
     demoVideo: row.youtube_url?.trim() || "",
@@ -621,9 +654,12 @@ function mapProfileRowToTalentCandidate(
       .map((line) => line.trim())
       .filter(Boolean),
     verifiedOnProvix: isVerifiedOnProvix(row),
-    productionScore: productionAudit?.productionScore ?? null,
+    productionScore: latestAuditScore,
     auditBreakdown: productionAudit?.breakdown ?? null,
-    isAuditVerified: productionAudit?.isAuditVerified ?? false,
+    isAuditVerified:
+      productionAudit?.isAuditVerified ??
+      (typeof latestAuditScore === "number" &&
+        latestAuditScore >= PUBLIC_SCORECARD_THRESHOLD),
     matchScore: scoreTalentMatch(
       {
         title: headline,
@@ -885,6 +921,8 @@ export default function DashboardPage() {
   const profileStudioSection = dashboardNav?.profileStudioSection ?? "profile";
   const setNavProfileStudioSection = dashboardNav?.setProfileStudioSection;
   const navSetAvailabilityStatus = dashboardNav?.setAvailabilityStatus;
+  const navSetOpenToFulltime = dashboardNav?.setOpenToFulltime;
+  const navSetOpenToContract = dashboardNav?.setOpenToContract;
   const navSetUserDisplayName = dashboardNav?.setUserDisplayName;
   const navSetCompanyName = dashboardNav?.setCompanyName;
   const navCompanyName = dashboardNav?.companyName;
@@ -1271,6 +1309,31 @@ export default function DashboardPage() {
         const loadedCandidateTimezone = normalizeCandidateTimezone(
           profileWithRole?.timezone
         );
+        const loadedMarketplaceScore = resolveMarketplaceAuditScore(
+          typeof profileWithRole?.production_score === "number"
+            ? profileWithRole.production_score
+            : null,
+          typeof profileWithRole?.audit_score === "number"
+            ? profileWithRole.audit_score
+            : null,
+          parseProductionAuditFromProfileRow(profileWithRole)?.productionScore
+        );
+        const loadedMarketplaceQualified =
+          isMarketplaceAvailabilityQualified(loadedMarketplaceScore);
+        const loadedOpenToFulltime =
+          loadedMarketplaceQualified &&
+          normalizeOpenToFulltime(profileWithRole?.open_to_fulltime);
+        const loadedOpenToContract =
+          loadedMarketplaceQualified &&
+          normalizeOpenToContract(profileWithRole?.open_to_contract);
+        const loadedContractHours = loadedOpenToContract
+          ? normalizeContractHoursPerWeek(
+              profileWithRole?.contract_hours_per_week
+            )
+          : "";
+        const loadedContractRate = loadedOpenToContract
+          ? normalizeContractHourlyRate(profileWithRole?.contract_hourly_rate)
+          : null;
         const loadedGradYear =
           primaryEducation.graduationYear ||
           (profileWithRole?.graduation_year != null
@@ -1298,6 +1361,12 @@ export default function DashboardPage() {
         navSetCompanyName?.(profileWithRole?.company_name?.trim() || null);
         setWorkPreference(loadedWorkPreference);
         setCandidateTimezone(loadedCandidateTimezone);
+        setOpenToFulltime(loadedOpenToFulltime);
+        setOpenToContract(loadedOpenToContract);
+        setContractHoursPerWeek(loadedContractHours);
+        setContractHourlyRate(
+          loadedContractRate != null ? String(loadedContractRate) : ""
+        );
 
         const hydratedProfile = {
           name: loadedName,
@@ -1327,6 +1396,10 @@ export default function DashboardPage() {
           availabilityStatus: loadedAvailabilityStatus,
           workPreference: loadedWorkPreference,
           candidateTimezone: loadedCandidateTimezone,
+          openToFulltime: loadedOpenToFulltime,
+          openToContract: loadedOpenToContract,
+          contractHoursPerWeek: loadedContractHours,
+          contractHourlyRate: loadedContractRate,
           visibleInPool: loadedVisibleInPool,
           gradYear: loadedGradYear,
           gpa: hydratedProfile.gpa,
@@ -2294,6 +2367,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const [candidateTimezone, setCandidateTimezone] = useState<
     CandidateTimezone | string
   >(DEFAULT_CANDIDATE_TIMEZONE);
+  const [openToFulltime, setOpenToFulltime] = useState(false);
+  const [openToContract, setOpenToContract] = useState(false);
+  const [contractHoursPerWeek, setContractHoursPerWeek] = useState<
+    ContractHoursPerWeek | ""
+  >("");
+  const [contractHourlyRate, setContractHourlyRate] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [savedCandidateProfile, setSavedCandidateProfile] = useState<{
     fullName: string;
@@ -2309,6 +2388,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     availabilityStatus: string;
     workPreference: string;
     candidateTimezone: string;
+    openToFulltime: boolean;
+    openToContract: boolean;
+    contractHoursPerWeek: string;
+    contractHourlyRate: number | null;
     visibleInPool: boolean;
     gradYear: string;
     gpa: string;
@@ -2379,6 +2462,43 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     };
   }, [employerActiveJobs, employerCompanyNameForMatching]);
 
+  const marketplaceAuditScore = resolveMarketplaceAuditScore(
+    typeof dbProfile?.production_score === "number"
+      ? dbProfile.production_score
+      : null,
+    typeof dbProfile?.audit_score === "number" ? dbProfile.audit_score : null,
+    parseProductionAuditFromProfileRow(dbProfile)?.productionScore
+  );
+  const isQualified = isMarketplaceAvailabilityQualified(marketplaceAuditScore);
+  const effectiveOpenToFulltime = isQualified && openToFulltime;
+  const effectiveOpenToContract = isQualified && openToContract;
+
+  useEffect(() => {
+    if (!isQualified && (openToFulltime || openToContract)) {
+      setOpenToFulltime(false);
+      setOpenToContract(false);
+    }
+  }, [isQualified, openToFulltime, openToContract]);
+
+  // Keep the sidebar widget in sync with preference toggles only (no audit fetch).
+  useEffect(() => {
+    navSetOpenToFulltime?.(openToFulltime);
+    navSetOpenToContract?.(openToContract);
+  }, [
+    navSetOpenToContract,
+    navSetOpenToFulltime,
+    openToContract,
+    openToFulltime,
+  ]);
+
+  const preferenceAvailability = getPreferenceAvailabilityPresentation(
+    openToFulltime,
+    openToContract
+  );
+  const provixInclusiveHourlyRate = getProvixInclusiveHourlyRate(
+    contractHourlyRate
+  );
+
   const isCandidateDirty =
     savedCandidateProfile !== null &&
     (profileData.name !== savedCandidateProfile.fullName ||
@@ -2394,6 +2514,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       availabilityStatus !== savedCandidateProfile.availabilityStatus ||
       workPreference !== savedCandidateProfile.workPreference ||
       candidateTimezone !== savedCandidateProfile.candidateTimezone ||
+      effectiveOpenToFulltime !== savedCandidateProfile.openToFulltime ||
+      effectiveOpenToContract !== savedCandidateProfile.openToContract ||
+      (effectiveOpenToContract
+        ? contractHoursPerWeek !== savedCandidateProfile.contractHoursPerWeek ||
+          normalizeContractHourlyRate(contractHourlyRate) !==
+            savedCandidateProfile.contractHourlyRate
+        : savedCandidateProfile.openToContract ||
+          savedCandidateProfile.contractHoursPerWeek !== "" ||
+          savedCandidateProfile.contractHourlyRate != null) ||
       isVisibleInPool !== savedCandidateProfile.visibleInPool ||
       profileData.gradYear !== savedCandidateProfile.gradYear ||
       profileData.gpa !== savedCandidateProfile.gpa ||
@@ -2448,6 +2577,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     }
 
     const previousVisible = isVisibleInPool;
+    const previousPubliclyVisible = dbProfile?.is_publicly_visible === true;
     setIsVisibleInPool(nextVisible);
     setIsTogglingVisibility(true);
 
@@ -2467,12 +2597,33 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         return;
       }
 
+      // Keep scorecard public visibility aligned with the single employer toggle.
+      try {
+        const scorecardResponse = await fetchWithAuth(
+          "/api/profile/production-audit",
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ is_publicly_visible: nextVisible }),
+          }
+        );
+        if (!scorecardResponse.ok) {
+          console.warn(
+            "Scorecard visibility sync failed:",
+            scorecardResponse.status
+          );
+        }
+      } catch (scorecardError) {
+        console.warn("Scorecard visibility sync threw:", scorecardError);
+      }
+
       setDbProfile((prev) =>
         prev
           ? {
               ...prev,
               is_visible_in_pool: nextVisible,
               visible_to_employers: nextVisible,
+              is_publicly_visible: nextVisible,
             }
           : prev
       );
@@ -2489,6 +2640,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           : "You are hidden from the Provix Talent Network."
       );
     } catch (error) {
+      setDbProfile((prev) =>
+        prev
+          ? { ...prev, is_publicly_visible: previousPubliclyVisible }
+          : prev
+      );
       console.error("Talent pool visibility update failed:", error);
       setIsVisibleInPool(previousVisible);
       showToast("Could not update Provix Talent Network visibility. Please try again.");
@@ -2647,9 +2803,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         return;
       }
 
-      const normalizedAvailability = normalizeAvailabilityStatus(
-        availabilityStatus
-      );
       const academicPrimary = primaryEducationFields(nextEducation);
       const academicMajor = academicPrimary.fieldOfStudy;
       const academicInstitution = academicPrimary.institution;
@@ -2660,6 +2813,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       if (isVisibleInPool && !effectiveVisibleInPool) {
         setIsVisibleInPool(false);
       }
+      const gatedOpenToFulltime = isQualified && openToFulltime;
+      const gatedOpenToContract = isQualified && openToContract;
+      const normalizedAvailability = normalizeAvailabilityStatus(
+        gatedOpenToFulltime || gatedOpenToContract
+          ? "Available Now"
+          : "Not Available"
+      );
+      const normalizedContractRate = gatedOpenToContract
+        ? normalizeContractHourlyRate(contractHourlyRate)
+        : null;
+      const normalizedContractHours = gatedOpenToContract
+        ? normalizeContractHoursPerWeek(contractHoursPerWeek)
+        : "";
       const payload = buildCandidateProfileUpdatePayload(
         {
           fullName: profileData.name,
@@ -2677,6 +2843,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           availabilityStatus: normalizedAvailability,
           workPreference,
           candidateTimezone,
+          openToFulltime: gatedOpenToFulltime,
+          openToContract: gatedOpenToContract,
+          contractHoursPerWeek: normalizedContractHours,
+          contractHourlyRate: normalizedContractRate,
           isVisibleInPool: effectiveVisibleInPool,
           gradYear: academicGradYear,
           gpa: formatGpa(profileData.gpa),
@@ -2729,6 +2899,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         availabilityStatus: normalizedAvailability,
         workPreference,
         candidateTimezone,
+        openToFulltime: gatedOpenToFulltime,
+        openToContract: gatedOpenToContract,
+        contractHoursPerWeek: normalizedContractHours,
+        contractHourlyRate: normalizedContractRate,
         visibleInPool: effectiveVisibleInPool,
         gradYear: academicGradYear,
         gpa: formatGpa(profileData.gpa),
@@ -2755,6 +2929,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       }));
       setPortfolioUrl(normalizedPortfolioUrl);
       setAvailabilityStatus(normalizedAvailability);
+      setOpenToFulltime(gatedOpenToFulltime);
+      setOpenToContract(gatedOpenToContract);
+      setContractHoursPerWeek(normalizedContractHours);
+      setContractHourlyRate(
+        normalizedContractRate != null ? String(normalizedContractRate) : ""
+      );
       navSetAvailabilityStatus?.(normalizedAvailability);
       navSetUserDisplayName?.(profileData.name);
       setIsVisibleInPool(effectiveVisibleInPool);
@@ -2978,6 +3158,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const [experienceFilter, setExperienceFilter] = useState("all");
   const [roleTypeFilter, setRoleTypeFilter] = useState("all");
   const [availabilityFilter, setAvailabilityFilter] = useState("all");
+  const [marketplaceEngagementMode, setMarketplaceEngagementMode] =
+    useState<MarketplaceEngagementMode>(DEFAULT_MARKETPLACE_ENGAGEMENT_MODE);
 
   useEffect(() => {
     if (!selectedCandidate || !showTalentPoolNav) {
@@ -3141,6 +3323,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   ]);
 
   const filteredCandidates = scoredCandidates.filter((candidate) => {
+    const auditScore = resolveMarketplaceAuditScore(candidate.productionScore);
+    const isQualified =
+      typeof auditScore === "number" &&
+      auditScore >= PUBLIC_SCORECARD_THRESHOLD;
+    if (!isQualified) {
+      return false;
+    }
+
+    const matchesEngagement =
+      marketplaceEngagementMode === "contract"
+        ? candidate.openToContract === true
+        : candidate.openToFulltime === true;
+
+    if (!matchesEngagement) {
+      return false;
+    }
+
     const matchesSearch = candidateMatchesTalentSearch(
       candidate,
       talentSearch
@@ -3196,12 +3395,30 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       experienceTier: dbProfile?.experience_level?.trim() || experienceLevel,
       githubUrl: portfolioUrl.trim() || dbProfile?.portfolio_url?.trim() || "",
       githubAudit: null,
+      openToFulltime,
+      openToContract,
+      open_to_fulltime: openToFulltime,
+      open_to_contract: openToContract,
+      auditScore: resolveMarketplaceAuditScore(
+        typeof dbProfile?.production_score === "number"
+          ? dbProfile.production_score
+          : null,
+        typeof dbProfile?.audit_score === "number"
+          ? dbProfile.audit_score
+          : null,
+        parseProductionAuditFromProfileRow(dbProfile)?.productionScore
+      ),
+      productionScore:
+        typeof dbProfile?.production_score === "number"
+          ? dbProfile.production_score
+          : null,
     }),
     [
       candidateSkillsForMatching,
-      dbProfile?.experience_level,
-      dbProfile?.portfolio_url,
+      dbProfile,
       experienceLevel,
+      openToContract,
+      openToFulltime,
       portfolioUrl,
     ]
   );
@@ -5028,10 +5245,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 )}
 
                 {profileSubMenu === "settings" && (
-                  <div className="space-y-6">
+                  <div className="space-y-4">
                     {!isBusinessAccount && (
                       <>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="p-4 bg-panel border border-border rounded-xl space-y-3">
                             <div>
                               <span className="font-bold text-xs text-textMain block">
@@ -5084,147 +5301,354 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           </div>
                         </div>
 
-                        <div className="p-4 bg-panel border border-border rounded-xl space-y-3">
-                          <div>
-                            <span className="font-bold text-xs text-textMain block">
-                              Availability Status
-                            </span>
-                            <span className="text-[11px] text-textMuted">
-                              Shown on your Provix Talent Network card and used by recruiter
-                              availability filters.
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-panel px-4 py-3">
+                            <div className="min-w-0">
+                              <span className="block text-[10px] font-bold uppercase tracking-widest text-textMuted">
+                                Availability Status
+                              </span>
+                              <span className="mt-1 flex min-w-0 items-center gap-2 text-sm font-medium text-textMain">
+                                <span
+                                  className={`h-2 w-2 shrink-0 rounded-full ${preferenceAvailability.dotClass}`}
+                                  aria-hidden
+                                />
+                                <span className="truncate">
+                                  {preferenceAvailability.label}
+                                </span>
+                              </span>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold ${
+                                preferenceAvailability.tone === "emerald"
+                                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+                                  : "border-border bg-background text-textMuted"
+                              }`}
+                            >
+                              Live
                             </span>
                           </div>
-                          <select
-                            value={availabilityStatus}
-                            onChange={(e) => {
-                              const nextStatus = e.target
-                                .value as AvailabilityStatus;
-                              setAvailabilityStatus(nextStatus);
-                              navSetAvailabilityStatus?.(nextStatus);
-                            }}
-                            className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
-                          >
-                            {AVAILABILITY_STATUS_OPTIONS.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
 
-                        <div className="flex items-center justify-between gap-4 p-4 bg-panel border border-border rounded-xl">
-                          <div className="min-w-0 space-y-2">
-                            <span className="font-bold text-xs text-textMain block">
-                              Visible to Employers
-                            </span>
-                            <span className="text-[11px] text-textMuted">
-                              Off by default. Requires a linked GitHub account
-                              and at least one 75+ production audit.
-                            </span>
-                            {githubVerified ? (
-                              <p className="text-xs font-medium text-emerald-400">
-                                ✓ Linked: @{githubUsername || "github"}
-                                {ownershipBadgeVerified
-                                  ? " · Ownership verified"
-                                  : " · Ownership unverified"}
-                              </p>
-                            ) : (
-                              <div className="space-y-2">
-                                <p className="text-xs text-amber-200">
-                                  {TALENT_POOL_CONNECT_GITHUB_MESSAGE}
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleLinkGitHub()}
-                                  disabled={isLinkingGitHub}
-                                  className="inline-flex cursor-pointer items-center rounded-lg border border-border bg-background px-3 py-1.5 text-[11px] font-semibold text-textMain transition-colors hover:bg-white/5 disabled:cursor-wait disabled:opacity-60"
+                          <div className="p-4 bg-panel border border-border rounded-xl space-y-3">
+                            <div>
+                              <span className="font-bold text-xs text-textMain block">
+                                Availability & Work Preferences
+                              </span>
+                              <span className="text-[11px] text-textMuted">
+                                Tell employers whether you&apos;re open to full-time
+                                roles, contract work, or only using Provix tools.
+                              </span>
+                            </div>
+
+                            <div className="space-y-2.5">
+                              <label
+                                className={`flex items-start gap-2.5 select-none ${
+                                  isQualified
+                                    ? "cursor-pointer"
+                                    : "cursor-not-allowed opacity-60"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={effectiveOpenToFulltime}
+                                  disabled={!isQualified}
+                                  onChange={(event) => {
+                                    if (!isQualified) return;
+                                    const next = event.target.checked;
+                                    setOpenToFulltime(next);
+                                    const nextStatus =
+                                      next || openToContract
+                                        ? "Available Now"
+                                        : "Not Available";
+                                    setAvailabilityStatus(nextStatus);
+                                    navSetAvailabilityStatus?.(nextStatus);
+                                  }}
+                                  className="mt-0.5 h-4 w-4 shrink-0 rounded border border-zinc-700 bg-zinc-950 accent-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40 disabled:cursor-not-allowed"
+                                />
+                                <span className="min-w-0">
+                                  <span className="block text-sm text-zinc-200">
+                                    Open for Full-Time Roles
+                                  </span>
+                                  <span className="block text-[11px] text-textMuted">
+                                    You&apos;re available for permanent full-time
+                                    opportunities.
+                                  </span>
+                                </span>
+                              </label>
+
+                              <div className="space-y-0">
+                                <label
+                                  className={`flex items-start gap-2.5 select-none ${
+                                    isQualified
+                                      ? "cursor-pointer"
+                                      : "cursor-not-allowed opacity-60"
+                                  }`}
                                 >
-                                  {isLinkingGitHub
-                                    ? "Redirecting..."
-                                    : "Connect GitHub"}
-                                </button>
+                                  <input
+                                    type="checkbox"
+                                    checked={effectiveOpenToContract}
+                                    disabled={!isQualified}
+                                    onChange={(event) => {
+                                      if (!isQualified) return;
+                                      const next = event.target.checked;
+                                      setOpenToContract(next);
+                                      const nextStatus =
+                                        openToFulltime || next
+                                          ? "Available Now"
+                                          : "Not Available";
+                                      setAvailabilityStatus(nextStatus);
+                                      navSetAvailabilityStatus?.(nextStatus);
+                                    }}
+                                    className="mt-0.5 h-4 w-4 shrink-0 rounded border border-zinc-700 bg-zinc-950 accent-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40 disabled:cursor-not-allowed"
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block text-sm text-zinc-200">
+                                      Open for Contract Work
+                                    </span>
+                                    <span className="block text-[11px] text-textMuted">
+                                      You&apos;re available for freelance or
+                                      capped weekly retainer engagements.
+                                    </span>
+                                  </span>
+                                </label>
+
+                                <div
+                                  className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out ${
+                                    effectiveOpenToContract
+                                      ? "grid-rows-[1fr] opacity-100"
+                                      : "grid-rows-[0fr] opacity-0"
+                                  }`}
+                                >
+                                  <div className="overflow-hidden">
+                                    <div className="ml-6 space-y-3 border-l border-border/60 pl-3 pt-3">
+                                      <div className="space-y-2">
+                                        <label
+                                          htmlFor="contract-hours-per-week"
+                                          className="block text-[11px] font-bold uppercase text-textMuted"
+                                        >
+                                          Weekly Bandwidth
+                                        </label>
+                                        <select
+                                          id="contract-hours-per-week"
+                                          value={contractHoursPerWeek}
+                                          onChange={(event) =>
+                                            setContractHoursPerWeek(
+                                              normalizeContractHoursPerWeek(
+                                                event.target.value
+                                              )
+                                            )
+                                          }
+                                          disabled={!effectiveOpenToContract}
+                                          className="w-full rounded-xl border border-border bg-background p-3 text-sm text-textMain focus:border-brand focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                          <option value="">
+                                            Select weekly hours
+                                          </option>
+                                          {CONTRACT_HOURS_OPTIONS.map(
+                                            (option) => (
+                                              <option
+                                                key={option}
+                                                value={option}
+                                              >
+                                                {option}
+                                              </option>
+                                            )
+                                          )}
+                                        </select>
+                                      </div>
+
+                                      <div className="space-y-2">
+                                        <label
+                                          htmlFor="contract-hourly-rate"
+                                          className="block text-[11px] font-bold uppercase text-textMuted"
+                                        >
+                                          Target Payout Rate
+                                        </label>
+                                        <div className="flex items-center overflow-hidden rounded-xl border border-border bg-background focus-within:border-brand">
+                                          <span
+                                            className="shrink-0 pl-3 text-sm text-textMuted"
+                                            aria-hidden
+                                          >
+                                            $
+                                          </span>
+                                          <input
+                                            id="contract-hourly-rate"
+                                            type="number"
+                                            min={0}
+                                            step={1}
+                                            inputMode="numeric"
+                                            placeholder="0"
+                                            value={contractHourlyRate}
+                                            onChange={(event) =>
+                                              setContractHourlyRate(
+                                                event.target.value
+                                              )
+                                            }
+                                            disabled={!effectiveOpenToContract}
+                                            className="min-w-0 flex-1 border-0 bg-transparent px-2 py-3 text-sm text-textMain focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                                          />
+                                          <span
+                                            className="shrink-0 pr-3 text-sm text-textMuted"
+                                            aria-hidden
+                                          >
+                                            / hr
+                                          </span>
+                                        </div>
+                                        <p className="text-[11px] leading-relaxed text-textMuted">
+                                          Your take-home net payout. Founders see
+                                          a 20% all-inclusive Provix verified
+                                          rate ($
+                                          {provixInclusiveHourlyRate != null
+                                            ? provixInclusiveHourlyRate
+                                            : "—"}{" "}
+                                          / hr).
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
+
+                              <label className="flex cursor-pointer items-start gap-2.5 select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={isOnlyUsingDiagnosticTools(
+                                    effectiveOpenToFulltime,
+                                    effectiveOpenToContract
+                                  )}
+                                  onChange={(event) => {
+                                    if (event.target.checked) {
+                                      setOpenToFulltime(false);
+                                      setOpenToContract(false);
+                                      setAvailabilityStatus("Not Available");
+                                      navSetAvailabilityStatus?.(
+                                        "Not Available"
+                                      );
+                                    }
+                                  }}
+                                  className="mt-0.5 h-4 w-4 shrink-0 rounded border border-zinc-700 bg-zinc-950 accent-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40"
+                                />
+                                <span className="min-w-0">
+                                  <span className="block text-sm text-zinc-200">
+                                    Only using Provix diagnostic tools
+                                  </span>
+                                  <span className="block text-[11px] text-textMuted">
+                                    Not open to hiring opportunities right now.
+                                  </span>
+                                </span>
+                              </label>
+                            </div>
+
+                            {isQualified ? (
+                              <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300">
+                                {formatMarketplaceEligibleBadge(marketplaceAuditScore)}
+                              </span>
+                            ) : (
+                              <span className="inline-flex max-w-full items-start rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium leading-snug text-amber-200">
+                                {formatMarketplaceAvailabilityLockedAlert(
+                                  marketplaceAuditScore
+                                )}
+                              </span>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={talentPoolSwitchOn}
-                            aria-label="Visible to Employers"
-                            disabled={visibilityToggleDisabled}
-                            onClick={() => {
-                              void handleVisibilityToggle();
-                            }}
-                            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
- visibilityToggleDisabled
- ? isTogglingVisibility
- ? "opacity-60 cursor-wait"
- : "opacity-50 cursor-not-allowed"
- : "cursor-pointer"
- } ${
- talentPoolSwitchOn ? "bg-emerald-500" : "bg-panel"
- }`}
-                          >
-                            <span
-                              aria-hidden="true"
-                              className="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
-                              style={{
-                                transform: talentPoolSwitchOn
-                                  ? "translateX(1.25rem)"
-                                  : "translateX(0)",
-                              }}
-                            />
-                          </button>
-                        </div>
 
-                        <div className="space-y-4">
-                          <div>
-                            <span className="font-bold text-sm text-textMain block">
-                              Production Scorecard
-                            </span>
-                            <span className="text-sm leading-relaxed text-zinc-400">
-                              Computed from your latest code integrity audit
-                              file tree (architecture, CI, tests, resilience).
-                            </span>
+                          <div className="flex items-center justify-between gap-4 p-4 bg-panel border border-border rounded-xl">
+                            <div className="min-w-0 space-y-1.5">
+                              <span className="font-bold text-xs text-textMain block">
+                                Visible to Employers
+                              </span>
+                              <span className="text-[11px] text-textMuted">
+                                Controls talent-pool and scorecard visibility. Requires
+                                linked GitHub and a 75+ production audit.
+                              </span>
+                              {githubVerified ? (
+                                <p className="text-xs font-medium text-emerald-400">
+                                  ✓ Linked: @{githubUsername || "github"}
+                                  {ownershipBadgeVerified
+                                    ? " · Ownership verified"
+                                    : " · Ownership unverified"}
+                                </p>
+                              ) : (
+                                <div className="space-y-2">
+                                  <p className="text-xs text-amber-200">
+                                    {TALENT_POOL_CONNECT_GITHUB_MESSAGE}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleLinkGitHub()}
+                                    disabled={isLinkingGitHub}
+                                    className="inline-flex cursor-pointer items-center rounded-lg border border-border bg-background px-3 py-1.5 text-[11px] font-semibold text-textMain transition-colors hover:bg-white/5 disabled:cursor-wait disabled:opacity-60"
+                                  >
+                                    {isLinkingGitHub
+                                      ? "Redirecting..."
+                                      : "Connect GitHub"}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={talentPoolSwitchOn}
+                              aria-label="Visible to Employers"
+                              disabled={visibilityToggleDisabled}
+                              onClick={() => {
+                                void handleVisibilityToggle();
+                              }}
+                              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                                visibilityToggleDisabled
+                                  ? isTogglingVisibility
+                                    ? "opacity-60 cursor-wait"
+                                    : "opacity-50 cursor-not-allowed"
+                                  : "cursor-pointer"
+                              } ${
+                                talentPoolSwitchOn ? "bg-emerald-500" : "bg-panel"
+                              }`}
+                            >
+                              <span
+                                aria-hidden="true"
+                                className="pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-200"
+                                style={{
+                                  transform: talentPoolSwitchOn
+                                    ? "translateX(1.25rem)"
+                                    : "translateX(0)",
+                                }}
+                              />
+                            </button>
                           </div>
-                          <VerifiedCodeQualityScorecard
-                            compact
-                            record={candidateProductionAudit}
-                            linkedGitHubUsername={githubUsername}
-                            onVisibilityChange={(nextVisible) => {
-                              setDbProfile((prev) =>
-                                prev
-                                  ? {
-                                      ...prev,
-                                      is_publicly_visible: nextVisible,
-                                      ...(nextVisible && canEnableTalentPool
-                                        ? { is_visible_in_pool: true }
-                                        : {}),
-                                    }
-                                  : prev
-                              );
-                              if (nextVisible && canEnableTalentPool) {
-                                setIsVisibleInPool(true);
+
+                          <div className="space-y-2.5">
+                            <div>
+                              <span className="font-bold text-xs text-textMain block">
+                                Production Scorecard
+                              </span>
+                              <span className="text-[11px] text-textMuted">
+                                Computed from your latest code integrity audit.
+                              </span>
+                            </div>
+                            <VerifiedCodeQualityScorecard
+                              compact
+                              showVisibilityToggle={false}
+                              record={candidateProductionAudit}
+                              linkedGitHubUsername={githubUsername}
+                            />
+                            <ScoreTrendChart
+                              repoUrl={
+                                candidateProductionAudit?.breakdown.audited_repo_url
                               }
-                            }}
-                          />
-                          <ScoreTrendChart
-                            repoUrl={
-                              candidateProductionAudit?.breakdown.audited_repo_url
-                            }
-                            current={
-                              candidateProductionAudit
-                                ? {
-                                    score: candidateProductionAudit.productionScore,
-                                    auditedAt:
-                                      candidateProductionAudit.breakdown.audited_at,
-                                    repoUrl:
-                                      candidateProductionAudit.breakdown
-                                        .audited_repo_url,
-                                  }
-                                : null
-                            }
-                          />
+                              current={
+                                candidateProductionAudit
+                                  ? {
+                                      score: candidateProductionAudit.productionScore,
+                                      auditedAt:
+                                        candidateProductionAudit.breakdown.audited_at,
+                                      repoUrl:
+                                        candidateProductionAudit.breakdown
+                                          .audited_repo_url,
+                                    }
+                                  : null
+                              }
+                            />
+                          </div>
                         </div>
 
                         {renderProfileFormActions()}
@@ -6631,6 +7055,45 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                 {/* SEARCH + CANDIDATE GRID */}
                 <div className="lg:col-span-9 space-y-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div
+                      role="tablist"
+                      aria-label="Marketplace engagement type"
+                      className="inline-flex w-full rounded-xl border border-border bg-background p-1 sm:w-auto"
+                    >
+                      {(
+                        [
+                          ["fulltime", "Full-Time"],
+                          ["contract", "Contract"],
+                        ] as const
+                      ).map(([mode, label]) => {
+                        const selected = marketplaceEngagementMode === mode;
+                        return (
+                          <button
+                            key={mode}
+                            type="button"
+                            role="tab"
+                            aria-selected={selected}
+                            onClick={() => setMarketplaceEngagementMode(mode)}
+                            className={`flex-1 cursor-pointer rounded-lg px-4 py-2 text-xs font-bold transition-colors sm:flex-none ${
+                              selected
+                                ? "bg-panel text-textMain border border-border shadow-sm"
+                                : "text-textMuted hover:text-textMain"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-textMuted sm:text-right">
+                      Showing{" "}
+                      {marketplaceEngagementLabel(marketplaceEngagementMode)}{" "}
+                      candidates with a verified {PUBLIC_SCORECARD_THRESHOLD}+
+                      audit score.
+                    </p>
+                  </div>
+
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-textMuted">
                       <Icons.Search />
@@ -6662,10 +7125,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   ) : filteredCandidates.length === 0 ? (
                     <div className="card-edge bg-panel border border-border rounded-2xl p-10 text-center">
                       <p className="text-sm font-medium text-textMuted">
-                        No published candidates match your filters
-                      </p>
-                      <p className="text-xs text-textMuted mt-1">
-                        Only verified, published candidate profiles appear here.
+                        {marketplaceEngagementEmptyState(
+                          marketplaceEngagementMode
+                        )}
                       </p>
                     </div>
                   ) : (
@@ -6673,7 +7135,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       {filteredCandidates.map((col) => {
                         const publicName = getCandidatePublicName(col);
                         const initials = getCandidatePublicInitials(col);
-                        const introUnlocked = isCandidateUnlocked(col);
+                        const scoreBadge = formatMarketplaceAuditScoreBadge(
+                          col.productionScore
+                        );
+                        const bandwidthPill = formatContractBandwidthPill(
+                          col.contractHoursPerWeek
+                        );
+                        const ratePill = formatContractRatePill(
+                          col.contractHourlyRate
+                        );
+                        const primaryCtaLabel =
+                          marketplaceEngagementMode === "contract"
+                            ? "Hire Contractor"
+                            : "Request Full-Time Interview";
 
                         return (
                           <div
@@ -6685,19 +7159,24 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 {initials}
                               </div>
                               <div className="flex flex-col items-end gap-1 shrink-0">
+                                {scoreBadge ? (
+                                  <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold tabular-nums text-emerald-300">
+                                    {scoreBadge}
+                                  </span>
+                                ) : null}
                                 <span
                                   className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getAvailabilityBadgeClass(
- col.availability
- )}`}
+                                    col.availability
+                                  )}`}
                                 >
                                   {col.availability}
                                 </span>
                                 <span
                                   className={`font-mono text-[10px] font-semibold tabular-nums ${
- col.matchPending
- ? "text-brand animate-pulse"
- : "text-textMuted"
- }`}
+                                    col.matchPending
+                                      ? "text-brand animate-pulse"
+                                      : "text-textMuted"
+                                  }`}
                                 >
                                   {formatTalentMatchLabel(
                                     col.matchScore,
@@ -6717,26 +7196,46 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               <h3 className="font-bold text-textMain text-sm">
                                 {publicName}
                               </h3>
-                              <p className="text-xs text-brand font-medium mt-0.5">
-                                {col.role}
-                              </p>
+                              {marketplaceEngagementMode === "fulltime" ? (
+                                <>
+                                  <p className="text-xs text-brand font-medium mt-0.5">
+                                    {col.role || "Role not specified"}
+                                  </p>
+                                  {col.experienceLevel ? (
+                                    <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-brandGlow text-brand border border-brand/20">
+                                      {col.experienceLevel}
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <p className="text-xs text-brand font-medium mt-0.5">
+                                  {col.role || "Contract engineer"}
+                                </p>
+                              )}
                               <WorkPreferenceTimezoneBadge
                                 workPreference={col.workPreference}
                                 timezone={col.timezone}
                                 className="mt-2"
                               />
                               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                <ProductionScoreBadge
-                                  score={col.productionScore}
-                                  verified={Boolean(col.isAuditVerified)}
-                                />
                                 <VerifiedOnProvixPill
                                   verified={Boolean(col.verifiedOnProvix)}
                                 />
+                                {marketplaceEngagementMode === "contract" ? (
+                                  <>
+                                    {bandwidthPill ? (
+                                      <span className="inline-flex items-center rounded-full border border-border bg-background px-2.5 py-0.5 text-[10px] font-bold text-textMain">
+                                        {bandwidthPill}
+                                      </span>
+                                    ) : null}
+                                    {ratePill ? (
+                                      <span className="inline-flex items-center rounded-full border border-border bg-background px-2.5 py-0.5 text-[10px] font-bold text-textMain">
+                                        {ratePill}
+                                      </span>
+                                    ) : null}
+                                  </>
+                                ) : null}
                               </div>
-                              <span className="inline-flex mt-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-brandGlow text-brand border border-brand/20">
-                                {col.experienceLevel}
-                              </span>
                               <p className="text-[11px] text-textMuted mt-2">
                                 {formatTalentEducationLines(col).join(" · ") ||
                                   "Education details not provided"}
@@ -6772,7 +7271,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 onClick={() => openIntroModal(col)}
                                 className="flex-1 min-w-0 py-1.5 px-2.5 text-xs font-medium text-center justify-center rounded-lg inline-flex items-center gap-1 transition-all cursor-pointer bg-brand hover:bg-brandHover text-white"
                               >
-                                Connect
+                                {primaryCtaLabel}
                               </button>
                             </div>
                           </div>

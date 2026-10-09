@@ -63,6 +63,10 @@ type DashboardNavContextValue = {
   companyNameReady: boolean;
   availabilityStatus: AvailabilityStatus | null;
   setAvailabilityStatus: (status: AvailabilityStatus | null) => void;
+  openToFulltime: boolean;
+  openToContract: boolean;
+  setOpenToFulltime: (open: boolean) => void;
+  setOpenToContract: (open: boolean) => void;
   authLoading: boolean;
   contentReady: boolean;
   setContentReady: (ready: boolean) => void;
@@ -216,6 +220,8 @@ function DashboardNavProviderImpl({
   }, []);
   const [availabilityStatus, setAvailabilityStatus] =
     useState<AvailabilityStatus | null>(null);
+  const [openToFulltime, setOpenToFulltime] = useState(false);
+  const [openToContract, setOpenToContract] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [contentReady, setContentReadyState] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -362,6 +368,8 @@ function DashboardNavProviderImpl({
         setAccountRole(null);
         setIsVerifiedEmployer(null);
         setAvailabilityStatus(null);
+        setOpenToFulltime(false);
+        setOpenToContract(false);
         return;
       }
 
@@ -378,13 +386,17 @@ function DashboardNavProviderImpl({
         role?: string | null;
         is_verified?: boolean | null;
         availability_status?: string | null;
+        open_to_fulltime?: boolean | null;
+        open_to_contract?: boolean | null;
         full_name?: string | null;
         company_name?: string | null;
       } | null = null;
+      const profileSelect =
+        "role, is_verified, availability_status, open_to_fulltime, open_to_contract, full_name, company_name";
       console.time("dashboard-layout:profile-fetch");
       const byId = await supabase
         .from("profiles")
-        .select("role, is_verified, availability_status, full_name, company_name")
+        .select(profileSelect)
         .eq("id", user.id)
         .maybeSingle();
       console.timeEnd("dashboard-layout:profile-fetch");
@@ -395,7 +407,7 @@ function DashboardNavProviderImpl({
         console.time("dashboard-layout:profile-fetch-by-user-id");
         const byUserId = await supabase
           .from("profiles")
-          .select("role, is_verified, availability_status, full_name, company_name")
+          .select(profileSelect)
           .eq("user_id", user.id)
           .maybeSingle();
         console.timeEnd("dashboard-layout:profile-fetch-by-user-id");
@@ -429,6 +441,8 @@ function DashboardNavProviderImpl({
         typeof profile?.is_verified === "boolean" ? profile.is_verified : null
       );
       setAvailabilityStatus(parseAvailabilityStatus(profile?.availability_status));
+      setOpenToFulltime(profile?.open_to_fulltime === true);
+      setOpenToContract(profile?.open_to_contract === true);
       setCompanyName(profile?.company_name ?? null);
       setCompanyNameReady(true);
       const namedIdentity = getUserHeaderIdentity(user, profile?.full_name);
@@ -537,6 +551,10 @@ function DashboardNavProviderImpl({
       companyNameReady,
       availabilityStatus,
       setAvailabilityStatus,
+      openToFulltime,
+      openToContract,
+      setOpenToFulltime,
+      setOpenToContract,
       authLoading,
       contentReady,
       setContentReady,
@@ -567,6 +585,8 @@ function DashboardNavProviderImpl({
       companyName,
       companyNameReady,
       availabilityStatus,
+      openToFulltime,
+      openToContract,
       authLoading,
       contentReady,
       setContentReady,

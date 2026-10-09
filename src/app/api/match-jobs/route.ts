@@ -8,18 +8,23 @@ import {
   buildInsufficientDataMatches,
   computeJobSkillOverlap,
   extractAuditedSkills,
+  filterJobsForAvailabilityMatch,
   hasUsableCandidateMatchData,
   isGeminiRateLimitError,
   normalizeJobMatch,
   parseExperienceTier,
   parseJobListings,
+  rankJobMatchesByFitAndAudit,
   readRetryAfterSeconds,
+  resolveCandidateAuditScore,
+  resolveCandidateAvailability,
   summarizeGithubAudit,
   type JobMatchCandidatePayload,
   type JobMatchResult,
   type ParsedJobListing,
 } from "@/lib/job-match";
 import { parseJsonWithSchema } from "@/lib/parse-request-json";
+import type { JobWorkType } from "@/lib/jobs";
 
 export const maxDuration = 60;
 
@@ -30,7 +35,7 @@ const matchJobsRequestBodySchema = z.object({
 
 const SYSTEM_PROMPT = `You are Provix AI Job Match — a skill-matching engine for verified engineering candidates.
 
-Cross-reference the candidate's audited GitHub skills and experience tier against each active job's tech stack, required skills, and description.
+Cross-reference the candidate's audited GitHub skills, experience tier, availability preferences, and audit score against each active job's tech stack, required skills, employment type, and description.
 
 Return strict JSON only:
 {
@@ -45,11 +50,12 @@ Return strict JSON only:
 
 Rules:
 - Return exactly one match object per job in the input, using the same jobId values.
-- matchScore: integer 0-100 based on audited skill overlap with techStack and requiredSkills, experience-tier fit, and role description. Do not default to a mid-range score.
+- matchScore: integer 0-100 based on audited skill overlap with techStack and requiredSkills, experience-tier fit, employment-type fit, audit-score confidence, and role description. Do not default to a mid-range score.
 - matchingReasons: exactly 2-3 concise second-person bullets (You/Your). Each bullet must name a concrete overlapping skill, GitHub language/repo/commit signal, or missing required skill from the job payload. No markdown.
 - Use overlappingSkills and missingSkills from the job payload when present. Never invent GitHub evidence or skills that are not in the candidate audit data.
 - Prefer specific phrasing such as "Your React and TypeScript skills match this role's stack" or "This listing also asks for AWS, which is not in your audited skills."
 - Never write generic filler such as "your profile signals align", "partially overlap with this role's stack", or "completing your GitHub audit can sharpen match accuracy".
+- Jobs are already filtered to the candidate's open_to_fulltime / open_to_contract preferences and active tab. Respect each job's workType (fulltime vs contract) when explaining fit.
 - techStack may be empty for non-technical roles. Score those from requiredSkills, description, and experience tier.
 - If a job has no required skills and no tech stack, score conservatively from the description and experience tier, and still name the candidate's actual skills.
 - No extra keys.`;
@@ -104,12 +110,19 @@ async function generateGeminiJobMatches(
   const skills = extractAuditedSkills(candidate);
   const experienceTier = parseExperienceTier(candidate);
 
+  const availability = resolveCandidateAvailability(candidate);
+  const auditScore = resolveCandidateAuditScore(candidate);
+
   const userPrompt = JSON.stringify({
     candidate: {
       auditedSkills: skills,
       experienceTier,
       githubUrl: candidate.githubUrl?.trim() || candidate.github_url?.trim() || "",
       githubAudit: summarizeGithubAudit(candidate.githubAudit),
+      openToFulltime: availability.openToFulltime,
+      openToContract: availability.openToContract,
+      auditScore,
+      preferredWorkType: candidate.preferredWorkType ?? null,
     },
     jobs: jobs.map((job) => {
       const { overlapping, missing } = computeJobSkillOverlap(skills, job);
@@ -121,6 +134,8 @@ async function generateGeminiJobMatches(
         requiredSkills: job.requiredSkills,
         overlappingSkills: overlapping,
         missingSkills: missing,
+        workType: job.workType,
+        employment_type: job.employment_type,
         description: job.description.slice(0, 500),
       };
     }),
@@ -216,7 +231,22 @@ export async function POST(request: Request) {
 
   const candidate = (parsedBody.data.candidate ??
     {}) as JobMatchCandidatePayload;
-  const jobs = parseJobListings(parsedBody.data.jobs);
+  const preferredWorkType =
+    (candidate.preferredWorkType as JobWorkType | undefined) ?? null;
+  const availabilityFiltered = filterJobsForAvailabilityMatch(
+    parseJobListings(parsedBody.data.jobs),
+    candidate,
+    preferredWorkType
+  );
+
+  if (availabilityFiltered.error) {
+    return NextResponse.json({
+      matches: [],
+      error: availabilityFiltered.error,
+    });
+  }
+
+  const jobs = availabilityFiltered.jobs;
 
   if (jobs.length === 0) {
     return NextResponse.json({ matches: [] } satisfies JobMatchResult);
@@ -224,7 +254,10 @@ export async function POST(request: Request) {
 
   if (!hasUsableCandidateMatchData(candidate)) {
     return NextResponse.json({
-      matches: buildInsufficientDataMatches(jobs),
+      matches: rankJobMatchesByFitAndAudit(
+        buildInsufficientDataMatches(jobs),
+        candidate
+      ),
     } satisfies JobMatchResult);
   }
 
@@ -234,13 +267,18 @@ export async function POST(request: Request) {
       "GEMINI_API_KEY is not configured — using heuristic fallback for job match."
     );
     return NextResponse.json({
-      matches: buildFallbackMatches(candidate, jobs),
+      matches: rankJobMatchesByFitAndAudit(
+        buildFallbackMatches(candidate, jobs),
+        candidate
+      ),
     } satisfies JobMatchResult);
   }
 
   try {
     const result = await generateGeminiJobMatches(apiKey, candidate, jobs);
-    return NextResponse.json(result);
+    return NextResponse.json({
+      matches: rankJobMatchesByFitAndAudit(result.matches, candidate),
+    } satisfies JobMatchResult);
   } catch (error) {
     if (isGeminiRateLimitError(error)) {
       const retryAfterSec = readRetryAfterSeconds(error);
@@ -248,7 +286,10 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: "Too many requests. Try again shortly.",
-          matches: buildFallbackMatches(candidate, jobs),
+          matches: rankJobMatchesByFitAndAudit(
+            buildFallbackMatches(candidate, jobs),
+            candidate
+          ),
         },
         {
           status: 429,
@@ -259,7 +300,10 @@ export async function POST(request: Request) {
 
     console.error("Gemini job match API failed, using fallback:", error);
     return NextResponse.json({
-      matches: buildFallbackMatches(candidate, jobs),
+      matches: rankJobMatchesByFitAndAudit(
+        buildFallbackMatches(candidate, jobs),
+        candidate
+      ),
     } satisfies JobMatchResult);
   }
 }

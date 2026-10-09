@@ -3,7 +3,12 @@
 import { useMemo, useState } from "react";
 import { Check, LoaderCircle, Search, Sparkles } from "lucide-react";
 import { formatSalaryRange } from "@/lib/format-salary-range";
-import { jobDisplayTags, type JobRow } from "@/lib/jobs";
+import {
+  jobDisplayTags,
+  jobMatchesWorkType,
+  type JobRow,
+  type JobWorkType,
+} from "@/lib/jobs";
 import {
   countActiveOpenings,
   countJobsMatchingCandidateSkills,
@@ -34,7 +39,7 @@ export type OpportunitiesJobFeedProps = {
   enableAiMatch?: boolean;
   aiMatchRunning?: boolean;
   aiMatchError?: string | null;
-  onRunAiMatch?: () => void;
+  onRunAiMatch?: (options?: { workType?: JobWorkType }) => void;
 };
 
 export default function OpportunitiesJobFeed({
@@ -56,6 +61,7 @@ export default function OpportunitiesJobFeed({
 }: OpportunitiesJobFeedProps) {
   const [search, setSearch] = useState("");
   const [remoteOnly, setRemoteOnly] = useState(false);
+  const [workType, setWorkType] = useState<JobWorkType>("fulltime");
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
 
   const activeJobs = useMemo(() => getActiveJobs(jobs), [jobs]);
@@ -75,6 +81,10 @@ export default function OpportunitiesJobFeed({
     activeJobs.length > 0 &&
     !aiMatchRunning &&
     (isGuest || !loadingProfile);
+  const workTypeEmptyMessage =
+    workType === "contract"
+      ? "No active contract openings right now"
+      : "No active full-time openings right now";
 
   const filteredJobFeed = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -88,8 +98,9 @@ export default function OpportunitiesJobFeed({
         tags.some((tag) => tag.toLowerCase().includes(query));
       const matchesRemote =
         !remoteOnly || (job.location ?? "").toLowerCase().includes("remote");
+      const matchesWorkType = jobMatchesWorkType(job, workType);
 
-      return matchesSearch && matchesRemote;
+      return matchesSearch && matchesRemote && matchesWorkType;
     });
 
     if (!hasAiMatchResults) {
@@ -105,7 +116,14 @@ export default function OpportunitiesJobFeed({
       );
       return rightScore - leftScore;
     });
-  }, [activeJobs, hasAiMatchResults, matchInsights, remoteOnly, search]);
+  }, [
+    activeJobs,
+    hasAiMatchResults,
+    matchInsights,
+    remoteOnly,
+    search,
+    workType,
+  ]);
 
   return (
     <div className="text-zinc-100">
@@ -124,7 +142,7 @@ export default function OpportunitiesJobFeed({
           <div className="mt-5">
             <Button
               type="button"
-              onClick={() => onRunAiMatch?.()}
+              onClick={() => onRunAiMatch?.({ workType })}
               disabled={!canRunAiMatch}
             >
               {aiMatchRunning ? (
@@ -136,7 +154,7 @@ export default function OpportunitiesJobFeed({
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
               )}
               {aiMatchRunning
-                ? `Matching ${activeJobs.length} roles…`
+                ? `Matching ${workType === "contract" ? "contract" : "full-time"} roles…`
                 : hasAiMatchResults
                   ? "Re-run Provix AI Match"
                   : "Run Provix AI Match"}
@@ -225,32 +243,73 @@ export default function OpportunitiesJobFeed({
       </div>
 
       <div className="mb-6 rounded-xl border border-white/[0.08] bg-zinc-900/50 p-4 shadow-xl backdrop-blur-md">
-        <FormLabel htmlFor="opportunities-search">Search</FormLabel>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-              <Search className="h-4 w-4" aria-hidden="true" />
-            </span>
-            <input
-              id="opportunities-search"
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search roles, companies, or skills..."
-              className="w-full rounded-lg border border-white/[0.09] bg-[#070709] py-2.5 pl-10 pr-4 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-500/60 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => setRemoteOnly((prev) => !prev)}
-            className={`shrink-0 cursor-pointer rounded-md border px-4 py-2.5 font-mono text-[11px] transition-colors duration-200 ease-out ${
-              remoteOnly
-                ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
-                : "border-white/[0.08] bg-[#070709] text-zinc-400 hover:text-zinc-200"
-            }`}
+        <div className="mb-4">
+          <p className="mb-2 font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+            View
+          </p>
+          <div
+            role="tablist"
+            aria-label="Work type"
+            className="inline-flex rounded-lg border border-white/[0.08] bg-[#070709] p-1"
           >
-            Remote Only
-          </button>
+            {(
+              [
+                ["fulltime", "Full-Time"],
+                ["contract", "Contract"],
+              ] as const
+            ).map(([mode, label]) => {
+              const selected = workType === mode;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setWorkType(mode)}
+                  className={`cursor-pointer rounded-md px-3.5 py-1.5 font-mono text-[11px] transition-colors duration-200 ease-out ${
+                    selected
+                      ? "border border-white/[0.1] bg-[#1A1A1E] font-medium text-zinc-100 shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="border-t border-white/[0.06] pt-4">
+          <FormLabel htmlFor="opportunities-search" className="mb-2">
+            Search & filter
+          </FormLabel>
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
+              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
+                <Search className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <input
+                id="opportunities-search"
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search ${workType === "contract" ? "contract" : "full-time"} roles, companies, or skills...`}
+                className="w-full rounded-lg border border-white/[0.09] bg-[#070709] py-2.5 pl-10 pr-4 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-500/60 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
+              />
+            </div>
+            <button
+              type="button"
+              aria-pressed={remoteOnly}
+              onClick={() => setRemoteOnly((prev) => !prev)}
+              className={`shrink-0 cursor-pointer rounded-full border px-3.5 py-2 font-mono text-[11px] transition-colors duration-200 ease-out sm:self-auto ${
+                remoteOnly
+                  ? "border-violet-500/40 bg-violet-500/15 font-medium text-violet-300"
+                  : "border-white/[0.12] bg-transparent text-zinc-400 hover:border-white/[0.2] hover:text-zinc-200"
+              }`}
+            >
+              Remote Only
+            </button>
+          </div>
         </div>
       </div>
 
@@ -270,20 +329,16 @@ export default function OpportunitiesJobFeed({
             using the rest of the dashboard.
           </p>
         </div>
-      ) : activeJobs.length === 0 ? (
+      ) : activeJobs.length === 0 || filteredJobFeed.length === 0 ? (
         <div className="rounded-xl border border-white/[0.08] bg-[#131316]/90 p-10 text-center shadow-xl backdrop-blur-md">
           <p className="text-sm font-medium text-zinc-100">
-            No active openings right now
+            {workTypeEmptyMessage}
           </p>
-        </div>
-      ) : filteredJobFeed.length === 0 ? (
-        <div className="rounded-xl border border-white/[0.08] bg-[#131316]/90 p-10 text-center shadow-xl backdrop-blur-md">
-          <p className="text-sm font-medium text-zinc-100">
-            No jobs match your filters
-          </p>
-          <p className="mt-1 text-xs text-zinc-400">
-            Try clearing search or disabling Remote Only.
-          </p>
+          {activeJobs.length > 0 ? (
+            <p className="mt-1 text-xs text-zinc-400">
+              Try clearing search or disabling Remote Only.
+            </p>
+          ) : null}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

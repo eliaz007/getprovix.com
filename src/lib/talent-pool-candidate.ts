@@ -51,6 +51,10 @@ export type TalentPoolCandidate = {
   experienceLevel: string;
   roleType: string;
   availability: string;
+  openToFulltime?: boolean;
+  openToContract?: boolean;
+  contractHoursPerWeek?: string | null;
+  contractHourlyRate?: number | null;
   bio: string;
   github: string;
   demoVideo: string;

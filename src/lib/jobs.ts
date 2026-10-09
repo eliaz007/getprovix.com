@@ -18,13 +18,22 @@ export type JobRow = {
   status: string | null;
   created_at?: string | null;
   description?: string | null;
+  employment_type?: string | null;
 };
 
+export type JobWorkType = "fulltime" | "contract";
+
 export const JOB_FEED_COLUMNS =
+  "id, title, company, location, salary_range, tags, tech_stack, required_skills, employer_id, status, created_at, employment_type";
+
+const JOB_FEED_COLUMNS_WITHOUT_EMPLOYMENT =
   "id, title, company, location, salary_range, tags, tech_stack, required_skills, employer_id, status, created_at";
 
 const JOB_FEED_COLUMNS_LEGACY =
   "id, title, company, location, salary_range, tags, employer_id, status, created_at";
+
+const CONTRACT_WORK_TYPE_PATTERN =
+  /\b(contract|contractor|freelance|sprint|hourly|part[- ]?time)\b/i;
 
 type JobFeedError = {
   message: string;
@@ -65,9 +74,67 @@ export function jobDisplayTags(job: {
   return parseJobListInput(job.tags);
 }
 
+export function resolveJobWorkType(
+  job: Pick<
+    JobRow,
+    | "employment_type"
+    | "title"
+    | "description"
+    | "tags"
+    | "tech_stack"
+    | "required_skills"
+  >
+): JobWorkType {
+  const explicit = job.employment_type?.trim().toLowerCase();
+  if (
+    explicit === "contract" ||
+    explicit === "contractor" ||
+    explicit === "freelance"
+  ) {
+    return "contract";
+  }
+  if (
+    explicit === "full-time" ||
+    explicit === "fulltime" ||
+    explicit === "full_time"
+  ) {
+    return "fulltime";
+  }
+
+  const haystack = [
+    job.title ?? "",
+    job.description ?? "",
+    ...normalizeStringArray(job.tags),
+    ...normalizeStringArray(job.tech_stack),
+    ...normalizeStringArray(job.required_skills),
+  ].join(" ");
+
+  if (CONTRACT_WORK_TYPE_PATTERN.test(haystack)) {
+    return "contract";
+  }
+
+  return "fulltime";
+}
+
+export function jobMatchesWorkType(
+  job: Pick<
+    JobRow,
+    | "employment_type"
+    | "title"
+    | "description"
+    | "tags"
+    | "tech_stack"
+    | "required_skills"
+  >,
+  workType: JobWorkType
+): boolean {
+  return resolveJobWorkType(job) === workType;
+}
+
 export function toJobMatchJobPayload(job: JobRow) {
   const techStack = parseJobListInput(job.tech_stack);
   const requiredSkills = parseJobListInput(job.required_skills);
+  const workType = resolveJobWorkType(job);
 
   return {
     jobId: job.id,
@@ -77,7 +144,18 @@ export function toJobMatchJobPayload(job: JobRow) {
     requiredSkills:
       requiredSkills.length > 0 ? requiredSkills : parseJobListInput(job.tags),
     description: job.description ?? "",
+    employment_type: job.employment_type ?? (workType === "contract" ? "contract" : "full-time"),
+    workType,
   };
+}
+
+function shouldFallBackWithoutEmploymentType(
+  error: JobFeedError | null
+): boolean {
+  return (
+    isSupabaseSchemaError(error) &&
+    schemaErrorMentionsColumn(error, "employment_type")
+  );
 }
 
 function shouldFallBackToLegacyColumns(error: JobFeedError | null): boolean {
@@ -152,7 +230,19 @@ export async function fetchPublicJobFeed(supabase: SupabaseClient): Promise<{
       "public job feed"
     );
 
-    const result = shouldFallBackToLegacyColumns(first.error)
+    const withoutEmployment = shouldFallBackWithoutEmploymentType(first.error)
+      ? await withJobFeedTimeout(
+          supabase
+            .from("jobs")
+            .select(JOB_FEED_COLUMNS_WITHOUT_EMPLOYMENT)
+            .eq("status", "active")
+            .order("created_at", { ascending: false })
+            .limit(JOB_FEED_LIMIT),
+          "public job feed (without employment_type)"
+        )
+      : first;
+
+    const result = shouldFallBackToLegacyColumns(withoutEmployment.error)
       ? await withJobFeedTimeout(
           supabase
             .from("jobs")
@@ -162,7 +252,7 @@ export async function fetchPublicJobFeed(supabase: SupabaseClient): Promise<{
             .limit(JOB_FEED_LIMIT),
           "public job feed (legacy columns)"
         )
-      : first;
+      : withoutEmployment;
 
     if (result.error) {
       logJobFeed("public feed", startedAt, 0, result.error);
@@ -188,12 +278,19 @@ export async function fetchDashboardJobs(supabase: SupabaseClient): Promise<{
     .select(JOB_FEED_COLUMNS)
     .order("created_at", { ascending: false });
 
-  const result = shouldFallBackToLegacyColumns(first.error)
+  const withoutEmployment = shouldFallBackWithoutEmploymentType(first.error)
+    ? await supabase
+        .from("jobs")
+        .select(JOB_FEED_COLUMNS_WITHOUT_EMPLOYMENT)
+        .order("created_at", { ascending: false })
+    : first;
+
+  const result = shouldFallBackToLegacyColumns(withoutEmployment.error)
     ? await supabase
         .from("jobs")
         .select(JOB_FEED_COLUMNS_LEGACY)
         .order("created_at", { ascending: false })
-    : first;
+    : withoutEmployment;
 
   if (result.error) {
     return { data: [], error: result.error };

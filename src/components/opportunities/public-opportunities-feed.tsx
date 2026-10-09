@@ -16,6 +16,10 @@ type CandidateMatchProfile = {
   experienceTier: string;
   githubUrl: string;
   githubAudit: unknown;
+  openToFulltime: boolean;
+  openToContract: boolean;
+  auditScore: number | null;
+  productionScore: number | null;
 };
 
 function candidateFromProfileRow(
@@ -28,6 +32,16 @@ function candidateFromProfileRow(
     "github_audit" in (auditData as object)
       ? (auditData as { github_audit?: unknown }).github_audit
       : auditData;
+
+  const productionScore =
+    typeof row?.production_score === "number" &&
+    Number.isFinite(row.production_score)
+      ? row.production_score
+      : null;
+  const auditScore =
+    typeof row?.audit_score === "number" && Number.isFinite(row.audit_score)
+      ? row.audit_score
+      : productionScore;
 
   const payload = {
     skills: row?.skills as string[] | string | undefined,
@@ -45,6 +59,10 @@ function candidateFromProfileRow(
     experienceTier: parseExperienceTier(payload),
     githubUrl: payload.githubUrl,
     githubAudit,
+    openToFulltime: row?.open_to_fulltime === true,
+    openToContract: row?.open_to_contract === true,
+    auditScore,
+    productionScore,
   };
 }
 
@@ -65,6 +83,10 @@ export default function PublicOpportunitiesFeed() {
       experienceTier: candidateProfile?.experienceTier ?? "",
       githubUrl: candidateProfile?.githubUrl ?? "",
       githubAudit: candidateProfile?.githubAudit,
+      openToFulltime: candidateProfile?.openToFulltime ?? false,
+      openToContract: candidateProfile?.openToContract ?? false,
+      auditScore: candidateProfile?.auditScore ?? null,
+      productionScore: candidateProfile?.productionScore ?? null,
     }),
     [candidateProfile]
   );
@@ -155,7 +177,7 @@ export default function PublicOpportunitiesFeed() {
           fetchProfileForCandidateId(
             supabase,
             userId,
-            "skills, experience_level, portfolio_url, github_url"
+            "skills, experience_level, portfolio_url, github_url, open_to_fulltime, open_to_contract, production_score, audit_score, audit_data"
           ),
         ]);
 

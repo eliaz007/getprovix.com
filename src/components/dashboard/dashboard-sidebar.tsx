@@ -30,7 +30,7 @@ import {
   isCandidateIntroDismissed,
   isPendingCandidateIntroStatus,
 } from "@/lib/candidate-intro-requests";
-import { getAvailabilitySidebarPresentation } from "@/lib/availability-status";
+import { getPreferenceAvailabilityPresentation } from "@/lib/contract-availability";
 import { employerCompanyLabel, isMissingCompanyName } from "@/lib/company-name";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { createClient } from "@/utils/supabase/client";
@@ -496,7 +496,8 @@ function SidebarUserFooter() {
     userInitials,
     userDisplayName,
     companyName,
-    availabilityStatus,
+    openToFulltime,
+    openToContract,
     isVerifiedEmployer,
     isBusinessAccount,
     requireAuth,
@@ -504,8 +505,10 @@ function SidebarUserFooter() {
     setActiveTab,
     setProfileStudioSection,
   } = useDashboardNav();
-  const availabilityPresentation =
-    getAvailabilitySidebarPresentation(availabilityStatus);
+  const availabilityPresentation = getPreferenceAvailabilityPresentation(
+    openToFulltime,
+    openToContract
+  );
 
   const openSettings = () => {
     if (isGuest) {
@@ -600,11 +603,7 @@ function SidebarUserFooter() {
               className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`}
               aria-hidden
             />
-            <span className="truncate">
-              {isBusinessAccount
-                ? statusLabel
-                : availabilityStatus || "Open to roles"}
-            </span>
+            <span className="truncate">{statusLabel}</span>
           </div>
         </div>
         {needsSettingsNavigation ? (

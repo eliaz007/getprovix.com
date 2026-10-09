@@ -1,4 +1,8 @@
 import { normalizeStringArray } from "@/lib/match-heuristic";
+import {
+  resolveJobWorkType,
+  type JobWorkType,
+} from "@/lib/jobs";
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
   normalizeMatchReasons,
@@ -17,6 +21,13 @@ export type JobMatchCandidatePayload = {
   githubUrl?: string;
   github_url?: string;
   githubAudit?: unknown;
+  openToFulltime?: boolean;
+  open_to_fulltime?: boolean;
+  openToContract?: boolean;
+  open_to_contract?: boolean;
+  auditScore?: number | null;
+  productionScore?: number | null;
+  preferredWorkType?: JobWorkType;
 };
 
 export type JobMatchJobPayload = {
@@ -31,6 +42,9 @@ export type JobMatchJobPayload = {
   skills?: string[] | string;
   tags?: string[] | string;
   description?: string;
+  employment_type?: string | null;
+  employmentType?: string | null;
+  workType?: JobWorkType;
 };
 
 export type JobMatch = {
@@ -59,7 +73,147 @@ export type ParsedJobListing = {
   techStack: string[];
   requiredSkills: string[];
   description: string;
+  workType: JobWorkType;
+  employment_type: string;
 };
+
+export type CandidateAvailabilityPreferences = {
+  openToFulltime: boolean;
+  openToContract: boolean;
+};
+
+export function resolveCandidateAvailability(
+  candidate: JobMatchCandidatePayload | null | undefined
+): CandidateAvailabilityPreferences {
+  return {
+    openToFulltime:
+      candidate?.openToFulltime === true ||
+      candidate?.open_to_fulltime === true,
+    openToContract:
+      candidate?.openToContract === true ||
+      candidate?.open_to_contract === true,
+  };
+}
+
+export function resolveCandidateAuditScore(
+  candidate: JobMatchCandidatePayload | null | undefined
+): number | null {
+  for (const value of [candidate?.auditScore, candidate?.productionScore]) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.round(value);
+    }
+  }
+  return null;
+}
+
+function workTypeLabel(workType: JobWorkType): "full-time" | "contract" {
+  return workType === "contract" ? "contract" : "full-time";
+}
+
+/**
+ * Narrow jobs to those compatible with the candidate's availability flags
+ * and optional active opportunities tab (preferredWorkType).
+ */
+export function filterJobsForAvailabilityMatch<T extends JobMatchJobPayload>(
+  jobs: T[],
+  candidate: JobMatchCandidatePayload | null | undefined,
+  preferredWorkType?: JobWorkType | null
+): { jobs: T[]; error: string | null } {
+  const { openToFulltime, openToContract } =
+    resolveCandidateAvailability(candidate);
+
+  if (!openToFulltime && !openToContract) {
+    return {
+      jobs: [],
+      error:
+        "Update Availability & Work Preferences to open full-time or contract roles before running AI Match.",
+    };
+  }
+
+  const preferred =
+    preferredWorkType ?? candidate?.preferredWorkType ?? null;
+
+  if (preferred === "fulltime" && !openToFulltime) {
+    return {
+      jobs: [],
+      error:
+        "You're viewing Full-Time roles, but your profile is only open to contract work. Switch to the Contract tab or update Availability preferences.",
+    };
+  }
+
+  if (preferred === "contract" && !openToContract) {
+    return {
+      jobs: [],
+      error:
+        "You're viewing Contract roles, but your profile is only open to full-time work. Switch to the Full-Time tab or update Availability preferences.",
+    };
+  }
+
+  const allowed = new Set<JobWorkType>();
+  if (preferred) {
+    allowed.add(preferred);
+  } else {
+    if (openToFulltime) allowed.add("fulltime");
+    if (openToContract) allowed.add("contract");
+  }
+
+  const filtered = jobs.filter((job) =>
+    allowed.has(
+      job.workType ??
+        resolveJobWorkType({
+          employment_type: job.employment_type ?? job.employmentType,
+          title: typeof job.title === "string" ? job.title : "",
+          description:
+            typeof job.description === "string" ? job.description : "",
+          tags: job.tags,
+          tech_stack: job.techStack ?? job.tech_stack,
+          required_skills: job.requiredSkills ?? job.required_skills,
+        })
+    )
+  );
+
+  if (filtered.length === 0) {
+    const mode =
+      preferred ??
+      (openToContract && !openToFulltime
+        ? "contract"
+        : openToFulltime && !openToContract
+          ? "fulltime"
+          : null);
+    return {
+      jobs: [],
+      error: mode
+        ? `No active ${workTypeLabel(mode)} openings match your availability right now.`
+        : "No active openings match your availability preferences right now.",
+    };
+  }
+
+  return { jobs: filtered, error: null };
+}
+
+/** Rank matches by stack-fit score, using audit score as a small confidence boost. */
+export function rankJobMatchesByFitAndAudit(
+  matches: JobMatch[],
+  candidate: JobMatchCandidatePayload | null | undefined
+): JobMatch[] {
+  const auditScore = resolveCandidateAuditScore(candidate);
+  const auditBoost =
+    typeof auditScore === "number"
+      ? Math.min(8, Math.max(0, Math.round((auditScore / 100) * 8)))
+      : 0;
+
+  return [...matches]
+    .map((match) => ({
+      ...match,
+      matchScore: clampScore0to100(match.matchScore + auditBoost),
+    }))
+    .sort((left, right) => {
+      if (right.matchScore !== left.matchScore) {
+        return right.matchScore - left.matchScore;
+      }
+      return String(left.jobId).localeCompare(String(right.jobId));
+    });
+}
 
 const MAX_JOBS_PER_REQUEST = 40;
 
@@ -428,17 +582,38 @@ export function parseJobListings(jobs: unknown): ParsedJobListing[] {
     const techStack = normalizeStringArray(
       record.techStack ?? record.tech_stack
     );
+    const description =
+      typeof record.description === "string"
+        ? record.description.slice(0, 800)
+        : "";
+    const title = typeof record.title === "string" ? record.title.trim() : "";
+    const workType =
+      record.workType ??
+      resolveJobWorkType({
+        employment_type: record.employment_type ?? record.employmentType,
+        title,
+        description,
+        tags: record.tags,
+        tech_stack: techStack,
+        required_skills: requiredSkills,
+      });
 
     listings.push({
       jobId,
-      title: typeof record.title === "string" ? record.title.trim() : "",
+      title,
       company: typeof record.company === "string" ? record.company.trim() : "",
       techStack,
       requiredSkills,
-      description:
-        typeof record.description === "string"
-          ? record.description.slice(0, 800)
-          : "",
+      description,
+      workType,
+      employment_type:
+        typeof record.employment_type === "string"
+          ? record.employment_type
+          : typeof record.employmentType === "string"
+            ? record.employmentType
+            : workType === "contract"
+              ? "contract"
+              : "full-time",
     });
   }
 
@@ -659,29 +834,70 @@ export function readRetryAfterSeconds(error: unknown, fallback = 30): number {
 
 export async function fetchJobMatches(
   candidate: JobMatchCandidatePayload,
-  jobs: JobMatchJobPayload[]
-): Promise<JobMatchResult> {
-  const listings = parseJobListings(jobs);
+  jobs: JobMatchJobPayload[],
+  options?: { preferredWorkType?: JobWorkType | null }
+): Promise<JobMatchResult & { error?: string | null }> {
+  const availability = filterJobsForAvailabilityMatch(
+    jobs,
+    candidate,
+    options?.preferredWorkType
+  );
+
+  if (availability.error || availability.jobs.length === 0) {
+    return {
+      matches: [],
+      error:
+        availability.error ??
+        "No active openings match your availability preferences right now.",
+    };
+  }
+
+  const listings = parseJobListings(availability.jobs);
 
   try {
     const response = await fetch("/api/match-jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ candidate, jobs }),
+      body: JSON.stringify({
+        candidate: {
+          ...candidate,
+          preferredWorkType:
+            options?.preferredWorkType ?? candidate.preferredWorkType,
+        },
+        jobs: availability.jobs,
+      }),
       signal: AbortSignal.timeout(45_000),
     });
 
     const raw = (await readJsonResponse(response).catch(() => null)) as unknown;
     if (raw && typeof raw === "object") {
+      const record = raw as { error?: unknown; matches?: unknown };
+      if (typeof record.error === "string" && record.error.trim()) {
+        return { matches: [], error: record.error.trim() };
+      }
+
       const normalized = normalizeJobMatchResult(raw, listings, candidate);
       if (normalized.matches.length > 0 || listings.length === 0) {
-        return normalized;
+        // API already applies availability filtering + fit/audit ranking.
+        return { matches: normalized.matches, error: null };
       }
     }
 
-    return { matches: buildFallbackMatches(candidate, listings) };
+    return {
+      matches: rankJobMatchesByFitAndAudit(
+        buildFallbackMatches(candidate, listings),
+        candidate
+      ),
+      error: null,
+    };
   } catch (error) {
     console.warn("Job match API unavailable, using fallback.", error);
-    return { matches: buildFallbackMatches(candidate, listings) };
+    return {
+      matches: rankJobMatchesByFitAndAudit(
+        buildFallbackMatches(candidate, listings),
+        candidate
+      ),
+      error: null,
+    };
   }
 }

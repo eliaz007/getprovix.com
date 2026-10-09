@@ -6,6 +6,13 @@ import {
   normalizeCandidateTimezone,
   normalizeWorkPreference,
 } from "@/lib/work-preference";
+import {
+  MARKETPLACE_AVAILABILITY_SAVE_BLOCKED_MESSAGE,
+  normalizeContractHourlyRate,
+  normalizeContractHoursPerWeek,
+  normalizeOpenToContract,
+  normalizeOpenToFulltime,
+} from "@/lib/contract-availability";
 import { formatGpa } from "@/lib/gpa";
 import { normalizeGitHubUrl } from "@/lib/validate-github-url";
 import {
@@ -22,6 +29,7 @@ import {
 } from "@/lib/candidate-education";
 import {
   canEnableTalentPoolVisibility,
+  hasQualifyingTalentPoolAudit,
   TALENT_POOL_CONNECT_GITHUB_MESSAGE,
   TALENT_POOL_SCORE_REQUIRED_MESSAGE,
 } from "@/lib/talent-pool-visibility";
@@ -42,6 +50,10 @@ export type CandidateProfileSaveInput = {
   availabilityStatus: string;
   workPreference: string;
   candidateTimezone: string;
+  openToFulltime: boolean;
+  openToContract: boolean;
+  contractHoursPerWeek: string;
+  contractHourlyRate: number | string | null;
   isVisibleInPool: boolean;
   gradYear: string;
   gpa: string;
@@ -87,6 +99,14 @@ export function buildCandidateProfileUpdatePayload(
   const institution = primaryEducation.institution;
   const fieldOfStudy = primaryEducation.fieldOfStudy;
 
+  const openToContract = normalizeOpenToContract(input.openToContract);
+  const contractHours = openToContract
+    ? normalizeContractHoursPerWeek(input.contractHoursPerWeek)
+    : "";
+  const contractRate = openToContract
+    ? normalizeContractHourlyRate(input.contractHourlyRate)
+    : null;
+
   const payload: ProfilePayload = {
     full_name: nullIfEmpty(input.fullName),
     job_title: nullIfEmpty(input.jobTitle),
@@ -105,6 +125,10 @@ export function buildCandidateProfileUpdatePayload(
     availability_status: normalizeAvailabilityStatus(input.availabilityStatus),
     work_preference: normalizeWorkPreference(input.workPreference),
     timezone: normalizeCandidateTimezone(input.candidateTimezone),
+    open_to_fulltime: normalizeOpenToFulltime(input.openToFulltime),
+    open_to_contract: openToContract,
+    contract_hours_per_week: contractHours || null,
+    contract_hourly_rate: contractRate,
     is_visible_in_pool: Boolean(input.isVisibleInPool),
     visible_to_employers: Boolean(input.isVisibleInPool),
     graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
@@ -394,6 +418,48 @@ export async function persistCandidateProfile(
           data: null,
           error: { message: bioError },
           userMessage: bioError,
+        };
+      }
+    }
+
+    const wantsMarketplaceAvailability =
+      payload.open_to_fulltime === true || payload.open_to_contract === true;
+
+    if (wantsMarketplaceAvailability) {
+      const { data: scoreProfile } = await supabase
+        .from("profiles")
+        .select("production_score, audit_score")
+        .eq("id", userId)
+        .maybeSingle();
+
+      const profileScores = [
+        typeof scoreProfile?.production_score === "number"
+          ? scoreProfile.production_score
+          : null,
+        typeof scoreProfile?.audit_score === "number"
+          ? scoreProfile.audit_score
+          : null,
+      ];
+
+      let historyScore: number | null = null;
+      if (!hasQualifyingTalentPoolAudit(...profileScores)) {
+        const history = await supabase
+          .from("production_audit_history")
+          .select("production_score")
+          .eq("user_id", userId)
+          .gte("production_score", 75)
+          .limit(1)
+          .maybeSingle();
+        if (typeof history.data?.production_score === "number") {
+          historyScore = history.data.production_score;
+        }
+      }
+
+      if (!hasQualifyingTalentPoolAudit(...profileScores, historyScore)) {
+        return {
+          data: null,
+          error: { message: MARKETPLACE_AVAILABILITY_SAVE_BLOCKED_MESSAGE },
+          userMessage: MARKETPLACE_AVAILABILITY_SAVE_BLOCKED_MESSAGE,
         };
       }
     }
