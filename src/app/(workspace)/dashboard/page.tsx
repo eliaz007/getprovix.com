@@ -162,9 +162,11 @@ import {
   subscribeTalentPoolVisibility,
 } from "@/lib/talent-pool-visibility-sync";
 import {
+  employmentTypeFromJobType,
   fetchDashboardJobs,
   jobDisplayTags,
   parseJobListInput,
+  type JobEngagementType,
   type JobRow,
 } from "@/lib/jobs";
 import OpportunitiesJobFeed from "@/components/opportunities/opportunities-job-feed";
@@ -185,13 +187,16 @@ import {
   type WorkPreference,
 } from "@/lib/work-preference";
 import {
+  CONTRACT_BANDWIDTH_FILTER_OPTIONS,
   CONTRACT_HOURS_OPTIONS,
   DEFAULT_MARKETPLACE_ENGAGEMENT_MODE,
+  JOB_CONTRACT_BANDWIDTH_OPTIONS,
   formatContractBandwidthPill,
   formatContractRatePill,
   formatMarketplaceAuditScoreBadge,
   formatMarketplaceAvailabilityLockedAlert,
   formatMarketplaceEligibleBadge,
+  getContractDetailsValidationError,
   getPreferenceAvailabilityPresentation,
   getProvixInclusiveHourlyRate,
   isMarketplaceAvailabilityQualified,
@@ -203,6 +208,7 @@ import {
   normalizeOpenToContract,
   normalizeOpenToFulltime,
   resolveMarketplaceAuditScore,
+  type ContractBandwidthFilterValue,
   type ContractHoursPerWeek,
   type MarketplaceEngagementMode,
 } from "@/lib/contract-availability";
@@ -975,10 +981,16 @@ export default function DashboardPage() {
     new Set()
   );
   const [postJobModalOpen, setPostJobModalOpen] = useState(false);
+  const [newJobEngagementType, setNewJobEngagementType] =
+    useState<JobEngagementType>("full_time");
   const [newJobTitle, setNewJobTitle] = useState("");
   const [newJobCompany, setNewJobCompany] = useState("");
   const [newJobLocation, setNewJobLocation] = useState("");
   const [newJobSalaryRange, setNewJobSalaryRange] = useState("");
+  const [newJobContractHours, setNewJobContractHours] = useState<
+    ContractHoursPerWeek | ""
+  >("");
+  const [newJobHourlyRateRange, setNewJobHourlyRateRange] = useState("");
   const [newJobRequiredSkills, setNewJobRequiredSkills] = useState("");
   const [newJobTechStack, setNewJobTechStack] = useState("");
   const [isCreatingJob, setIsCreatingJob] = useState(false);
@@ -2277,7 +2289,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
   // --- SUB-MENU STATE FOR PROFILE TAB ---
   const [profileSubMenu, setProfileSubMenu] = useState<
-    "overview" | "academics" | "portfolio" | "settings" | "companyInfo" | "activeListings"
+    "overview" | "academics" | "portfolio" | "settings" | "companyInfo"
   >("overview");
 
   useEffect(() => {
@@ -2285,9 +2297,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       return;
     }
     setProfileSubMenu((current) =>
-      current === "companyInfo" ||
-      current === "activeListings" ||
-      current === "settings"
+      current === "companyInfo" || current === "settings"
         ? current
         : "companyInfo"
     );
@@ -2303,9 +2313,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         setProfileSubMenu("settings");
         return;
       }
-      setProfileSubMenu((current) =>
-        current === "activeListings" ? current : "companyInfo"
-      );
+      setProfileSubMenu("companyInfo");
       return;
     }
 
@@ -2331,7 +2339,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       | "portfolio"
       | "settings"
       | "companyInfo"
-      | "activeListings"
   ) => {
     setProfileSubMenu(submenu);
     if (submenu === "portfolio") {
@@ -2346,6 +2353,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       setNavProfileStudioSection?.("profile");
     }
   };
+
+  const [activeRolesPanelOpen, setActiveRolesPanelOpen] = useState(false);
 
   // --- CANDIDATE PROFILE STUDIO STATE (persisted to Supabase) ---
   const [title, setTitle] = useState("");
@@ -2826,6 +2835,15 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       const normalizedContractHours = gatedOpenToContract
         ? normalizeContractHoursPerWeek(contractHoursPerWeek)
         : "";
+      const contractDetailsError = getContractDetailsValidationError(
+        gatedOpenToContract,
+        normalizedContractHours,
+        normalizedContractRate
+      );
+      if (contractDetailsError) {
+        showToast(contractDetailsError);
+        return;
+      }
       const payload = buildCandidateProfileUpdatePayload(
         {
           fullName: profileData.name,
@@ -3156,8 +3174,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const [savedOpportunityIds, setSavedOpportunityIds] = useState<string[]>([]);
   const [talentSearch, setTalentSearch] = useState("");
   const [experienceFilter, setExperienceFilter] = useState("all");
-  const [roleTypeFilter, setRoleTypeFilter] = useState("all");
-  const [availabilityFilter, setAvailabilityFilter] = useState("all");
+  const [bandwidthFilter, setBandwidthFilter] =
+    useState<ContractBandwidthFilterValue>("all");
   const [marketplaceEngagementMode, setMarketplaceEngagementMode] =
     useState<MarketplaceEngagementMode>(DEFAULT_MARKETPLACE_ENGAGEMENT_MODE);
 
@@ -3348,16 +3366,13 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     const matchesExperience =
       experienceFilter === "all" ||
       candidate.experienceLevel === experienceFilter;
-    const matchesRoleType =
-      roleTypeFilter === "all" || candidate.roleType === roleTypeFilter;
-    const matchesAvailability =
-      availabilityFilter === "all" ||
-      normalizeAvailabilityStatus(candidate.availability) ===
-        availabilityFilter;
+    const matchesBandwidth =
+      marketplaceEngagementMode !== "contract" ||
+      bandwidthFilter === "all" ||
+      normalizeContractHoursPerWeek(candidate.contractHoursPerWeek) ===
+        bandwidthFilter;
 
-    return (
-      matchesSearch && matchesExperience && matchesRoleType && matchesAvailability
-    );
+    return matchesSearch && matchesExperience && matchesBandwidth;
   });
 
   const profileViewsCount = 28;
@@ -4271,9 +4286,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const employerCompanyName = savedCompanyName || "your company";
 
   const resetNewJobForm = () => {
+    setNewJobEngagementType("full_time");
     setNewJobTitle("");
     setNewJobLocation("");
     setNewJobSalaryRange("");
+    setNewJobContractHours("");
+    setNewJobHourlyRateRange("");
     setNewJobRequiredSkills("");
     setNewJobTechStack("");
     setNewJobCompany(employerCompanyName);
@@ -4311,14 +4329,33 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       showToast("Company name is required.");
       return;
     }
-    if (!newJobLocation.trim()) {
-      showToast("Location is required.");
-      return;
+
+    const isContractJob = newJobEngagementType === "contract";
+    const normalizedContractHours = isContractJob
+      ? normalizeContractHoursPerWeek(newJobContractHours)
+      : "";
+    const hourlyRateRange = newJobHourlyRateRange.trim();
+
+    if (isContractJob) {
+      if (!normalizedContractHours) {
+        showToast("Select a weekly bandwidth for contract sprints.");
+        return;
+      }
+      if (!hourlyRateRange) {
+        showToast("Target hourly rate is required for contract sprints.");
+        return;
+      }
+    } else {
+      if (!newJobLocation.trim()) {
+        showToast("Location is required.");
+        return;
+      }
+      if (!newJobSalaryRange.trim()) {
+        showToast("Salary range is required.");
+        return;
+      }
     }
-    if (!newJobSalaryRange.trim()) {
-      showToast("Salary range is required.");
-      return;
-    }
+
     const requiredSkills = parseJobListInput(newJobRequiredSkills);
     const techStack = parseJobListInput(newJobTechStack);
 
@@ -4335,34 +4372,67 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       required_skills: requiredSkills,
     });
 
+    const jobType = newJobEngagementType;
+    const employmentType = employmentTypeFromJobType(jobType);
+    const location = isContractJob
+      ? "Remote"
+      : newJobLocation.trim();
+    const salaryRange = isContractJob
+      ? hourlyRateRange
+      : formatSalaryRange(newJobSalaryRange.trim());
+
+    // job_type is the UI/API alias; employment_type is the persisted schema column.
     const jobPayload = {
       title: newJobTitle.trim(),
       company: newJobCompany.trim(),
-      location: newJobLocation.trim(),
-      salary_range: formatSalaryRange(newJobSalaryRange.trim()),
+      location,
+      salary_range: salaryRange,
       tags: displayTags,
       tech_stack: techStack.length > 0 ? techStack : null,
       required_skills: requiredSkills,
       employer_id: user.id,
+      job_type: jobType,
+      employment_type: employmentType,
+      contract_hours_per_week: isContractJob ? normalizedContractHours : null,
+      hourly_rate_range: isContractJob ? hourlyRateRange : null,
     };
 
     try {
+      const insertPayload = { ...jobPayload };
+      // `job_type` is not a DB column — map through employment_type only.
+      const { job_type: _jobTypeAlias, ...dbPayload } = insertPayload;
+
       let { data, error } = await supabase
         .from("jobs")
-        .insert(jobPayload)
+        .insert(dbPayload)
         .select("*")
         .single();
+
+      if (error && isMissingColumnError(error)) {
+        const {
+          contract_hours_per_week: _hours,
+          hourly_rate_range: _rate,
+          ...withoutContractFields
+        } = dbPayload;
+        const retryWithoutContract = await supabase
+          .from("jobs")
+          .insert(withoutContractFields)
+          .select("*")
+          .single();
+        data = retryWithoutContract.data;
+        error = retryWithoutContract.error;
+      }
 
       if (error && isMissingColumnError(error)) {
         const fallback = await supabase
           .from("jobs")
           .insert({
-            title: jobPayload.title,
-            company: jobPayload.company,
-            location: jobPayload.location,
-            salary_range: jobPayload.salary_range,
-            tags: jobPayload.tags,
-            employer_id: jobPayload.employer_id,
+            title: dbPayload.title,
+            company: dbPayload.company,
+            location: dbPayload.location,
+            salary_range: dbPayload.salary_range,
+            tags: dbPayload.tags,
+            employer_id: dbPayload.employer_id,
           })
           .select("*")
           .single();
@@ -4383,6 +4453,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       setPostJobModalOpen(false);
       resetNewJobForm();
       showToast("Job posted successfully!");
+      setActiveRolesPanelOpen(true);
     } catch (err) {
       console.error("Create job error:", err);
       showToast("Could not post job. Please try again.");
@@ -4670,7 +4741,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </div>
                   <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-zinc-400">
                     {isBusinessAccount
-                      ? "Manage your company profile, hiring requirements, and account settings."
+                      ? "Manage your company profile and account settings."
                       : "Manage your verified repositories, tech stack, and inbound visibility."}
                   </p>
                 </div>
@@ -4693,17 +4764,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
  }`}
                     >
                       Company Info
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setProfileSubMenu("activeListings")}
-                      className={`pb-3 text-xs font-bold transition-all relative cursor-pointer ${
- profileSubMenu === "activeListings"
- ? "text-brand border-b-2 border-brand"
- : "text-textMuted hover:text-textMuted"
- }`}
-                    >
-                      Active Listings
                     </button>
                   </>
                 ) : (
@@ -4866,93 +4926,6 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </div>
 
                     {renderProfileFormActions({ showShareLink: true })}
-                  </div>
-                )}
-
-                {profileSubMenu === "activeListings" && isBusinessAccount && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-bold text-textMain">
-                        Active Job Listings
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFocusApplicantsJobId(null);
-                            setActiveTab("applicants");
-                          }}
-                          className="text-[11px] font-bold text-brand hover:text-brand px-2 py-2 transition-colors cursor-pointer"
-                        >
-                          View applicants
-                        </button>
-                        <button
-                          type="button"
-                          onClick={openPostJobModal}
-                          className="bg-brand hover:bg-brandHover text-white text-[11px] font-bold px-3.5 py-2 rounded-lg transition-all cursor-pointer"
-                        >
-                          + Post New Job
-                        </button>
-                      </div>
-                    </div>
-
-                    {businessListings.length === 0 ? (
-                      <div className="rounded-xl border border-border bg-panel p-6 text-center">
-                        <p className="text-sm text-textMuted">
-                          No active listings yet. Post a job to start receiving
-                          candidate interest.
-                        </p>
-                      </div>
-                    ) : (
-                      businessListings.map((listing) => (
-                      <div
-                        key={listing.id}
-                        className="flex items-center justify-between p-4 bg-panel border border-border rounded-xl"
-                      >
-                        <div>
-                          <span className="font-bold text-sm text-textMain block">
-                            {listing.title}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => openApplicantsDrawer(listing)}
-                            disabled={listing.applicants <= 0}
-                            className={`text-[11px] mt-1 font-bold transition-colors ${
- listing.applicants > 0
- ? "text-brand hover:text-brand cursor-pointer"
- : "text-textMuted cursor-not-allowed"
- }`}
-                          >
-                            Interested ({listing.applicants})
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => toggleListingStatus(listing.id)}
-                          title="Click to toggle status"
-                          className={`px-2.5 py-1 text-[10px] font-bold rounded-full border transition-all cursor-pointer ${
- listing.status === "Active"
- ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
- : "bg-panel text-textMuted border-border"
- }`}
-                        >
-                          {listing.status}
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Delete ${listing.title}`}
-                          title="Delete listing"
-                          onClick={() => void deleteListing(listing)}
-                          disabled={deletingListingId === listing.id}
-                          className="p-1.5 rounded-lg border border-border text-textMuted hover:text-red-300 hover:border-red-500/30 hover:bg-red-500/10 transition-colors cursor-pointer disabled:opacity-60"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                        </button>
-                        </div>
-                      </div>
-                    ))
-                    )}
                   </div>
                 )}
 
@@ -6966,14 +6939,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     {newMatchesCount}
                   </span>
                 </div>
-                <div className="card-edge bg-panel p-5 rounded-2xl border border-border">
-                  <span className="text-[11px] font-bold text-textMuted uppercase tracking-widest block mb-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveRolesPanelOpen(true)}
+                  className="card-edge cursor-pointer rounded-2xl border border-border bg-panel p-5 text-left transition-colors hover:border-emerald-500/30 hover:bg-emerald-500/[0.03]"
+                >
+                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-widest text-textMuted">
                     Active Roles
                   </span>
-                  <span className="text-3xl font-mono font-extrabold tabular-nums text-emerald-400">
+                  <span className="font-mono text-3xl font-extrabold tabular-nums text-emerald-400">
                     {activeRolesCount}
                   </span>
-                </div>
+                </button>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -6984,7 +6961,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       Filters
                     </span>
                     <p className="text-xs text-textMuted">
-                      Narrow the pool by experience, role, and availability.
+                      {marketplaceEngagementMode === "contract"
+                        ? "Narrow contractors by experience and weekly bandwidth."
+                        : "Narrow full-time candidates by experience level."}
                     </p>
                   </div>
 
@@ -7006,45 +6985,34 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-textMuted mb-1.5 uppercase tracking-wide">
-                      Role Type
-                    </label>
-                    <select
-                      value={roleTypeFilter}
-                      onChange={(e) => setRoleTypeFilter(e.target.value)}
-                      className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
-                    >
-                      <option value="all">All Roles</option>
-                      <option value="Engineering">Engineering</option>
-                      <option value="Design">Design</option>
-                      <option value="Sales">Sales</option>
-                      <option value="Operations">Operations</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-textMuted mb-1.5 uppercase tracking-wide">
-                      Availability
-                    </label>
-                    <select
-                      value={availabilityFilter}
-                      onChange={(e) => setAvailabilityFilter(e.target.value)}
-                      className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
-                    >
-                      <option value="all">Any Status</option>
-                      <option value="Available Now">Available Now</option>
-                      <option value="Interviewing">Interviewing</option>
-                      <option value="Not Available">Not Available</option>
-                    </select>
-                  </div>
+                  {marketplaceEngagementMode === "contract" ? (
+                    <div>
+                      <label className="block text-[11px] font-bold text-textMuted mb-1.5 uppercase tracking-wide">
+                        Weekly Bandwidth
+                      </label>
+                      <select
+                        value={bandwidthFilter}
+                        onChange={(e) =>
+                          setBandwidthFilter(
+                            e.target.value as ContractBandwidthFilterValue
+                          )
+                        }
+                        className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-textMain focus:outline-none focus:border-brand"
+                      >
+                        {CONTRACT_BANDWIDTH_FILTER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
 
                   <button
                     type="button"
                     onClick={() => {
                       setExperienceFilter("all");
-                      setRoleTypeFilter("all");
-                      setAvailabilityFilter("all");
+                      setBandwidthFilter("all");
                       setTalentSearch("");
                     }}
                     className="w-full bg-panel hover:bg-panel text-textMuted text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer"
@@ -7074,7 +7042,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             type="button"
                             role="tab"
                             aria-selected={selected}
-                            onClick={() => setMarketplaceEngagementMode(mode)}
+                            onClick={() => {
+                              setMarketplaceEngagementMode(mode);
+                              if (mode !== "contract") {
+                                setBandwidthFilter("all");
+                              }
+                            }}
                             className={`flex-1 cursor-pointer rounded-lg px-4 py-2 text-xs font-bold transition-colors sm:flex-none ${
                               selected
                                 ? "bg-panel text-textMain border border-border shadow-sm"
@@ -7529,6 +7502,140 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
         <Toast message={toastMessage} variant={toastVariant} />
 
+        {/* ACTIVE ROLES SLIDE-OVER (Employer) */}
+        {activeRolesPanelOpen && isBusinessAccount ? (
+          <div className="fixed inset-0 z-50 flex justify-end">
+            <button
+              type="button"
+              aria-label="Close active roles"
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => setActiveRolesPanelOpen(false)}
+            />
+            <aside
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="active-roles-panel-title"
+              className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-border bg-panel shadow-2xl animate-fadeIn"
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-brand">
+                    Hiring
+                  </p>
+                  <h3
+                    id="active-roles-panel-title"
+                    className="mt-1 text-lg font-extrabold text-textMain"
+                  >
+                    Active Roles
+                  </h3>
+                  <p className="mt-1 text-xs text-textMuted">
+                    Manage listings without leaving the talent pool.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveRolesPanelOpen(false)}
+                  className="cursor-pointer rounded-lg p-1.5 text-textMuted transition-colors hover:bg-background hover:text-textMain"
+                >
+                  <Icons.XMark />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 border-b border-border px-5 py-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveRolesPanelOpen(false);
+                    setFocusApplicantsJobId(null);
+                    setActiveTab("applicants");
+                  }}
+                  className="cursor-pointer px-2 py-1.5 text-[11px] font-bold text-brand transition-colors hover:text-brand"
+                >
+                  View applicants
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveRolesPanelOpen(false);
+                    openPostJobModal();
+                  }}
+                  className="ml-auto cursor-pointer rounded-lg bg-brand px-3 py-1.5 text-[11px] font-bold text-white transition-all hover:bg-brandHover"
+                >
+                  + Post New Job
+                </button>
+              </div>
+
+              <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+                {businessListings.length === 0 ? (
+                  <div className="rounded-xl border border-border bg-background p-6 text-center">
+                    <p className="text-sm text-textMuted">
+                      No active listings yet. Post a job to start receiving
+                      candidate interest.
+                    </p>
+                  </div>
+                ) : (
+                  businessListings.map((listing) => (
+                    <div
+                      key={listing.id}
+                      className="rounded-xl border border-border bg-background p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="block truncate text-sm font-bold text-textMain">
+                            {listing.title}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveRolesPanelOpen(false);
+                              openApplicantsDrawer(listing);
+                            }}
+                            disabled={listing.applicants <= 0}
+                            className={`mt-1 text-[11px] font-bold transition-colors ${
+                              listing.applicants > 0
+                                ? "cursor-pointer text-brand hover:text-brand"
+                                : "cursor-not-allowed text-textMuted"
+                            }`}
+                          >
+                            Interested ({listing.applicants})
+                          </button>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleListingStatus(listing.id)}
+                            title="Click to toggle status"
+                            className={`cursor-pointer rounded-full border px-2.5 py-1 text-[10px] font-bold transition-all ${
+                              listing.status === "Active"
+                                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                                : "border-border bg-panel text-textMuted"
+                            }`}
+                          >
+                            {listing.status}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Delete ${listing.title}`}
+                            title="Delete listing"
+                            onClick={() => void deleteListing(listing)}
+                            disabled={deletingListingId === listing.id}
+                            className="cursor-pointer rounded-lg border border-border p-1.5 text-textMuted transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-60"
+                          >
+                            <Trash2
+                              className="h-3.5 w-3.5"
+                              aria-hidden="true"
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </aside>
+          </div>
+        ) : null}
+
         {/* POST NEW JOB MODAL (Employer) */}
         {postJobModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
@@ -7555,6 +7662,42 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
               <form onSubmit={handleCreateJob} className="space-y-4">
                 <div>
+                  <span className="mb-2 block text-[11px] font-bold uppercase text-textMuted">
+                    Engagement Type
+                  </span>
+                  <div
+                    role="radiogroup"
+                    aria-label="Engagement type"
+                    className="inline-flex w-full rounded-xl border border-border bg-background p-1"
+                  >
+                    {(
+                      [
+                        ["full_time", "Full-Time"],
+                        ["contract", "Contract Sprint"],
+                      ] as const
+                    ).map(([value, label]) => {
+                      const selected = newJobEngagementType === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => setNewJobEngagementType(value)}
+                          className={`flex-1 cursor-pointer rounded-lg px-3 py-2 text-xs font-bold transition-colors ${
+                            selected
+                              ? "border border-border bg-panel text-textMain shadow-sm"
+                              : "text-textMuted hover:text-textMain"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
                   <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
                     Job Title
                   </label>
@@ -7562,7 +7705,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     type="text"
                     value={newJobTitle}
                     onChange={(e) => setNewJobTitle(e.target.value)}
-                    placeholder="Senior Frontend Engineer"
+                    placeholder={
+                      newJobEngagementType === "contract"
+                        ? "Frontend Contract Sprint"
+                        : "Senior Frontend Engineer"
+                    }
                     required
                     className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
                   />
@@ -7583,40 +7730,97 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
-                      Location
-                    </label>
-                    <input
-                      type="text"
-                      value={newJobLocation}
-                      onChange={(e) => setNewJobLocation(e.target.value)}
-                      placeholder="Remote · US"
-                      required
-                      className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
-                      Salary Range
-                    </label>
-                    <div className="relative">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-textMuted">
-                        $
-                      </span>
-                      <input
-                        type="text"
-                        value={newJobSalaryRange}
-                        onChange={(e) => setNewJobSalaryRange(e.target.value)}
-                        placeholder="80,000 - 100,000 / yr"
-                        required
-                        className="w-full bg-background border border-border rounded-xl py-3 pr-3 pl-7 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
-                      />
-                    </div>
-                    <p className="text-[11px] text-textMuted mt-2">
-                      Example: $80,000 - $100,000 / yr (80k-100k also works)
-                    </p>
-                  </div>
+                  {newJobEngagementType === "contract" ? (
+                    <>
+                      <div>
+                        <label
+                          htmlFor="new-job-weekly-bandwidth"
+                          className="mb-2 block text-[11px] font-bold uppercase text-textMuted"
+                        >
+                          Weekly Bandwidth
+                        </label>
+                        <select
+                          id="new-job-weekly-bandwidth"
+                          value={newJobContractHours}
+                          onChange={(e) =>
+                            setNewJobContractHours(
+                              normalizeContractHoursPerWeek(e.target.value)
+                            )
+                          }
+                          required
+                          className="w-full rounded-xl border border-border bg-background p-3 text-sm text-textMain focus:border-brand focus:outline-none"
+                        >
+                          <option value="">Select weekly hours</option>
+                          {JOB_CONTRACT_BANDWIDTH_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="new-job-hourly-rate"
+                          className="mb-2 block text-[11px] font-bold uppercase text-textMuted"
+                        >
+                          Target Hourly Rate
+                        </label>
+                        <input
+                          id="new-job-hourly-rate"
+                          type="text"
+                          value={newJobHourlyRateRange}
+                          onChange={(e) =>
+                            setNewJobHourlyRateRange(e.target.value)
+                          }
+                          placeholder="$80 - $120 / hr"
+                          required
+                          className="w-full rounded-xl border border-border bg-background p-3 text-sm text-textMain placeholder:text-textMuted focus:border-brand focus:outline-none"
+                        />
+                        <p className="mt-2 text-[11px] text-textMuted">
+                          All-inclusive client rate range for this sprint.
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="mb-2 block text-[11px] font-bold uppercase text-textMuted">
+                          Location
+                        </label>
+                        <input
+                          type="text"
+                          value={newJobLocation}
+                          onChange={(e) => setNewJobLocation(e.target.value)}
+                          placeholder="Remote · US"
+                          required
+                          className="w-full rounded-xl border border-border bg-background p-3 text-sm text-textMain placeholder:text-textMuted focus:border-brand focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-[11px] font-bold uppercase text-textMuted">
+                          Salary Range
+                        </label>
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-textMuted">
+                            $
+                          </span>
+                          <input
+                            type="text"
+                            value={newJobSalaryRange}
+                            onChange={(e) =>
+                              setNewJobSalaryRange(e.target.value)
+                            }
+                            placeholder="80,000 - 100,000 / yr"
+                            required
+                            className="w-full rounded-xl border border-border bg-background py-3 pl-7 pr-3 text-sm text-textMain placeholder:text-textMuted focus:border-brand focus:outline-none"
+                          />
+                        </div>
+                        <p className="mt-2 text-[11px] text-textMuted">
+                          Example: $80,000 - $100,000 / yr (80k-100k also works)
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div>

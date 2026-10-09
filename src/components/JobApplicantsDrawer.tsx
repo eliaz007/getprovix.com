@@ -4,6 +4,12 @@ import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { generateMaskedAliasFromUuid, getCodenameInitials } from "@/lib/alias-generator";
 import { getPublicCandidateLocation } from "@/lib/candidate-anonymization";
+import {
+  normalizeContractHourlyRate,
+  normalizeContractHoursPerWeek,
+  normalizeOpenToContract,
+  normalizeOpenToFulltime,
+} from "@/lib/contract-availability";
 import { scoreTalentMatch } from "@/lib/match-heuristic";
 import { isVerifiedOnProvix } from "@/lib/published-candidate-profile";
 import { clampScore0to100 } from "@/lib/score-scale";
@@ -54,6 +60,10 @@ type ApplicantProfileRow = {
   availability_status?: string | null;
   availability?: string | null;
   work_preference?: string | null;
+  open_to_fulltime?: boolean | null;
+  open_to_contract?: boolean | null;
+  contract_hours_per_week?: string | null;
+  contract_hourly_rate?: number | string | null;
   role?: string | null;
   integrity_score?: number | string | null;
   audit_data?: unknown;
@@ -89,6 +99,10 @@ export type JobApplicantView = {
   email?: string | null;
   phone?: string | null;
   linkedinUrl?: string | null;
+  openToFulltime?: boolean;
+  openToContract?: boolean;
+  contractHoursPerWeek?: string | null;
+  contractHourlyRate?: number | null;
 };
 
 type JobApplicantsDrawerProps = {
@@ -192,6 +206,10 @@ const APPLICANT_PROFILE_COLUMNS = [
   "availability_status",
   "availability",
   "work_preference",
+  "open_to_fulltime",
+  "open_to_contract",
+  "contract_hours_per_week",
+  "contract_hourly_rate",
   "role",
   "integrity_score",
   "audit_data",
@@ -288,6 +306,13 @@ function mapApplicationToApplicant(
     email: isUnlocked ? resolveContactEmail(profile) : null,
     phone: isUnlocked ? profile?.phone?.trim() || null : null,
     linkedinUrl: isUnlocked ? profile?.linkedin_url?.trim() || null : null,
+    openToFulltime: normalizeOpenToFulltime(profile?.open_to_fulltime),
+    openToContract: normalizeOpenToContract(profile?.open_to_contract),
+    contractHoursPerWeek:
+      normalizeContractHoursPerWeek(profile?.contract_hours_per_week) || null,
+    contractHourlyRate: normalizeContractHourlyRate(
+      profile?.contract_hourly_rate
+    ),
   };
 }
 

@@ -15,6 +15,12 @@ import { resolvedProfileId } from "@/lib/resolve-candidate-profile";
 import { employerVisibleProductionAudit, parseProductionAuditFromProfileRow } from "@/lib/production-audit";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { normalizeAvailabilityStatus } from "@/lib/availability-status";
+import {
+  normalizeContractHourlyRate,
+  normalizeContractHoursPerWeek,
+  normalizeOpenToContract,
+  normalizeOpenToFulltime,
+} from "@/lib/contract-availability";
 import { DEFAULT_EXPERIENCE_LEVEL } from "@/lib/experience-level";
 import {
   parseProofOfWorkProjects,
@@ -61,6 +67,10 @@ export const APPLICANT_PROFILE_COLUMNS = [
   "availability_status",
   "availability",
   "work_preference",
+  "open_to_fulltime",
+  "open_to_contract",
+  "contract_hours_per_week",
+  "contract_hourly_rate",
   "role",
   "key_accomplishments",
   "integrity_score",
@@ -104,6 +114,10 @@ export type ApplicantProfileRow = {
   availability_status?: string | null;
   availability?: string | null;
   work_preference?: string | null;
+  open_to_fulltime?: boolean | null;
+  open_to_contract?: boolean | null;
+  contract_hours_per_week?: string | null;
+  contract_hourly_rate?: number | string | null;
   role?: string | null;
   key_accomplishments?: string | null;
   github_url?: string | null;
@@ -159,6 +173,10 @@ export type EmployerApplicantView = {
   workPreference: string;
   timezone: string;
   country: string;
+  openToFulltime: boolean;
+  openToContract: boolean;
+  contractHoursPerWeek: string | null;
+  contractHourlyRate: number | null;
   appliedAt: string;
   appliedAtLabel: string;
   status: ApplicantReviewStatus;
@@ -390,6 +408,13 @@ export function mapEmployerApplicant(input: {
     workPreference: normalizeWorkPreference(profile?.work_preference),
     timezone: normalizeCandidateTimezone(profile?.timezone) || "",
     country: profile?.country?.trim() || "",
+    openToFulltime: normalizeOpenToFulltime(profile?.open_to_fulltime),
+    openToContract: normalizeOpenToContract(profile?.open_to_contract),
+    contractHoursPerWeek:
+      normalizeContractHoursPerWeek(profile?.contract_hours_per_week) || null,
+    contractHourlyRate: normalizeContractHourlyRate(
+      profile?.contract_hourly_rate
+    ),
     appliedAt: input.createdAt,
     appliedAtLabel: formatApplicantAppliedAt(input.createdAt),
     status: applicantReviewStatus({
@@ -438,6 +463,10 @@ export type ApplicantIntelligenceSource = {
   workPreference?: string;
   timezone?: string;
   country?: string;
+  openToFulltime?: boolean;
+  openToContract?: boolean;
+  contractHoursPerWeek?: string | null;
+  contractHourlyRate?: number | null;
 };
 
 export function mapApplicantToTalentCandidate(
@@ -491,10 +520,13 @@ export function mapApplicantToTalentCandidate(
     experienceLevel: applicant.experienceLevel || DEFAULT_EXPERIENCE_LEVEL,
     roleType: "General",
     availability: applicant.availability || "Available Now",
-    openToFulltime: false,
-    openToContract: false,
-    contractHoursPerWeek: null,
-    contractHourlyRate: null,
+    openToFulltime: normalizeOpenToFulltime(applicant.openToFulltime),
+    openToContract: normalizeOpenToContract(applicant.openToContract),
+    contractHoursPerWeek:
+      normalizeContractHoursPerWeek(applicant.contractHoursPerWeek) || null,
+    contractHourlyRate: normalizeContractHourlyRate(
+      applicant.contractHourlyRate
+    ),
     bio: applicant.bio || "Candidate expressed interest in this role via Provix.",
     github: github.github,
     demoVideo: applicant.demoVideo || "",

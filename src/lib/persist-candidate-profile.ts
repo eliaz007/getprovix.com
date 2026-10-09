@@ -7,6 +7,7 @@ import {
   normalizeWorkPreference,
 } from "@/lib/work-preference";
 import {
+  getContractDetailsValidationError,
   MARKETPLACE_AVAILABILITY_SAVE_BLOCKED_MESSAGE,
   normalizeContractHourlyRate,
   normalizeContractHoursPerWeek,
@@ -106,6 +107,9 @@ export function buildCandidateProfileUpdatePayload(
   const contractRate = openToContract
     ? normalizeContractHourlyRate(input.contractHourlyRate)
     : null;
+  // Positive rate only — 0 is treated as unset when contract is open.
+  const persistedContractRate =
+    contractRate != null && contractRate > 0 ? contractRate : null;
 
   const payload: ProfilePayload = {
     full_name: nullIfEmpty(input.fullName),
@@ -128,7 +132,7 @@ export function buildCandidateProfileUpdatePayload(
     open_to_fulltime: normalizeOpenToFulltime(input.openToFulltime),
     open_to_contract: openToContract,
     contract_hours_per_week: contractHours || null,
-    contract_hourly_rate: contractRate,
+    contract_hourly_rate: persistedContractRate,
     is_visible_in_pool: Boolean(input.isVisibleInPool),
     visible_to_employers: Boolean(input.isVisibleInPool),
     graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
@@ -418,6 +422,25 @@ export async function persistCandidateProfile(
           data: null,
           error: { message: bioError },
           userMessage: bioError,
+        };
+      }
+    }
+
+    if (payload.open_to_contract === true) {
+      const contractDetailsError = getContractDetailsValidationError(
+        true,
+        typeof payload.contract_hours_per_week === "string"
+          ? payload.contract_hours_per_week
+          : null,
+        typeof payload.contract_hourly_rate === "number"
+          ? payload.contract_hourly_rate
+          : null
+      );
+      if (contractDetailsError) {
+        return {
+          data: null,
+          error: { message: contractDetailsError },
+          userMessage: contractDetailsError,
         };
       }
     }

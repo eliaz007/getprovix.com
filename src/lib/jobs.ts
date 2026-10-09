@@ -19,11 +19,25 @@ export type JobRow = {
   created_at?: string | null;
   description?: string | null;
   employment_type?: string | null;
+  /** Alias used in post-job UI: full_time | contract → stored as employment_type. */
+  job_type?: "full_time" | "contract" | null;
+  contract_hours_per_week?: string | null;
+  hourly_rate_range?: string | null;
 };
 
 export type JobWorkType = "fulltime" | "contract";
+export type JobEngagementType = "full_time" | "contract";
+
+export function employmentTypeFromJobType(
+  jobType: JobEngagementType
+): "full-time" | "contract" {
+  return jobType === "contract" ? "contract" : "full-time";
+}
 
 export const JOB_FEED_COLUMNS =
+  "id, title, company, location, salary_range, tags, tech_stack, required_skills, employer_id, status, created_at, employment_type, contract_hours_per_week, hourly_rate_range";
+
+const JOB_FEED_COLUMNS_WITH_EMPLOYMENT =
   "id, title, company, location, salary_range, tags, tech_stack, required_skills, employer_id, status, created_at, employment_type";
 
 const JOB_FEED_COLUMNS_WITHOUT_EMPLOYMENT =
@@ -149,6 +163,16 @@ export function toJobMatchJobPayload(job: JobRow) {
   };
 }
 
+function shouldFallBackWithoutContractFields(
+  error: JobFeedError | null
+): boolean {
+  return (
+    isSupabaseSchemaError(error) &&
+    (schemaErrorMentionsColumn(error, "contract_hours_per_week") ||
+      schemaErrorMentionsColumn(error, "hourly_rate_range"))
+  );
+}
+
 function shouldFallBackWithoutEmploymentType(
   error: JobFeedError | null
 ): boolean {
@@ -230,7 +254,21 @@ export async function fetchPublicJobFeed(supabase: SupabaseClient): Promise<{
       "public job feed"
     );
 
-    const withoutEmployment = shouldFallBackWithoutEmploymentType(first.error)
+    const withoutContract = shouldFallBackWithoutContractFields(first.error)
+      ? await withJobFeedTimeout(
+          supabase
+            .from("jobs")
+            .select(JOB_FEED_COLUMNS_WITH_EMPLOYMENT)
+            .eq("status", "active")
+            .order("created_at", { ascending: false })
+            .limit(JOB_FEED_LIMIT),
+          "public job feed (without contract fields)"
+        )
+      : first;
+
+    const withoutEmployment = shouldFallBackWithoutEmploymentType(
+      withoutContract.error
+    )
       ? await withJobFeedTimeout(
           supabase
             .from("jobs")
@@ -240,7 +278,7 @@ export async function fetchPublicJobFeed(supabase: SupabaseClient): Promise<{
             .limit(JOB_FEED_LIMIT),
           "public job feed (without employment_type)"
         )
-      : first;
+      : withoutContract;
 
     const result = shouldFallBackToLegacyColumns(withoutEmployment.error)
       ? await withJobFeedTimeout(
@@ -278,12 +316,21 @@ export async function fetchDashboardJobs(supabase: SupabaseClient): Promise<{
     .select(JOB_FEED_COLUMNS)
     .order("created_at", { ascending: false });
 
-  const withoutEmployment = shouldFallBackWithoutEmploymentType(first.error)
+  const withoutContract = shouldFallBackWithoutContractFields(first.error)
+    ? await supabase
+        .from("jobs")
+        .select(JOB_FEED_COLUMNS_WITH_EMPLOYMENT)
+        .order("created_at", { ascending: false })
+    : first;
+
+  const withoutEmployment = shouldFallBackWithoutEmploymentType(
+    withoutContract.error
+  )
     ? await supabase
         .from("jobs")
         .select(JOB_FEED_COLUMNS_WITHOUT_EMPLOYMENT)
         .order("created_at", { ascending: false })
-    : first;
+    : withoutContract;
 
   const result = shouldFallBackToLegacyColumns(withoutEmployment.error)
     ? await supabase

@@ -6,6 +6,38 @@ export const CONTRACT_HOURS_OPTIONS = [
 
 export type ContractHoursPerWeek = (typeof CONTRACT_HOURS_OPTIONS)[number];
 
+/** Employer talent-pool bandwidth filter labels → stored profile values. */
+export const CONTRACT_BANDWIDTH_FILTER_OPTIONS = [
+  {
+    value: "all",
+    label: "All Capacities",
+  },
+  {
+    value: "10 hrs/week (Fractional / Nights & Weekends)",
+    label: "10 hrs/week (Fractional)",
+  },
+  {
+    value: "20 hrs/week (Part-Time Core Sprint)",
+    label: "20 hrs/week (Core Sprint)",
+  },
+  {
+    value: "30+ hrs/week (Dedicated Fractional)",
+    label: "30+ hrs/week (Dedicated)",
+  },
+] as const;
+
+export type ContractBandwidthFilterValue =
+  (typeof CONTRACT_BANDWIDTH_FILTER_OPTIONS)[number]["value"];
+
+/** Job posting Weekly Bandwidth dropdown (excludes "All Capacities"). */
+export const JOB_CONTRACT_BANDWIDTH_OPTIONS =
+  CONTRACT_BANDWIDTH_FILTER_OPTIONS.filter(
+    (option) => option.value !== "all"
+  ) as ReadonlyArray<{
+    value: ContractHoursPerWeek;
+    label: string;
+  }>;
+
 /** Provix marketplace markup on contractor take-home (all-inclusive founder rate). */
 export const PROVIX_CONTRACT_RATE_MARKUP = 1.25;
 
@@ -95,25 +127,48 @@ export function formatContractBandwidthPill(
   return normalized.replace("hrs/week", "hrs/wk");
 }
 
-export function formatContractRatePill(
-  rate?: number | string | null
-): string | null {
-  const normalized = normalizeContractHourlyRate(rate);
-  if (normalized == null) {
-    return null;
-  }
-  return `$${normalized}/hr`;
-}
-
 /** Founder-facing all-inclusive rate from contractor take-home net. */
 export function getProvixInclusiveHourlyRate(
   netRate?: number | string | null
 ): number | null {
   const normalized = normalizeContractHourlyRate(netRate);
-  if (normalized == null) {
+  if (normalized == null || normalized <= 0) {
     return null;
   }
   return Math.round(normalized * PROVIX_CONTRACT_RATE_MARKUP);
+}
+
+/** Founder-facing pill — all-inclusive Provix client rate, not net take-home. */
+export function formatContractRatePill(
+  rate?: number | string | null
+): string | null {
+  const inclusive = getProvixInclusiveHourlyRate(rate);
+  if (inclusive == null) {
+    return null;
+  }
+  return `$${inclusive}/hr`;
+}
+
+export const CONTRACT_DETAILS_REQUIRED_MESSAGE =
+  "Select weekly bandwidth and a target payout rate greater than $0 / hr before opening contract work.";
+
+/** When contract is open, weekly hours and a positive hourly rate are required. */
+export function getContractDetailsValidationError(
+  openToContract: boolean,
+  hours?: string | null,
+  rate?: number | string | null
+): string | null {
+  if (!openToContract) {
+    return null;
+  }
+
+  const normalizedHours = normalizeContractHoursPerWeek(hours);
+  const normalizedRate = normalizeContractHourlyRate(rate);
+  if (!normalizedHours || normalizedRate == null || normalizedRate <= 0) {
+    return CONTRACT_DETAILS_REQUIRED_MESSAGE;
+  }
+
+  return null;
 }
 
 export function formatMarketplaceAuditScoreBadge(

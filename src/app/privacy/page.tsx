@@ -3,11 +3,17 @@ import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
   "Privacy Policy",
-  "How Provix collects, uses, and protects your data across verification, matching, and hiring workflows.",
+  "How Provix collects, uses, and protects your data across verification, matching, hiring, and contract marketplace workflows.",
   "/privacy"
 );
 
-const sections = [
+type PrivacySection = {
+  title: string;
+  paragraphs?: string[];
+  bullets?: Array<{ label?: string; text: string }>;
+};
+
+const sections: PrivacySection[] = [
   {
     title: "Information We Collect",
     paragraphs: [
@@ -25,6 +31,19 @@ const sections = [
     ],
   },
   {
+    title: "Contract Profile Data & Financial Processing",
+    bullets: [
+      {
+        label: "Visibility:",
+        text: 'If a developer toggles "Open for Contract Work," their target hourly rate and weekly capacity tiers are shared with verified, authenticated employer accounts on Provix to facilitate matches.',
+      },
+      {
+        label: "Payment Processing:",
+        text: "Financial billing and payment collection are conducted via third-party processors (such as Stripe). Provix does not collect, log, or store complete credit card or banking details directly on its servers.",
+      },
+    ],
+  },
+  {
     title: "Third-Party Infrastructure",
     paragraphs: [
       "Provix relies on trusted infrastructure and service providers to run the product:",
@@ -32,6 +51,7 @@ const sections = [
       "Vercel — application hosting, edge delivery, and deployment infrastructure.",
       "Google Gemini AI — AI-assisted screening, matching, essay review, college fit analysis, and related structured outputs sent through our API routes.",
       "GitHub API — repository metadata and public code signals used during proof-of-work and deep screening workflows when candidates or employers provide GitHub URLs.",
+      "Stripe and similar payment processors — billing and payment collection for marketplace engagements when those features are enabled.",
       "These providers process data only as needed to deliver their services to Provix and are subject to their own privacy and security practices.",
     ],
   },
@@ -72,9 +92,9 @@ export default function PrivacyPage() {
             Privacy Policy
           </h1>
           <p className="mt-4 text-sm text-textMuted leading-relaxed">
-            Effective date: August 16, 2026. This policy describes how Provix
+            Effective date: October 8, 2026. This policy describes how Provix
             collects, uses, and protects information when you use our verified
-            candidate intelligence platform.
+            candidate intelligence platform and contract talent marketplace.
           </p>
         </header>
 
@@ -85,9 +105,23 @@ export default function PrivacyPage() {
                 {section.title}
               </h2>
               <div className="space-y-3 text-sm leading-relaxed text-textMuted">
-                {section.paragraphs.map((paragraph) => (
+                {section.paragraphs?.map((paragraph) => (
                   <p key={paragraph}>{paragraph}</p>
                 ))}
+                {section.bullets ? (
+                  <ul className="list-disc space-y-2 pl-5 marker:text-zinc-600">
+                    {section.bullets.map((bullet) => (
+                      <li key={`${bullet.label ?? ""}${bullet.text}`}>
+                        {bullet.label ? (
+                          <span className="font-semibold text-textMain">
+                            {bullet.label}{" "}
+                          </span>
+                        ) : null}
+                        {bullet.text}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
             </section>
           ))}
