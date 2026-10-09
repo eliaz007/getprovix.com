@@ -165,9 +165,11 @@ export function filterJobsForAvailabilityMatch<T extends JobMatchJobPayload>(
           title: typeof job.title === "string" ? job.title : "",
           description:
             typeof job.description === "string" ? job.description : "",
-          tags: job.tags,
-          tech_stack: job.techStack ?? job.tech_stack,
-          required_skills: job.requiredSkills ?? job.required_skills,
+          tags: normalizeStringArray(job.tags),
+          tech_stack: normalizeStringArray(job.techStack ?? job.tech_stack),
+          required_skills: normalizeStringArray(
+            job.requiredSkills ?? job.required_skills
+          ),
         })
     )
   );
@@ -593,7 +595,7 @@ export function parseJobListings(jobs: unknown): ParsedJobListing[] {
         employment_type: record.employment_type ?? record.employmentType,
         title,
         description,
-        tags: record.tags,
+        tags: normalizeStringArray(record.tags),
         tech_stack: techStack,
         required_skills: requiredSkills,
       });
