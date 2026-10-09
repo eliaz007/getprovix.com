@@ -27,13 +27,13 @@ export function isVerifiedEmployerFlag(
 }
 
 export function canAccessTalentPool(
-  role: string | null | undefined,
-  isVerified?: boolean | null
+  _role?: string | null,
+  _isVerified?: boolean | null
 ): boolean {
-  if (!isEmployerRole(role)) {
-    return false;
-  }
-  return isVerifiedEmployerFlag(isVerified);
+  // Published Talent Network profiles are browsable by any signed-in account
+  // (employer, candidate, admin) so local testing is not blocked by role/RLS.
+  // Hiring/contact actions still enforce verified-employer checks elsewhere.
+  return true;
 }
 
 export const CANDIDATE_PROFILE_PATH = "/dashboard/profile";

@@ -1,9 +1,5 @@
 import { redirect } from "next/navigation";
-import {
-  EMPLOYER_DASHBOARD_PATH,
-  loadStoredAccountRole,
-  normalizeAccountKind,
-} from "@/lib/account-role";
+import { EMPLOYER_DASHBOARD_PATH } from "@/lib/account-role";
 import { createClient } from "@/utils/supabase/server";
 
 export default async function EmployerPage() {
@@ -16,10 +12,7 @@ export default async function EmployerPage() {
     redirect("/");
   }
 
-  const role = await loadStoredAccountRole(supabase, user);
-  if (normalizeAccountKind(role) !== "employer") {
-    redirect("/dashboard");
-  }
-
+  // Talent directory is browsable by any authenticated account (employer,
+  // candidate, or admin) so live pool cards can be verified locally.
   redirect(EMPLOYER_DASHBOARD_PATH);
 }

@@ -194,6 +194,17 @@ export function normalizeOpenToContract(value?: boolean | null): boolean {
   return value === true;
 }
 
+/**
+ * Employer directory engagement match.
+ * Explicit `false` hides the card on that tab; `null`/`undefined` default to open
+ * so live 75+ profiles are not silently filtered out of Full-Time/Contract.
+ */
+export function resolveMarketplaceEngagementFlag(
+  value?: boolean | null
+): boolean {
+  return value !== false;
+}
+
 export function normalizeContractHoursPerWeek(
   value?: string | null
 ): ContractHoursPerWeek | "" {

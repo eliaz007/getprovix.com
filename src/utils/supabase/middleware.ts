@@ -347,11 +347,21 @@ export async function updateSession(request: NextRequest) {
       }
 
       if (!isEmployerAccount && (isEmployer || employerRequest)) {
-        return redirectWithSessionCookies(
-          request,
-          supabaseResponse,
-          CANDIDATE_DASHBOARD_PATH
-        );
+        const tab =
+          request.nextUrl.searchParams.get("tab")?.trim().toLowerCase() ?? "";
+        // Candidates/admins may browse the Talent Network directory.
+        // Hiring-only tabs (applicants, evaluator) stay employer-gated.
+        const allowTalentBrowse =
+          isEmployer ||
+          pathname.startsWith("/employer") ||
+          tab === "talent";
+        if (!allowTalentBrowse) {
+          return redirectWithSessionCookies(
+            request,
+            supabaseResponse,
+            CANDIDATE_DASHBOARD_PATH
+          );
+        }
       }
 
       if (

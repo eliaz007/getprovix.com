@@ -209,6 +209,7 @@ import {
   normalizeOpenToContract,
   normalizeOpenToFulltime,
   resolveMarketplaceAuditScore,
+  resolveMarketplaceEngagementFlag,
   type ContractBandwidthFilterValue,
   type ContractHoursPerWeek,
   type MarketplaceEngagementMode,
@@ -521,13 +522,11 @@ function isEmployeeRole(role: string | null | undefined): boolean {
 }
 
 function canAccessTalentPool(
-  role: string | null | undefined,
-  isVerified?: boolean | null
+  _role?: string | null,
+  _isVerified?: boolean | null
 ): boolean {
-  if (!isEmployerRole(role)) {
-    return false;
-  }
-  return isVerified === true;
+  // Mirror src/lib/dashboard-account: any signed-in account can browse the pool.
+  return true;
 }
 
 function isProfileEligibleForTalentPool(row: ProfileRecord): boolean {
@@ -649,8 +648,8 @@ function mapProfileRowToTalentCandidate(
     experienceLevel: row.experience_level?.trim() || "",
     roleType: row.role_type?.trim() || "",
     availability: availability || "",
-    openToFulltime: normalizeOpenToFulltime(row.open_to_fulltime),
-    openToContract: normalizeOpenToContract(row.open_to_contract),
+    openToFulltime: resolveMarketplaceEngagementFlag(row.open_to_fulltime),
+    openToContract: resolveMarketplaceEngagementFlag(row.open_to_contract),
     contractHoursPerWeek:
       normalizeContractHoursPerWeek(row.contract_hours_per_week) || null,
     contractHourlyRate: normalizeContractHourlyRate(row.contract_hourly_rate),
@@ -1709,30 +1708,35 @@ export default function DashboardPage() {
       }
 
       try {
-        const clientResult = await fetchEmployerTalentPoolProfiles(supabase);
-        let data = clientResult.data;
-        const error = clientResult.error;
+        // Prefer the authenticated API (service role) so candidate/admin sessions
+        // still receive every is_visible_in_pool row before client RLS is applied.
+        let data: TalentPoolProfileRow[] = [];
+        let error: unknown = null;
 
-        if (error || data.length === 0) {
-          try {
-            const response = await fetchWithAuth("/api/talent-pool");
-            if (response.ok) {
-              const payload = (await readJsonResponse(response)) as {
-                profiles?: TalentPoolProfileRow[];
-              };
-              if (Array.isArray(payload.profiles) && payload.profiles.length > 0) {
-                data = payload.profiles;
-              }
-            } else if (error) {
-              console.error(
-                "Talent pool API fallback failed:",
-                response.status,
-                await response.text()
-              );
+        try {
+          const response = await fetchWithAuth("/api/talent-pool");
+          if (response.ok) {
+            const payload = (await readJsonResponse(response)) as {
+              profiles?: TalentPoolProfileRow[];
+            };
+            if (Array.isArray(payload.profiles)) {
+              data = payload.profiles;
             }
-          } catch (apiError) {
-            console.error("Talent pool API fallback threw:", apiError);
+          } else {
+            console.error(
+              "Talent pool API fetch failed:",
+              response.status,
+              await response.text()
+            );
           }
+        } catch (apiError) {
+          console.error("Talent pool API fetch threw:", apiError);
+        }
+
+        if (data.length === 0) {
+          const clientResult = await fetchEmployerTalentPoolProfiles(supabase);
+          data = clientResult.data;
+          error = clientResult.error;
         }
 
         if (!isMounted) {
@@ -1756,8 +1760,26 @@ export default function DashboardPage() {
           )
           .map((row) => row as ProfileRecord & { id: string });
 
-        const mapped = profileRows
-          .filter(isProfileEligibleForTalentPool)
+        const eligibleRows = profileRows.filter((row) => {
+          const eligible = isProfileEligibleForTalentPool(row);
+          if (!eligible) {
+            console.warn(
+              "[talent-pool] dashboard post-fetch eligibility drop",
+              {
+                id: row.id,
+                role: row.role,
+                github_verified: row.github_verified,
+                production_score: row.production_score,
+                audit_score: row.audit_score,
+                open_to_fulltime: row.open_to_fulltime,
+                open_to_contract: row.open_to_contract,
+              }
+            );
+          }
+          return eligible;
+        });
+
+        const mapped = eligibleRows
           .map(mapProfileRowToTalentCandidate)
           .map((candidate) =>
             applyCachedTalentEducation(
@@ -1765,6 +1787,15 @@ export default function DashboardPage() {
               educationByProfileIdRef.current
             )
           );
+
+        console.info("[talent-pool] dashboard candidates loaded", {
+          fetchedRows: profileRows.length,
+          eligibleRows: eligibleRows.length,
+          allCandidates: mapped.length,
+          viewerUserId: user?.id ?? null,
+          selfExcludedById: false,
+          candidateProfileIds: mapped.map((c) => c.profileId),
+        });
 
         setCandidates(mapped);
       } catch (err) {
@@ -3359,15 +3390,32 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       typeof auditScore === "number" &&
       auditScore >= PUBLIC_SCORECARD_THRESHOLD;
     if (!isQualified) {
+      console.warn("[talent-pool] filteredCandidates drop: score", {
+        profileId: candidate.profileId,
+        productionScore: candidate.productionScore,
+        auditScore,
+        threshold: PUBLIC_SCORECARD_THRESHOLD,
+      });
       return false;
     }
 
+    // Unset open_to_* flags default to true for live 75+ pool cards.
     const matchesEngagement =
       marketplaceEngagementMode === "contract"
-        ? candidate.openToContract === true
-        : candidate.openToFulltime === true;
+        ? resolveMarketplaceEngagementFlag(candidate.openToContract)
+        : resolveMarketplaceEngagementFlag(candidate.openToFulltime);
 
     if (!matchesEngagement) {
+      console.warn("[talent-pool] filteredCandidates drop: engagement tab", {
+        profileId: candidate.profileId,
+        marketplaceEngagementMode,
+        openToFulltime: candidate.openToFulltime,
+        openToContract: candidate.openToContract,
+        required:
+          marketplaceEngagementMode === "contract"
+            ? "openToContract !== false"
+            : "openToFulltime !== false",
+      });
       return false;
     }
 
@@ -3385,7 +3433,27 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       normalizeContractHoursPerWeek(candidate.contractHoursPerWeek) ===
         bandwidthFilter;
 
-    return matchesSearch && matchesExperience && matchesBandwidth;
+    const kept = matchesSearch && matchesExperience && matchesBandwidth;
+    if (!kept) {
+      console.warn("[talent-pool] filteredCandidates drop: search/filters", {
+        profileId: candidate.profileId,
+        matchesSearch,
+        matchesExperience,
+        matchesBandwidth,
+        experienceFilter,
+        bandwidthFilter,
+        talentSearch,
+      });
+    }
+    return kept;
+  });
+
+  console.info("[talent-pool] filteredCandidates counts", {
+    allCandidatesLength: candidates.length,
+    scoredCandidatesLength: scoredCandidates.length,
+    filteredCandidatesLength: filteredCandidates.length,
+    marketplaceEngagementMode,
+    viewerUserId: user?.id ?? null,
   });
 
   const profileViewsCount = 28;

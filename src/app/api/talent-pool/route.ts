@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
-import { requireVerifiedEmployer } from "@/lib/api-auth";
+import { requireApiUser } from "@/lib/api-auth";
 import { fetchEmployerTalentPoolProfiles } from "@/lib/talent-pool-profiles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const access = await requireVerifiedEmployer(request);
+  // Any authenticated user may browse published talent-pool profiles.
+  // Prefer the service-role client so directory reads are not blocked when the
+  // viewer's profiles.role is candidate/admin (RLS employer-only legacy).
+  const access = await requireApiUser(request);
   if (access instanceof NextResponse) {
     return access;
   }

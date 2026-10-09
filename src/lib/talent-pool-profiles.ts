@@ -5,7 +5,10 @@ import {
   parseIsSelfTaught,
 } from "@/lib/candidate-education";
 import { isEmployerRole } from "@/lib/dashboard-account";
-import { isPublishedVerifiedCandidateProfile } from "@/lib/published-candidate-profile";
+import {
+  explainPublishedVerifiedCandidateRejection,
+  isPublishedVerifiedCandidateProfile,
+} from "@/lib/published-candidate-profile";
 import {
   findMentionedColumn,
   isSupabaseSchemaError,
@@ -411,13 +414,65 @@ function isEmployerProfileRow(row: TalentPoolProfileRow): boolean {
   return isEmployerRole(typeof row.role === "string" ? row.role : null);
 }
 
+function explainTalentPoolRowRejection(
+  row: TalentPoolProfileRow
+): string | null {
+  if (isEmployerProfileRow(row)) {
+    return `isEmployerProfileRow (role=${String(row.role)})`;
+  }
+
+  return explainPublishedVerifiedCandidateRejection(row);
+}
+
 function filterTalentPoolRows(
   rows: TalentPoolProfileRow[]
 ): TalentPoolProfileRow[] {
-  return rows.filter(
-    (row) =>
-      !isEmployerProfileRow(row) && isPublishedVerifiedCandidateProfile(row)
-  );
+  console.info("[talent-pool] filterTalentPoolRows: raw rows from Supabase", {
+    count: rows.length,
+    rows: rows.map((row) => ({
+      id: row.id,
+      role: row.role,
+      is_visible_in_pool: row.is_visible_in_pool,
+      visible_to_employers: row.visible_to_employers,
+      github_verified: row.github_verified,
+      production_score: row.production_score,
+      audit_score: row.audit_score,
+      open_to_fulltime: row.open_to_fulltime,
+      open_to_contract: row.open_to_contract,
+      full_name: row.full_name ?? row.name,
+      job_title: row.job_title ?? row.headline,
+      has_bio: typeof row.bio === "string" && row.bio.trim().length > 0,
+      has_skills: Array.isArray(row.skills)
+        ? row.skills.length
+        : typeof row.skills === "string"
+          ? row.skills.length
+          : 0,
+    })),
+  });
+
+  const kept: TalentPoolProfileRow[] = [];
+  for (const row of rows) {
+    const rejection = explainTalentPoolRowRejection(row);
+    if (rejection) {
+      console.warn("[talent-pool] filterTalentPoolRows: rejected row", {
+        id: row.id,
+        reason: rejection,
+        isEmployerProfileRow: isEmployerProfileRow(row),
+        isPublishedVerifiedCandidateProfile:
+          isPublishedVerifiedCandidateProfile(row),
+      });
+      continue;
+    }
+    kept.push(row);
+  }
+
+  console.info("[talent-pool] filterTalentPoolRows: kept rows", {
+    rawCount: rows.length,
+    keptCount: kept.length,
+    keptIds: kept.map((row) => row.id),
+  });
+
+  return kept;
 }
 
 function cacheBustTalentPoolQuery<
@@ -446,6 +501,10 @@ export async function fetchEmployerTalentPoolProfiles(
     const { data, error } = await query;
 
     if (!error) {
+      console.info("[talent-pool] fetchEmployerTalentPoolProfiles query ok", {
+        visibilityColumn,
+        rawCount: (data ?? []).length,
+      });
       const filtered = filterTalentPoolRows(
         (data ?? []) as TalentPoolProfileRow[]
       );

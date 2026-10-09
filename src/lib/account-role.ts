@@ -240,6 +240,14 @@ export function resolvePostAuthDestination(input: {
     !employer &&
     isEmployerDashboardRequest(requestedUrl.pathname, requestedUrl.search)
   ) {
+    const tab = requestedUrl.searchParams.get("tab")?.trim().toLowerCase() ?? "";
+    // Allow candidates/admins to open the Talent Network directory.
+    if (
+      requestedUrl.pathname.startsWith("/employer") ||
+      tab === "talent"
+    ) {
+      return EMPLOYER_DASHBOARD_PATH;
+    }
     return CANDIDATE_DASHBOARD_PATH;
   }
 

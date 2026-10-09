@@ -451,17 +451,42 @@ export function hasCandidateProofOfWork(
 export function isPublishedVerifiedCandidateProfile(
   row: PublishedCandidateProfileRow
 ): boolean {
+  return explainPublishedVerifiedCandidateRejection(row) === null;
+}
+
+/** Null when the row passes; otherwise the exact failing gate. */
+export function explainPublishedVerifiedCandidateRejection(
+  row: PublishedCandidateProfileRow
+): string | null {
   if (!row.id?.trim()) {
-    return false;
+    return "missing id";
   }
 
   if (!profileRowIsPublicToEmployers(row)) {
-    return false;
+    return `not public to employers (is_visible_in_pool=${String(row.is_visible_in_pool)}, visible_to_employers=${String(row.visible_to_employers)})`;
   }
 
-  if (isEmployerRole(row.role) || isEmployeeRole(row.role)) {
-    return false;
+  if (isEmployerRole(row.role)) {
+    return `role is employer/business (role=${String(row.role)})`;
   }
 
-  return isVerifiedOnProvix(row);
+  if (isEmployeeRole(row.role)) {
+    return `role is employee (role=${String(row.role)})`;
+  }
+
+  if (row.github_verified !== true) {
+    return `github_verified !== true (github_verified=${String(row.github_verified)})`;
+  }
+
+  if (!hasCoreTalentPoolProfileFields(row)) {
+    const missing = getMissingTalentPoolProfileFieldLabels(row);
+    return `missing core profile fields: ${missing.join(", ") || "unknown"}`;
+  }
+
+  const productionScore = resolveHighestProductionScore(row);
+  if (!hasQualifyingTalentPoolAudit(productionScore)) {
+    return `score below 75 (production_score=${String(row.production_score)}, audit_score=${String(row.audit_score)}, resolved=${String(productionScore)})`;
+  }
+
+  return null;
 }

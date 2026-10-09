@@ -4,7 +4,10 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { consumeRateLimit, tooManyRequestsResponse } from "@/lib/ip-rate-limit";
 import { createClient } from "@/utils/supabase/server";
 import { resolveAccountRole } from "@/lib/account-role";
-import { canAccessTalentPool, isEmployerRole } from "@/lib/dashboard-account";
+import {
+  isEmployerRole,
+  isVerifiedEmployerFlag,
+} from "@/lib/dashboard-account";
 import { fetchProfileForCandidateId } from "@/lib/resolve-candidate-profile";
 
 const AUTHENTICATED_AI_LIMIT = 30;
@@ -118,7 +121,7 @@ export async function rejectUnlessVerifiedEmployer(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (!canAccessTalentPool(viewerRole, viewerRow?.is_verified === true)) {
+    if (!isVerifiedEmployerFlag(viewerRow?.is_verified === true)) {
       return NextResponse.json(
         {
           error:

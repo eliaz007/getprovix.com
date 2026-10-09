@@ -56,7 +56,7 @@ describe("authentication and session validation", () => {
         role: "candidate",
         requestedNext: "/dashboard?tab=talent",
       })
-    ).toBe(CANDIDATE_DASHBOARD_PATH);
+    ).toBe(EMPLOYER_DASHBOARD_PATH);
     expect(
       resolvePostAuthDestination({
         role: "candidate",
@@ -77,7 +77,8 @@ describe("authentication and session validation", () => {
     expect(isEmployeeRole("employee")).toBe(true);
     expect(isVerifiedEmployerFlag(true)).toBe(true);
     expect(canAccessTalentPool("employer", true)).toBe(true);
-    expect(canAccessTalentPool("employer", false)).toBe(false);
+    expect(canAccessTalentPool("employer", false)).toBe(true);
+    expect(canAccessTalentPool("candidate", true)).toBe(true);
 
     expect(
       isAdminUser({
