@@ -2,6 +2,7 @@ import {
   isEmployeeRole,
   isEmployerRole,
 } from "@/lib/dashboard-account";
+import { DEFAULT_AVAILABILITY_STATUS } from "@/lib/availability-status";
 import { parseExecutiveBrief } from "@/lib/executive-brief";
 import {
   githubAuditHasFetchedArtifacts,
@@ -9,13 +10,17 @@ import {
 } from "@/lib/github-audit";
 import { parseRepoFilesystemEvidence } from "@/lib/repo-filesystem";
 import { profileRowIsPublicToEmployers } from "@/lib/opportunities-metrics";
-import { canPublishProductionScore } from "@/lib/production-audit";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   hasUsableExternalProjects,
   normalizeExternalProjects,
 } from "@/lib/external-projects";
 import { hasUsableGitHubAuditTarget } from "@/lib/validate-github-url";
+import { hasQualifyingTalentPoolAudit } from "@/lib/talent-pool-visibility";
+import {
+  DEFAULT_CANDIDATE_TIMEZONE,
+  DEFAULT_WORK_PREFERENCE,
+} from "@/lib/work-preference";
 
 export type PublishedCandidateProfileRow = {
   id?: string | null;
@@ -82,11 +87,8 @@ function hasAnyNonEmptyText(...values: unknown[]): boolean {
   return values.some(isNonEmptyText);
 }
 
-/**
- * True only when every required Profile Studio field is filled.
- * Null, missing, blank, and whitespace-only values do not count.
- */
-export function hasCompleteRequiredProfileFields(
+/** Core Profile Studio fields required for talent-network publication. */
+export function hasCoreTalentPoolProfileFields(
   row: PublishedCandidateProfileRow | null | undefined
 ): boolean {
   if (!row) {
@@ -97,13 +99,155 @@ export function hasCompleteRequiredProfileFields(
     hasDisplayName(row) &&
     hasAnyNonEmptyText(row.job_title, row.headline) &&
     isNonEmptyText(row.bio) &&
-    hasRequiredSkills(row.skills) &&
+    hasRequiredSkills(row.skills)
+  );
+}
+
+/**
+ * True when required Profile Studio fields are filled.
+ * Timezone, work preference, and availability fall back to product defaults
+ * and no longer block publication eligibility.
+ */
+export function hasCompleteRequiredProfileFields(
+  row: PublishedCandidateProfileRow | null | undefined
+): boolean {
+  if (!row) {
+    return false;
+  }
+
+  return (
+    hasCoreTalentPoolProfileFields(row) &&
     isNonEmptyText(row.experience_level) &&
-    hasAnyNonEmptyText(row.availability_status, row.availability) &&
-    isNonEmptyText(row.work_preference) &&
-    isNonEmptyText(row.timezone) &&
     hasCandidateGitHubProfile(row)
   );
+}
+
+export type TalentPoolMissingField =
+  | "name"
+  | "title"
+  | "bio"
+  | "skills"
+  | "experience_level"
+  | "featured_github_repo";
+
+const MISSING_FIELD_LABELS: Record<TalentPoolMissingField, string> = {
+  name: "Name",
+  title: "Job title / headline",
+  bio: "Bio",
+  skills: "Skills",
+  experience_level: "Experience level",
+  featured_github_repo: "Featured GitHub repository (owner/repo)",
+};
+
+/** Human-readable labels for incomplete publication fields. */
+export function getMissingTalentPoolProfileFieldLabels(
+  row: PublishedCandidateProfileRow | null | undefined
+): string[] {
+  return listMissingTalentPoolProfileFields(row).map(
+    (field) => MISSING_FIELD_LABELS[field]
+  );
+}
+
+/** Missing core fields that block auto-publish (excludes defaulted metadata). */
+export function listMissingTalentPoolProfileFields(
+  row: PublishedCandidateProfileRow | null | undefined
+): TalentPoolMissingField[] {
+  if (!row) {
+    return ["name", "title", "bio", "skills"];
+  }
+
+  const missing: TalentPoolMissingField[] = [];
+  if (!hasDisplayName(row)) {
+    missing.push("name");
+  }
+  if (!hasAnyNonEmptyText(row.job_title, row.headline)) {
+    missing.push("title");
+  }
+  if (!isNonEmptyText(row.bio)) {
+    missing.push("bio");
+  }
+  if (!hasRequiredSkills(row.skills)) {
+    missing.push("skills");
+  }
+  return missing;
+}
+
+/** Defaults applied when persisting non-critical metadata for pool eligibility. */
+export function talentPoolMetadataDefaults(row?: {
+  work_preference?: string | null;
+  timezone?: string | null;
+  availability_status?: string | null;
+  availability?: string | null;
+}): {
+  work_preference: string;
+  timezone: string;
+  availability_status: string;
+} {
+  return {
+    work_preference: isNonEmptyText(row?.work_preference)
+      ? String(row?.work_preference).trim()
+      : DEFAULT_WORK_PREFERENCE,
+    timezone: isNonEmptyText(row?.timezone)
+      ? String(row?.timezone).trim()
+      : DEFAULT_CANDIDATE_TIMEZONE,
+    availability_status: hasAnyNonEmptyText(
+      row?.availability_status,
+      row?.availability
+    )
+      ? String(row?.availability_status ?? row?.availability).trim()
+      : DEFAULT_AVAILABILITY_STATUS,
+  };
+}
+
+/**
+ * Auto-publish gate: 75+ score, linked GitHub, and core profile fields.
+ * Matches the criteria used by profile-save and audit-completion handlers.
+ */
+export function meetsTalentPoolAutoPublishCriteria(
+  row: PublishedCandidateProfileRow | null | undefined
+): boolean {
+  if (!row || isEmployerRole(row.role) || isEmployeeRole(row.role)) {
+    return false;
+  }
+
+  if (row.github_verified !== true) {
+    return false;
+  }
+
+  if (!hasCoreTalentPoolProfileFields(row)) {
+    return false;
+  }
+
+  const productionScore = resolveHighestProductionScore(row);
+  return hasQualifyingTalentPoolAudit(productionScore);
+}
+
+export type TalentPoolOnboardingStatus = {
+  isVisibleInPool: boolean;
+  scoreMet: boolean;
+  githubVerified: boolean;
+  profileDetailsComplete: boolean;
+  missingFieldLabels: string[];
+  auditScore: number | null;
+};
+
+export function getTalentPoolOnboardingStatus(
+  row: PublishedCandidateProfileRow | null | undefined
+): TalentPoolOnboardingStatus {
+  const auditScore = resolveHighestProductionScore(row);
+  const scoreMet = hasQualifyingTalentPoolAudit(auditScore);
+  const githubVerified = row?.github_verified === true;
+  const missingFieldLabels = getMissingTalentPoolProfileFieldLabels(row);
+  const profileDetailsComplete = missingFieldLabels.length === 0;
+
+  return {
+    isVisibleInPool: profileRowIsPublicToEmployers(row ?? {}),
+    scoreMet,
+    githubVerified,
+    profileDetailsComplete,
+    missingFieldLabels,
+    auditScore,
+  };
 }
 
 function readNumericScore(value: unknown): number | null {
@@ -275,22 +419,13 @@ export function resolveHighestProductionScore(
 }
 
 /**
- * Verified on Provix requires a complete profile, a linked GitHub identity,
- * and a production audit score of 75+.
+ * Verified on Provix requires core profile fields, a linked GitHub identity,
+ * and a production audit score of 75+. Non-critical metadata uses defaults.
  */
 export function isVerifiedOnProvix(
   row: PublishedCandidateProfileRow | null | undefined
 ): boolean {
-  if (!hasCompleteRequiredProfileFields(row)) {
-    return false;
-  }
-
-  if (row?.github_verified !== true) {
-    return false;
-  }
-
-  const productionScore = resolveHighestProductionScore(row);
-  return productionScore != null && canPublishProductionScore(productionScore);
+  return meetsTalentPoolAutoPublishCriteria(row);
 }
 
 export function hasCandidateGitHubProfile(

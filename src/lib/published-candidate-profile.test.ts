@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  getTalentPoolOnboardingStatus,
   hasCompleteRequiredProfileFields,
+  hasCoreTalentPoolProfileFields,
   isPublishedVerifiedCandidateProfile,
   isVerifiedOnProvix,
+  meetsTalentPoolAutoPublishCriteria,
 } from "@/lib/published-candidate-profile";
 
 function completeVerifiedRow(
@@ -52,6 +55,69 @@ describe("required profile fields", () => {
         })
       )
     ).toBe(false);
+  });
+
+  it("does not require timezone or work preference for core or complete checks", () => {
+    expect(
+      hasCoreTalentPoolProfileFields(
+        completeVerifiedRow({
+          work_preference: "",
+          timezone: "",
+          availability_status: "",
+        })
+      )
+    ).toBe(true);
+    expect(
+      hasCompleteRequiredProfileFields(
+        completeVerifiedRow({
+          work_preference: "",
+          timezone: "",
+          availability_status: "",
+        })
+      )
+    ).toBe(true);
+  });
+
+  it("auto-publishes when score, GitHub, and core fields are met", () => {
+    expect(
+      meetsTalentPoolAutoPublishCriteria(
+        completeVerifiedRow({
+          work_preference: "",
+          timezone: "",
+          experience_level: "",
+          portfolio_url: "",
+        })
+      )
+    ).toBe(true);
+    expect(
+      meetsTalentPoolAutoPublishCriteria(
+        completeVerifiedRow({
+          bio: "",
+          production_score: 80,
+        })
+      )
+    ).toBe(false);
+  });
+
+  it("surfaces missing core fields in the onboarding status", () => {
+    const status = getTalentPoolOnboardingStatus(
+      completeVerifiedRow({
+        is_visible_in_pool: false,
+        visible_to_employers: false,
+        bio: "",
+        job_title: "",
+        github_verified: false,
+        production_score: 40,
+        audit_score: 40,
+      })
+    );
+    expect(status.isVisibleInPool).toBe(false);
+    expect(status.scoreMet).toBe(false);
+    expect(status.githubVerified).toBe(false);
+    expect(status.profileDetailsComplete).toBe(false);
+    expect(status.missingFieldLabels).toEqual(
+      expect.arrayContaining(["Bio", "Job title / headline"])
+    );
   });
 });
 

@@ -13,6 +13,11 @@ import {
   findMentionedColumn,
   isSupabaseSchemaError,
 } from "@/lib/supabase-schema-errors";
+import {
+  meetsTalentPoolAutoPublishCriteria,
+  talentPoolMetadataDefaults,
+  type PublishedCandidateProfileRow,
+} from "@/lib/published-candidate-profile";
 
 export const PENDING_PRODUCTION_AUDIT_KEY = "provix_pending_production_audit";
 export const CLAIM_AUDIT_INTENT = "claim_audit";
@@ -407,7 +412,7 @@ export async function persistProfileProductionAudit(
   const { data: roleRow } = await supabase
     .from("profiles")
     .select(
-      "id, role, profile_slug, verification_status, is_audit_verified, production_score, audit_breakdown, is_publicly_visible, github_verified"
+      "id, role, profile_slug, verification_status, is_audit_verified, production_score, audit_breakdown, is_publicly_visible, github_verified, full_name, name, first_name, last_name, job_title, headline, bio, skills, work_preference, timezone, availability_status, availability"
     )
     .or(`id.eq.${userId},user_id.eq.${userId}`)
     .limit(1)
@@ -455,19 +460,38 @@ export async function persistProfileProductionAudit(
     (options?.isPubliclyVisible === false && !enrollInTalentPool);
   const canPublish = isVerified && canPublishProductionScore(productionScore);
 
+  const autoPublishRow: PublishedCandidateProfileRow = {
+    ...(roleRow as PublishedCandidateProfileRow),
+    github_verified: roleRow?.github_verified === true,
+    production_score: attachToProfile
+      ? productionScore
+      : typeof roleRow?.production_score === "number"
+        ? roleRow.production_score
+        : null,
+    audit_score: attachToProfile ? productionScore : null,
+    role: typeof roleRow?.role === "string" ? roleRow.role : null,
+  };
+  const shouldAutoPublish = meetsTalentPoolAutoPublishCriteria(autoPublishRow);
+
   if (enrollInTalentPool && canPublish) {
     payload.is_in_talent_pool = true;
     payload.is_publicly_visible = true;
     // 75+ is the gate for talent-network visibility.
     payload.is_visible_in_pool = true;
     payload.visible_to_employers = true;
-  } else if (publishRequested && canPublish) {
+  } else if ((publishRequested && canPublish) || shouldAutoPublish) {
     payload.is_publicly_visible = true;
     payload.is_visible_in_pool = true;
     payload.visible_to_employers = true;
+    if (shouldAutoPublish) {
+      const metadata = talentPoolMetadataDefaults(roleRow ?? undefined);
+      payload.work_preference = metadata.work_preference;
+      payload.timezone = metadata.timezone;
+      payload.availability_status = metadata.availability_status;
+    }
   } else if (hideRequested || !canPublish) {
     payload.is_publicly_visible = false;
-    if (!canPublish) {
+    if (!canPublish && !shouldAutoPublish) {
       payload.is_visible_in_pool = false;
       payload.visible_to_employers = false;
     }

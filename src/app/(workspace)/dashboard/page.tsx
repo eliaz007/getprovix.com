@@ -52,6 +52,7 @@ import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import VerifiedCodeQualityScorecard from "@/components/dashboard/verified-code-quality-scorecard";
 import ScoreTrendChart from "@/components/dashboard/score-trend-chart";
 import ShareProfileButton from "@/components/dashboard/ShareProfileButton";
+import TalentNetworkStatusBanner from "@/components/dashboard/talent-network-status-banner";
 import Toast, { inferToastVariant, type ToastVariant } from "@/components/Toast";
 import { buildAlliterativeAliasIdentity } from "@/lib/alias-generator";
 import {
@@ -213,6 +214,7 @@ import {
   type MarketplaceEngagementMode,
 } from "@/lib/contract-availability";
 import {
+  getTalentPoolOnboardingStatus,
   isPublishedVerifiedCandidateProfile,
   isVerifiedOnProvix,
   resolveHighestProductionScore,
@@ -2886,18 +2888,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         return;
       }
 
+      const persistedVisibleInPool =
+        data?.is_visible_in_pool === true || effectiveVisibleInPool;
+
       if (data) {
         setDbProfile((prev) =>
           prev
             ? {
                 ...prev,
                 ...(data as ProfileRecord),
-                is_visible_in_pool: effectiveVisibleInPool,
+                is_visible_in_pool: persistedVisibleInPool,
+                visible_to_employers: persistedVisibleInPool,
                 availability_status: normalizedAvailability,
                 portfolio_url: normalizedPortfolioUrl,
               }
             : (data as ProfileRecord)
         );
+        if (persistedVisibleInPool) {
+          setIsVisibleInPool(true);
+        }
       }
 
       setSchool(academicInstitution);
@@ -2921,7 +2930,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         openToContract: gatedOpenToContract,
         contractHoursPerWeek: normalizedContractHours,
         contractHourlyRate: normalizedContractRate,
-        visibleInPool: effectiveVisibleInPool,
+        visibleInPool: persistedVisibleInPool,
         gradYear: academicGradYear,
         gpa: formatGpa(profileData.gpa),
         demoVideo: profileData.demoVideo,
@@ -2955,12 +2964,16 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       );
       navSetAvailabilityStatus?.(normalizedAvailability);
       navSetUserDisplayName?.(profileData.name);
-      setIsVisibleInPool(effectiveVisibleInPool);
+      setIsVisibleInPool(persistedVisibleInPool);
       void publishTalentPoolVisibility(supabase, {
         profileId: session.user.id,
-        visible: effectiveVisibleInPool,
+        visible: persistedVisibleInPool,
       });
-      showToast("Profile saved successfully.");
+      showToast(
+        persistedVisibleInPool && !effectiveVisibleInPool
+          ? "Profile saved — you are now live in the Talent Network."
+          : "Profile saved successfully."
+      );
     } catch (error) {
       console.error("Profile update failed:", error);
       showToast("Could not save profile. Please try again.");
@@ -4245,6 +4258,19 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     github_verified: dbProfile?.github_verified === true,
     github_username: dbProfile?.github_username,
   });
+  const talentNetworkOnboarding = getTalentPoolOnboardingStatus({
+    full_name: profileData.name,
+    name: profileData.name,
+    job_title: title,
+    headline: title,
+    bio,
+    skills,
+    production_score: candidateProductionScore,
+    audit_score: dbProfile?.audit_score,
+    github_verified: dbProfile?.github_verified === true,
+    is_visible_in_pool: isVisibleInPool || dbProfile?.is_visible_in_pool,
+    visible_to_employers: dbProfile?.visible_to_employers,
+  });
   const githubUsername = (dbProfile?.github_username ?? "")
     .replace(/^@/, "")
     .trim();
@@ -4729,6 +4755,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           {/* MY PROFILE TAB WITH NESTED MENU OPTIONS */}
           {activeTab === "my_profile" && roleReady && (
             <div className="max-w-3xl">
+              {!isBusinessAccount ? (
+                <TalentNetworkStatusBanner status={talentNetworkOnboarding} />
+              ) : null}
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">

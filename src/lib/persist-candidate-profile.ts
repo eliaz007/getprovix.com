@@ -34,6 +34,11 @@ import {
   TALENT_POOL_CONNECT_GITHUB_MESSAGE,
   TALENT_POOL_SCORE_REQUIRED_MESSAGE,
 } from "@/lib/talent-pool-visibility";
+import {
+  meetsTalentPoolAutoPublishCriteria,
+  talentPoolMetadataDefaults,
+  type PublishedCandidateProfileRow,
+} from "@/lib/published-candidate-profile";
 
 export type CandidateProfileSaveInput = {
   fullName: string;
@@ -111,6 +116,12 @@ export function buildCandidateProfileUpdatePayload(
   const persistedContractRate =
     contractRate != null && contractRate > 0 ? contractRate : null;
 
+  const metadataDefaults = talentPoolMetadataDefaults({
+    work_preference: input.workPreference,
+    timezone: input.candidateTimezone,
+    availability_status: input.availabilityStatus,
+  });
+
   const payload: ProfilePayload = {
     full_name: nullIfEmpty(input.fullName),
     job_title: nullIfEmpty(input.jobTitle),
@@ -126,9 +137,15 @@ export function buildCandidateProfileUpdatePayload(
     portfolio_url: nullIfEmpty(normalizeGitHubUrl(input.portfolioUrl)),
     youtube_url: nullIfEmpty(input.youtubeUrl),
     experience_level: nullIfEmpty(input.experienceLevel),
-    availability_status: normalizeAvailabilityStatus(input.availabilityStatus),
-    work_preference: normalizeWorkPreference(input.workPreference),
-    timezone: normalizeCandidateTimezone(input.candidateTimezone),
+    availability_status: normalizeAvailabilityStatus(
+      input.availabilityStatus || metadataDefaults.availability_status
+    ),
+    work_preference: normalizeWorkPreference(
+      input.workPreference || metadataDefaults.work_preference
+    ),
+    timezone: normalizeCandidateTimezone(
+      input.candidateTimezone || metadataDefaults.timezone
+    ),
     open_to_fulltime: normalizeOpenToFulltime(input.openToFulltime),
     open_to_contract: openToContract,
     contract_hours_per_week: contractHours || null,
@@ -517,6 +534,68 @@ export async function persistCandidateProfile(
       payload = {
         ...payload,
         education: serializeEducationEntries(parsedEducation),
+      };
+    }
+
+    const { data: publishGateProfile } = await supabase
+      .from("profiles")
+      .select(
+        "id, role, full_name, name, first_name, last_name, job_title, headline, bio, skills, github_verified, production_score, audit_score, is_visible_in_pool, visible_to_employers"
+      )
+      .eq("id", userId)
+      .maybeSingle();
+
+    const mergedForPublish: PublishedCandidateProfileRow = {
+      ...(publishGateProfile ?? {}),
+      id: userId,
+      full_name:
+        typeof payload.full_name === "string"
+          ? payload.full_name
+          : publishGateProfile?.full_name,
+      job_title:
+        typeof payload.job_title === "string"
+          ? payload.job_title
+          : publishGateProfile?.job_title,
+      bio:
+        typeof payload.bio === "string" ? payload.bio : publishGateProfile?.bio,
+      skills:
+        Array.isArray(payload.skills)
+          ? payload.skills
+          : publishGateProfile?.skills,
+      github_verified: publishGateProfile?.github_verified === true,
+      production_score:
+        typeof publishGateProfile?.production_score === "number"
+          ? publishGateProfile.production_score
+          : null,
+      audit_score:
+        typeof publishGateProfile?.audit_score === "number"
+          ? publishGateProfile.audit_score
+          : null,
+      role:
+        typeof publishGateProfile?.role === "string"
+          ? publishGateProfile.role
+          : null,
+    };
+
+    if (meetsTalentPoolAutoPublishCriteria(mergedForPublish)) {
+      const metadata = talentPoolMetadataDefaults({
+        work_preference:
+          typeof payload.work_preference === "string"
+            ? payload.work_preference
+            : null,
+        timezone: typeof payload.timezone === "string" ? payload.timezone : null,
+        availability_status:
+          typeof payload.availability_status === "string"
+            ? payload.availability_status
+            : null,
+      });
+      payload = {
+        ...payload,
+        is_visible_in_pool: true,
+        visible_to_employers: true,
+        work_preference: metadata.work_preference,
+        timezone: metadata.timezone,
+        availability_status: metadata.availability_status,
       };
     }
 
