@@ -977,6 +977,9 @@ export default function DashboardPage() {
   const [introModalCandidate, setIntroModalCandidate] =
     useState<TalentPoolCandidate | null>(null);
   const [introDefaultRoleTitle, setIntroDefaultRoleTitle] = useState("");
+  const [introHireType, setIntroHireType] = useState<"fulltime" | "contract">(
+    "fulltime"
+  );
   const [applicantsDrawerJob, setApplicantsDrawerJob] = useState<{
     id: string;
     title: string;
@@ -3962,6 +3965,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       return;
     }
     setIntroDefaultRoleTitle("");
+    setIntroHireType(
+      marketplaceEngagementMode === "contract" ? "contract" : "fulltime"
+    );
     setIntroModalCandidate(candidate);
   };
 
@@ -4016,6 +4022,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
     setApplicantsDrawerJob(null);
     setIntroDefaultRoleTitle(roleTitle);
+    // Applicant intros keep the full-time placement flow by default.
+    setIntroHireType("fulltime");
     setIntroModalCandidate(introCandidate);
   };
 
@@ -8210,18 +8218,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         <RequestIntroModal
           open={Boolean(introModalCandidate)}
           defaultRoleTitle={introDefaultRoleTitle}
+          hireType={introHireType}
           candidate={
             introModalCandidate
               ? {
                   id: introModalCandidate.id,
                   profileId: introModalCandidate.profileId,
                   name: getCandidatePublicName(introModalCandidate),
+                  contractHourlyRate: introModalCandidate.contractHourlyRate,
                 }
               : null
           }
           onClose={() => {
             setIntroModalCandidate(null);
             setIntroDefaultRoleTitle("");
+            setIntroHireType("fulltime");
           }}
           onSuccess={handleIntroRequestSuccess}
         />

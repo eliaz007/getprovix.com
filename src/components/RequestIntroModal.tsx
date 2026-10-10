@@ -8,7 +8,16 @@ import Card from "@/components/ui/Card";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
+import { normalizeContractHourlyRate } from "@/lib/contract-availability";
 import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
+import {
+  CONTRACT_INTRO_COMMITMENT_OPTIONS,
+  CONTRACT_INTRO_DURATION_OPTIONS,
+  formatContractIntroCompensationRange,
+  type ContractIntroCommitment,
+  type ContractIntroDuration,
+  type IntroHireType,
+} from "@/lib/intro-hire-type";
 
 export const COMP_BAND_OPTIONS = [
   "$60k–$80k",
@@ -26,12 +35,15 @@ export type IntroRequestCandidate = {
   name: string;
   full_name?: string;
   fullName?: string;
+  contractHourlyRate?: number | null;
 };
 
 type RequestIntroModalProps = {
   open: boolean;
   candidate: IntroRequestCandidate | null;
   defaultRoleTitle?: string;
+  /** Defaults to full-time so existing call sites stay unchanged. */
+  hireType?: IntroHireType;
   onClose: () => void;
   onSuccess: () => void;
 };
@@ -40,13 +52,21 @@ export default function RequestIntroModal({
   open,
   candidate,
   defaultRoleTitle = "",
+  hireType = "fulltime",
   onClose,
   onSuccess,
 }: RequestIntroModalProps) {
+  const isContract = hireType === "contract";
+
   const [companyName, setCompanyName] = useState("");
   const [workEmail, setWorkEmail] = useState("");
   const [roleTitle, setRoleTitle] = useState("");
   const [compBand, setCompBand] = useState<CompBand | "">("");
+  const [hourlyRate, setHourlyRate] = useState("");
+  const [commitment, setCommitment] = useState<ContractIntroCommitment | "">(
+    ""
+  );
+  const [duration, setDuration] = useState<ContractIntroDuration | "">("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +77,9 @@ export default function RequestIntroModal({
       setWorkEmail("");
       setRoleTitle("");
       setCompBand("");
+      setHourlyRate("");
+      setCommitment("");
+      setDuration("");
       setTermsAccepted(false);
       setSubmitting(false);
       setError(null);
@@ -64,7 +87,12 @@ export default function RequestIntroModal({
     }
 
     setRoleTitle(defaultRoleTitle.trim());
-  }, [open, candidate?.id, defaultRoleTitle]);
+    const prefRate = normalizeContractHourlyRate(candidate?.contractHourlyRate);
+    setHourlyRate(prefRate != null ? String(prefRate) : "");
+    setCommitment("");
+    setDuration("");
+    setCompBand("");
+  }, [open, candidate?.id, candidate?.contractHourlyRate, defaultRoleTitle]);
 
   if (!open || !candidate) {
     return null;
@@ -78,9 +106,36 @@ export default function RequestIntroModal({
     const trimmedWorkEmail = workEmail.trim();
     const trimmedRoleTitle = roleTitle.trim();
 
-    if (!trimmedCompanyName || !trimmedWorkEmail || !trimmedRoleTitle || !compBand) {
+    if (!trimmedCompanyName || !trimmedWorkEmail || !trimmedRoleTitle) {
       setError("Please complete all required fields.");
       return;
+    }
+
+    let compensationRange = "";
+    let parsedHourly: number | null = null;
+
+    if (isContract) {
+      parsedHourly = normalizeContractHourlyRate(hourlyRate);
+      if (
+        parsedHourly == null ||
+        parsedHourly <= 0 ||
+        !commitment ||
+        !duration
+      ) {
+        setError("Please complete hourly rate, commitment, and duration.");
+        return;
+      }
+      compensationRange = formatContractIntroCompensationRange({
+        hourlyRate: parsedHourly,
+        commitment,
+        duration,
+      });
+    } else {
+      if (!compBand) {
+        setError("Please complete all required fields.");
+        return;
+      }
+      compensationRange = compBand;
     }
 
     const workEmailError = getCorporateWorkEmailValidationMessage(trimmedWorkEmail);
@@ -91,7 +146,9 @@ export default function RequestIntroModal({
 
     if (!termsAccepted) {
       setError(
-        "You must agree to the Provix Terms of Service & Placement Policy."
+        isContract
+          ? "You must agree to the Provix Contract Terms."
+          : "You must agree to the Provix Terms of Service & Placement Policy."
       );
       return;
     }
@@ -114,7 +171,15 @@ export default function RequestIntroModal({
           companyName: trimmedCompanyName,
           companyEmail: trimmedWorkEmail,
           targetRole: trimmedRoleTitle,
-          compensationRange: compBand,
+          compensationRange,
+          hireType: isContract ? "contract" : "fulltime",
+          ...(isContract && parsedHourly != null
+            ? {
+                contractHourlyRate: parsedHourly,
+                estimatedCommitment: commitment,
+                estimatedDuration: duration,
+              }
+            : {}),
           termsAccepted: true,
         }),
       });
@@ -151,13 +216,28 @@ export default function RequestIntroModal({
         </button>
 
         <div className="mb-5 pr-8">
-          <h3 className="text-lg font-bold text-textMain">
-            Request Warm Introduction to {candidate.name}
-          </h3>
-          <p className="text-sm text-textMuted mt-1">
-            No upfront fees. Provix only earns when you hire:{" "}
-            {PUBLIC_PLACEMENT_TERMS_SUMMARY}
-          </p>
+          {isContract ? (
+            <>
+              <h3 className="text-lg font-bold text-textMain">
+                Request Contract Introduction to {candidate.name}
+              </h3>
+              <p className="text-sm text-textMuted mt-1">
+                Direct contract introductions with verified technical proof.
+                Connect directly to align on scope, milestones, and hourly
+                engagement.
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-lg font-bold text-textMain">
+                Request Warm Introduction to {candidate.name}
+              </h3>
+              <p className="text-sm text-textMuted mt-1">
+                No upfront fees. Provix only earns when you hire:{" "}
+                {PUBLIC_PLACEMENT_TERMS_SUMMARY}
+              </p>
+            </>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -195,57 +275,157 @@ export default function RequestIntroModal({
               type="text"
               value={roleTitle}
               onChange={(event) => setRoleTitle(event.target.value)}
-              placeholder="e.g. Full-Stack Engineer"
+              placeholder={
+                isContract
+                  ? "e.g. Contract Full-Stack Engineer"
+                  : "e.g. Full-Stack Engineer"
+              }
               required
               className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
             />
           </div>
 
-          <div>
-            <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
-              Target Compensation Band
-            </label>
-            <select
-              value={compBand}
-              onChange={(event) => setCompBand(event.target.value as CompBand)}
-              required
-              className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
-            >
-              <option value="" disabled>
-                Select compensation band
-              </option>
-              {COMP_BAND_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
+          {isContract ? (
+            <>
+              <div>
+                <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
+                  Target Hourly Rate ($/hr)
+                </label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step={1}
+                  value={hourlyRate}
+                  onChange={(event) => setHourlyRate(event.target.value)}
+                  placeholder="e.g. 85"
+                  required
+                  className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand"
+                />
+              </div>
 
-          <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={termsAccepted}
-              onChange={(event) => setTermsAccepted(event.target.checked)}
-              required
-              className="mt-0.5 h-4 w-4 rounded border-border bg-background text-brand focus:ring-brand"
-            />
-            <span className="text-xs text-textMuted leading-relaxed">
-              I agree to the{" "}
-              <Link
-                href="/terms"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(event) => event.stopPropagation()}
-                onMouseDown={(event) => event.stopPropagation()}
-                className="text-brand hover:text-brand underline underline-offset-2"
+              <div>
+                <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
+                  Estimated Commitment
+                </label>
+                <select
+                  value={commitment}
+                  onChange={(event) =>
+                    setCommitment(
+                      event.target.value as ContractIntroCommitment | ""
+                    )
+                  }
+                  required
+                  className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
+                >
+                  <option value="" disabled>
+                    Select weekly commitment
+                  </option>
+                  {CONTRACT_INTRO_COMMITMENT_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
+                  Estimated Duration
+                </label>
+                <select
+                  value={duration}
+                  onChange={(event) =>
+                    setDuration(event.target.value as ContractIntroDuration | "")
+                  }
+                  required
+                  className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
+                >
+                  <option value="" disabled>
+                    Select engagement duration
+                  </option>
+                  {CONTRACT_INTRO_DURATION_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : (
+            <div>
+              <label className="block text-[11px] font-bold text-textMuted mb-2 uppercase">
+                Target Compensation Band
+              </label>
+              <select
+                value={compBand}
+                onChange={(event) => setCompBand(event.target.value as CompBand)}
+                required
+                className="w-full bg-background border border-border rounded-xl p-3 text-sm text-textMain focus:outline-none focus:border-brand"
               >
-                Provix Placement Terms
-              </Link>
-              : {PUBLIC_PLACEMENT_TERMS_SUMMARY} Employers remain responsible
-              for independent pre-hire verification.
-            </span>
-          </label>
+                <option value="" disabled>
+                  Select compensation band
+                </option>
+                {COMP_BAND_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {isContract ? (
+            <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(event) => setTermsAccepted(event.target.checked)}
+                required
+                className="mt-0.5 h-4 w-4 rounded border-border bg-background text-brand focus:ring-brand"
+              />
+              <span className="text-xs text-textMuted leading-relaxed">
+                I agree to{" "}
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  className="text-brand hover:text-brand underline underline-offset-2"
+                >
+                  Provix Contract Terms
+                </Link>
+                . Direct contract introductions require independent engagement
+                terms between company and contractor.
+              </span>
+            </label>
+          ) : (
+            <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(event) => setTermsAccepted(event.target.checked)}
+                required
+                className="mt-0.5 h-4 w-4 rounded border-border bg-background text-brand focus:ring-brand"
+              />
+              <span className="text-xs text-textMuted leading-relaxed">
+                I agree to the{" "}
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  className="text-brand hover:text-brand underline underline-offset-2"
+                >
+                  Provix Placement Terms
+                </Link>
+                : {PUBLIC_PLACEMENT_TERMS_SUMMARY} Employers remain responsible
+                for independent pre-hire verification.
+              </span>
+            </label>
+          )}
 
           {error && (
             <p className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">

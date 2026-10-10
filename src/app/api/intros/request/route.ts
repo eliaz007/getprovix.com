@@ -8,6 +8,11 @@ import {
   buildIntroRequestInsertPayload,
   CANDIDATE_INTRO_REQUEST_COLUMNS,
 } from "@/lib/candidate-intro-requests";
+import {
+  CONTRACT_INTRO_COMMITMENT_OPTIONS,
+  CONTRACT_INTRO_DURATION_OPTIONS,
+  formatContractIntroCompensationRange,
+} from "@/lib/intro-hire-type";
 import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { sendCandidateIntroRequestEmail } from "@/lib/send-intro-email";
 
@@ -24,6 +29,12 @@ const introRequestBodySchema = z.object({
     }),
   targetRole: z.string().trim().min(1),
   compensationRange: z.string().trim().min(1),
+  hireType: z.enum(["fulltime", "contract"]).optional().default("fulltime"),
+  contractHourlyRate: z.number().positive().optional(),
+  estimatedCommitment: z
+    .enum(CONTRACT_INTRO_COMMITMENT_OPTIONS)
+    .optional(),
+  estimatedDuration: z.enum(CONTRACT_INTRO_DURATION_OPTIONS).optional(),
   termsAccepted: z.literal(true),
 });
 
@@ -59,6 +70,32 @@ export async function POST(request: Request) {
     const serviceClient = createServiceRoleClient() ?? authClient;
     const tosAcceptedAt = new Date().toISOString();
     const responseToken = randomUUID();
+
+    // Contract details are folded into compensation_range/band text so existing
+    // full-time intro_requests rows and columns stay compatible.
+    let compensationRange = body.compensationRange;
+    if (body.hireType === "contract") {
+      if (
+        typeof body.contractHourlyRate === "number" &&
+        body.estimatedCommitment &&
+        body.estimatedDuration
+      ) {
+        compensationRange = formatContractIntroCompensationRange({
+          hourlyRate: body.contractHourlyRate,
+          commitment: body.estimatedCommitment,
+          duration: body.estimatedDuration,
+        });
+      } else if (!/^Contract\s+\$/i.test(compensationRange)) {
+        return NextResponse.json(
+          {
+            error:
+              "Contract introductions require hourly rate, commitment, and duration.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const insertPayload = buildIntroRequestInsertPayload({
       userId: user.id,
       candidateId,
@@ -66,7 +103,7 @@ export async function POST(request: Request) {
       companyName: body.companyName,
       companyEmail: body.companyEmail,
       targetRole: body.targetRole,
-      compensationRange: body.compensationRange,
+      compensationRange,
       tosAcceptedAt,
       responseToken,
     });
