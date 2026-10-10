@@ -396,21 +396,33 @@ export async function persistCandidatePoolVisibility(
         "id, user_id, github_verified, github_username, verification_status, production_score, audit_score, portfolio_url";
 
       async function loadVisibilityProfile(select: string) {
+        // Dynamic `.select(string)` makes Supabase infer `GenericStringError`;
+        // normalize through `unknown` so we can read fields safely below.
+        const asRow = (data: unknown): Record<string, unknown> | null => {
+          if (!data || typeof data !== "object" || Array.isArray(data)) {
+            return null;
+          }
+          return data as Record<string, unknown>;
+        };
+
         const byId = await supabase
           .from("profiles")
           .select(select)
           .eq("id", userId)
           .maybeSingle();
-        if (!byId.error && byId.data) {
-          return byId.data as Record<string, unknown>;
+        if (!byId.error) {
+          const row = asRow(byId.data);
+          if (row) {
+            return row;
+          }
         }
         const byUserId = await supabase
           .from("profiles")
           .select(select)
           .eq("user_id", userId)
           .maybeSingle();
-        if (!byUserId.error && byUserId.data) {
-          return byUserId.data as Record<string, unknown>;
+        if (!byUserId.error) {
+          return asRow(byUserId.data);
         }
         return null;
       }
