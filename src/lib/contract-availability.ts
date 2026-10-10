@@ -51,10 +51,10 @@ const LEGACY_CONTRACT_HOURS_MAP: Record<string, ContractHoursPerWeek> = {
 export const MARKETPLACE_AVAILABILITY_SCORE_THRESHOLD = 75;
 
 export const MARKETPLACE_AVAILABILITY_LOCKED_MESSAGE =
-  "An audit score of 75+ is required to unlock marketplace visibility. Re-run an audit after hardening your test coverage and API schemas.";
+  "Marketplace availability stays locked until you are visible to employers with verified GitHub ownership and a 75+ audit score.";
 
 export const MARKETPLACE_AVAILABILITY_SAVE_BLOCKED_MESSAGE =
-  "A 75+ production audit is required before you can open full-time or contract availability.";
+  "Visible to Employers, verified GitHub ownership, and a 75+ production audit are required before you can open full-time or contract availability.";
 
 const CONTRACT_HOURS_VALUES = new Set<string>(CONTRACT_HOURS_OPTIONS);
 
@@ -69,6 +69,7 @@ export function resolveMarketplaceAuditScore(
   return null;
 }
 
+/** Score-only gate — prefer `meetsMarketplacePublishCriteria` for Live/availability UI. */
 export function isMarketplaceAvailabilityQualified(
   auditScore: number | null | undefined
 ): boolean {
@@ -80,12 +81,16 @@ export function isMarketplaceAvailabilityQualified(
 }
 
 export function formatMarketplaceAvailabilityLockedAlert(
-  auditScore: number | null | undefined
+  auditScore: number | null | undefined,
+  missingCriteria: string[] = []
 ): string {
   const scoreLabel =
     typeof auditScore === "number" && Number.isFinite(auditScore)
       ? String(Math.round(auditScore))
       : "—";
+  if (missingCriteria.length > 0) {
+    return `Score: ${scoreLabel}/100 — Missing: ${missingCriteria.join("; ")}.`;
+  }
   return `Score: ${scoreLabel}/100 — ${MARKETPLACE_AVAILABILITY_LOCKED_MESSAGE}`;
 }
 
@@ -218,6 +223,11 @@ export function normalizeContractHoursPerWeek(
   return LEGACY_CONTRACT_HOURS_MAP[trimmed] ?? "";
 }
 
+/**
+ * Coerce UI / API hourly rate input to a non-negative integer USD amount.
+ * Accepts numbers or strings like "85", "$85", "1,200", "85/hr".
+ * Returns null for empty / unparseable values (DB column is integer null).
+ */
 export function normalizeContractHourlyRate(
   value?: number | string | null
 ): number | null {
@@ -225,9 +235,25 @@ export function normalizeContractHourlyRate(
     return null;
   }
 
-  const parsed =
-    typeof value === "number" ? value : Number.parseInt(String(value).trim(), 10);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value < 0) {
+      return null;
+    }
+    return Math.round(value);
+  }
 
+  const cleaned = String(value)
+    .trim()
+    .replace(/\$/g, "")
+    .replace(/,/g, "")
+    .replace(/\s*(?:per\s*hour|\/\s*hr|\/\s*hour|hrs?)\s*$/i, "")
+    .trim();
+
+  if (!cleaned) {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(cleaned);
   if (!Number.isFinite(parsed) || parsed < 0) {
     return null;
   }
@@ -248,37 +274,53 @@ export type PreferenceAvailabilityPresentation = {
   label: "Full-Time + Contract" | "Full-Time" | "Contract" | "Diagnostic Only";
   tone: PreferenceAvailabilityTone;
   dotClass: string;
+  /** True only when publish-eligible and at least one engagement option is on. */
+  isLive: boolean;
+  statusBadge: "Live" | "Not live";
 };
 
-/** Pure preference label for sidebar / settings — no audit-score gating. */
+/**
+ * Preference label for sidebar / settings.
+ * Pass publish-gated engagement flags so Full-Time/Contract never look active
+ * when the candidate is not actually listable in the talent pool.
+ */
 export function getPreferenceAvailabilityPresentation(
   openToFulltime: boolean,
-  openToContract: boolean
+  openToContract: boolean,
+  isPublishEligible = false
 ): PreferenceAvailabilityPresentation {
-  if (openToFulltime && openToContract) {
+  if (isPublishEligible && openToFulltime && openToContract) {
     return {
       label: "Full-Time + Contract",
       tone: "emerald",
       dotClass: "bg-emerald-500",
+      isLive: true,
+      statusBadge: "Live",
     };
   }
-  if (openToFulltime) {
+  if (isPublishEligible && openToFulltime) {
     return {
       label: "Full-Time",
       tone: "emerald",
       dotClass: "bg-emerald-500",
+      isLive: true,
+      statusBadge: "Live",
     };
   }
-  if (openToContract) {
+  if (isPublishEligible && openToContract) {
     return {
       label: "Contract",
       tone: "emerald",
       dotClass: "bg-emerald-500",
+      isLive: true,
+      statusBadge: "Live",
     };
   }
   return {
     label: "Diagnostic Only",
     tone: "zinc",
     dotClass: "bg-zinc-500",
+    isLive: false,
+    statusBadge: "Not live",
   };
 }

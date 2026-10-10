@@ -2,6 +2,7 @@ import type { GitHubAuditContext } from "@/lib/github-audit";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { normalizeStringArray } from "@/lib/match-heuristic";
 import { clampScore0to100 } from "@/lib/score-scale";
+import { filterTechnicalRequirements } from "@/lib/technical-skill-requirements";
 
 export type FitVerdict = "Strong Fit" | "Moderate Fit" | "Growth Fit";
 
@@ -71,6 +72,24 @@ export function normalizeMatchReasons(value: unknown): string[] {
     .slice(0, 3);
 }
 
+const CANDIDATE_MATCH_SECTION =
+  /^(Your Stack Edge|Verified Proof|Application Angle)\s*:\s*(.*)$/i;
+
+/** Split "Your Stack Edge: …" into a labeled section for candidate UI. */
+export function splitCandidateMatchReason(reason: string): {
+  label: string | null;
+  body: string;
+} {
+  const match = reason.trim().match(CANDIDATE_MATCH_SECTION);
+  if (!match) {
+    return { label: null, body: reason.trim() };
+  }
+  return {
+    label: match[1],
+    body: (match[2] ?? "").trim(),
+  };
+}
+
 export function normalizeOpportunityMatchResult(
   raw: unknown
 ): OpportunityMatchResult {
@@ -106,23 +125,11 @@ export function getFitVerdictBadgeClass(verdict: FitVerdict): string {
 }
 
 function uniqueJobRequirements(job: OpportunityMatchJobPayload): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const item of [
+  return filterTechnicalRequirements([
     ...normalizeStringArray(job.techStack ?? job.tech_stack),
     ...normalizeStringArray(job.requiredSkills ?? job.required_skills),
     ...normalizeStringArray(job.tags),
-  ]) {
-    const key = item.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    result.push(item);
-  }
-
-  return result;
+  ]);
 }
 
 export function buildFallbackOpportunityMatch(
@@ -132,7 +139,7 @@ export function buildFallbackOpportunityMatch(
 ): OpportunityMatchResult {
   const candidateSkills = normalizeStringArray(candidate.skills);
   const jobTags = uniqueJobRequirements(job);
-  const roleType = candidate.role_type?.trim() ?? "";
+  const roleLabel = job.title?.trim() || "this role";
 
   const normalizedCandidateSkills = candidateSkills.map((skill) =>
     skill.toLowerCase()
@@ -145,16 +152,6 @@ export function buildFallbackOpportunityMatch(
     )
   );
 
-  let match_score = 0;
-  const match_reasons: string[] = [];
-
-  if (matchingTags.length > 0) {
-    match_score += Math.min(40, matchingTags.length * 12);
-    match_reasons.push(
-      `Your ${matchingTags.slice(0, 3).join(", ")} experience overlaps with this role's stack.`
-    );
-  }
-
   const missingTags = jobTags.filter(
     (tag) =>
       !matchingTags.some(
@@ -165,72 +162,72 @@ export function buildFallbackOpportunityMatch(
       )
   );
 
-  if (missingTags.length > 0) {
-    match_reasons.push(
-      `This listing also asks for ${missingTags.slice(0, 3).join(", ")}, which are not on your profile yet.`
-    );
-  }
-
-  if (roleType && job.title) {
-    const titleLower = job.title.toLowerCase();
-    const roleLower = roleType.toLowerCase();
-    if (titleLower.includes(roleLower) || roleLower.includes(titleLower)) {
-      match_score += 20;
-      match_reasons.push(
-        `Your ${roleType} focus aligns with the ${job.title} track.`
-      );
-    }
+  let match_score = 0;
+  if (matchingTags.length > 0) {
+    match_score += Math.min(45, matchingTags.length * 12);
+  } else if (candidateSkills.length > 0) {
+    match_score += 18;
   }
 
   if (candidate.bio?.trim()) {
-    match_score += 15;
+    match_score += 10;
   }
+
+  const repoLabel =
+    githubAudit?.owner && githubAudit?.repo
+      ? `${githubAudit.owner}/${githubAudit.repo}`
+      : "your audited repo";
 
   if (githubAudit) {
-    if (githubAudit.language && matchingTags.some((tag) =>
-      tag.toLowerCase().includes(githubAudit.language!.toLowerCase())
-    )) {
+    if (
+      githubAudit.language &&
+      matchingTags.some((tag) =>
+        tag.toLowerCase().includes(githubAudit.language!.toLowerCase())
+      )
+    ) {
       match_score += 15;
-      match_reasons.push(
-        `GitHub audit shows active ${githubAudit.language} work in ${githubAudit.owner}/${githubAudit.repo}.`
-      );
     } else if (githubAudit.commit_count_sampled >= 3) {
       match_score += 10;
-      match_reasons.push(
-        `GitHub shows ${githubAudit.commit_count_sampled} recent commits on ${githubAudit.owner}/${githubAudit.repo}.`
-      );
-    } else if (githubAudit.language) {
-      match_reasons.push(
-        `Your GitHub repo ${githubAudit.owner}/${githubAudit.repo} is primarily ${githubAudit.language}.`
-      );
-    } else if (githubAudit.commit_count_sampled <= 1) {
-      match_score -= 8;
-      match_reasons.push(
-        `Limited commit history on ${githubAudit.owner}/${githubAudit.repo} — more activity would raise match confidence.`
-      );
     }
-  } else if (candidate.github_url?.trim() && match_reasons.length < 3) {
-    match_reasons.push(
-      "Add a public GitHub repo to your profile so matching can cite verified commits and languages."
-    );
   }
 
-  if (match_reasons.length < 2 && candidateSkills.length > 0) {
-    match_reasons.push(
-      `Your profile highlights ${candidateSkills.slice(0, 3).join(", ")} against ${job.title?.trim() || "this role"}.`
-    );
-  } else if (match_reasons.length < 2) {
-    match_reasons.push(
-      "Add skills or a GitHub repo to your profile so this role can be scored against your work."
-    );
-  }
+  const stackSkills =
+    matchingTags.length > 0
+      ? matchingTags.slice(0, 3)
+      : candidateSkills.slice(0, 3);
+
+  const stackEdge =
+    matchingTags.length > 0
+      ? `Your Stack Edge: Your verified ${stackSkills.join(", ")} overlap ${roleLabel}'s listed stack — lead with those exact technologies.`
+      : stackSkills.length > 0
+        ? `Your Stack Edge: Highlight your audited ${stackSkills.join(", ")} and map each to the closest requirement on ${roleLabel}.`
+        : `Your Stack Edge: Add core languages/frameworks to your profile so this role can cite exact stack overlap.`;
+
+  const verifiedProof = githubAudit
+    ? githubAudit.commit_count_sampled >= 3
+      ? `Verified Proof: ${githubAudit.commit_count_sampled} recent commits on ${repoLabel}${
+          githubAudit.language ? ` (${githubAudit.language})` : ""
+        } demonstrate shipping cadence most applicants cannot show.`
+      : githubAudit.language
+        ? `Verified Proof: Your GitHub work on ${repoLabel} is primarily ${githubAudit.language} — cite that as production evidence.`
+        : `Verified Proof: Keep your Provix audit and GitHub activity current to prove production readiness.`
+    : `Verified Proof: Connect a public repo and keep a 75+ audit so this application shows verified production proof.`;
+
+  const applicationAngle =
+    missingTags.length > 0
+      ? `Application Angle: Address ${missingTags.slice(0, 2).join(" and ")} by pairing adjacent audited skills with a short repo walkthrough — and frame velocity on ${repoLabel} to offset generic tenure asks.`
+      : `Application Angle: Lead with stack overlap and audit proof, then show a short walkthrough of your highest-signal project for ${roleLabel}.`;
 
   const clampedScore = clampMatchScore(match_score);
 
   return {
     match_score: clampedScore,
     fit_verdict: scoreToFitVerdict(clampedScore),
-    match_reasons: normalizeMatchReasons(match_reasons),
+    match_reasons: normalizeMatchReasons([
+      stackEdge,
+      verifiedProof,
+      applicationAngle,
+    ]),
   };
 }
 

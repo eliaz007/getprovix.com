@@ -89,11 +89,17 @@ export async function syncGitHubIdentityToProfile(
     }
 
     const link = githubLinkFromUser(user);
+    // Never wipe an existing linked identity when the current session has no
+    // GitHub provider (e.g. email/Google session after a prior GitHub link).
+    if (!link.github_verified || !link.github_username?.trim()) {
+      return link;
+    }
+
     const { error } = await supabase
       .from("profiles")
       .update({
         github_username: link.github_username,
-        github_verified: link.github_verified,
+        github_verified: true,
       })
       .or(`id.eq.${user.id},user_id.eq.${user.id}`);
 

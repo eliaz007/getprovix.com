@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
+  buildCandidateJobMatchCacheKey,
   fetchJobMatches,
   toOpportunityMatchInsight,
   type JobMatchCandidatePayload,
@@ -39,6 +40,9 @@ export function useProvixAiMatch({
   >({});
   const [aiMatchRunning, setAiMatchRunning] = useState(false);
   const [aiMatchError, setAiMatchError] = useState<string | null>(null);
+  const sessionCacheRef = useRef<
+    Map<string, Record<string, OpportunityMatchResult>>
+  >(new Map());
 
   const activeJobs = useMemo(() => getActiveJobs(jobs), [jobs]);
 
@@ -60,6 +64,17 @@ export function useProvixAiMatch({
       const preferredWorkType =
         options?.workType ?? candidate.preferredWorkType ?? null;
       const jobPayloads = activeJobs.map((job) => toJobMatchJobPayload(job));
+      const cacheKey = buildCandidateJobMatchCacheKey(
+        candidate,
+        jobPayloads.map((job) => job.jobId),
+        preferredWorkType
+      );
+      const cached = sessionCacheRef.current.get(cacheKey);
+      if (cached) {
+        setAiMatchError(null);
+        setMatchInsights(cached);
+        return;
+      }
 
       setAiMatchError(null);
       setAiMatchRunning(true);
@@ -98,6 +113,7 @@ export function useProvixAiMatch({
         for (const match of matches) {
           nextInsights[String(match.jobId)] = toOpportunityMatchInsight(match);
         }
+        sessionCacheRef.current.set(cacheKey, nextInsights);
         setMatchInsights(nextInsights);
       } catch (err) {
         console.warn("Failed to run Provix AI Match:", err);

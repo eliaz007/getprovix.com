@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Check, LoaderCircle, Search, Sparkles } from "lucide-react";
-import { formatSalaryRange } from "@/lib/format-salary-range";
+import { formatJobCompensation } from "@/lib/format-salary-range";
 import {
   jobDisplayTags,
   jobMatchesWorkType,
@@ -16,6 +16,7 @@ import {
 } from "@/lib/opportunities-metrics";
 import {
   getFitVerdictBadgeClass,
+  splitCandidateMatchReason,
   type OpportunityMatchResult,
 } from "@/lib/opportunity-match";
 import { clampScore0to100 } from "@/lib/score-scale";
@@ -348,7 +349,7 @@ export default function OpportunitiesJobFeed({
             const insight = matchInsights[job.id];
             const isMatching = Boolean(matchLoadingIds[job.id]);
             const matchScore = insight?.match_score ?? 0;
-            const formattedSalary = formatSalaryRange(job.salary_range);
+            const formattedSalary = formatJobCompensation(job);
             const isExpanded = expandedJobId === job.id;
             const jobDescription = (job.description ?? "").trim();
 
@@ -455,16 +456,31 @@ export default function OpportunitiesJobFeed({
                         </p>
                       </div>
                     ) : (
-                      <ul className="space-y-1.5">
-                        {insight?.match_reasons.map((reason, index) => (
-                          <li
-                            key={`${job.id}-reason-${index}`}
-                            className="flex items-start gap-2 text-xs leading-relaxed text-zinc-300"
-                          >
-                            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-violet-400" />
-                            <span>{reason}</span>
-                          </li>
-                        ))}
+                      <ul className="space-y-2">
+                        {insight?.match_reasons.map((reason, index) => {
+                          const { label, body } =
+                            splitCandidateMatchReason(reason);
+                          return (
+                            <li
+                              key={`${job.id}-reason-${index}`}
+                              className="flex items-start gap-2 text-xs leading-relaxed text-zinc-300"
+                            >
+                              <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-violet-400" />
+                              <span>
+                                {label ? (
+                                  <>
+                                    <span className="font-semibold text-zinc-100">
+                                      {label}:
+                                    </span>{" "}
+                                    {body}
+                                  </>
+                                ) : (
+                                  reason
+                                )}
+                              </span>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>

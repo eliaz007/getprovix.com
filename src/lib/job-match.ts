@@ -10,6 +10,12 @@ import {
   type OpportunityMatchResult,
 } from "@/lib/opportunity-match";
 import { clampScore0to100 } from "@/lib/score-scale";
+import {
+  filterTechnicalRequirements,
+  isSoftOrTenureRequirement,
+} from "@/lib/technical-skill-requirements";
+
+export { filterTechnicalRequirements, isSoftOrTenureRequirement };
 
 export const INSUFFICIENT_DATA_REASON = "Insufficient data";
 
@@ -21,6 +27,8 @@ export type JobMatchCandidatePayload = {
   githubUrl?: string;
   github_url?: string;
   githubAudit?: unknown;
+  /** Production audit pillar scores + audited repo metadata from profiles.audit_breakdown. */
+  auditBreakdown?: unknown;
   openToFulltime?: boolean;
   open_to_fulltime?: boolean;
   openToContract?: boolean;
@@ -28,6 +36,26 @@ export type JobMatchCandidatePayload = {
   auditScore?: number | null;
   productionScore?: number | null;
   preferredWorkType?: JobWorkType;
+};
+
+export type AuditBreakdownSignals = {
+  architectureScore: number | null;
+  ciCdScore: number | null;
+  testDensity: number | null;
+  errorHandling: number | null;
+  auditedRepoUrl: string | null;
+  auditedAt: string | null;
+};
+
+/** Grounded evidence the candidate-facing match LLM may cite. */
+export type VerifiedMatchContext = {
+  verifiedTechnologies: string[];
+  auditScore: number | null;
+  github: GithubAuditSummary | null;
+  productionSignals: AuditBreakdownSignals & {
+    hasCiSignal: boolean;
+    hasTestSignal: boolean;
+  };
 };
 
 export type JobMatchJobPayload = {
@@ -193,28 +221,58 @@ export function filterJobsForAvailabilityMatch<T extends JobMatchJobPayload>(
   return { jobs: filtered, error: null };
 }
 
-/** Rank matches by stack-fit score, using audit score as a small confidence boost. */
+/**
+ * Sort matches by deterministic fit score (already includes bounded audit bonus).
+ * Does not mutate scores — audit boost is applied only in computeDeterministicJobMatchScore.
+ */
 export function rankJobMatchesByFitAndAudit(
   matches: JobMatch[],
-  candidate: JobMatchCandidatePayload | null | undefined
+  _candidate?: JobMatchCandidatePayload | null
 ): JobMatch[] {
-  const auditScore = resolveCandidateAuditScore(candidate);
-  const auditBoost =
-    typeof auditScore === "number"
-      ? Math.min(8, Math.max(0, Math.round((auditScore / 100) * 8)))
-      : 0;
+  return [...matches].sort((left, right) => {
+    if (right.matchScore !== left.matchScore) {
+      return right.matchScore - left.matchScore;
+    }
+    return String(left.jobId).localeCompare(String(right.jobId));
+  });
+}
 
-  return [...matches]
-    .map((match) => ({
-      ...match,
-      matchScore: clampScore0to100(match.matchScore + auditBoost),
-    }))
-    .sort((left, right) => {
-      if (right.matchScore !== left.matchScore) {
-        return right.matchScore - left.matchScore;
-      }
-      return String(left.jobId).localeCompare(String(right.jobId));
-    });
+/** Bounded 0–8 bonus from verified production audit score. */
+export function computeAuditScoreBonus(auditScore: number | null | undefined): number {
+  if (typeof auditScore !== "number" || !Number.isFinite(auditScore)) {
+    return 0;
+  }
+  return Math.min(8, Math.max(0, Math.round((auditScore / 100) * 8)));
+}
+
+/**
+ * Final match % is TypeScript-only: technical requirement overlap + experience
+ * bump + bounded audit bonus. Never trust an LLM for this number.
+ */
+export function computeDeterministicJobMatchScore(options: {
+  overlappingCount: number;
+  missingCount: number;
+  experienceTier: string;
+  auditScore: number | null | undefined;
+}): number {
+  const requirementCount = options.overlappingCount + options.missingCount;
+  let matchScore = 0;
+
+  if (requirementCount === 0) {
+    matchScore = options.experienceTier.trim() ? 35 : 20;
+  } else {
+    matchScore = Math.round(
+      (options.overlappingCount / requirementCount) * 80
+    );
+  }
+
+  if (options.experienceTier.trim()) {
+    matchScore += 8;
+  }
+
+  matchScore += computeAuditScoreBonus(options.auditScore);
+
+  return clampScore0to100(matchScore);
 }
 
 const MAX_JOBS_PER_REQUEST = 40;
@@ -272,8 +330,56 @@ export function parseExperienceTier(
   );
 }
 
-function collectAuditSkills(audit: unknown): string[] {
-  if (!audit || typeof audit !== "object") {
+const PATH_TECH_HINTS: Array<{ pattern: RegExp; label: string }> = [
+  { pattern: /next\.config/i, label: "Next.js" },
+  { pattern: /vite\.config/i, label: "Vite" },
+  { pattern: /tailwind\.config/i, label: "Tailwind CSS" },
+  { pattern: /prisma\//i, label: "Prisma" },
+  { pattern: /supabase/i, label: "Supabase" },
+  { pattern: /docker-compose|Dockerfile/i, label: "Docker" },
+  { pattern: /\.github\/workflows/i, label: "GitHub Actions" },
+  { pattern: /jest\.config|\/__tests__\//i, label: "Jest" },
+  { pattern: /vitest/i, label: "Vitest" },
+  { pattern: /playwright/i, label: "Playwright" },
+  { pattern: /cypress/i, label: "Cypress" },
+  { pattern: /tsconfig/i, label: "TypeScript" },
+  { pattern: /package\.json/i, label: "Node.js" },
+  { pattern: /requirements\.txt|pyproject\.toml/i, label: "Python" },
+  { pattern: /Cargo\.toml/i, label: "Rust" },
+  { pattern: /go\.mod/i, label: "Go" },
+  { pattern: /Gemfile/i, label: "Ruby" },
+  { pattern: /pom\.xml|build\.gradle/i, label: "Java" },
+  { pattern: /\.tsx?$/i, label: "TypeScript" },
+  { pattern: /react/i, label: "React" },
+];
+
+function inferTechFromFilesystem(filesystem: unknown): string[] {
+  if (!filesystem || typeof filesystem !== "object") {
+    return [];
+  }
+
+  const record = filesystem as Record<string, unknown>;
+  const paths = [
+    ...normalizeStringArray(record.sample_paths),
+    ...normalizeStringArray(record.test_paths),
+    ...normalizeStringArray(record.ci_workflow_paths),
+    ...normalizeStringArray(record.architecture_paths),
+  ];
+
+  const found: string[] = [];
+  for (const path of paths) {
+    for (const hint of PATH_TECH_HINTS) {
+      if (hint.pattern.test(path)) {
+        found.push(hint.label);
+      }
+    }
+  }
+
+  return found;
+}
+
+function collectAuditSkills(audit: unknown, depth = 0): string[] {
+  if (!audit || typeof audit !== "object" || depth > 6) {
     return [];
   }
 
@@ -282,19 +388,184 @@ function collectAuditSkills(audit: unknown): string[] {
     ...normalizeStringArray(record.skills),
     ...normalizeStringArray(record.languages),
     ...normalizeStringArray(record.tech_stack),
+    ...normalizeStringArray(record.frameworks),
+    ...normalizeStringArray(record.packages),
   ];
 
   if (typeof record.language === "string" && record.language.trim()) {
     skills.push(record.language.trim());
   }
 
+  if (record.github_audit) {
+    skills.push(...collectAuditSkills(record.github_audit, depth + 1));
+  }
+
+  if (record.filesystem) {
+    skills.push(...inferTechFromFilesystem(record.filesystem));
+    skills.push(...collectAuditSkills(record.filesystem, depth + 1));
+  }
+
   if (Array.isArray(record.artifacts)) {
     for (const artifact of record.artifacts) {
-      skills.push(...collectAuditSkills(artifact));
+      skills.push(...collectAuditSkills(artifact, depth + 1));
     }
   }
 
   return skills;
+}
+
+export function parseAuditBreakdownSignals(
+  breakdown: unknown
+): AuditBreakdownSignals {
+  if (!breakdown || typeof breakdown !== "object" || Array.isArray(breakdown)) {
+    return {
+      architectureScore: null,
+      ciCdScore: null,
+      testDensity: null,
+      errorHandling: null,
+      auditedRepoUrl: null,
+      auditedAt: null,
+    };
+  }
+
+  const record = breakdown as Record<string, unknown>;
+  const asScore = (value: unknown): number | null => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return clampScore0to100(value);
+    }
+    return null;
+  };
+
+  return {
+    architectureScore: asScore(
+      record.architecture_score ?? record.architectureScore
+    ),
+    ciCdScore: asScore(record.ci_cd_score ?? record.ciCdScore),
+    testDensity: asScore(record.test_density ?? record.testDensity),
+    errorHandling: asScore(record.error_handling ?? record.errorHandling),
+    auditedRepoUrl:
+      typeof record.audited_repo_url === "string" &&
+      record.audited_repo_url.trim()
+        ? record.audited_repo_url.trim()
+        : typeof record.auditedRepoUrl === "string" &&
+            record.auditedRepoUrl.trim()
+          ? record.auditedRepoUrl.trim()
+          : null,
+    auditedAt:
+      typeof record.audited_at === "string" && record.audited_at.trim()
+        ? record.audited_at.trim()
+        : typeof record.auditedAt === "string" && record.auditedAt.trim()
+          ? record.auditedAt.trim()
+          : null,
+  };
+}
+
+function filesystemHasCi(audit: unknown): boolean {
+  if (!audit || typeof audit !== "object") {
+    return false;
+  }
+  const record = audit as Record<string, unknown>;
+  const nested = record.github_audit ?? record.filesystem;
+  const fs =
+    record.filesystem && typeof record.filesystem === "object"
+      ? (record.filesystem as Record<string, unknown>)
+      : nested && typeof nested === "object"
+        ? ((nested as Record<string, unknown>).filesystem as
+            | Record<string, unknown>
+            | undefined)
+        : undefined;
+  if (!fs || typeof fs !== "object") {
+    if (record.github_audit) {
+      return filesystemHasCi(record.github_audit);
+    }
+    return false;
+  }
+  const workflows = normalizeStringArray(fs.ci_workflow_paths);
+  return (
+    workflows.length > 0 ||
+    fs.ci_has_tests === true ||
+    fs.ci_has_build === true ||
+    fs.ci_has_lint === true
+  );
+}
+
+function filesystemHasTests(audit: unknown): boolean {
+  if (!audit || typeof audit !== "object") {
+    return false;
+  }
+  const record = audit as Record<string, unknown>;
+  if (record.github_audit) {
+    const nested = filesystemHasTests(record.github_audit);
+    if (nested) return true;
+  }
+  const fs =
+    record.filesystem && typeof record.filesystem === "object"
+      ? (record.filesystem as Record<string, unknown>)
+      : record;
+  const testPaths = normalizeStringArray(fs.test_paths);
+  const unitCount =
+    typeof fs.unit_test_file_count === "number" ? fs.unit_test_file_count : 0;
+  return (
+    testPaths.length > 0 ||
+    unitCount > 0 ||
+    fs.ci_has_tests === true ||
+    fs.has_e2e_tools === true
+  );
+}
+
+export function buildVerifiedMatchContext(
+  candidate: JobMatchCandidatePayload
+): VerifiedMatchContext {
+  const verifiedTechnologies = extractAuditedSkills(candidate);
+  const auditScore = resolveCandidateAuditScore(candidate);
+  const github = summarizeGithubAudit(candidate.githubAudit);
+  const breakdown = parseAuditBreakdownSignals(candidate.auditBreakdown);
+  const hasCiSignal =
+    (breakdown.ciCdScore !== null && breakdown.ciCdScore > 0) ||
+    filesystemHasCi(candidate.githubAudit);
+  const hasTestSignal =
+    (breakdown.testDensity !== null && breakdown.testDensity > 0) ||
+    filesystemHasTests(candidate.githubAudit);
+
+  return {
+    verifiedTechnologies,
+    auditScore,
+    github,
+    productionSignals: {
+      ...breakdown,
+      hasCiSignal,
+      hasTestSignal,
+    },
+  };
+}
+
+/**
+ * Session cache key for candidate-facing job match: skills + audit identity + jobs.
+ */
+export function buildCandidateJobMatchCacheKey(
+  candidate: JobMatchCandidatePayload,
+  jobIds: Array<string | number>,
+  preferredWorkType?: JobWorkType | null
+): string {
+  const skills = extractAuditedSkills(candidate)
+    .map((skill) => skill.toLowerCase())
+    .sort();
+  const breakdown = parseAuditBreakdownSignals(candidate.auditBreakdown);
+  const github = summarizeGithubAudit(candidate.githubAudit);
+  const auditId = [
+    breakdown.auditedAt ?? "",
+    breakdown.auditedRepoUrl ?? "",
+    github?.owner ?? "",
+    github?.repo ?? "",
+    String(resolveCandidateAuditScore(candidate) ?? ""),
+  ].join("|");
+
+  return JSON.stringify({
+    skills,
+    auditId,
+    jobIds: [...jobIds].map(String).sort(),
+    workType: preferredWorkType ?? candidate.preferredWorkType ?? null,
+  });
 }
 
 export function extractAuditedSkills(
@@ -418,7 +689,11 @@ export function computeJobSkillOverlap(
   skills: string[],
   job: ParsedJobListing
 ): { overlapping: string[]; missing: string[] } {
-  const requirements = uniqueDisplayList([...job.techStack, ...job.requiredSkills]);
+  // Strip soft buzzwords / bare tenure before scoring so they cannot suppress %.
+  const requirements = filterTechnicalRequirements([
+    ...job.techStack,
+    ...job.requiredSkills,
+  ]);
   const overlapping = requirements.filter((required) =>
     skills.some((skill) => skillOverlapsRequirement(skill, required))
   );
@@ -489,72 +764,76 @@ export function buildHeuristicMatchReasons(
   skills: string[],
   experienceTier: string,
   job: ParsedJobListing,
-  githubAudit?: unknown
+  githubAudit?: unknown,
+  auditScore?: number | null,
+  auditBreakdown?: unknown
 ): string[] {
   const { overlapping, missing } = computeJobSkillOverlap(skills, job);
   const github = summarizeGithubAudit(githubAudit);
-  const reasons: string[] = [];
+  const breakdown = parseAuditBreakdownSignals(auditBreakdown);
   const roleLabel = job.title.trim() || "this role";
+  const stackSkills =
+    overlapping.length > 0 ? overlapping.slice(0, 3) : skills.slice(0, 3);
+  const repoLabel =
+    github?.owner && github?.repo
+      ? `${github.owner}/${github.repo}`
+      : breakdown.auditedRepoUrl ||
+        github?.owner ||
+        "your audited repo";
 
-  if (overlapping.length > 0) {
-    reasons.push(
-      `Your ${formatSkillList(overlapping.slice(0, 3))} skills match ${roleLabel}'s required stack.`
-    );
-  }
+  const stackEdge =
+    overlapping.length > 0
+      ? `Your Stack Edge: Your verified ${formatSkillList(stackSkills)} overlap ${roleLabel}'s listed stack — lead with those exact technologies.`
+      : `Your Stack Edge: Highlight your audited ${formatSkillList(stackSkills)} and map each to the closest requirement on ${roleLabel}.`;
 
-  if (missing.length > 0) {
-    reasons.push(
-      `This listing also asks for ${formatSkillList(missing.slice(0, 3))}, which are not in your audited skills.`
-    );
-  }
+  const scoreLabel =
+    typeof auditScore === "number" && Number.isFinite(auditScore)
+      ? `${Math.round(auditScore)}/100`
+      : null;
+  const commitSignal =
+    github && github.commit_count_sampled >= 3
+      ? `${github.commit_count_sampled} recent commits on ${repoLabel}`
+      : github?.language
+        ? `${github.language} work on ${repoLabel}`
+        : null;
+  const ciSignal =
+    breakdown.ciCdScore !== null && breakdown.ciCdScore > 0
+      ? `CI/CD pillar ${breakdown.ciCdScore}/100`
+      : filesystemHasCi(githubAudit)
+        ? "verified CI workflows in the audited repo"
+        : null;
+  const testSignal =
+    breakdown.testDensity !== null && breakdown.testDensity > 0
+      ? `test density ${breakdown.testDensity}/100`
+      : filesystemHasTests(githubAudit)
+        ? "audited test coverage signals"
+        : null;
+  const productionExtras = [commitSignal, ciSignal, testSignal].filter(
+    Boolean
+  ) as string[];
 
-  if (github) {
-    const repoLabel =
-      github.owner && github.repo
-        ? `${github.owner}/${github.repo}`
-        : github.owner || "your GitHub";
+  const verifiedProof = scoreLabel
+    ? `Verified Proof: Your ${scoreLabel} production audit${
+        productionExtras.length > 0
+          ? ` plus ${formatSkillList(productionExtras)}`
+          : ""
+      } is concrete shipping evidence most applicants cannot show.`
+    : productionExtras.length > 0
+      ? `Verified Proof: ${formatSkillList(productionExtras)} demonstrates production cadence beyond resume claims.`
+      : `Verified Proof: Keep your Provix audit current — a 75+ score turns this application into verified proof of production readiness.`;
 
-    if (
-      github.language &&
-      [...overlapping, ...missing].some((item) =>
-        skillOverlapsRequirement(item, github.language!)
-      )
-    ) {
-      if (overlapping.some((item) => skillOverlapsRequirement(item, github.language!))) {
-        reasons.push(
-          `GitHub repo ${repoLabel} is primarily ${github.language}, which this role lists as a requirement.`
-        );
-      } else {
-        reasons.push(
-          `GitHub repo ${repoLabel} is centered on ${github.language}, while this role emphasizes ${formatSkillList(missing.slice(0, 2))}.`
-        );
-      }
-    } else if (github.commit_count_sampled >= 3) {
-      reasons.push(
-        `GitHub shows ${github.commit_count_sampled} recent commits on ${repoLabel} as proof of work.`
-      );
-    } else if (github.language) {
-      reasons.push(
-        `Your GitHub work on ${repoLabel} is primarily ${github.language}.`
-      );
-    }
-  }
+  const technicalGaps = missing.slice(0, 2);
+  const applicationAngle =
+    technicalGaps.length > 0
+      ? `Application Angle: Address ${formatSkillList(technicalGaps)} by pairing adjacent audited skills with repo walkthroughs — and frame velocity on ${repoLabel} to offset generic tenure asks.`
+      : experienceTier
+        ? `Application Angle: Open with your ${experienceTier} scope and ${scoreLabel ?? "audit"} proof, then show how ${formatSkillList(stackSkills)} maps to ${roleLabel}'s day-one work.`
+        : `Application Angle: Lead the application with your stack overlap and audit proof, then show a short repo walkthrough of your highest-signal project.`;
 
-  if (experienceTier && reasons.length < 3) {
-    reasons.push(
-      `Your ${experienceTier} experience level is being scored against ${roleLabel}.`
-    );
-  }
-
-  if (reasons.length === 0 && skills.length > 0) {
-    reasons.push(
-      job.requiredSkills.length === 0 && job.techStack.length === 0
-        ? `Your profile highlights ${formatSkillList(skills.slice(0, 3))} against ${roleLabel}, which lists no explicit required skills.`
-        : `Your audited skills (${formatSkillList(skills.slice(0, 3))}) do not overlap ${roleLabel}'s listed requirements.`
-    );
-  }
-
-  return uniqueDisplayList(reasons).slice(0, 3);
+  return uniqueDisplayList([stackEdge, verifiedProof, applicationAngle]).slice(
+    0,
+    3
+  );
 }
 
 export function parseJobListings(jobs: unknown): ParsedJobListing[] {
@@ -686,30 +965,33 @@ export function buildHeuristicJobMatch(
   skills: string[],
   experienceTier: string,
   job: ParsedJobListing,
-  githubAudit?: unknown
+  githubAudit?: unknown,
+  auditScore?: number | null,
+  auditBreakdown?: unknown
 ): JobMatch {
   if (skills.length === 0) {
     return jobMatchFromReasons(job.jobId, 0, [INSUFFICIENT_DATA_REASON]);
   }
 
   const { overlapping, missing } = computeJobSkillOverlap(skills, job);
-  const requirementCount = overlapping.length + missing.length;
-
-  let matchScore = 0;
-  if (requirementCount === 0) {
-    matchScore = experienceTier ? 35 : 20;
-  } else {
-    matchScore = Math.round((overlapping.length / requirementCount) * 80);
-  }
-
-  if (experienceTier) {
-    matchScore = Math.min(100, matchScore + 8);
-  }
+  const matchScore = computeDeterministicJobMatchScore({
+    overlappingCount: overlapping.length,
+    missingCount: missing.length,
+    experienceTier,
+    auditScore,
+  });
 
   return jobMatchFromReasons(
     job.jobId,
     matchScore,
-    buildHeuristicMatchReasons(skills, experienceTier, job, githubAudit)
+    buildHeuristicMatchReasons(
+      skills,
+      experienceTier,
+      job,
+      githubAudit,
+      auditScore,
+      auditBreakdown
+    )
   );
 }
 
@@ -723,8 +1005,16 @@ export function buildFallbackMatches(
 
   const skills = extractAuditedSkills(candidate!);
   const experienceTier = parseExperienceTier(candidate!);
+  const auditScore = resolveCandidateAuditScore(candidate);
   return jobs.map((job) =>
-    buildHeuristicJobMatch(skills, experienceTier, job, candidate?.githubAudit)
+    buildHeuristicJobMatch(
+      skills,
+      experienceTier,
+      job,
+      candidate?.githubAudit,
+      auditScore,
+      candidate?.auditBreakdown
+    )
   );
 }
 
@@ -737,12 +1027,15 @@ export function alignMatchesToJobs(
   const skills = extractAuditedSkills(candidate);
   const experienceTier = parseExperienceTier(candidate);
 
+  const auditScore = resolveCandidateAuditScore(candidate);
   return jobs.map((job) => {
     const heuristic = buildHeuristicJobMatch(
       skills,
       experienceTier,
       job,
-      candidate.githubAudit
+      candidate.githubAudit,
+      auditScore,
+      candidate.auditBreakdown
     );
     const existing = byId.get(String(job.jobId));
     if (!existing) {
@@ -756,9 +1049,10 @@ export function alignMatchesToJobs(
       heuristic.matchReasons
     );
 
+    // Always keep the TypeScript-computed score; LLM may only supply narrative.
     return jobMatchFromReasons(
       job.jobId,
-      existing.matchScore,
+      heuristic.matchScore,
       mergedReasons.length > 0 ? mergedReasons : heuristic.matchReasons
     );
   });

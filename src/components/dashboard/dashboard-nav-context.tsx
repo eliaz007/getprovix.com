@@ -38,6 +38,12 @@ import {
   parseAvailabilityStatus,
   type AvailabilityStatus,
 } from "@/lib/availability-status";
+import { isVisibleToEmployers } from "@/lib/opportunities-metrics";
+import {
+  isTalentPoolGitHubLinked,
+  isTalentPoolOwnershipVerified,
+  meetsMarketplacePublishCriteria,
+} from "@/lib/talent-pool-visibility";
 
 export type ProfileStudioSection = "profile" | "proof_of_work" | "settings";
 
@@ -390,9 +396,16 @@ function DashboardNavProviderImpl({
         open_to_contract?: boolean | null;
         full_name?: string | null;
         company_name?: string | null;
+        github_verified?: boolean | null;
+        github_username?: string | null;
+        verification_status?: string | null;
+        production_score?: number | null;
+        audit_score?: number | null;
+        audit_breakdown?: unknown;
+        is_visible_in_pool?: boolean | null;
       } | null = null;
       const profileSelect =
-        "role, is_verified, availability_status, open_to_fulltime, open_to_contract, full_name, company_name";
+        "role, is_verified, availability_status, open_to_fulltime, open_to_contract, full_name, company_name, github_verified, github_username, verification_status, production_score, audit_score, audit_breakdown, is_visible_in_pool";
       console.time("dashboard-layout:profile-fetch");
       const byId = await supabase
         .from("profiles")
@@ -441,8 +454,40 @@ function DashboardNavProviderImpl({
         typeof profile?.is_verified === "boolean" ? profile.is_verified : null
       );
       setAvailabilityStatus(parseAvailabilityStatus(profile?.availability_status));
-      setOpenToFulltime(profile?.open_to_fulltime === true);
-      setOpenToContract(profile?.open_to_contract === true);
+      const githubUsername = profile?.github_username ?? null;
+      const auditedRepoUrl =
+        profile?.audit_breakdown &&
+        typeof profile.audit_breakdown === "object" &&
+        !Array.isArray(profile.audit_breakdown) &&
+        typeof (profile.audit_breakdown as { audited_repo_url?: unknown })
+          .audited_repo_url === "string"
+          ? (profile.audit_breakdown as { audited_repo_url: string })
+              .audited_repo_url
+          : null;
+      const publishEligible = meetsMarketplacePublishCriteria({
+        isVisibleInPool: isVisibleToEmployers(profile?.is_visible_in_pool),
+        githubVerified: isTalentPoolGitHubLinked({
+          githubVerified: profile?.github_verified === true,
+          githubUsername,
+        }),
+        ownershipVerified: isTalentPoolOwnershipVerified({
+          verificationStatus: profile?.verification_status,
+          auditedRepoUrl,
+          githubUsername,
+        }),
+        scores: [
+          typeof profile?.production_score === "number"
+            ? profile.production_score
+            : null,
+          typeof profile?.audit_score === "number" ? profile.audit_score : null,
+        ],
+      });
+      setOpenToFulltime(
+        publishEligible && profile?.open_to_fulltime === true
+      );
+      setOpenToContract(
+        publishEligible && profile?.open_to_contract === true
+      );
       setCompanyName(profile?.company_name ?? null);
       setCompanyNameReady(true);
       const namedIdentity = getUserHeaderIdentity(user, profile?.full_name);

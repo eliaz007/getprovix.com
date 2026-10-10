@@ -102,6 +102,12 @@ import {
 } from "@/lib/github-identity";
 import {
   canEnableTalentPoolVisibility,
+  isTalentPoolGitHubLinked,
+  isTalentPoolOwnershipVerified,
+  listMarketplacePublishGateFailures,
+  meetsMarketplacePublishCriteria,
+  resolveTalentPoolAuditedRepoUrl,
+  talentPoolVisibilityFailureMessage,
   TALENT_POOL_CONNECT_GITHUB_MESSAGE,
   TALENT_POOL_SCORE_REQUIRED_MESSAGE,
 } from "@/lib/talent-pool-visibility";
@@ -120,16 +126,19 @@ import {
   EXPERIENCE_LEVEL_OPTIONS,
   type ExperienceLevel,
 } from "@/lib/experience-level";
-import { formatSalaryRange } from "@/lib/format-salary-range";
+import {
+  formatJobCompensation,
+  formatSalaryRange,
+} from "@/lib/format-salary-range";
 import {
   getGitHubUrlValidationMessage,
   isValidGitHubUrl,
   normalizeGitHubUrl,
-  repoNamespaceMatchesGitHubUsername,
 } from "@/lib/validate-github-url";
 import { buildFallbackMatch, isCannedMatchScore, scoreTalentMatch, type MatchResult } from "@/lib/match-heuristic";
 import {
   getFitVerdictBadgeClass,
+  splitCandidateMatchReason,
   type OpportunityMatchResult,
 } from "@/lib/opportunity-match";
 import {
@@ -195,12 +204,10 @@ import {
   formatContractBandwidthPill,
   formatContractRatePill,
   formatMarketplaceAuditScoreBadge,
-  formatMarketplaceAvailabilityLockedAlert,
   formatMarketplaceEligibleBadge,
   getContractDetailsValidationError,
   getPreferenceAvailabilityPresentation,
   getProvixInclusiveHourlyRate,
-  isMarketplaceAvailabilityQualified,
   isOnlyUsingDiagnosticTools,
   marketplaceEngagementEmptyState,
   marketplaceEngagementLabel,
@@ -1278,18 +1285,39 @@ export default function DashboardPage() {
           profileWithRole?.is_visible_in_pool
         );
         const loadedPortfolioUrl = profileWithRole?.portfolio_url ?? "";
+        const loadedGitHubUsername = (
+          profileWithRole?.github_username ?? ""
+        )
+          .replace(/^@/, "")
+          .trim();
+        const loadedAudit = parseProductionAuditFromProfileRow(profileWithRole);
+        const loadedAuditedRepoUrl = resolveTalentPoolAuditedRepoUrl({
+          auditedRepoUrl: loadedAudit?.breakdown.audited_repo_url,
+          auditBreakdown: profileWithRole?.audit_breakdown,
+          portfolioUrl: loadedPortfolioUrl,
+        });
         setIsVisibleInPool(
           loadedVisibleInPool &&
             isValidGitHubUrl(loadedPortfolioUrl) &&
             canEnableTalentPoolVisibility({
-              githubVerified:
-                profileWithRole?.github_verified === true &&
-                Boolean(profileWithRole?.github_username?.trim()),
-              ownershipVerified:
-                profileWithRole?.verification_status === "verified",
+              githubVerified: isTalentPoolGitHubLinked({
+                githubVerified: profileWithRole?.github_verified === true,
+                githubUsername: loadedGitHubUsername,
+              }),
+              ownershipVerified: isTalentPoolOwnershipVerified({
+                verificationStatus: profileWithRole?.verification_status,
+                isAuditVerified:
+                  profileWithRole?.is_audit_verified === true ||
+                  loadedAudit?.isAuditVerified === true,
+                auditedRepoUrl: loadedAuditedRepoUrl,
+                auditBreakdown: profileWithRole?.audit_breakdown,
+                portfolioUrl: loadedPortfolioUrl,
+                githubUsername: loadedGitHubUsername,
+              }),
               scores: [
                 profileWithRole?.production_score,
                 profileWithRole?.audit_score,
+                loadedAudit?.productionScore,
               ],
             })
         );
@@ -1331,8 +1359,34 @@ export default function DashboardPage() {
             : null,
           parseProductionAuditFromProfileRow(profileWithRole)?.productionScore
         );
-        const loadedMarketplaceQualified =
-          isMarketplaceAvailabilityQualified(loadedMarketplaceScore);
+        const loadedGithubVerified = isTalentPoolGitHubLinked({
+          githubVerified: profileWithRole?.github_verified === true,
+          githubUsername: loadedGitHubUsername,
+        });
+        const loadedOwnershipVerified = isTalentPoolOwnershipVerified({
+          verificationStatus: profileWithRole?.verification_status,
+          isAuditVerified:
+            profileWithRole?.is_audit_verified === true ||
+            loadedAudit?.isAuditVerified === true,
+          auditedRepoUrl: loadedAuditedRepoUrl,
+          auditBreakdown: profileWithRole?.audit_breakdown,
+          portfolioUrl: loadedPortfolioUrl,
+          githubUsername: loadedGitHubUsername,
+        });
+        const loadedMarketplaceQualified = meetsMarketplacePublishCriteria({
+          isVisibleInPool: loadedVisibleInPool,
+          githubVerified: loadedGithubVerified,
+          ownershipVerified: loadedOwnershipVerified,
+          scores: [
+            loadedMarketplaceScore,
+            typeof profileWithRole?.production_score === "number"
+              ? profileWithRole.production_score
+              : null,
+            typeof profileWithRole?.audit_score === "number"
+              ? profileWithRole.audit_score
+              : null,
+          ],
+        });
         const loadedOpenToFulltime =
           loadedMarketplaceQualified &&
           normalizeOpenToFulltime(profileWithRole?.open_to_fulltime);
@@ -1463,7 +1517,7 @@ export default function DashboardPage() {
                 jobId: row.job_id,
                 title: job?.title ?? "Open Role",
                 company: job?.company ?? "—",
-                salary: formatSalaryRange(job?.salary_range ?? "") || "—",
+                salary: formatJobCompensation(job ?? {}) || "—",
                 location: job?.location ?? "—",
                 status: "Interest Expressed",
                 appliedAt: new Date(row.created_at).toLocaleDateString(
@@ -2511,7 +2565,43 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     typeof dbProfile?.audit_score === "number" ? dbProfile.audit_score : null,
     parseProductionAuditFromProfileRow(dbProfile)?.productionScore
   );
-  const isQualified = isMarketplaceAvailabilityQualified(marketplaceAuditScore);
+  const marketplaceGitHubUsername = (dbProfile?.github_username ?? "")
+    .replace(/^@/, "")
+    .trim();
+  const marketplaceGithubVerified = isTalentPoolGitHubLinked({
+    githubVerified: dbProfile?.github_verified === true,
+    githubUsername: marketplaceGitHubUsername,
+  });
+  const marketplaceOwnershipVerified = isTalentPoolOwnershipVerified({
+    verificationStatus: dbProfile?.verification_status,
+    isAuditVerified:
+      dbProfile?.is_audit_verified === true ||
+      parseProductionAuditFromProfileRow(dbProfile)?.isAuditVerified === true,
+    auditedRepoUrl: resolveTalentPoolAuditedRepoUrl({
+      auditedRepoUrl: parseProductionAuditFromProfileRow(dbProfile)?.breakdown
+        .audited_repo_url,
+      auditBreakdown: dbProfile?.audit_breakdown,
+      portfolioUrl: dbProfile?.portfolio_url ?? portfolioUrl,
+    }),
+    auditBreakdown: dbProfile?.audit_breakdown,
+    portfolioUrl: dbProfile?.portfolio_url ?? portfolioUrl,
+    githubUsername: marketplaceGitHubUsername,
+  });
+  const marketplacePoolVisible =
+    isVisibleInPool || isVisibleToEmployers(dbProfile?.is_visible_in_pool);
+  const marketplacePublishGateFailures = listMarketplacePublishGateFailures({
+    isVisibleInPool: marketplacePoolVisible,
+    githubVerified: marketplaceGithubVerified,
+    ownershipVerified: marketplaceOwnershipVerified,
+    scores: [
+      marketplaceAuditScore,
+      typeof dbProfile?.production_score === "number"
+        ? dbProfile.production_score
+        : null,
+      typeof dbProfile?.audit_score === "number" ? dbProfile.audit_score : null,
+    ],
+  });
+  const isQualified = marketplacePublishGateFailures.length === 0;
   const effectiveOpenToFulltime = isQualified && openToFulltime;
   const effectiveOpenToContract = isQualified && openToContract;
 
@@ -2522,20 +2612,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     }
   }, [isQualified, openToFulltime, openToContract]);
 
-  // Keep the sidebar widget in sync with preference toggles only (no audit fetch).
+  // Keep the sidebar widget in sync with publish-gated engagement only.
   useEffect(() => {
-    navSetOpenToFulltime?.(openToFulltime);
-    navSetOpenToContract?.(openToContract);
+    navSetOpenToFulltime?.(effectiveOpenToFulltime);
+    navSetOpenToContract?.(effectiveOpenToContract);
   }, [
+    effectiveOpenToContract,
+    effectiveOpenToFulltime,
     navSetOpenToContract,
     navSetOpenToFulltime,
-    openToContract,
-    openToFulltime,
   ]);
 
   const preferenceAvailability = getPreferenceAvailabilityPresentation(
-    openToFulltime,
-    openToContract
+    effectiveOpenToFulltime,
+    effectiveOpenToContract,
+    isQualified
   );
   const provixInclusiveHourlyRate = getProvixInclusiveHourlyRate(
     contractHourlyRate
@@ -2592,27 +2683,54 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     if (isTogglingVisibility) return;
 
     const nextVisible = !isVisibleInPool;
-    const githubLinked =
-      dbProfile?.github_verified === true && Boolean(githubUsername);
-    const ownershipVerified = dbProfile?.verification_status === "verified";
+    // Match the green "✓ Linked / Ownership verified" status exactly — including
+    // repo-namespace ownership when verification_status is not yet "verified".
+    const toggleGitHubUsername = (dbProfile?.github_username ?? "")
+      .replace(/^@/, "")
+      .trim();
+    const toggleAudit = parseProductionAuditFromProfileRow(dbProfile);
+    const githubLinked = isTalentPoolGitHubLinked({
+      githubVerified: dbProfile?.github_verified === true,
+      githubUsername: toggleGitHubUsername,
+    });
+    const toggleOwnershipVerified = isTalentPoolOwnershipVerified({
+      verificationStatus: dbProfile?.verification_status,
+      isAuditVerified:
+        dbProfile?.is_audit_verified === true ||
+        toggleAudit?.isAuditVerified === true,
+      auditedRepoUrl: resolveTalentPoolAuditedRepoUrl({
+        auditedRepoUrl: toggleAudit?.breakdown.audited_repo_url,
+        auditBreakdown: dbProfile?.audit_breakdown,
+        portfolioUrl: dbProfile?.portfolio_url ?? portfolioUrl,
+      }),
+      auditBreakdown: dbProfile?.audit_breakdown,
+      portfolioUrl: dbProfile?.portfolio_url ?? portfolioUrl,
+      githubUsername: toggleGitHubUsername,
+    });
+    const toggleScores = [
+      dbProfile?.production_score,
+      dbProfile?.audit_score,
+      toggleAudit?.productionScore,
+    ];
     const canEnable = canEnableTalentPoolVisibility({
       githubVerified: githubLinked,
-      ownershipVerified,
-      scores: [dbProfile?.production_score, dbProfile?.audit_score],
+      ownershipVerified: toggleOwnershipVerified,
+      scores: toggleScores,
     });
     if (nextVisible && !canEnable) {
       showToast(
-        !githubLinked
-          ? TALENT_POOL_CONNECT_GITHUB_MESSAGE
-          : !ownershipVerified
-            ? "Ownership unverified. Audit a repository you authored before becoming visible."
-            : TALENT_POOL_SCORE_REQUIRED_MESSAGE
+        talentPoolVisibilityFailureMessage({
+          githubVerified: githubLinked,
+          ownershipVerified: toggleOwnershipVerified,
+          scores: toggleScores,
+        })
       );
       setIsVisibleInPool(false);
       return;
     }
 
-    const profileId = dbProfile?.id ?? user?.id;
+    // Persist gates against auth.uid(); prefer the session user id over profile.id.
+    const profileId = user?.id ?? dbProfile?.id;
     if (!profileId) {
       showToast("You must be logged in to update visibility.");
       return;
@@ -2914,7 +3032,36 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       );
 
       if (error) {
-        console.error("Profile update failed:", error);
+        const errorRecord =
+          error && typeof error === "object"
+            ? (error as {
+                message?: string;
+                details?: string;
+                hint?: string;
+                code?: string;
+                status?: number | string;
+              })
+            : null;
+        console.error("Profile update failed:", {
+          message: errorRecord?.message,
+          details: errorRecord?.details,
+          hint: errorRecord?.hint,
+          code: errorRecord?.code,
+          status: errorRecord?.status,
+          userMessage,
+          contractHourlyRateInput: contractHourlyRate,
+          normalizedContractRate,
+          payloadContractHourlyRate: payload.contract_hourly_rate,
+          payloadContractHoursPerWeek: payload.contract_hours_per_week,
+          payloadOpenToContract: payload.open_to_contract,
+          json: (() => {
+            try {
+              return JSON.stringify(error);
+            } catch {
+              return "[unserializable]";
+            }
+          })(),
+        });
         showToast(userMessage ?? "Could not save profile. Please try again.");
         return;
       }
@@ -3006,7 +3153,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
           : "Profile saved successfully."
       );
     } catch (error) {
-      console.error("Profile update failed:", error);
+      console.error(
+        "Profile update failed:",
+        error instanceof Error
+          ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+            }
+          : {
+              error,
+              json: (() => {
+                try {
+                  return JSON.stringify(error);
+                } catch {
+                  return "[unserializable]";
+                }
+              })(),
+            }
+      );
       showToast("Could not save profile. Please try again.");
     } finally {
       setIsSaving(false);
@@ -3490,7 +3655,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       skills: candidateSkillsForMatching,
       experienceTier: dbProfile?.experience_level?.trim() || experienceLevel,
       githubUrl: portfolioUrl.trim() || dbProfile?.portfolio_url?.trim() || "",
-      githubAudit: null,
+      githubAudit: dbProfile?.audit_data ?? null,
+      auditBreakdown:
+        dbProfile?.audit_breakdown ??
+        parseProductionAuditFromProfileRow(dbProfile)?.breakdown ??
+        null,
       openToFulltime,
       openToContract,
       open_to_fulltime: openToFulltime,
@@ -3748,7 +3917,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         jobId: job.id,
         title: job.title ?? "Open Role",
         company: job.company ?? "—",
-        salary: formatSalaryRange(job.salary_range ?? "") || "—",
+        salary: formatJobCompensation(job) || "—",
         location: job.location ?? "—",
         status: "Interest Expressed",
         appliedAt: "Just now",
@@ -4342,15 +4511,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   const githubUsername = (dbProfile?.github_username ?? "")
     .replace(/^@/, "")
     .trim();
-  const githubVerified =
-    dbProfile?.github_verified === true && Boolean(githubUsername);
-  const ownershipVerified = dbProfile?.verification_status === "verified";
-  const ownershipBadgeVerified =
-    ownershipVerified ||
-    repoNamespaceMatchesGitHubUsername(
-      candidateProductionAudit?.breakdown.audited_repo_url,
-      githubUsername
-    );
+  const githubVerified = isTalentPoolGitHubLinked({
+    githubVerified: dbProfile?.github_verified === true,
+    githubUsername,
+  });
+  const ownershipVerified = isTalentPoolOwnershipVerified({
+    verificationStatus: dbProfile?.verification_status,
+    isAuditVerified:
+      dbProfile?.is_audit_verified === true ||
+      candidateProductionAudit?.isAuditVerified === true,
+    auditedRepoUrl: resolveTalentPoolAuditedRepoUrl({
+      auditedRepoUrl: candidateProductionAudit?.breakdown.audited_repo_url,
+      auditBreakdown: dbProfile?.audit_breakdown,
+      portfolioUrl: dbProfile?.portfolio_url ?? portfolioUrl,
+    }),
+    auditBreakdown: dbProfile?.audit_breakdown,
+    portfolioUrl: dbProfile?.portfolio_url ?? portfolioUrl,
+    githubUsername,
+  });
+  const ownershipBadgeVerified = ownershipVerified;
   const canEnableTalentPool = canEnableTalentPoolVisibility({
     githubVerified,
     ownershipVerified,
@@ -4362,7 +4541,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   });
   const talentPoolSwitchOn = isVisibleInPool && canEnableTalentPool;
   const visibilityToggleDisabled =
-    isTogglingVisibility || !canEnableTalentPool;
+    isTogglingVisibility || (!canEnableTalentPool && !isVisibleInPool);
 
   // --- DERIVED VALUES FOR THE SHAREABLE BUSINESS PROFILE CARD ---
   const businessInitials =
@@ -5389,12 +5568,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                             </div>
                             <span
                               className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold ${
-                                preferenceAvailability.tone === "emerald"
+                                preferenceAvailability.isLive
                                   ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
                                   : "border-border bg-background text-textMuted"
                               }`}
                             >
-                              Live
+                              {preferenceAvailability.statusBadge}
                             </span>
                           </div>
 
@@ -5406,6 +5585,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               <span className="text-[11px] text-textMuted">
                                 Tell employers whether you&apos;re open to full-time
                                 roles, contract work, or only using Provix tools.
+                                Requires Visible to Employers, verified GitHub
+                                ownership, and a 75+ audit score.
                               </span>
                             </div>
 
@@ -5613,11 +5794,29 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 {formatMarketplaceEligibleBadge(marketplaceAuditScore)}
                               </span>
                             ) : (
-                              <span className="inline-flex max-w-full items-start rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium leading-snug text-amber-200">
-                                {formatMarketplaceAvailabilityLockedAlert(
-                                  marketplaceAuditScore
-                                )}
-                              </span>
+                              <div
+                                role="status"
+                                className="space-y-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2"
+                              >
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                                  Marketplace availability locked
+                                </p>
+                                <p className="text-[11px] leading-snug text-amber-100/90">
+                                  Score:{" "}
+                                  {typeof marketplaceAuditScore === "number"
+                                    ? marketplaceAuditScore
+                                    : "—"}
+                                  /100 — Fix the items below before Full-Time or
+                                  Contract can go live:
+                                </p>
+                                <ul className="list-disc space-y-0.5 pl-4 text-[11px] leading-snug text-amber-100/90">
+                                  {marketplacePublishGateFailures.map(
+                                    (failure) => (
+                                      <li key={failure}>{failure}</li>
+                                    )
+                                  )}
+                                </ul>
+                              </div>
                             )}
                           </div>
 
@@ -5628,7 +5827,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               </span>
                               <span className="text-[11px] text-textMuted">
                                 Controls talent-pool and scorecard visibility. Requires
-                                linked GitHub and a 75+ production audit.
+                                linked GitHub, verified repository ownership, and a
+                                75+ production audit.
                               </span>
                               {githubVerified ? (
                                 <p className="text-xs font-medium text-emerald-400">
@@ -6739,7 +6939,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                       .map((part: string) => part.charAt(0))
                       .join("")
                       .toUpperCase();
-                    const formattedSalary = formatSalaryRange(job.salary_range);
+                    const formattedSalary = formatJobCompensation(job);
 
                     return (
                       <div
@@ -6830,16 +7030,31 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                 </p>
                               </div>
                             ) : (
-                              <ul className="space-y-1.5">
-                                {insight?.match_reasons.map((reason, index) => (
-                                  <li
-                                    key={`${job.id}-reason-${index}`}
-                                    className="flex items-start gap-2 text-xs text-textMuted leading-relaxed"
-                                  >
-                                    <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand" />
-                                    <span>{reason}</span>
-                                  </li>
-                                ))}
+                              <ul className="space-y-2">
+                                {insight?.match_reasons.map((reason, index) => {
+                                  const { label, body } =
+                                    splitCandidateMatchReason(reason);
+                                  return (
+                                    <li
+                                      key={`${job.id}-reason-${index}`}
+                                      className="flex items-start gap-2 text-xs text-textMuted leading-relaxed"
+                                    >
+                                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-brand" />
+                                      <span>
+                                        {label ? (
+                                          <>
+                                            <span className="font-semibold text-textMain">
+                                              {label}:
+                                            </span>{" "}
+                                            {body}
+                                          </>
+                                        ) : (
+                                          reason
+                                        )}
+                                      </span>
+                                    </li>
+                                  );
+                                })}
                               </ul>
                             )}
                           </div>

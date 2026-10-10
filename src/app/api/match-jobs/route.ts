@@ -6,9 +6,12 @@ import {
   alignMatchesToJobs,
   buildFallbackMatches,
   buildInsufficientDataMatches,
+  buildVerifiedMatchContext,
+  computeDeterministicJobMatchScore,
   computeJobSkillOverlap,
   extractAuditedSkills,
   filterJobsForAvailabilityMatch,
+  filterTechnicalRequirements,
   hasUsableCandidateMatchData,
   isGeminiRateLimitError,
   normalizeJobMatch,
@@ -18,7 +21,6 @@ import {
   readRetryAfterSeconds,
   resolveCandidateAuditScore,
   resolveCandidateAvailability,
-  summarizeGithubAudit,
   type JobMatchCandidatePayload,
   type JobMatchResult,
   type ParsedJobListing,
@@ -33,32 +35,36 @@ const matchJobsRequestBodySchema = z.object({
   jobs: z.array(z.unknown()),
 });
 
-const SYSTEM_PROMPT = `You are Provix AI Job Match — a skill-matching engine for verified engineering candidates.
+const SYSTEM_PROMPT = `You are Provix AI Job Match — candidate-facing coach for verified engineers.
 
-Cross-reference the candidate's audited GitHub skills, experience tier, availability preferences, and audit score against each active job's tech stack, required skills, employment type, and description.
+Write from the CANDIDATE perspective only: empowering, tactical, and actionable. Never reprimand the candidate for soft buzzwords (Agile, Fast, proactive, collaborative) or generic tenure lines ("3+ years"). Those are already stripped from overlappingSkills / missingSkills / technicalRequirements.
+
+matchScore is PRECOMPUTED in TypeScript and passed on each job as precomputedMatchScore. Do NOT invent, adjust, or return a matchScore. Your only job is the three narrative bullets.
+
+Cross-reference verifiedTechnologies, productionSignals, experience tier, and availability against each job's technical stack and description.
 
 Return strict JSON only:
 {
   "matches": [
     {
       "jobId": "the job's id, unchanged",
-      "matchScore": 0-100,
-      "matchingReasons": ["reason 1", "reason 2"]
+      "matchingReasons": ["Your Stack Edge: ...", "Verified Proof: ...", "Application Angle: ..."]
     }
   ]
 }
 
 Rules:
 - Return exactly one match object per job in the input, using the same jobId values.
-- matchScore: integer 0-100 based on audited skill overlap with techStack and requiredSkills, experience-tier fit, employment-type fit, audit-score confidence, and role description. Do not default to a mid-range score.
-- matchingReasons: exactly 2-3 concise second-person bullets (You/Your). Each bullet must name a concrete overlapping skill, GitHub language/repo/commit signal, or missing required skill from the job payload. No markdown.
-- Use overlappingSkills and missingSkills from the job payload when present. Never invent GitHub evidence or skills that are not in the candidate audit data.
-- Prefer specific phrasing such as "Your React and TypeScript skills match this role's stack" or "This listing also asks for AWS, which is not in your audited skills."
+- Do not include matchScore in the response.
+- matchingReasons: exactly 3 bullets, each prefixed with one section title:
+  1) "Your Stack Edge:" — cite ONLY technologies from verifiedTechnologies that also appear in overlappingSkills / technicalRequirements. Never invent frameworks or packages.
+  2) "Verified Proof:" — cite ONLY auditScore, productionSignals (CI/test pillars, audited repo), and github language/commits from the candidate payload. Never invent metrics.
+  3) "Application Angle:" — concrete advice to close technicalGaps (from missingSkills). Never say "not in your audited skills" for soft/tenure items.
+- Use overlappingSkills and missingSkills from the job payload when present.
 - Never write generic filler such as "your profile signals align", "partially overlap with this role's stack", or "completing your GitHub audit can sharpen match accuracy".
-- Jobs are already filtered to the candidate's open_to_fulltime / open_to_contract preferences and active tab. Respect each job's workType (fulltime vs contract) when explaining fit.
-- techStack may be empty for non-technical roles. Score those from requiredSkills, description, and experience tier.
-- If a job has no required skills and no tech stack, score conservatively from the description and experience tier, and still name the candidate's actual skills.
-- No extra keys.`;
+- Jobs are already filtered to the candidate's open_to_fulltime / open_to_contract preferences and active tab. Respect each job's workType when explaining fit.
+- If a job has no technical requirements, still name verifiedTechnologies present in the candidate payload for Stack Edge.
+- No markdown. No extra keys.`;
 
 const MATCH_JOBS_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
@@ -72,27 +78,24 @@ const MATCH_JOBS_RESPONSE_SCHEMA = {
             type: Type.STRING,
             description: "The job id from the request, unchanged.",
           },
-          matchScore: {
-            type: Type.INTEGER,
-            description: "Integer fit score from 0 to 100.",
-          },
           matchingReasons: {
             type: Type.ARRAY,
             items: { type: Type.STRING },
             description:
-              "Two or three specific bullets naming overlapping skills, GitHub evidence, or missing requirements.",
+              "Exactly three candidate-facing bullets prefixed Your Stack Edge / Verified Proof / Application Angle.",
           },
         },
-        required: ["jobId", "matchScore", "matchingReasons"],
+        required: ["jobId", "matchingReasons"],
       },
     },
   },
   required: ["matches"],
 };
 
+/** Models known to work with the current Gemini SDK in this repo (avoids 404 NOT_FOUND). */
 const MODEL_CANDIDATES = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
 ] as const;
 
 const GEMINI_RATE_LIMIT_RETRY_MS = 1000;
@@ -109,16 +112,17 @@ async function generateGeminiJobMatches(
   const ai = new GoogleGenAI({ apiKey });
   const skills = extractAuditedSkills(candidate);
   const experienceTier = parseExperienceTier(candidate);
-
   const availability = resolveCandidateAvailability(candidate);
   const auditScore = resolveCandidateAuditScore(candidate);
+  const verified = buildVerifiedMatchContext(candidate);
 
   const userPrompt = JSON.stringify({
     candidate: {
-      auditedSkills: skills,
+      verifiedTechnologies: verified.verifiedTechnologies,
       experienceTier,
       githubUrl: candidate.githubUrl?.trim() || candidate.github_url?.trim() || "",
-      githubAudit: summarizeGithubAudit(candidate.githubAudit),
+      github: verified.github,
+      productionSignals: verified.productionSignals,
       openToFulltime: availability.openToFulltime,
       openToContract: availability.openToContract,
       auditScore,
@@ -126,14 +130,25 @@ async function generateGeminiJobMatches(
     },
     jobs: jobs.map((job) => {
       const { overlapping, missing } = computeJobSkillOverlap(skills, job);
+      const precomputedMatchScore = computeDeterministicJobMatchScore({
+        overlappingCount: overlapping.length,
+        missingCount: missing.length,
+        experienceTier,
+        auditScore,
+      });
       return {
         jobId: String(job.jobId),
         title: job.title,
         company: job.company,
-        techStack: job.techStack,
-        requiredSkills: job.requiredSkills,
+        techStack: filterTechnicalRequirements(job.techStack),
+        requiredSkills: filterTechnicalRequirements(job.requiredSkills),
+        technicalRequirements: filterTechnicalRequirements([
+          ...job.techStack,
+          ...job.requiredSkills,
+        ]),
         overlappingSkills: overlapping,
         missingSkills: missing,
+        precomputedMatchScore,
         workType: job.workType,
         employment_type: job.employment_type,
         description: job.description.slice(0, 500),

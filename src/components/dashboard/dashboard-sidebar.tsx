@@ -505,9 +505,11 @@ function SidebarUserFooter() {
     setActiveTab,
     setProfileStudioSection,
   } = useDashboardNav();
+  // Nav flags are already publish-gated by the dashboard profile sync.
   const availabilityPresentation = getPreferenceAvailabilityPresentation(
     openToFulltime,
-    openToContract
+    openToContract,
+    openToFulltime || openToContract
   );
 
   const openSettings = () => {

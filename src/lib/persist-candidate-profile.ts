@@ -8,7 +8,6 @@ import {
 } from "@/lib/work-preference";
 import {
   getContractDetailsValidationError,
-  MARKETPLACE_AVAILABILITY_SAVE_BLOCKED_MESSAGE,
   normalizeContractHourlyRate,
   normalizeContractHoursPerWeek,
   normalizeOpenToContract,
@@ -30,10 +29,16 @@ import {
 } from "@/lib/candidate-education";
 import {
   canEnableTalentPoolVisibility,
+  formatMarketplacePublishSaveBlockedMessage,
   hasQualifyingTalentPoolAudit,
-  TALENT_POOL_CONNECT_GITHUB_MESSAGE,
-  TALENT_POOL_SCORE_REQUIRED_MESSAGE,
+  isTalentPoolGitHubLinked,
+  isTalentPoolOwnershipVerified,
+  listMarketplacePublishGateFailures,
+  resolveTalentPoolAuditedRepoUrl,
+  talentPoolVisibilityFailureMessage,
 } from "@/lib/talent-pool-visibility";
+import { syncGitHubIdentityToProfile } from "@/lib/github-identity";
+import { parseProductionAuditFromProfileRow } from "@/lib/production-audit";
 import {
   meetsTalentPoolAutoPublishCriteria,
   talentPoolMetadataDefaults,
@@ -189,7 +194,48 @@ function isRowLevelSecurityError(error: { code?: string; message?: string } | nu
   );
 }
 
-function formatPersistError(error: { message?: string; code?: string } | null): string {
+/** Structured log fields for Supabase / unknown errors (avoids console `{}`). */
+export function serializePersistError(error: unknown): Record<string, unknown> {
+  if (error == null) {
+    return { error: null };
+  }
+
+  if (typeof error === "string") {
+    return { message: error };
+  }
+
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  if (typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    let json: string | null = null;
+    try {
+      json = JSON.stringify(error);
+    } catch {
+      json = "[unserializable]";
+    }
+    return {
+      message: typeof record.message === "string" ? record.message : undefined,
+      details: record.details,
+      hint: record.hint,
+      code: record.code,
+      status: record.status ?? record.statusCode,
+      json,
+    };
+  }
+
+  return { error: String(error) };
+}
+
+function formatPersistError(
+  error: { message?: string; details?: string; code?: string } | null
+): string {
   if (!error) {
     return "Could not save profile. Please try again.";
   }
@@ -202,15 +248,59 @@ function formatPersistError(error: { message?: string; code?: string } | null): 
     return "Could not save profile: profile URL slug conflict. Try again.";
   }
 
+  const message = (error.message ?? "").toLowerCase();
+  const details = (error.details ?? "").toLowerCase();
+  const combined = `${message} ${details}`;
+
   if (
-    error.message?.toLowerCase().includes("profiles_candidate_bio_length_check") ||
-    (error.code === "23514" &&
-      (error.message?.toLowerCase().includes("bio") ?? false))
+    combined.includes("profiles_candidate_bio_length_check") ||
+    (error.code === "23514" && combined.includes("bio"))
   ) {
     return CANDIDATE_BIO_LIMIT_TEXT;
   }
 
+  if (
+    combined.includes("profiles_contract_hourly_rate_check") ||
+    (error.code === "23514" && combined.includes("contract_hourly_rate"))
+  ) {
+    return "Target payout rate must be a whole-dollar amount of $0 or more.";
+  }
+
+  if (
+    combined.includes("profiles_contract_hours_per_week_check") ||
+    (error.code === "23514" && combined.includes("contract_hours_per_week"))
+  ) {
+    return "Select a valid weekly bandwidth before saving contract availability.";
+  }
+
+  if (
+    combined.includes("contract_hourly_rate") &&
+    (combined.includes("invalid input") ||
+      combined.includes("type") ||
+      error.code === "22P02")
+  ) {
+    return "Target payout rate must be a whole number (no currency symbols).";
+  }
+
   return error.message?.trim() || "Could not save profile. Please try again.";
+}
+
+/** Ensure contract_hourly_rate is an integer or null before writing to Postgres. */
+function coerceContractHourlyRateInPayload(payload: ProfilePayload): ProfilePayload {
+  if (!("contract_hourly_rate" in payload)) {
+    return payload;
+  }
+
+  const normalized = normalizeContractHourlyRate(
+    payload.contract_hourly_rate as number | string | null
+  );
+  const persisted =
+    normalized != null && normalized > 0 ? normalized : null;
+
+  return {
+    ...payload,
+    contract_hourly_rate: persisted,
+  };
 }
 
 async function runProfileWrite(
@@ -292,57 +382,143 @@ export async function persistCandidatePoolVisibility(
     }
 
     if (isVisibleInPool) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("github_verified, github_username, verification_status, production_score, audit_score")
-        .eq("id", userId)
-        .maybeSingle();
+      // Keep profiles.github_* in sync with the auth identity before gating.
+      // Local UI can already show "Linked" after a client-side merge even when
+      // the DB row was stale — without this, the toggle fails with Connect GitHub.
+      const syncedLink = await syncGitHubIdentityToProfile(
+        supabase,
+        session.user
+      );
 
-      const scores = [
+      const visibilitySelectFull =
+        "id, user_id, github_verified, github_username, verification_status, is_audit_verified, production_score, audit_score, audit_breakdown, portfolio_url";
+      const visibilitySelectFallback =
+        "id, user_id, github_verified, github_username, verification_status, production_score, audit_score, portfolio_url";
+
+      async function loadVisibilityProfile(select: string) {
+        const byId = await supabase
+          .from("profiles")
+          .select(select)
+          .eq("id", userId)
+          .maybeSingle();
+        if (!byId.error && byId.data) {
+          return byId.data as Record<string, unknown>;
+        }
+        const byUserId = await supabase
+          .from("profiles")
+          .select(select)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (!byUserId.error && byUserId.data) {
+          return byUserId.data as Record<string, unknown>;
+        }
+        return null;
+      }
+
+      let profile =
+        (await loadVisibilityProfile(visibilitySelectFull)) ??
+        (await loadVisibilityProfile(visibilitySelectFallback));
+
+      const history = await supabase
+        .from("production_audit_history")
+        .select("production_score, audited_repo_url")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const historyScore =
+        typeof history.data?.production_score === "number"
+          ? history.data.production_score
+          : null;
+      const historyRepoUrl =
+        typeof history.data?.audited_repo_url === "string"
+          ? history.data.audited_repo_url
+          : null;
+
+      const githubUsername =
+        (typeof profile?.github_username === "string" &&
+        profile.github_username.trim()
+          ? String(profile.github_username)
+          : null) ??
+        syncedLink?.github_username ??
+        null;
+      const githubVerified = isTalentPoolGitHubLinked({
+        githubVerified:
+          profile?.github_verified === true ||
+          syncedLink?.github_verified === true,
+        githubUsername,
+      });
+      const parsedAudit = parseProductionAuditFromProfileRow(
+        profile
+          ? {
+              production_score:
+                typeof profile.production_score === "number" ||
+                typeof profile.production_score === "string"
+                  ? profile.production_score
+                  : null,
+              audit_breakdown: profile.audit_breakdown,
+              is_audit_verified:
+                typeof profile.is_audit_verified === "boolean"
+                  ? profile.is_audit_verified
+                  : null,
+              verification_status:
+                typeof profile.verification_status === "string"
+                  ? profile.verification_status
+                  : null,
+            }
+          : null
+      );
+      const auditedRepoUrl = resolveTalentPoolAuditedRepoUrl({
+        auditedRepoUrl: parsedAudit?.breakdown.audited_repo_url,
+        auditBreakdown: profile?.audit_breakdown,
+        portfolioUrl:
+          typeof profile?.portfolio_url === "string"
+            ? profile.portfolio_url
+            : null,
+        historyRepoUrl,
+      });
+      const ownershipVerified = isTalentPoolOwnershipVerified({
+        verificationStatus:
+          typeof profile?.verification_status === "string"
+            ? profile.verification_status
+            : parsedAudit?.verificationStatus ?? null,
+        isAuditVerified:
+          profile?.is_audit_verified === true ||
+          parsedAudit?.isAuditVerified === true,
+        auditedRepoUrl,
+        auditBreakdown: profile?.audit_breakdown,
+        portfolioUrl:
+          typeof profile?.portfolio_url === "string"
+            ? profile.portfolio_url
+            : null,
+        historyRepoUrl,
+        githubUsername,
+      });
+      const scores: Array<number | null | undefined> = [
         typeof profile?.production_score === "number"
           ? profile.production_score
           : null,
         typeof profile?.audit_score === "number" ? profile.audit_score : null,
+        parsedAudit?.productionScore ?? null,
+        historyScore,
       ];
 
       if (
         !canEnableTalentPoolVisibility({
-          githubVerified:
-            profile?.github_verified === true &&
-            Boolean(profile?.github_username?.trim()),
-          ownershipVerified: profile?.verification_status === "verified",
+          githubVerified,
+          ownershipVerified,
           scores,
         })
       ) {
-        let historyScore: number | null = null;
-        const history = await supabase
-          .from("production_audit_history")
-          .select("production_score")
-          .eq("user_id", userId)
-          .gte("production_score", 75)
-          .limit(1)
-          .maybeSingle();
-        if (typeof history.data?.production_score === "number") {
-          historyScore = history.data.production_score;
-        }
-
-        if (
-          !canEnableTalentPoolVisibility({
-            githubVerified:
-              profile?.github_verified === true &&
-              Boolean(profile?.github_username?.trim()),
-            ownershipVerified: profile?.verification_status === "verified",
-            scores: [...scores, historyScore],
-          })
-        ) {
-          return {
-            error: { message: TALENT_POOL_CONNECT_GITHUB_MESSAGE },
-            userMessage:
-              profile?.github_verified === true
-                ? TALENT_POOL_SCORE_REQUIRED_MESSAGE
-                : TALENT_POOL_CONNECT_GITHUB_MESSAGE,
-          };
-        }
+        const message = talentPoolVisibilityFailureMessage({
+          githubVerified,
+          ownershipVerified,
+          scores,
+        });
+        return {
+          error: { message },
+          userMessage: message,
+        };
       }
     }
 
@@ -354,7 +530,7 @@ export async function persistCandidatePoolVisibility(
     let { error } = await supabase
       .from("profiles")
       .update(payload)
-      .eq("id", userId);
+      .or(`id.eq.${userId},user_id.eq.${userId}`);
 
     if (
       error &&
@@ -367,7 +543,7 @@ export async function persistCandidatePoolVisibility(
         ({ error } = await supabase
           .from("profiles")
           .update({ is_visible_in_pool: isVisibleInPool })
-          .eq("id", userId));
+          .or(`id.eq.${userId},user_id.eq.${userId}`));
       }
     }
 
@@ -462,48 +638,6 @@ export async function persistCandidateProfile(
       }
     }
 
-    const wantsMarketplaceAvailability =
-      payload.open_to_fulltime === true || payload.open_to_contract === true;
-
-    if (wantsMarketplaceAvailability) {
-      const { data: scoreProfile } = await supabase
-        .from("profiles")
-        .select("production_score, audit_score")
-        .eq("id", userId)
-        .maybeSingle();
-
-      const profileScores = [
-        typeof scoreProfile?.production_score === "number"
-          ? scoreProfile.production_score
-          : null,
-        typeof scoreProfile?.audit_score === "number"
-          ? scoreProfile.audit_score
-          : null,
-      ];
-
-      let historyScore: number | null = null;
-      if (!hasQualifyingTalentPoolAudit(...profileScores)) {
-        const history = await supabase
-          .from("production_audit_history")
-          .select("production_score")
-          .eq("user_id", userId)
-          .gte("production_score", 75)
-          .limit(1)
-          .maybeSingle();
-        if (typeof history.data?.production_score === "number") {
-          historyScore = history.data.production_score;
-        }
-      }
-
-      if (!hasQualifyingTalentPoolAudit(...profileScores, historyScore)) {
-        return {
-          data: null,
-          error: { message: MARKETPLACE_AVAILABILITY_SAVE_BLOCKED_MESSAGE },
-          userMessage: MARKETPLACE_AVAILABILITY_SAVE_BLOCKED_MESSAGE,
-        };
-      }
-    }
-
     if ("skills" in payload) {
       const parsedSkills = parseCandidateSkills(
         payload.skills as string[] | string | null | undefined
@@ -540,7 +674,7 @@ export async function persistCandidateProfile(
     const { data: publishGateProfile } = await supabase
       .from("profiles")
       .select(
-        "id, role, full_name, name, first_name, last_name, job_title, headline, bio, skills, github_verified, production_score, audit_score, is_visible_in_pool, visible_to_employers"
+        "id, role, full_name, name, first_name, last_name, job_title, headline, bio, skills, github_verified, github_username, verification_status, is_audit_verified, production_score, audit_score, audit_breakdown, portfolio_url, is_visible_in_pool, visible_to_employers"
       )
       .eq("id", userId)
       .maybeSingle();
@@ -599,7 +733,98 @@ export async function persistCandidateProfile(
       };
     }
 
-    let attemptPayload: ProfilePayload = { ...payload };
+    const wantsMarketplaceAvailability =
+      payload.open_to_fulltime === true || payload.open_to_contract === true;
+
+    if (wantsMarketplaceAvailability) {
+      const profileScores = [
+        typeof publishGateProfile?.production_score === "number"
+          ? publishGateProfile.production_score
+          : null,
+        typeof publishGateProfile?.audit_score === "number"
+          ? publishGateProfile.audit_score
+          : null,
+      ];
+
+      let historyScore: number | null = null;
+      if (!hasQualifyingTalentPoolAudit(...profileScores)) {
+        const history = await supabase
+          .from("production_audit_history")
+          .select("production_score")
+          .eq("user_id", userId)
+          .gte("production_score", 75)
+          .limit(1)
+          .maybeSingle();
+        if (typeof history.data?.production_score === "number") {
+          historyScore = history.data.production_score;
+        }
+      }
+
+      const githubUsername =
+        typeof publishGateProfile?.github_username === "string"
+          ? publishGateProfile.github_username
+          : null;
+      const githubVerified = isTalentPoolGitHubLinked({
+        githubVerified: publishGateProfile?.github_verified === true,
+        githubUsername,
+      });
+      const publishAudit = parseProductionAuditFromProfileRow(publishGateProfile);
+      const ownershipVerified = isTalentPoolOwnershipVerified({
+        verificationStatus:
+          typeof publishGateProfile?.verification_status === "string"
+            ? publishGateProfile.verification_status
+            : null,
+        isAuditVerified:
+          publishGateProfile?.is_audit_verified === true ||
+          publishAudit?.isAuditVerified === true,
+        auditedRepoUrl: resolveTalentPoolAuditedRepoUrl({
+          auditedRepoUrl: publishAudit?.breakdown.audited_repo_url,
+          auditBreakdown: publishGateProfile?.audit_breakdown,
+          portfolioUrl:
+            typeof publishGateProfile?.portfolio_url === "string"
+              ? publishGateProfile.portfolio_url
+              : typeof payload.portfolio_url === "string"
+                ? payload.portfolio_url
+                : null,
+        }),
+        auditBreakdown: publishGateProfile?.audit_breakdown,
+        portfolioUrl:
+          typeof publishGateProfile?.portfolio_url === "string"
+            ? publishGateProfile.portfolio_url
+            : typeof payload.portfolio_url === "string"
+              ? payload.portfolio_url
+              : null,
+        githubUsername,
+      });
+      const isVisibleInPool =
+        payload.is_visible_in_pool === true ||
+        publishGateProfile?.is_visible_in_pool === true;
+
+      const publishFailures = listMarketplacePublishGateFailures({
+        isVisibleInPool,
+        githubVerified,
+        ownershipVerified,
+        scores: [
+          ...profileScores,
+          publishAudit?.productionScore ?? null,
+          historyScore,
+        ],
+      });
+
+      if (publishFailures.length > 0) {
+        const message =
+          formatMarketplacePublishSaveBlockedMessage(publishFailures);
+        return {
+          data: null,
+          error: { message },
+          userMessage: message,
+        };
+      }
+    }
+
+    let attemptPayload: ProfilePayload = coerceContractHourlyRateInPayload({
+      ...payload,
+    });
     const maxAttempts = Object.keys(attemptPayload).length + 3;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -607,6 +832,20 @@ export async function persistCandidateProfile(
 
       if (!result.error && !result.data) {
         result = await runProfileWrite(supabase, userId, attemptPayload, "upsert");
+      }
+
+      if (result.error) {
+        console.error(
+          "[persist-candidate-profile] profile write failed",
+          serializePersistError(result.error),
+          {
+            attempt,
+            modeHint: "update/upsert",
+            contract_hourly_rate: attemptPayload.contract_hourly_rate,
+            contract_hours_per_week: attemptPayload.contract_hours_per_week,
+            open_to_contract: attemptPayload.open_to_contract,
+          }
+        );
       }
 
       if (!result.error && result.data) {
