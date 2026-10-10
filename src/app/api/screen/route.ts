@@ -55,6 +55,10 @@ import {
 } from "@/lib/audit-checks";
 import { formatGpa } from "@/lib/gpa";
 import {
+  parseProductionAuditBreakdown,
+  type ProductionAuditBreakdown,
+} from "@/lib/production-audit";
+import {
   completeScreeningRun,
   enqueuePendingScreening,
   failScreeningRun,
@@ -65,6 +69,8 @@ import {
 import { createClient } from "@/utils/supabase/server";
 
 export const maxDuration = 120;
+
+type ScreeningMode = "job_aware" | "baseline";
 
 type CandidatePayload = {
   name?: string;
@@ -83,6 +89,7 @@ type CandidatePayload = {
 };
 
 type JobPayload = {
+  id?: string;
   title?: string;
   company?: string;
   tags?: string[] | string;
@@ -96,10 +103,43 @@ type JobPayload = {
 
 const screenRequestBodySchema = z.object({
   candidate: z.looseObject({}),
-  job: z.looseObject({}),
+  job: z.looseObject({}).optional(),
   candidate_key: z.string().optional(),
   profile_id: z.string().optional(),
+  screening_mode: z.enum(["job_aware", "baseline"]).optional(),
+  audit_breakdown: z.unknown().optional(),
 });
+
+function asTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** Valid job context: has id, title, or description. */
+export function isValidScreeningJobContext(
+  job: JobPayload | null | undefined
+): boolean {
+  if (!job || typeof job !== "object") {
+    return false;
+  }
+  return Boolean(
+    asTrimmedString(job.id) ||
+      asTrimmedString(job.title) ||
+      asTrimmedString(job.description)
+  );
+}
+
+export function resolveScreeningMode(
+  job: JobPayload | null | undefined,
+  requested?: ScreeningMode | null
+): ScreeningMode {
+  if (isValidScreeningJobContext(job)) {
+    return "job_aware";
+  }
+  if (requested === "baseline" || requested === "job_aware") {
+    return isValidScreeningJobContext(job) ? "job_aware" : "baseline";
+  }
+  return "baseline";
+}
 
 export type { GitHubAuditContext };
 
@@ -126,68 +166,69 @@ export type ScreenResult = {
   executiveBrief: ExecutiveBrief | null;
 };
 
-const SYSTEM_PROMPT = `You are a rigorous Technical & Academic Auditor for Provix employer screening.
+function buildSystemPrompt(mode: ScreeningMode): string {
+  const modeBlock =
+    mode === "job_aware"
+      ? `SCREENING MODE: job_aware
+- Ground every judgment in the target job's tech stack, required skills, tags, and description.
+- Prefer stored audit_breakdown pillar scores (architecture, CI/CD, test density, error handling) plus live repo signals when present.
+- technical_depth_summary: role-specific match proof — what audited evidence supports fit for THIS role.
+- timeline_flags: unverified stack gaps — job requirements not evidenced by audit_breakdown or repo artifacts (empty array if none).
+- interview_questions: exactly 2 role-targeted prompts tied to the job's stack and the candidate's verified/unverified gaps.`
+      : `SCREENING MODE: baseline
+- No target job. Run baseline technical diligence on stored audit_breakdown and repo metrics in isolation.
+- technical_depth_summary: general architectural strengths evidenced by the audit/repo.
+- timeline_flags: technical blind spots (missing tests/CI/resilience, thin architecture) — not job-stack gaps.
+- interview_questions: exactly 2 code-design interview prompts grounded in the audited codebase.`;
+
+  return `You are a rigorous Technical & Academic Auditor for Provix employer screening.
 
 Provix is an anonymized talent platform. The candidate's display name is a generated codename (for example "Ember Echo"), not a legal identity. GitHub handles, GitHub profile names, and resume bylines are expected to differ from that codename.
 
+${modeBlock}
+
 You receive:
 - Candidate profile claims (codename, skills, bio, degree, experience level, projects)
-- Target job requirements
+- Optional target job requirements (job_aware mode only)
+- Optional stored audit_breakdown (architecture_score, ci_cd_score, test_density, error_handling, audited_repo_url)
 - Optional live GitHub repository audit data (stars, forks, creation date, language, recent commits, README excerpt, and filesystem file-tree inspection)
-- Optional external_projects artifacts (project titles, live/documentation URLs, and technical breakdowns) when GitHub is private, enterprise-only, or a ghost/empty public profile
+- Optional external_projects artifacts when GitHub is thin or unavailable
 - scorePolicy: four-pillar weights and repoKind from the file tree. Do not hard-cap the overall score.
 
-Perform three artifact checks plus a chronological timeline conflict check:
-- Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support claimed skills. README is a claim sheet, not file-system proof.
-- Check 2 architecture_review: system design signals, folder/module structure from the file tree, and whether the candidate demonstrates architectural thinking.
-- Check 3 api_resiliency: API design, data handling, error handling, and production resiliency signals. Tests, CI workflows, and error handling pass only if filesystem.test_paths, filesystem.ci_workflow_paths, and filesystem.error_handling_paths contain real paths. If evidence is thin, say so explicitly.
-- timeline_flags: chronological conflicts (years of experience exceeding a framework's release date, overlapping impossible dates, or bio claims not supported by commit history). Stale or inactive commit history is not a chronological conflict and must not lower integrity_score. Tag it "active" or "stable" only. Never apply a History penalty.
-- Be skeptical but fair; cite concrete file paths from filesystem inspection when available. Repo metadata and external project write-ups are secondary.
-- Do not treat GitHub handle, GitHub login, or GitHub profile name vs Provix display name/codename as a red flag, identity issue, or scoring penalty. Never add a timeline_flag or lower integrity_score because those strings do not match.
-- CODE-FIRST: A missing resume, CV, or experience summary must not lower integrity_score and must not appear in timeline_flags. Score from GitHub file-tree artifacts, commits, and project write-ups. If a resume is present, use it only to check claim-vs-code mismatches.
-- If github_audit is missing or empty and external_projects are present, evaluate those write-ups and live/docs URLs for qualitative notes instead of failing the screen for a missing public repository. Write-ups still cannot invent file-system artifacts.
+Perform three artifact checks plus a flags check:
+- Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support claimed skills. README is a claim sheet, not file-system proof. When audit_breakdown is present, reconcile prose claims against those pillar scores.
+- Check 2 architecture_review: system design signals from the file tree and/or audit_breakdown.architecture_score.
+- Check 3 api_resiliency: API design, data handling, error handling, and production resiliency. Tests, CI workflows, and error handling pass only if filesystem path lists contain real paths OR audit_breakdown pillars show evidence. If evidence is thin, say so explicitly.
+- timeline_flags: follow SCREENING MODE rules above. Stale or inactive commit history is not a chronological conflict and must not lower integrity_score.
+- Be skeptical but fair; cite concrete file paths from filesystem inspection when available.
+- Do not treat GitHub handle, GitHub login, or GitHub profile name vs Provix display name/codename as a red flag or scoring penalty.
+- CODE-FIRST: A missing resume must not lower integrity_score and must not appear in timeline_flags.
+- If github_audit is missing/empty but audit_breakdown or external_projects are present, evaluate those instead of failing the screen.
 
 FILE-SYSTEM EVIDENCE VS PROSE:
-- Prose descriptions, README summaries, resume bullets, and external project write-ups can never override missing code artifacts.
-- If a README says the repo has tests, CI, or error handling but the matching filesystem path list is empty, treat that artifact as missing from its pillar only.
-- integrity_score uses the four-pillar weighted model: Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Never hard-cap the total at 60 or 50. Never drop a pillar to 0 unless that capability is genuinely absent.
-- Testing: 0 only with no test files; ratio < 0.10 caps at 35; 0.10–0.30 maps to 65–75; > 0.30 with Playwright/Cypress is 85–100.
-- DevOps: 0 only with no workflows; lint/build-only is 50; tests on PR is 80; multi-stage deploy/previews are 95–100.
-- Resilience starts at 100. Web apps missing error.tsx / ErrorBoundary lose 35. Each unhandled async/fetch without try/catch loses 15, max −50. A single unhandled error is 85, not 0.
-- If scorePolicy.repoKind is "library", do not penalize missing React error boundaries; grade resilience from unhandled async/fetch only.
-- If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct 35 from resilience only — never cap the total score.
+- Prose descriptions and write-ups can never invent missing code artifacts.
+- integrity_score uses the four-pillar weighted model: Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Never hard-cap the total at 60 or 50.
+- When audit_breakdown is present and filesystem was not inspected, treat breakdown pillar scores as the primary numeric evidence for those pillars.
 - Do not deduct numerical points for commit age or inactivity.
-- LANGUAGE-NATIVE RECOMMENDATIONS: The user payload includes primaryLanguage from GitHub repo metadata. Every recommendation, interview coaching tip about tooling, and concrete fix MUST match that language and its toolchain. Do NOT suggest JavaScript/TypeScript tools (next build, tsc, npm, eslint, Zod) unless primaryLanguage is JavaScript/TypeScript or the file tree is clearly JS/TS. For Go prefer go build/test and golangci-lint; for Python prefer pytest/ruff/mypy; for Rust prefer cargo check/clippy/test.
+- LANGUAGE-NATIVE RECOMMENDATIONS: Every tooling suggestion MUST match primaryLanguage.
 
 Return strict JSON only in this exact structure:
 {
-  "integrity_score": number (integer 0-100 from the four-pillar weighted model; never hard-capped at 60),
+  "integrity_score": number (integer 0-100),
   "timeline_flags": ["flag1", "flag2"],
-  "artifact_analysis": "Concise paragraph on repository/proof-of-work authenticity (same content as Check 1).",
-  "technical_depth_summary": "Concise paragraph on demonstrated technical depth vs role requirements.",
+  "artifact_analysis": "Concise paragraph (same content as Check 1).",
+  "technical_depth_summary": "Concise paragraph per SCREENING MODE.",
   "interview_questions": [
     {
       "question": "Tailored interview question",
-      "category": "Architecture / Process | Metric Verification | Technical Depth",
+      "category": "Architecture / Process | Metric Verification | Technical Depth | Code Design",
       "what_to_listen_for": "Concise coaching tip on strong vs weak answers."
     }
   ],
   "checks": [
-    {
-      "id": "artifact_analysis",
-      "title": "Artifact Analysis (Check 1)",
-      "summary": "1-3 sentence paragraph"
-    },
-    {
-      "id": "architecture_review",
-      "title": "Architecture Review (Check 2)",
-      "summary": "1-3 sentence paragraph"
-    },
-    {
-      "id": "api_resiliency",
-      "title": "API & Data Resiliency Check (Check 3)",
-      "summary": "1-3 sentence paragraph"
-    }
+    { "id": "artifact_analysis", "title": "Artifact Analysis (Check 1)", "summary": "1-3 sentence paragraph" },
+    { "id": "architecture_review", "title": "Architecture Review (Check 2)", "summary": "1-3 sentence paragraph" },
+    { "id": "api_resiliency", "title": "API & Data Resiliency Check (Check 3)", "summary": "1-3 sentence paragraph" }
   ],
   "executiveBrief": {
     "employerSummary": "2-3 concise sentences on production risk and team fit for a founder",
@@ -196,21 +237,20 @@ Return strict JSON only in this exact structure:
   }
 }
 
-Also generate an Employer Interview Cheat Sheet:
-- Provide exactly 3 tailored, role-specific interview questions grounded in the candidate's verified skills, artifacts, GitHub audit (if any), and stated claims.
-- Each question must include a category badge label and a concise what_to_listen_for tip for hiring managers.
+Employer Interview Cheat Sheet:
+- Provide exactly 2 interview questions per SCREENING MODE.
+- Each question must include a category badge label and a concise what_to_listen_for tip.
 
 Rules:
-- integrity_score: 0-100 integer; 0 is the absolute minimum, 100 is the maximum. Lower when red flags dominate, higher when claims align with file-system artifacts. Use proportional pillar grades — never binary 0/100 drops unless a capability is absent. Do not deduct points for GitHub handle / display-name mismatch. Do not deduct points for a missing resume.
-- timeline_flags: array of specific red-flag strings; empty array if none. Never include flags about GitHub handle, username, or login not matching the candidate display name or codename. Never include a missing resume, CV, or experience summary. Include missing tests/CI/error-handling files when those path lists are empty.
-- checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown. Do not mention handle-vs-name mismatch.
-- artifact_analysis should match Check 1. technical_depth_summary remains a separate overall depth paragraph.
-- interview_questions: exactly 3 objects; categories should vary (e.g., Architecture / Process, Metric Verification, Technical Depth).
-- executiveBrief is required. Use deterministicMetrics as the only source for productionScore, is_upstream_derivative, architectureScore, testScore, devopsScore, and resilienceScore. Do not recompute those numbers.
-  - employerSummary: 2-3 concise sentences for a founder. Cover production risk and whether this person fits a small team. Mention the upstream-fork deduction when is_upstream_derivative is true.
-  - developerSummary: 2-3 direct sentences of objective peer review. Name the highest-leverage architectural fix.
-  - recommendedRoleBand: follow deterministicMetrics.roleBandRule. Mid-Level only when productionScore >= 75 and testScore >= 65 and resilienceScore >= 80. Early-Stage Generalist when productionScore >= 75 but tests or resilience miss that bar. Intern / Junior when productionScore < 75 and either testScore >= 65 or resilienceScore >= 80. Otherwise Needs Hardening.
+- integrity_score: 0-100 integer. Do not deduct for handle/name mismatch or a missing resume.
+- timeline_flags: specific strings; empty array if none. Never include handle-vs-name or missing-resume flags.
+- checks: exactly 3 objects in order. Each summary is 1-3 sentences, no markdown.
+- artifact_analysis should match Check 1.
+- interview_questions: exactly 2 objects.
+- executiveBrief is required. Use deterministicMetrics as the only source for productionScore and pillar scores; do not recompute those numbers.
+  - recommendedRoleBand: follow deterministicMetrics.roleBandRule.
 - Do not include extra keys or markdown fences.`;
+}
 
 const SCREEN_CHECK_SCHEMA = {
   type: Type.OBJECT,
@@ -302,9 +342,11 @@ const SCREEN_RESPONSE_SCHEMA = {
 };
 
 const MODEL_CANDIDATES = [
-  "gemini-3.6-flash",
-  "gemini-3.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
 ] as const;
+
+const INTERVIEW_QUESTION_COUNT = 2;
 
 function isGeminiUnavailableError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
@@ -421,6 +463,90 @@ function normalizeStringArray(value: unknown, maxItems: number): string[] {
     .slice(0, maxItems);
 }
 
+function metricsFromAuditBreakdown(
+  breakdown: ProductionAuditBreakdown,
+  isUpstreamDerivative: boolean
+): ProductionAuditMetrics {
+  const architecture = clampScore0to100(breakdown.architecture_score);
+  const testing = clampScore0to100(breakdown.test_density);
+  const devops = clampScore0to100(breakdown.ci_cd_score);
+  const resilience = clampScore0to100(breakdown.error_handling);
+  let productionScore = clampScore0to100(
+    Math.round(
+      architecture * 0.35 + testing * 0.25 + devops * 0.2 + resilience * 0.2
+    )
+  );
+  let upstreamDerivativePenalty = 0;
+  if (isUpstreamDerivative) {
+    productionScore = applyUpstreamDerivativePenalty(productionScore, true);
+    upstreamDerivativePenalty = UPSTREAM_DERIVATIVE_PENALTY;
+  }
+
+  const empty = emptyProductionAuditMetrics();
+  return {
+    ...empty,
+    architecture,
+    testing,
+    devops,
+    resilience,
+    productionScore,
+    upstreamDerivativePenalty,
+    ciCdHealth: devops,
+    testAssertionDensity: testing,
+    errorBoundaries: resilience,
+    evidence: {
+      ...empty.evidence,
+      inspected: true,
+    },
+  };
+}
+
+function finalizeScreenWithBreakdown(
+  result: ScreenResult,
+  auditBreakdown: ProductionAuditBreakdown | null,
+  githubAudit: GitHubAuditContext | null
+): ScreenResult {
+  if (!auditBreakdown || result.metrics.evidence.inspected) {
+    return result;
+  }
+
+  const isUpstreamDerivative = githubAudit?.is_upstream_derivative === true;
+  const metrics = metricsFromAuditBreakdown(
+    auditBreakdown,
+    isUpstreamDerivative
+  );
+  let timeline_flags = result.timeline_flags;
+  if (
+    isUpstreamDerivative &&
+    !timeline_flags.includes(UPSTREAM_DERIVATIVE_WARNING)
+  ) {
+    timeline_flags = [...timeline_flags, UPSTREAM_DERIVATIVE_WARNING];
+  }
+
+  const executiveBrief = finalizeExecutiveBrief({
+    draft: result.executiveBrief,
+    productionScore: metrics.productionScore,
+    architectureScore: metrics.architecture,
+    testScore: metrics.testing,
+    devopsScore: metrics.devops,
+    resilienceScore: metrics.resilience,
+    isUpstreamDerivative,
+  });
+
+  return {
+    ...result,
+    integrity_score: metrics.productionScore,
+    timeline_flags,
+    metrics,
+    executiveBrief,
+    github_audit: result.github_audit
+      ? { ...result.github_audit, executiveBrief }
+      : githubAudit
+        ? { ...githubAudit, executiveBrief }
+        : null,
+  };
+}
+
 function applyScreenFilesystemCap(
   result: Omit<ScreenResult, "metrics"> & {
     metrics?: ProductionAuditMetrics | null;
@@ -532,35 +658,48 @@ function normalizeInterviewQuestions(value: unknown): InterviewQuestion[] {
     }
   }
 
-  return questions.slice(0, 3);
+  return questions.slice(0, INTERVIEW_QUESTION_COUNT);
 }
 
 function buildDefaultInterviewQuestions(
   candidate: CandidatePayload,
-  job: JobPayload
+  job: JobPayload,
+  mode: ScreeningMode
 ): InterviewQuestion[] {
   const roleLabel = job.title ?? candidate.title ?? "this role";
   const topSkill =
     normalizeStringArray(candidate.skills, 1)[0] ?? "your primary stack";
 
+  if (mode === "baseline") {
+    return [
+      {
+        question: `Walk through the highest-risk module in your audited codebase and how you would redesign its boundaries using ${topSkill}.`,
+        category: "Code Design",
+        what_to_listen_for:
+          "Strong answers name concrete modules, coupling risks, and a migration path. Weak answers stay abstract or ignore trade-offs.",
+      },
+      {
+        question:
+          "Where would you add tests or CI gates first to harden this repository, and what failure modes would those catch?",
+        category: "Code Design",
+        what_to_listen_for:
+          "Strong answers prioritize based on blast radius and cite real gaps. Weak answers recite generic testing slogans.",
+      },
+    ];
+  }
+
   return [
     {
-      question: `Walk me through how you architected and shipped a recent ${roleLabel} project using ${topSkill}. What trade-offs did you make?`,
+      question: `Walk me through how you would apply ${topSkill} to the core requirements of the ${roleLabel} role. What trade-offs would you make?`,
       category: "Architecture / Process",
       what_to_listen_for:
-        "Strong answers cite concrete components, decision rationale, and constraints. Weak answers stay abstract with no personal ownership.",
+        "Strong answers map stack choices to this role's constraints. Weak answers stay generic with no role grounding.",
     },
     {
-      question: `What measurable outcome did you deliver in your most relevant project for ${roleLabel}, and how did you validate it?`,
-      category: "Metric Verification",
-      what_to_listen_for:
-        "Strong answers include baseline, metric, and verification method. Weak answers rely on vanity metrics or cannot explain measurement.",
-    },
-    {
-      question: `Describe a hard technical problem you solved with ${topSkill}. How did you debug it and what would you do differently?`,
+      question: `Which ${roleLabel} requirements are not yet proven in your audited artifacts, and how would you demonstrate them in the first 30 days?`,
       category: "Technical Depth",
       what_to_listen_for:
-        "Strong answers show step-by-step debugging and lessons learned. Weak answers skip implementation details or blame external factors.",
+        "Strong answers own stack gaps and propose concrete proof. Weak answers deny gaps or cannot cite evidence.",
     },
   ];
 }
@@ -568,7 +707,8 @@ function buildDefaultInterviewQuestions(
 function normalizeScreenResult(
   raw: unknown,
   candidate: CandidatePayload,
-  job: JobPayload
+  job: JobPayload,
+  mode: ScreeningMode
 ): ScreenResult {
   const record =
     raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -618,8 +758,8 @@ function normalizeScreenResult(
   const interview_questions = normalizeInterviewQuestions(
     record.interview_questions
   );
-  while (interview_questions.length < 3) {
-    const defaults = buildDefaultInterviewQuestions(candidate, job);
+  while (interview_questions.length < INTERVIEW_QUESTION_COUNT) {
+    const defaults = buildDefaultInterviewQuestions(candidate, job, mode);
     interview_questions.push(defaults[interview_questions.length]);
   }
 
@@ -636,7 +776,7 @@ function normalizeScreenResult(
     timeline_flags,
     artifact_analysis,
     technical_depth_summary,
-    interview_questions: interview_questions.slice(0, 3),
+    interview_questions: interview_questions.slice(0, INTERVIEW_QUESTION_COUNT),
     checks,
     scoreCap:
       parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(restoredScore),
@@ -663,7 +803,9 @@ function resolveCandidateGitHubUrl(candidate: CandidatePayload): string | null {
 function buildFallbackScreen(
   candidate: CandidatePayload,
   job: JobPayload,
-  githubAudit: GitHubAuditContext | null
+  githubAudit: GitHubAuditContext | null,
+  mode: ScreeningMode,
+  auditBreakdown: ProductionAuditBreakdown | null
 ): ScreenResult {
   const skills = normalizeStringArray(candidate.skills, 8);
   const jobTags = [
@@ -680,10 +822,38 @@ function buildFallbackScreen(
   );
 
   const timeline_flags: string[] = [];
-  let integrity_score = overlap.length * 12;
+  let integrity_score =
+    mode === "job_aware" ? overlap.length * 12 : skills.length > 0 ? 24 : 12;
+
+  if (auditBreakdown) {
+    integrity_score = clampIntegrityScore(
+      Math.round(
+        auditBreakdown.architecture_score * 0.35 +
+          auditBreakdown.test_density * 0.25 +
+          auditBreakdown.ci_cd_score * 0.2 +
+          auditBreakdown.error_handling * 0.2
+      )
+    );
+    if (auditBreakdown.test_density < 40) {
+      timeline_flags.push(
+        mode === "job_aware"
+          ? "Unverified stack gap: test density in stored audit_breakdown is too low to prove role readiness."
+          : "Technical blind spot: stored audit_breakdown shows weak test density."
+      );
+    }
+    if (auditBreakdown.ci_cd_score < 40) {
+      timeline_flags.push(
+        mode === "job_aware"
+          ? "Unverified stack gap: CI/CD signals in audit_breakdown do not support production ownership for this role."
+          : "Technical blind spot: CI/CD depth is thin in stored audit_breakdown."
+      );
+    }
+  }
 
   if (githubAudit) {
-    integrity_score += Math.min(25, githubAudit.commit_count_sampled * 5);
+    if (!auditBreakdown) {
+      integrity_score += Math.min(25, githubAudit.commit_count_sampled * 5);
+    }
 
     if (githubAudit.commit_count_sampled <= 1) {
       timeline_flags.push(
@@ -692,62 +862,89 @@ function buildFallbackScreen(
     }
 
     if (githubAudit.readme_excerpt) {
-      integrity_score += 15;
+      if (!auditBreakdown) {
+        integrity_score += 15;
+      }
     } else {
       timeline_flags.push(
         "No README found — limited evidence of documented architecture or setup."
       );
-      integrity_score -= 8;
+      if (!auditBreakdown) {
+        integrity_score -= 8;
+      }
     }
 
     if (githubAudit.fetch_warnings.length > 0) {
       timeline_flags.push(...githubAudit.fetch_warnings.slice(0, 2));
     }
-  } else {
+  } else if (!auditBreakdown) {
     timeline_flags.push(
       "No auditable GitHub repository URL was provided for live artifact verification."
     );
   }
 
   const roleLabel = job.title ?? "this role";
-  const artifact_analysis = githubAudit
-    ? `Fallback audit of ${githubAudit.owner}/${githubAudit.repo}: ${githubAudit.commit_count_sampled} recent commits sampled, primary language ${githubAudit.language ?? "unknown"}.`
-    : "Fallback screening could not verify proof-of-work artifacts against a public GitHub repository.";
+  const artifact_analysis = auditBreakdown
+    ? `Stored audit_breakdown for ${auditBreakdown.audited_repo_url || "audited repo"}: architecture ${auditBreakdown.architecture_score}, CI/CD ${auditBreakdown.ci_cd_score}, tests ${auditBreakdown.test_density}, resilience ${auditBreakdown.error_handling}.`
+    : githubAudit
+      ? `Fallback audit of ${githubAudit.owner}/${githubAudit.repo}: ${githubAudit.commit_count_sampled} recent commits sampled, primary language ${githubAudit.language ?? "unknown"}.`
+      : "Fallback screening could not verify proof-of-work artifacts against a public GitHub repository.";
 
-  return applyScreenFilesystemCap(
-    {
-      integrity_score: clampIntegrityScore(integrity_score),
-      timeline_flags,
-      artifact_analysis,
-      technical_depth_summary: `Skill overlap with ${roleLabel}: ${overlap.join(", ") || skills.slice(0, 2).join(", ") || "limited explicit matches"}.`,
-      interview_questions: buildDefaultInterviewQuestions(candidate, job),
-      checks: normalizeAuditChecks([
-        {
-          id: "artifact_analysis",
-          title: CANONICAL_AUDIT_CHECKS[0].title,
-          summary: artifact_analysis,
-        },
-        {
-          id: "architecture_review",
-          title: CANONICAL_AUDIT_CHECKS[1].title,
-          summary: githubAudit?.filesystem?.sample_paths.length
-            ? `File tree from ${githubAudit.owner}/${githubAudit.repo} includes ${githubAudit.filesystem.sample_paths.slice(0, 4).join(", ")}. Module-level architecture still needs a clearer ownership map.`
-            : githubAudit?.readme_excerpt
-            ? `README excerpt from ${githubAudit.owner}/${githubAudit.repo} was reviewed as a claim sheet only. No file-tree architecture proof was available.`
-            : defaultAuditCheckSummary("architecture_review"),
-        },
-        {
-          id: "api_resiliency",
-          title: CANONICAL_AUDIT_CHECKS[2].title,
-          summary: githubAudit?.filesystem?.inspected
-            ? `File-tree inspection found tests=${githubAudit.filesystem.test_paths.length > 0}, CI=${githubAudit.filesystem.ci_workflow_paths.length > 0}, error handling=${githubAudit.filesystem.error_handling_paths.length > 0}. README claims do not substitute for missing files.`
-            : defaultAuditCheckSummary("api_resiliency"),
-        },
-      ]),
-      github_audit: githubAudit,
-      scoreCap: emptyScoreCapAudit(clampIntegrityScore(integrity_score)),
-      executiveBrief: null,
-    },
+  const technical_depth_summary =
+    mode === "job_aware"
+      ? `Role-specific match proof for ${roleLabel}: ${
+          overlap.join(", ") ||
+          skills.slice(0, 2).join(", ") ||
+          "limited explicit stack matches"
+        }.`
+      : `General architectural strengths: ${
+          auditBreakdown
+            ? `architecture ${auditBreakdown.architecture_score}/100 with CI ${auditBreakdown.ci_cd_score}/100`
+            : skills.slice(0, 3).join(", ") || "limited audited evidence"
+        }.`;
+
+  return finalizeScreenWithBreakdown(
+    applyScreenFilesystemCap(
+      {
+        integrity_score: clampIntegrityScore(integrity_score),
+        timeline_flags,
+        artifact_analysis,
+        technical_depth_summary,
+        interview_questions: buildDefaultInterviewQuestions(candidate, job, mode),
+        checks: normalizeAuditChecks([
+          {
+            id: "artifact_analysis",
+            title: CANONICAL_AUDIT_CHECKS[0].title,
+            summary: artifact_analysis,
+          },
+          {
+            id: "architecture_review",
+            title: CANONICAL_AUDIT_CHECKS[1].title,
+            summary: githubAudit?.filesystem?.sample_paths.length
+              ? `File tree from ${githubAudit.owner}/${githubAudit.repo} includes ${githubAudit.filesystem.sample_paths.slice(0, 4).join(", ")}. Module-level architecture still needs a clearer ownership map.`
+              : auditBreakdown
+                ? `Stored architecture_score=${auditBreakdown.architecture_score}. Live file-tree architecture proof was limited.`
+                : githubAudit?.readme_excerpt
+                  ? `README excerpt from ${githubAudit.owner}/${githubAudit.repo} was reviewed as a claim sheet only. No file-tree architecture proof was available.`
+                  : defaultAuditCheckSummary("architecture_review"),
+          },
+          {
+            id: "api_resiliency",
+            title: CANONICAL_AUDIT_CHECKS[2].title,
+            summary: githubAudit?.filesystem?.inspected
+              ? `File-tree inspection found tests=${githubAudit.filesystem.test_paths.length > 0}, CI=${githubAudit.filesystem.ci_workflow_paths.length > 0}, error handling=${githubAudit.filesystem.error_handling_paths.length > 0}. README claims do not substitute for missing files.`
+              : auditBreakdown
+                ? `audit_breakdown pillars — tests=${auditBreakdown.test_density}, CI=${auditBreakdown.ci_cd_score}, error handling=${auditBreakdown.error_handling}.`
+                : defaultAuditCheckSummary("api_resiliency"),
+          },
+        ]),
+        github_audit: githubAudit,
+        scoreCap: emptyScoreCapAudit(clampIntegrityScore(integrity_score)),
+        executiveBrief: null,
+      },
+      githubAudit
+    ),
+    auditBreakdown,
     githubAudit
   );
 }
@@ -913,11 +1110,63 @@ async function persistScreeningResult(
   }
 }
 
+function resolveDeterministicMetricsForPrompt(
+  githubAudit: GitHubAuditContext | null,
+  auditBreakdown: ProductionAuditBreakdown | null
+) {
+  const isUpstreamDerivative = githubAudit?.is_upstream_derivative === true;
+  let promptMetrics = computeProductionAuditMetrics(githubAudit?.filesystem);
+
+  if (!promptMetrics.evidence.inspected && auditBreakdown) {
+    const architecture = clampScore0to100(auditBreakdown.architecture_score);
+    const testing = clampScore0to100(auditBreakdown.test_density);
+    const devops = clampScore0to100(auditBreakdown.ci_cd_score);
+    const resilience = clampScore0to100(auditBreakdown.error_handling);
+    const productionScore = clampScore0to100(
+      Math.round(
+        architecture * 0.35 + testing * 0.25 + devops * 0.2 + resilience * 0.2
+      )
+    );
+    return deterministicMetricsPayload({
+      productionScore: isUpstreamDerivative
+        ? applyUpstreamDerivativePenalty(productionScore, true)
+        : productionScore,
+      isUpstreamDerivative,
+      architectureScore: architecture,
+      testScore: testing,
+      devopsScore: devops,
+      resilienceScore: resilience,
+    });
+  }
+
+  if (promptMetrics.evidence.inspected && isUpstreamDerivative) {
+    promptMetrics = {
+      ...promptMetrics,
+      productionScore: applyUpstreamDerivativePenalty(
+        promptMetrics.productionScore,
+        true
+      ),
+      upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
+    };
+  }
+
+  return deterministicMetricsPayload({
+    productionScore: promptMetrics.productionScore,
+    isUpstreamDerivative,
+    architectureScore: promptMetrics.architecture,
+    testScore: promptMetrics.testing,
+    devopsScore: promptMetrics.devops,
+    resilienceScore: promptMetrics.resilience,
+  });
+}
+
 async function generateGeminiScreen(
   candidate: CandidatePayload,
   job: JobPayload,
   githubAudit: GitHubAuditContext | null,
-  externalProjects: ExternalProjectRecord[]
+  externalProjects: ExternalProjectRecord[],
+  mode: ScreeningMode,
+  auditBreakdown: ProductionAuditBreakdown | null
 ): Promise<ScreenResult> {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -926,11 +1175,27 @@ async function generateGeminiScreen(
   }
 
   const ai = new GoogleGenAI({ apiKey });
-
   const primaryLanguage = githubAudit?.language?.trim() || "unknown";
+  const jobForPrompt =
+    mode === "job_aware"
+      ? {
+          id: asTrimmedString(job.id),
+          title: job.title ?? "",
+          company: job.company ?? "",
+          techStack: normalizeStringArray(job.techStack ?? job.tech_stack, 12),
+          requiredSkills: normalizeStringArray(
+            job.requiredSkills ?? job.required_skills,
+            12
+          ),
+          tags: normalizeStringArray(job.tags, 12),
+          location: job.location ?? "",
+          description: (job.description ?? "").slice(0, 1200),
+        }
+      : null;
 
   const userPrompt = JSON.stringify(
     {
+      screening_mode: mode,
       candidate: {
         codename: candidate.name ?? "",
         identity_context:
@@ -947,18 +1212,8 @@ async function generateGeminiScreen(
         projects: normalizeStringArray(candidate.projects, 6),
         github_url: resolveCandidateGitHubUrl(candidate),
       },
-      job: {
-        title: job.title ?? "",
-        company: job.company ?? "",
-        techStack: normalizeStringArray(job.techStack ?? job.tech_stack, 12),
-        requiredSkills: normalizeStringArray(
-          job.requiredSkills ?? job.required_skills,
-          12
-        ),
-        tags: normalizeStringArray(job.tags, 12),
-        location: job.location ?? "",
-        description: (job.description ?? "").slice(0, 400),
-      },
+      job: jobForPrompt,
+      audit_breakdown: auditBreakdown,
       primaryLanguage,
       languageConstraint: {
         primaryLanguage,
@@ -972,28 +1227,10 @@ async function generateGeminiScreen(
         },
       },
       scorePolicy: buildFilesystemScorePolicy(githubAudit?.filesystem),
-      deterministicMetrics: (() => {
-        const isUpstreamDerivative = githubAudit?.is_upstream_derivative === true;
-        let promptMetrics = computeProductionAuditMetrics(githubAudit?.filesystem);
-        if (promptMetrics.evidence.inspected && isUpstreamDerivative) {
-          promptMetrics = {
-            ...promptMetrics,
-            productionScore: applyUpstreamDerivativePenalty(
-              promptMetrics.productionScore,
-              true
-            ),
-            upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
-          };
-        }
-        return deterministicMetricsPayload({
-          productionScore: promptMetrics.productionScore,
-          isUpstreamDerivative,
-          architectureScore: promptMetrics.architecture,
-          testScore: promptMetrics.testing,
-          devopsScore: promptMetrics.devops,
-          resilienceScore: promptMetrics.resilience,
-        });
-      })(),
+      deterministicMetrics: resolveDeterministicMetricsForPrompt(
+        githubAudit,
+        auditBreakdown
+      ),
       codeFirst: true,
       resumeOptional: true,
       github_audit: githubAuditHasFetchedArtifacts(githubAudit) && githubAudit
@@ -1013,6 +1250,7 @@ async function generateGeminiScreen(
   );
 
   let lastError: unknown;
+  const systemInstruction = buildSystemPrompt(mode);
 
   for (const model of MODEL_CANDIDATES) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -1021,7 +1259,7 @@ async function generateGeminiScreen(
           model,
           contents: userPrompt,
           config: {
-            systemInstruction: SYSTEM_PROMPT,
+            systemInstruction,
             responseMimeType: "application/json",
             responseSchema: SCREEN_RESPONSE_SCHEMA,
             temperature: 0,
@@ -1037,13 +1275,18 @@ async function generateGeminiScreen(
         const normalized = normalizeScreenResult(
           JSON.parse(text),
           candidate,
-          job
+          job,
+          mode
         );
-        return applyScreenFilesystemCap(
-          {
-            ...normalized,
-            github_audit: githubAudit,
-          },
+        return finalizeScreenWithBreakdown(
+          applyScreenFilesystemCap(
+            {
+              ...normalized,
+              github_audit: githubAudit,
+            },
+            githubAudit
+          ),
+          auditBreakdown,
           githubAudit
         );
       } catch (error) {
@@ -1063,9 +1306,17 @@ async function generateGeminiScreen(
     }
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("All Gemini models failed.");
+  console.warn(
+    "[screen] Gemini unavailable; using deterministic fallback screen",
+    lastError
+  );
+  return buildFallbackScreen(
+    candidate,
+    job,
+    githubAudit,
+    mode,
+    auditBreakdown
+  );
 }
 
 export async function POST(request: Request) {
@@ -1084,13 +1335,20 @@ export async function POST(request: Request) {
     return parsedBody.response;
   }
 
-  const { job: rawJob, candidate_key, profile_id } = parsedBody.data;
-  const job = rawJob as JobPayload;
+  const { candidate_key, profile_id } = parsedBody.data;
+  const rawJob = (parsedBody.data.job ?? {}) as JobPayload;
+  const job = isValidScreeningJobContext(rawJob) ? rawJob : {};
+  const mode = resolveScreeningMode(
+    job,
+    parsedBody.data.screening_mode ?? null
+  );
   let candidate = parsedBody.data.candidate as CandidatePayload;
+  let auditBreakdown = parseProductionAuditBreakdown(
+    parsedBody.data.audit_breakdown
+  );
 
   const lookupId =
-    (profile_id && isProfileUuid(profile_id) ? profile_id.trim() : null) ||
-    (candidate_key && isProfileUuid(candidate_key) ? candidate_key.trim() : null);
+    profile_id && isProfileUuid(profile_id) ? profile_id.trim() : null;
 
   if (lookupId) {
     const admin = createServiceRoleClient();
@@ -1100,6 +1358,11 @@ export async function POST(request: Request) {
 
     if (profileRow) {
       candidate = hydrateScreenCandidateFromProfile(candidate, profileRow);
+      if (!auditBreakdown) {
+        auditBreakdown = parseProductionAuditBreakdown(
+          profileRow.audit_breakdown
+        );
+      }
     } else {
       console.warn("[screen] could not resolve candidate profile row", {
         profile_id,
@@ -1118,7 +1381,11 @@ export async function POST(request: Request) {
 
   const jobInput: ScreeningJobInput = {
     candidate: candidate as unknown as Record<string, unknown>,
-    job: job as unknown as Record<string, unknown>,
+    job: {
+      ...(job as unknown as Record<string, unknown>),
+      screening_mode: mode,
+      audit_breakdown: auditBreakdown,
+    },
     profileId: profile_id?.trim() || lookupId,
   };
 
@@ -1136,6 +1403,8 @@ export async function POST(request: Request) {
       runId: queued.row.runId,
       candidate,
       job,
+      mode,
+      auditBreakdown,
       candidateKey,
       profileId: profile_id,
       lookupId,
@@ -1167,6 +1436,8 @@ export async function POST(request: Request) {
     const result = await executeLiveScreening({
       candidate,
       job,
+      mode,
+      auditBreakdown,
       lookupId,
       writer,
     });
@@ -1185,23 +1456,52 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("[screen] inline live audit failed:", error);
-    return NextResponse.json(
-      {
-        error: "The live GitHub audit could not be completed. Please retry.",
-        retryable: true,
-      },
-      { status: 500 }
-    );
+    // Never 500 solely because audit_breakdown was missing — fall back to a
+    // deterministic screen from whatever repo signals we can gather.
+    try {
+      const writer = createServiceRoleClient() ?? access.supabase;
+      const githubUrl = resolveCandidateGitHubUrl(candidate);
+      let githubAudit: GitHubAuditContext | null = null;
+      try {
+        if (githubUrl) {
+          githubAudit = await fetchGitHubAudit(githubUrl);
+        }
+      } catch {
+        githubAudit = null;
+      }
+      const fallback = buildFallbackScreen(
+        candidate,
+        job,
+        githubAudit,
+        mode,
+        auditBreakdown
+      );
+      return NextResponse.json(fallback);
+    } catch (fallbackError) {
+      console.error("[screen] fallback screen failed:", fallbackError);
+      return NextResponse.json(
+        {
+          error: "The live GitHub audit could not be completed. Please retry.",
+          retryable: true,
+        },
+        { status: 500 }
+      );
+    }
   }
 }
 
 async function executeLiveScreening(args: {
   candidate: CandidatePayload;
   job: JobPayload;
+  mode: ScreeningMode;
+  auditBreakdown: ProductionAuditBreakdown | null;
   lookupId: string | null;
   writer: SupabaseClient;
 }): Promise<ScreenResult> {
-  const githubUrl = resolveCandidateGitHubUrl(args.candidate);
+  const githubUrl =
+    resolveCandidateGitHubUrl(args.candidate) ||
+    asTrimmedString(args.auditBreakdown?.audited_repo_url) ||
+    null;
   let githubAudit: GitHubAuditContext | null = null;
 
   try {
@@ -1210,18 +1510,22 @@ async function executeLiveScreening(args: {
     }
   } catch (error) {
     console.error("[screen] GitHub fetch sequence failed:", error);
-    githubAudit = emptyGitHubAuditContext({
-      repo_url: githubUrl ?? "",
-      fetch_warnings: [
-        "The GitHub fetch sequence timed out or dropped. Retry the live audit to reload repository artifacts.",
-      ],
-    });
+    // Missing/failed live fetch is non-fatal when audit_breakdown exists.
+    githubAudit = args.auditBreakdown
+      ? null
+      : emptyGitHubAuditContext({
+          repo_url: githubUrl ?? "",
+          fetch_warnings: [
+            "The GitHub fetch sequence timed out or dropped. Retry the live audit to reload repository artifacts.",
+          ],
+        });
   }
 
   let externalProjects: ExternalProjectRecord[] = [];
   if (
     args.lookupId &&
-    (!githubUrl || !githubAuditHasFetchedArtifacts(githubAudit))
+    (!githubUrl || !githubAuditHasFetchedArtifacts(githubAudit)) &&
+    !args.auditBreakdown
   ) {
     const { data, error } = await args.writer
       .from("external_projects")
@@ -1240,7 +1544,9 @@ async function executeLiveScreening(args: {
     args.candidate,
     args.job,
     githubAudit,
-    hasUsableExternalProjects(externalProjects) ? externalProjects : []
+    hasUsableExternalProjects(externalProjects) ? externalProjects : [],
+    args.mode,
+    args.auditBreakdown
   );
 }
 
@@ -1250,6 +1556,8 @@ async function runQueuedScreening(snapshot: {
   runId: string;
   candidate: CandidatePayload;
   job: JobPayload;
+  mode: ScreeningMode;
+  auditBreakdown: ProductionAuditBreakdown | null;
   candidateKey: string;
   profileId?: string;
   lookupId: string | null;
@@ -1257,7 +1565,11 @@ async function runQueuedScreening(snapshot: {
   const writer = createServiceRoleClient() ?? (await createClient());
   const input: ScreeningJobInput = {
     candidate: snapshot.candidate as unknown as Record<string, unknown>,
-    job: snapshot.job as unknown as Record<string, unknown>,
+    job: {
+      ...(snapshot.job as unknown as Record<string, unknown>),
+      screening_mode: snapshot.mode,
+      audit_breakdown: snapshot.auditBreakdown,
+    },
     profileId: snapshot.profileId?.trim() || snapshot.lookupId,
   };
 
@@ -1289,6 +1601,8 @@ async function runQueuedScreening(snapshot: {
     const result = await executeLiveScreening({
       candidate: snapshot.candidate,
       job: snapshot.job,
+      mode: snapshot.mode,
+      auditBreakdown: snapshot.auditBreakdown,
       lookupId: snapshot.lookupId,
       writer,
     });
@@ -1325,6 +1639,35 @@ async function runQueuedScreening(snapshot: {
     }
   } catch (error) {
     console.error("[screen] background audit failed:", error);
+    try {
+      const fallback = buildFallbackScreen(
+        snapshot.candidate,
+        snapshot.job,
+        null,
+        snapshot.mode,
+        snapshot.auditBreakdown
+      );
+      const persisted = await persistScreeningResult(
+        snapshot.candidateKey,
+        snapshot.profileId,
+        fallback,
+        snapshot.userId,
+        { screeningId: snapshot.screeningId, runId: snapshot.runId }
+      );
+      if (persisted) {
+        await completeScreeningRun(writer, {
+          screeningId: snapshot.screeningId,
+          userId: snapshot.userId,
+          runId: snapshot.runId,
+          profileId: snapshot.lookupId,
+          integrityScore: fallback.integrity_score,
+          auditData: fallback as unknown as Record<string, unknown>,
+        });
+        return;
+      }
+    } catch (fallbackError) {
+      console.error("[screen] queued fallback failed:", fallbackError);
+    }
     await failScreeningRun(writer, {
       screeningId: snapshot.screeningId,
       userId: snapshot.userId,

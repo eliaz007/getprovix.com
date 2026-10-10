@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import LockedContactDossierBadge from "@/components/LockedContactDossierBadge";
-import GeminiDeepScreening from "@/components/employer/gemini-deep-screening";
+import GeminiDeepScreening, {
+  buildDeepScreeningCacheKey,
+  type DeepScreeningJobContext,
+} from "@/components/employer/gemini-deep-screening";
 import ProductionCodeAuditSection from "@/components/employer/production-code-audit-section";
 import ProductionScoreBadge from "@/components/employer/production-score-badge";
 import ScoreMeter from "@/components/ScoreMeter";
@@ -21,7 +24,6 @@ import {
   formatTalentMatchLabel,
   getCandidateProjectLinks,
   productionAuditRecordFromCandidate,
-  type ScreeningJobContext,
   type TalentPoolCandidate,
 } from "@/lib/talent-pool-candidate";
 import {
@@ -54,7 +56,7 @@ type CandidateIntelligenceDrawerProps = {
   isUnlocked: boolean;
   onClose: () => void;
   onRequestIntro: (candidate: TalentPoolCandidate) => void;
-  screeningJob?: ScreeningJobContext | null;
+  screeningJob?: DeepScreeningJobContext | null;
   companyName?: string;
   requireAuth?: () => boolean;
   onToast?: (message: string) => void;
@@ -372,7 +374,7 @@ export default function CandidateIntelligenceDrawer({
             />
 
             <GeminiDeepScreening
-              key={liveCandidate.profileId || liveCandidate.id}
+              key={buildDeepScreeningCacheKey(liveCandidate, screeningJob)}
               candidate={liveCandidate}
               publicName={publicName}
               lockedBio={lockedBio}

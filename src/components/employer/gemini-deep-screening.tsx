@@ -16,7 +16,6 @@ import {
   AUDIT_STORAGE_PREFIX,
   coerceDeepScreeningResult,
   DEEP_SCREENING_STAGES,
-  getCandidateScreeningKey,
   getIntegrityScoreClass,
   isScreeningAcceptedResponse,
   parseStoredScreeningResult,
@@ -30,15 +29,76 @@ import {
 import { resolveTalentProfileId } from "@/lib/talent-pool-profiles";
 import { createClient } from "@/utils/supabase/client";
 
+/** Job context for deep screening — extends shared type with id/description. */
+export type DeepScreeningJobContext = ScreeningJobContext & {
+  id?: string | null;
+  description?: string | null;
+};
+
+type ScreeningMode = "job_aware" | "baseline";
+
 type GeminiDeepScreeningProps = {
   candidate: TalentPoolCandidate;
   publicName: string;
   lockedBio: string;
-  screeningJob?: ScreeningJobContext | null;
+  screeningJob?: DeepScreeningJobContext | null;
   companyName?: string;
   requireAuth?: () => boolean;
   onToast?: (message: string) => void;
 };
+
+function asTrimmed(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function isValidDeepScreeningJob(
+  job: DeepScreeningJobContext | null | undefined
+): boolean {
+  if (!job) {
+    return false;
+  }
+  return Boolean(
+    asTrimmed(job.id) || asTrimmed(job.title) || asTrimmed(job.description)
+  );
+}
+
+function resolveJobCacheSuffix(
+  job: DeepScreeningJobContext | null | undefined
+): string {
+  const id = asTrimmed(job?.id);
+  if (id) {
+    return id;
+  }
+  const title = asTrimmed(job?.title);
+  if (title) {
+    return (
+      title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 64) || "role"
+    );
+  }
+  const description = asTrimmed(job?.description);
+  if (description) {
+    return `desc-${description.slice(0, 24).replace(/\s+/g, "-").toLowerCase()}`;
+  }
+  return "general";
+}
+
+export function buildDeepScreeningCacheKey(
+  candidate: TalentPoolCandidate,
+  job: DeepScreeningJobContext | null | undefined
+): string {
+  const candidateId =
+    resolveTalentProfileId(candidate) ||
+    asTrimmed(candidate.profileId) ||
+    candidate.id;
+  if (!isValidDeepScreeningJob(job)) {
+    return `${candidateId}_general`;
+  }
+  return `${candidateId}_${resolveJobCacheSuffix(job)}`;
+}
 
 function cacheScreeningResult(
   screeningKey: string,
@@ -133,7 +193,9 @@ export default function GeminiDeepScreening({
 
   resultRef.current = result;
 
-  const screeningKey = getCandidateScreeningKey(candidate);
+  const jobAware = isValidDeepScreeningJob(screeningJob);
+  const screeningMode: ScreeningMode = jobAware ? "job_aware" : "baseline";
+  const screeningKey = buildDeepScreeningCacheKey(candidate, screeningJob);
 
   const clearStageInterval = () => {
     if (intervalRef.current) {
@@ -383,15 +445,6 @@ export default function GeminiDeepScreening({
       return;
     }
 
-    const job = screeningJob ?? {
-      title: candidate.role || "General Talent Evaluation",
-      company: companyName,
-      tags: candidate.skills.slice(0, 8),
-      tech_stack: [],
-      required_skills: candidate.skills.slice(0, 8),
-      location: "",
-    };
-
     const runId = ++runIdRef.current;
     abortInFlight();
     clearStageInterval();
@@ -407,6 +460,19 @@ export default function GeminiDeepScreening({
     }, 1400);
 
     const isCurrentRun = () => runId === runIdRef.current;
+    const jobPayload = jobAware && screeningJob
+      ? {
+          id: asTrimmed(screeningJob.id) || undefined,
+          title: screeningJob.title,
+          company: screeningJob.company ?? companyName,
+          tags: jobDisplayTags(screeningJob),
+          tech_stack: parseJobListInput(screeningJob.tech_stack),
+          required_skills: parseJobListInput(screeningJob.required_skills),
+          location: screeningJob.location ?? "",
+          description: asTrimmed(screeningJob.description),
+        }
+      : {};
+
     const requestBody = JSON.stringify({
       candidate: {
         name: publicName,
@@ -423,14 +489,9 @@ export default function GeminiDeepScreening({
         github_url: candidate.github_url ?? candidate.github ?? "",
         github: candidate.github ?? "",
       },
-      job: {
-        title: job.title,
-        company: job.company ?? companyName,
-        tags: jobDisplayTags(job),
-        tech_stack: parseJobListInput(job.tech_stack),
-        required_skills: parseJobListInput(job.required_skills),
-        location: job.location ?? "",
-      },
+      job: jobPayload,
+      screening_mode: screeningMode,
+      audit_breakdown: candidate.auditBreakdown ?? undefined,
       candidate_key: screeningKey,
       profile_id:
         resolveTalentProfileId(candidate) || candidate.profileId || undefined,
@@ -548,12 +609,22 @@ export default function GeminiDeepScreening({
     }
   };
 
+  const hasStoredAuditBreakdown = Boolean(
+    candidate.auditBreakdown?.audited_repo_url?.trim() ||
+      (result?.metrics?.evidence?.inspected === true &&
+        (result.metrics.architecture > 0 ||
+          result.metrics.testing > 0 ||
+          result.metrics.devops > 0 ||
+          result.metrics.resilience > 0))
+  );
+
   const hasAuditedCodebase = Boolean(
     result &&
-      (result.github_audit?.repo_url?.trim() ||
-        candidate.github_url?.trim() ||
-        candidate.github?.trim()) &&
-      result.github_audit?.filesystem?.inspected === true
+      ((result.github_audit?.filesystem?.inspected === true &&
+        (result.github_audit?.repo_url?.trim() ||
+          candidate.github_url?.trim() ||
+          candidate.github?.trim())) ||
+        hasStoredAuditBreakdown)
   );
 
   const visibleTimelineFlags =
@@ -572,7 +643,9 @@ export default function GeminiDeepScreening({
             Provix Deep Screening
           </div>
           <p className="text-xs text-textMuted leading-relaxed">
-            Run live repository audits and production integrity scoring for this candidate.
+            {jobAware
+              ? "Job-aware diligence: compare stored audit breakdown and repo signals against this role's stack and description."
+              : "Baseline diligence: evaluate stored audit breakdown and repo metrics in isolation (no target job)."}
           </p>
         </div>
       </div>
@@ -717,11 +790,13 @@ export default function GeminiDeepScreening({
 
               <div>
                 <div className="text-[10px] uppercase font-bold text-purple-300 tracking-wider mb-2">
-                  Employer Interview Cheat Sheet
+                  {jobAware
+                    ? "Role-Targeted Interview Prompts"
+                    : "Code-Design Interview Prompts"}
                 </div>
                 <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-xs text-zinc-400 text-center">
-                  Targeted interview questions and scoring rubrics generate
-                  automatically once repository artifacts are audited.
+                  Interview prompts generate automatically once repository
+                  artifacts or a stored audit breakdown are available.
                 </div>
               </div>
             </>
@@ -736,7 +811,9 @@ export default function GeminiDeepScreening({
               {visibleTimelineFlags.length > 0 ? (
                 <div>
                   <div className="text-[10px] uppercase font-bold text-red-400 tracking-wider mb-2">
-                    Timeline & Repository Flags
+                    {jobAware
+                      ? "Unverified Stack Gaps"
+                      : "Technical Blind Spots"}
                   </div>
                   <ul className="space-y-1.5">
                     {visibleTimelineFlags.map((flag, index) => (
@@ -755,10 +832,12 @@ export default function GeminiDeepScreening({
 
               <div>
                 <div className="text-[10px] uppercase font-bold text-purple-300 tracking-wider mb-2">
-                  Employer Interview Cheat Sheet
+                  {jobAware
+                    ? "Role-Targeted Interview Prompts"
+                    : "Code-Design Interview Prompts"}
                 </div>
                 <div className="space-y-3">
-                  {(result.interview_questions ?? []).map((item, index) => (
+                  {(result.interview_questions ?? []).slice(0, 2).map((item, index) => (
                     <div
                       key={`interview-question-${index}`}
                       className="bg-background border border-border rounded-xl p-3.5 space-y-2.5"
@@ -798,7 +877,9 @@ export default function GeminiDeepScreening({
 
           <div>
             <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
-              Technical Depth Summary
+              {jobAware
+                ? "Role-Specific Match Proof"
+                : "Architectural Strengths"}
             </div>
             <p className="text-xs text-textMuted leading-relaxed bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">
               {result.technical_depth_summary}
