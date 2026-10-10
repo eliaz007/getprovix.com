@@ -5,6 +5,14 @@ export type MatchCandidatePayload = {
   bio?: string;
   skills?: string[] | string;
   degree?: string;
+  experience_level?: string;
+  experienceLevel?: string;
+  auditScore?: number | null;
+  productionScore?: number | null;
+  auditBreakdown?: unknown;
+  githubAudit?: unknown;
+  github_url?: string;
+  githubUrl?: string;
 };
 
 export type MatchJobPayload = {
@@ -338,5 +346,7 @@ export function buildFallbackMatch(
   candidate: MatchCandidatePayload,
   job: MatchJobPayload
 ): MatchResult {
+  // Keep export stable for callers; deterministic employer scoring lives in
+  // employer-match and is preferred by /api/match + talent-match-scores.
   return scoreTalentMatch(candidate, job);
 }

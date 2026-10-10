@@ -64,6 +64,8 @@ export type TalentPoolCandidate = {
   verifiedOnProvix?: boolean;
   productionScore?: number | null;
   auditBreakdown?: ProductionAuditBreakdown | null;
+  /** Persisted profiles.audit_data (github_audit + metrics) for match grounding. */
+  githubAudit?: unknown;
   isAuditVerified?: boolean;
 };
 

@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  buildFallbackMatch,
+  buildDeterministicEmployerMatch,
+  type EmployerMatchCandidatePayload,
+} from "@/lib/employer-match";
+import {
   clampMatchPercentage,
-  isCannedMatchScore,
   normalizeMatchResult,
   type MatchCandidatePayload,
   type MatchJobPayload,
@@ -16,29 +18,24 @@ export function resolveMatchInsight(
   candidate: MatchCandidatePayload,
   job: MatchJobPayload
 ): MatchResult {
-  const fallback = buildFallbackMatch(candidate, job);
+  const deterministic = buildDeterministicEmployerMatch(
+    candidate as EmployerMatchCandidatePayload,
+    job
+  );
 
   if (raw && typeof raw === "object" && !("error" in (raw as object))) {
     const normalized = normalizeMatchResult(raw);
-    if (
-      Number.isFinite(normalized.match_percentage) &&
-      !isCannedMatchScore(normalized.match_percentage)
-    ) {
-      return {
-        ...normalized,
-        matching_skills:
-          normalized.matching_skills.length > 0
-            ? normalized.matching_skills
-            : fallback.matching_skills,
-        missing_skills:
-          normalized.missing_skills.length > 0
-            ? normalized.missing_skills
-            : fallback.missing_skills,
-      };
-    }
+    const reasoning = normalized.reasoning.trim();
+    return {
+      // Always keep TypeScript-computed score + skill lists; LLM may only narrate.
+      match_percentage: deterministic.match_percentage,
+      reasoning: reasoning || deterministic.reasoning,
+      matching_skills: deterministic.matching_skills,
+      missing_skills: deterministic.missing_skills,
+    };
   }
 
-  return fallback;
+  return deterministic;
 }
 
 export async function loadCachedTalentMatchScores(
@@ -85,6 +82,11 @@ export async function fetchTalentMatchInsight(
   candidate: MatchCandidatePayload,
   job: MatchJobPayload
 ): Promise<MatchResult> {
+  const deterministic = buildDeterministicEmployerMatch(
+    candidate as EmployerMatchCandidatePayload,
+    job
+  );
+
   try {
     const response = await fetch("/api/match", {
       method: "POST",
@@ -94,14 +96,14 @@ export async function fetchTalentMatchInsight(
     });
 
     if (!response.ok) {
-      return buildFallbackMatch(candidate, job);
+      return deterministic;
     }
 
     const raw = (await readJsonResponse(response)) as unknown;
     return resolveMatchInsight(raw, candidate, job);
   } catch (error) {
     console.warn("Talent match API unavailable, using fallback.", error);
-    return buildFallbackMatch(candidate, job);
+    return deterministic;
   }
 }
 

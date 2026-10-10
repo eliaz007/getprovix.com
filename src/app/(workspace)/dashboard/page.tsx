@@ -135,7 +135,8 @@ import {
   isValidGitHubUrl,
   normalizeGitHubUrl,
 } from "@/lib/validate-github-url";
-import { buildFallbackMatch, isCannedMatchScore, scoreTalentMatch, type MatchResult } from "@/lib/match-heuristic";
+import { buildDeterministicEmployerMatch } from "@/lib/employer-match";
+import { isCannedMatchScore, type MatchResult } from "@/lib/match-heuristic";
 import {
   getFitVerdictBadgeClass,
   splitCandidateMatchReason,
@@ -670,16 +671,23 @@ function mapProfileRowToTalentCandidate(
     verifiedOnProvix: isVerifiedOnProvix(row),
     productionScore: latestAuditScore,
     auditBreakdown: productionAudit?.breakdown ?? null,
+    githubAudit: row.audit_data ?? null,
     isAuditVerified:
       productionAudit?.isAuditVerified ??
       (typeof latestAuditScore === "number" &&
         latestAuditScore >= PUBLIC_SCORECARD_THRESHOLD),
-    matchScore: scoreTalentMatch(
+    matchScore: buildDeterministicEmployerMatch(
       {
         title: headline,
         bio,
         skills,
         degree: major,
+        experience_level: row.experience_level?.trim() || "",
+        auditScore: latestAuditScore,
+        productionScore: latestAuditScore,
+        auditBreakdown: productionAudit?.breakdown ?? null,
+        githubAudit: row.audit_data ?? null,
+        github_url: portfolioUrl || "",
       },
       { title: "", tags: [], description: "", searchQuery: "" }
     ).match_percentage,
@@ -3516,12 +3524,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     );
 
     return candidates.map((candidate) => {
-      const heuristic = scoreTalentMatch(
+      const heuristic = buildDeterministicEmployerMatch(
         {
           title: candidate.role,
           bio: candidate.bio,
           skills: candidate.skills,
           degree: candidate.major,
+          experience_level: candidate.experienceLevel,
+          auditScore: candidate.productionScore,
+          productionScore: candidate.productionScore,
+          auditBreakdown: candidate.auditBreakdown,
+          githubAudit: candidate.githubAudit,
+          github_url: candidate.github || candidate.github_url || "",
         },
         jobPayload
       );
@@ -3835,6 +3849,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             bio: candidate.bio ?? "",
             skills: candidate.skills,
             degree: candidate.major,
+            experience_level: candidate.experienceLevel,
+            auditScore: candidate.productionScore ?? null,
+            productionScore: candidate.productionScore ?? null,
+            auditBreakdown: candidate.auditBreakdown ?? null,
+            githubAudit: candidate.githubAudit ?? null,
+            github_url: candidate.github || candidate.github_url || "",
           };
           const jobPayload = buildTalentMatchJobPayload(
             primaryMatchingJobRef.current,
@@ -3847,7 +3867,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
               jobPayload
             );
             const insight = isCannedMatchScore(data.match_percentage)
-              ? scoreTalentMatch(candidatePayload, jobPayload)
+              ? buildDeterministicEmployerMatch(candidatePayload, jobPayload)
               : data;
 
             if (isCurrentJob()) {
@@ -3871,7 +3891,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             );
 
             if (isCurrentJob()) {
-              const fallback = buildFallbackMatch(
+              const fallback = buildDeterministicEmployerMatch(
                 candidatePayload,
                 jobPayload
               );
