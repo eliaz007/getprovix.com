@@ -635,6 +635,17 @@ export default function GeminiDeepScreening({
         )
       : [];
 
+  const executiveBrief =
+    result?.executiveBrief ?? result?.github_audit?.executiveBrief ?? null;
+  const codebaseAuditScore = result
+    ? clampScore0to100(
+        result.metrics?.evidence?.inspected
+          ? result.metrics.productionScore
+          : result.integrity_score
+      )
+    : 0;
+  const roleTitle = asTrimmed(screeningJob?.title) || "Open Role";
+
   return (
     <div className="bg-background border border-border rounded-xl p-4 space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -746,17 +757,17 @@ export default function GeminiDeepScreening({
       {showResults && result && !loading && (
         <div className="space-y-4 pt-1">
           <div
-            className={`rounded-xl border p-4 text-center ${getIntegrityScoreClass(result.integrity_score)}`}
+            className={`rounded-xl border p-4 text-center ${getIntegrityScoreClass(codebaseAuditScore)}`}
           >
             <div className="text-[10px] uppercase font-bold tracking-widest mb-1">
-              Integrity Score
+              {jobAware ? "Codebase Audit" : "Integrity Score"}
             </div>
             <div className="text-4xl font-mono font-extrabold tabular-nums">
-              {clampScore0to100(result.integrity_score)}
+              {codebaseAuditScore}
               <span className="text-lg font-semibold opacity-70">/100</span>
             </div>
             <ScoreMeter
-              score={result.integrity_score}
+              score={codebaseAuditScore}
               className="mt-3 mx-auto max-w-[160px]"
             />
             {result.github_audit && (
@@ -769,13 +780,58 @@ export default function GeminiDeepScreening({
             )}
           </div>
 
+          <div className="space-y-3 rounded-xl border border-border bg-background/40 p-3.5">
+            <div>
+              <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider">
+                {jobAware
+                  ? `Role-Fit Executive Brief (${roleTitle})`
+                  : "Baseline Technical Diligence"}
+              </div>
+              {!jobAware ? (
+                <p className="mt-1 text-[11px] text-textMuted leading-relaxed">
+                  Analyzing engineering hygiene in isolation.
+                </p>
+              ) : null}
+            </div>
+
+            {jobAware ? (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
+                    Role-Fit Match
+                  </div>
+                  <p className="text-xs text-textMuted leading-relaxed">
+                    {result.technical_depth_summary}
+                  </p>
+                </div>
+                <span className="inline-flex shrink-0 items-center self-start rounded-lg border border-brand/30 bg-brandGlow px-2.5 py-1.5 font-mono text-[11px] font-bold text-brand">
+                  Codebase Audit: {codebaseAuditScore}/100
+                </span>
+              </div>
+            ) : null}
+
+            {executiveBrief ? (
+              <div className="rounded-lg border border-violet-500/25 bg-violet-500/10 px-3 py-3 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-violet-200">
+                    {jobAware ? "Hiring verdict" : "Diligence summary"}
+                  </span>
+                  <span className="inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+                    {executiveBrief.recommendedRoleBand}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  {executiveBrief.employerSummary}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
           <ProductionScorecard
             metrics={result.metrics}
             compact
             audience="employer"
-            executiveBrief={
-              result.executiveBrief ?? result.github_audit?.executiveBrief ?? null
-            }
+            executiveBrief={null}
           />
 
           {!hasAuditedCodebase ? (
@@ -875,16 +931,16 @@ export default function GeminiDeepScreening({
             </>
           )}
 
-          <div>
-            <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
-              {jobAware
-                ? "Role-Specific Match Proof"
-                : "Architectural Strengths"}
+          {!jobAware ? (
+            <div>
+              <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider mb-2">
+                Architectural Strengths
+              </div>
+              <p className="text-xs text-textMuted leading-relaxed bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">
+                {result.technical_depth_summary}
+              </p>
             </div>
-            <p className="text-xs text-textMuted leading-relaxed bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">
-              {result.technical_depth_summary}
-            </p>
-          </div>
+          ) : null}
 
           {result.github_audit?.fetch_warnings &&
             result.github_audit.fetch_warnings.length > 0 && (
