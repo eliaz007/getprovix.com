@@ -67,7 +67,7 @@ const sections: PrivacySection[] = [
     title: "User Rights & Contact",
     paragraphs: [
       "Depending on your location, you may have rights to access, correct, export, or delete personal information we hold about you, or to object to certain processing activities.",
-      "To exercise these rights or ask questions about this policy, contact us at support@provix.app. We will respond within a reasonable timeframe.",
+      "To exercise these rights or ask questions about this policy, contact us at support@getprovix.com. We will respond within a reasonable timeframe.",
       "We may update this Privacy Policy from time to time. Material changes will be reflected on this page with an updated effective date.",
     ],
   },
@@ -133,7 +133,7 @@ export default function PrivacyPage() {
             href="mailto:support@getprovix.com"
             className="text-brand hover:text-brand transition-colors"
           >
-            support@provix.app
+            support@getprovix.com
           </a>
           .
         </footer>
