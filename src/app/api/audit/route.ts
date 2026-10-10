@@ -235,7 +235,7 @@ JSON field rules:
 - executiveBrief is required. Use deterministicMetrics as the only source for productionScore, is_upstream_derivative, architectureScore, testScore, devopsScore, and resilienceScore. Do not recompute those numbers.
   - employerSummary: 2-3 concise sentences for a founder. Cover production risk and whether this person fits a small team. Mention the upstream-fork deduction when is_upstream_derivative is true.
   - developerSummary: 2-3 direct sentences of objective peer review. Name the highest-leverage architectural fix.
-  - recommendedRoleBand: copy deterministicMetrics.roleBandRule exactly. Mid-Level only when productionScore >= 75 and testScore >= 65 and resilienceScore >= 80. Early-Stage Generalist when productionScore >= 75 but tests or resilience miss that bar. Intern / Junior when productionScore < 75 and either testScore >= 65 or resilienceScore >= 80. Otherwise Needs Hardening.
+  - recommendedRoleBand: copy deterministicMetrics.roleBandRule exactly. Mid-Level only when productionScore >= 75 and testScore >= 65 and resilienceScore >= 80. Early-Stage Generalist when productionScore >= 75 but tests or resilience miss that bar, or when productionScore is 70-74 with either testScore >= 65 or resilienceScore >= 80. Intern / Junior when productionScore < 70 and either testScore >= 65 or resilienceScore >= 80. Otherwise Needs Hardening.
 - No markdown, no extra keys. Never use the banned buzzwords above.`;
 
 const AUDIT_CHECK_SCHEMA = {

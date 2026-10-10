@@ -192,3 +192,73 @@ export function preferSourceSamplePaths(paths: string[], limit = 6): string[] {
     .slice(0, limit)
     .map((item) => item.path);
 }
+
+/** Real pre-merge gates — prefer these when sampling workflow YAML. */
+const WORKFLOW_CI_SIGNAL =
+  /(^|[\/._-])(ci|test|tests|e2e|build|lint|check|typecheck|unit|integration|verify|quality|coverage|playwright|cypress|vitest|jest)([\/._-]|$)/i;
+
+/** Bot/chore automation that should not crowd out CI samples. */
+const WORKFLOW_CHORE_SIGNAL =
+  /(label|labels|stale|assign|greet|greeting|triage|issue|issues|pr-title|comment|lock|welcome|congratulate|semantic|dependabot|codeql|scorecard|changelog|release-please|autofix|size-limit|license|cla)\b/i;
+
+function workflowBasename(path: string): string {
+  const parts = path.replace(/\\/g, "/").split("/");
+  return parts[parts.length - 1] || path;
+}
+
+/** Higher = more likely to encode lint/test/build gates. */
+export function rankCiWorkflowPath(path: string): number {
+  const base = workflowBasename(path);
+  let score = 0;
+
+  if (WORKFLOW_CI_SIGNAL.test(base) || WORKFLOW_CI_SIGNAL.test(path)) {
+    score += 10;
+  }
+  if (/(^|[\/._-])ci([\/._-]|$)/i.test(base)) {
+    score += 4;
+  }
+  if (/test/i.test(base)) {
+    score += 3;
+  }
+  if (/e2e|playwright|cypress/i.test(base)) {
+    score += 3;
+  }
+  if (/build|lint|check|typecheck/i.test(base)) {
+    score += 2;
+  }
+  if (/deploy|preview|release/i.test(base)) {
+    score += 1;
+  }
+  if (WORKFLOW_CHORE_SIGNAL.test(base)) {
+    score -= 12;
+  }
+
+  return score;
+}
+
+/**
+ * Prefer CI-shaped workflow filenames (ci, test, e2e, build, lint, check)
+ * over bot/chore automation before applying the fetch budget.
+ */
+export function preferWorkflowSamplePaths(
+  paths: string[],
+  limit = 10
+): string[] {
+  return [...paths]
+    .sort(
+      (left, right) =>
+        rankCiWorkflowPath(right) - rankCiWorkflowPath(left) ||
+        left.localeCompare(right)
+    )
+    .slice(0, Math.max(0, limit));
+}
+
+/** Best path to cite in DevOps explanations — not tree-order `[0]`. */
+export function selectPrimaryCiWorkflowPath(
+  paths: string[] | null | undefined
+): string | null {
+  if (!paths?.length) {
+    return null;
+  }
+  return preferWorkflowSamplePaths(paths, 1)[0] ?? null;
+}

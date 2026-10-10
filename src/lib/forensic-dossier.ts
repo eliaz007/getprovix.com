@@ -1,3 +1,4 @@
+import { selectPrimaryCiWorkflowPath } from "@/lib/audit-content-signals";
 import type { ProductionAuditMetrics } from "@/lib/production-audit-metrics";
 import type { RepoFilesystemEvidence } from "@/lib/repo-filesystem";
 import { clampScore0to100 } from "@/lib/score-scale";
@@ -164,9 +165,8 @@ function devopsSubLog(
   score: number,
   fs: RepoFilesystemEvidence | null
 ): PillarSubLog {
-  const ci = fs?.ci_workflow_paths[0]
-    ? shortPath(fs.ci_workflow_paths[0])
-    : null;
+  const primaryCi = selectPrimaryCiWorkflowPath(fs?.ci_workflow_paths);
+  const ci = primaryCi ? shortPath(primaryCi) : null;
   const strengths: [string, string] = [
     ci
       ? `CI workflow present at ${ci}`

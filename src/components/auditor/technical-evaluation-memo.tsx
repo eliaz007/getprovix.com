@@ -1,4 +1,5 @@
 import type { AuditCheck } from "@/lib/audit-checks";
+import { selectPrimaryCiWorkflowPath } from "@/lib/audit-content-signals";
 import {
   formatCodebaseBenchmark,
   type CodebaseBenchmark,
@@ -68,7 +69,7 @@ function toScanData(input: MemoInput): AuditScanData {
   const inspected = filesystem?.inspected === true;
   const hasCi = (filesystem?.ci_workflow_paths.length ?? 0) > 0;
   const boundary = filesystem?.error_handling_paths[0] ?? null;
-  const ciPath = filesystem?.ci_workflow_paths[0] ?? null;
+  const ciPath = selectPrimaryCiWorkflowPath(filesystem?.ci_workflow_paths);
   const testing = clampScore0to100(input.metrics.testing);
   const paths = [
     ...(filesystem?.sample_paths ?? []),

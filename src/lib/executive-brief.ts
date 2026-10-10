@@ -18,6 +18,12 @@ export type ExecutiveBrief = {
 /** Talent-network bar. Matches the existing 75 readiness threshold. */
 export const ROLE_BAND_SCORE_THRESHOLD = 75;
 
+/**
+ * Soft near-miss band: 70–74 with a robust pillar maps to Early-Stage
+ * Generalist instead of Intern / Junior.
+ */
+export const ROLE_BAND_NEAR_THRESHOLD = 70;
+
 /** Testing at 65 is the real-coverage band. Token coverage stays under 20. */
 export const ROBUST_TEST_SCORE = 65;
 
@@ -38,8 +44,10 @@ export function isRecommendedRoleBand(
 
 /**
  * Mid-Level only when the headline clears 75 and both test and error-handling
- * patterns are robust. 75+ with a gap is Early-Stage Generalist. Below 75,
- * a single robust pillar is Intern / Junior. Otherwise Needs Hardening.
+ * patterns are robust. 75+ with a gap is Early-Stage Generalist. Scores in
+ * 70–74 with either robust pillar also land Early-Stage Generalist so a
+ * one-point miss under the bar is not labeled Intern / Junior. Below 70, a
+ * single robust pillar is Intern / Junior. Otherwise Needs Hardening.
  */
 export function assignRecommendedRoleBand(input: {
   productionScore: number;
@@ -49,6 +57,7 @@ export function assignRecommendedRoleBand(input: {
   const score = clampScore0to100(input.productionScore);
   const robustTests = input.testing >= ROBUST_TEST_SCORE;
   const robustErrors = input.resilience >= ROBUST_RESILIENCE_SCORE;
+  const hasRobustPillar = robustTests || robustErrors;
 
   if (score >= ROLE_BAND_SCORE_THRESHOLD && robustTests && robustErrors) {
     return "Mid-Level";
@@ -56,7 +65,10 @@ export function assignRecommendedRoleBand(input: {
   if (score >= ROLE_BAND_SCORE_THRESHOLD) {
     return "Early-Stage Generalist";
   }
-  if (robustTests || robustErrors) {
+  if (score >= ROLE_BAND_NEAR_THRESHOLD && hasRobustPillar) {
+    return "Early-Stage Generalist";
+  }
+  if (hasRobustPillar) {
     return "Intern / Junior";
   }
   return "Needs Hardening";
@@ -149,6 +161,6 @@ export function deterministicMetricsPayload(input: {
     devopsScore: input.devopsScore,
     resilienceScore: input.resilienceScore,
     roleBandRule:
-      "Mid-Level only when productionScore >= 75 and testScore >= 65 and resilienceScore >= 80. Early-Stage Generalist when productionScore >= 75 but tests or resilience miss that bar. Intern / Junior when productionScore < 75 and either testScore >= 65 or resilienceScore >= 80. Otherwise Needs Hardening. Do not invent a different band.",
+      "Mid-Level only when productionScore >= 75 and testScore >= 65 and resilienceScore >= 80. Early-Stage Generalist when productionScore >= 75 but tests or resilience miss that bar, or when productionScore is 70-74 with either testScore >= 65 or resilienceScore >= 80. Intern / Junior when productionScore < 70 and either testScore >= 65 or resilienceScore >= 80. Otherwise Needs Hardening. Do not invent a different band.",
   };
 }

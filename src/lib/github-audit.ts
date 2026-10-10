@@ -4,6 +4,7 @@ import {
   analyzeWorkflowDepth,
   countUnhandledAsyncCalls,
   preferSourceSamplePaths,
+  preferWorkflowSamplePaths,
 } from "@/lib/audit-content-signals";
 import {
   classifyRepoFilesystem,
@@ -957,7 +958,8 @@ async function collectTruncatedTreePaths(
   return extraPaths;
 }
 
-const MAX_WORKFLOW_SAMPLES = 3;
+/** Enterprise monorepos often ship many chore workflows before real CI alphabetically. */
+const MAX_WORKFLOW_SAMPLES = 10;
 const MAX_SOURCE_SAMPLES = 6;
 
 async function fetchGithubFileRaw(
@@ -996,9 +998,11 @@ async function enrichFilesystemFromContents(
   repo: string,
   commitSha: string
 ): Promise<RepoFilesystemEvidence> {
-  const workflowPaths = evidence.ci_workflow_paths
-    .filter(isCiWorkflowPath)
-    .slice(0, MAX_WORKFLOW_SAMPLES);
+  const rankedWorkflowPaths = preferWorkflowSamplePaths(
+    evidence.ci_workflow_paths.filter(isCiWorkflowPath),
+    evidence.ci_workflow_paths.length
+  );
+  const workflowPaths = rankedWorkflowPaths.slice(0, MAX_WORKFLOW_SAMPLES);
   const sourcePaths = preferSourceSamplePaths(
     allPaths.filter(isSourceFile),
     MAX_SOURCE_SAMPLES
@@ -1039,6 +1043,9 @@ async function enrichFilesystemFromContents(
 
   return {
     ...evidence,
+    // Keep CI-shaped workflows first so citations and later consumers do not
+    // latch onto alphabetical bot/chore filenames.
+    ci_workflow_paths: rankedWorkflowPaths,
     ci_depth: contentDepth,
     ci_has_lint: gates?.hasLint,
     ci_has_tests: gates?.hasTests,

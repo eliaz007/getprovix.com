@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   analyzeWorkflowDepth,
   countUnhandledAsyncCalls,
+  preferWorkflowSamplePaths,
+  selectPrimaryCiWorkflowPath,
 } from "./audit-content-signals";
 
 describe("countUnhandledAsyncCalls", () => {
@@ -53,5 +55,34 @@ describe("analyzeWorkflowDepth", () => {
         "jobs:\n  test:\n    steps:\n      - run: npm test\n  deploy:\n    environment: preview\n    steps:\n      - run: vercel deploy\n",
       ])
     ).toBe("deploy");
+  });
+});
+
+describe("preferWorkflowSamplePaths", () => {
+  it("ranks CI-shaped workflows ahead of bot/chore automation", () => {
+    const ranked = preferWorkflowSamplePaths(
+      [
+        ".github/workflows/apply-issue-labels-to-pr.yml",
+        ".github/workflows/stale.yml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/e2e.yml",
+        ".github/workflows/lint.yml",
+      ],
+      3
+    );
+    expect(ranked).toEqual([
+      ".github/workflows/ci.yml",
+      ".github/workflows/e2e.yml",
+      ".github/workflows/lint.yml",
+    ]);
+  });
+
+  it("selects a primary CI path instead of tree-order first", () => {
+    expect(
+      selectPrimaryCiWorkflowPath([
+        ".github/workflows/apply-issue-labels-to-pr.yml",
+        ".github/workflows/test.yml",
+      ])
+    ).toBe(".github/workflows/test.yml");
   });
 });

@@ -33,10 +33,27 @@ describe("assignRecommendedRoleBand", () => {
     ).toBe("Early-Stage Generalist");
   });
 
-  it("uses Intern / Junior below 75 when one pillar is robust", () => {
+  it("uses Early-Stage Generalist for 70-74 near-misses with a robust pillar", () => {
     expect(
       assignRecommendedRoleBand({
         productionScore: 74,
+        testing: 70,
+        resilience: 40,
+      })
+    ).toBe("Early-Stage Generalist");
+    expect(
+      assignRecommendedRoleBand({
+        productionScore: 70,
+        testing: 40,
+        resilience: 85,
+      })
+    ).toBe("Early-Stage Generalist");
+  });
+
+  it("uses Intern / Junior below 70 when one pillar is robust", () => {
+    expect(
+      assignRecommendedRoleBand({
+        productionScore: 69,
         testing: 70,
         resilience: 40,
       })
