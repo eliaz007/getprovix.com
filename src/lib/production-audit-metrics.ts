@@ -247,9 +247,13 @@ function hasCompileGate(evidence: RepoFilesystemEvidence): boolean {
 }
 
 /**
- * DevOps / CI (0-100): 0 only when no workflow exists.
- * Monorepo turbo/nx or multi-stage pipelines score 92.
- * Scores above 70 require an explicit compile/build gate (`next build` or `tsc`).
+ * DevOps / CI (0-100): proportional credit from lint/test/build gates
+ * aggregated across all inspected workflow bodies.
+ * - 90–100: all three gates (deploy / multi-workflow lifts toward 100)
+ * - 78–84: two gates
+ * - 65–72: one gate
+ * - 0–30: workflow files with no detected gates, or no CI at all (0)
+ * Monorepo turbo/nx pipelines that are already flagged score 92.
  */
 export function scoreDevops(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
@@ -272,13 +276,47 @@ export function scoreDevops(evidence: RepoFilesystemEvidence): number {
   const tests = evidence.ci_has_tests === true;
   const build = hasCompileGate(evidence);
   const deploy = evidence.ci_has_deploy === true || depth === "deploy";
+  const gateCount = Number(lint) + Number(tests) + Number(build);
 
-  if (!(ciGatesKnown(evidence) && lint && tests && build)) {
-    return 58;
+  // Files present but gates unread or empty — stay in the 0–30 band.
+  if (!ciGatesKnown(evidence) || gateCount === 0) {
+    if (depth === "tests") {
+      return 30;
+    }
+    if (depth === "deploy") {
+      return 28;
+    }
+    if (depth === "lint_build") {
+      return 26;
+    }
+    return 20;
+  }
+
+  if (gateCount === 1) {
+    if (tests) {
+      return deploy ? 72 : 70;
+    }
+    if (build) {
+      return deploy ? 70 : 68;
+    }
+    return deploy ? 68 : 65;
+  }
+
+  if (gateCount === 2) {
+    if (deploy) {
+      return 84;
+    }
+    if (tests && build) {
+      return 82;
+    }
+    if (tests) {
+      return 80;
+    }
+    return 78;
   }
 
   if (!deploy) {
-    return 85;
+    return 90;
   }
 
   const githubWorkflows = workflows.filter(isGithubWorkflowPath);

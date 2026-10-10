@@ -199,15 +199,45 @@ describe("four-pillar production audit", () => {
     expect(scoreTesting(bloated)).toBe(scoreTesting(coreOnly));
   });
 
-  it("grades devops by pipeline depth instead of a binary drop", () => {
+  it("grades devops proportionally from aggregated CI gates", () => {
     const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
       inspected: true,
     });
     expect(scoreDevops({ ...filesystem, ci_workflow_paths: [], ci_depth: "none" })).toBe(0);
     expect(
       scoreDevops({ ...filesystem, ci_depth: "lint_build" })
-    ).toBe(58);
-    expect(scoreDevops({ ...filesystem, ci_depth: "tests" })).toBe(58);
+    ).toBeGreaterThanOrEqual(20);
+    expect(
+      scoreDevops({ ...filesystem, ci_depth: "lint_build" })
+    ).toBeLessThanOrEqual(30);
+    expect(scoreDevops({ ...filesystem, ci_depth: "tests" })).toBe(30);
+    expect(
+      scoreDevops({
+        ...filesystem,
+        ci_depth: "lint_build",
+        ci_has_lint: true,
+        ci_has_tests: false,
+        ci_has_build: false,
+      })
+    ).toBeGreaterThanOrEqual(65);
+    expect(
+      scoreDevops({
+        ...filesystem,
+        ci_depth: "tests",
+        ci_has_lint: false,
+        ci_has_tests: true,
+        ci_has_build: true,
+      })
+    ).toBeGreaterThanOrEqual(78);
+    expect(
+      scoreDevops({
+        ...filesystem,
+        ci_depth: "tests",
+        ci_has_lint: false,
+        ci_has_tests: true,
+        ci_has_build: true,
+      })
+    ).toBeLessThanOrEqual(84);
     expect(
       scoreDevops({
         ...filesystem,
@@ -216,7 +246,7 @@ describe("four-pillar production audit", () => {
         ci_has_tests: true,
         ci_has_build: true,
       })
-    ).toBeGreaterThanOrEqual(80);
+    ).toBeGreaterThanOrEqual(90);
     expect(
       scoreDevops({
         ...filesystem,

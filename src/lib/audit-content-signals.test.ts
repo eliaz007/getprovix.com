@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  analyzeCiGates,
   analyzeWorkflowDepth,
   countUnhandledAsyncCalls,
   preferWorkflowSamplePaths,
@@ -55,6 +56,35 @@ describe("analyzeWorkflowDepth", () => {
         "jobs:\n  test:\n    steps:\n      - run: npm test\n  deploy:\n    environment: preview\n    steps:\n      - run: vercel deploy\n",
       ])
     ).toBe("deploy");
+  });
+});
+
+describe("analyzeCiGates", () => {
+  it("aggregates lint/test/build across multiple workflow files", () => {
+    expect(
+      analyzeCiGates([
+        "jobs:\n  quality:\n    steps:\n      - run: turbo lint\n      - run: turbo build\n",
+        "jobs:\n  e2e:\n    steps:\n      - run: turbo test\n",
+      ])
+    ).toEqual({
+      hasLint: true,
+      hasTests: true,
+      hasBuild: true,
+      hasDeploy: false,
+      hasMonorepoPipeline: true,
+    });
+  });
+
+  it("treats turbo lint/test/build as satisfying the matching gates", () => {
+    expect(
+      analyzeCiGates([
+        "steps:\n  - run: turbo run lint\n  - run: turbo run test\n  - run: turbo run build\n",
+      ])
+    ).toMatchObject({
+      hasLint: true,
+      hasTests: true,
+      hasBuild: true,
+    });
   });
 });
 

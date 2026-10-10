@@ -75,17 +75,20 @@ export type CiGateReport = {
 };
 
 const CI_LINT =
-  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+lint|npx\s+eslint|eslint|biome\s+check)\b/;
+  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+lint|npx\s+eslint|eslint|biome\s+check|turbo\s+(?:run\s+)?(?:[\w@/:-]+\s+)*lint)\b/;
 const CI_TESTS =
-  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+test|npx\s+(?:vitest|jest|playwright|cypress)|vitest|jest|playwright|cypress|pytest|go test|cargo test)\b/;
+  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+test|npx\s+(?:vitest|jest|playwright|cypress)|vitest|jest|playwright|cypress|pytest|go test|cargo test|turbo\s+(?:run\s+)?(?:[\w@/:-]+\s+)*test)\b/;
 const CI_BUILD =
-  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+build|next\s+build|npx\s+next\s+build|npx\s+tsc\b|\btsc\b)\b/;
+  /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+build|next\s+build|npx\s+next\s+build|npx\s+tsc\b|\btsc\b|turbo\s+(?:run\s+)?(?:[\w@/:-]+\s+)*build)\b/;
 const CI_DEPLOY =
   /\b(deploy|preview|vercel|netlify|flyctl|wrangler|pulumi|gh-pages)\b|terraform\s+apply|environment:\s*(production|preview)/;
 const CI_MONOREPO =
-  /\b(turbo\s+(run|build|test)|nx\s+(run|affected|build|test)|pnpm\s+-r)\b/;
+  /\b(turbo\s+(run|build|test|lint)|nx\s+(run|affected|build|test|lint)|pnpm\s+-r)\b/;
 
-/** Lint, test, and production-build steps actually present in workflow YAML. */
+/**
+ * Lint, test, and production-build steps across ALL inspected workflow bodies.
+ * Multi-file pipelines (e.g. lint in ci.yml + tests in e2e.yml) are OR'd together.
+ */
 export function analyzeCiGates(contents: string[]): CiGateReport {
   const joined = contents.join("\n").toLowerCase();
   return {
@@ -159,7 +162,7 @@ export function analyzeWorkflowDepth(contents: string[]): CiPipelineDepth {
     /terraform\s+apply/.test(joined) ||
     /environment:\s*(production|preview)/.test(joined);
   const hasTests =
-    /\b((?:npm|pnpm|yarn)(?:\s+run)?\s+test|npx\s+(?:vitest|jest|playwright|cypress)|vitest|jest|playwright|cypress|pytest|go test|cargo test)\b/.test(
+    /\b((?:npm|pnpm|yarn|bun)(?:\s+run)?\s+test|npx\s+(?:vitest|jest|playwright|cypress)|vitest|jest|playwright|cypress|pytest|go test|cargo test|turbo\s+(?:run\s+)?(?:[\w@/:-]+\s+)*test)\b/.test(
       joined
     );
 
