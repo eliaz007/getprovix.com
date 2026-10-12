@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   Check,
   Compass,
@@ -11,10 +12,12 @@ import {
   Share2,
   ShieldCheck,
   User,
+  X,
 } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import ScoreMeter from "@/components/ScoreMeter";
 import ProductionScoreVerifiedBadge from "@/components/ProductionScoreVerifiedBadge";
+import { parseGitHubRepoPath } from "@/lib/validate-github-url";
 
 type DemoNav =
   | "profile"
@@ -22,7 +25,7 @@ type DemoNav =
   | "intros"
   | "auditor";
 
-type ProfileSubTab = "overview" | "proof" | "badge";
+type ProfileSubTab = "overview" | "proof";
 
 const SECTION_LABEL =
   "text-[11px] font-semibold uppercase tracking-wider text-zinc-500";
@@ -125,6 +128,9 @@ function BriefBullets({ items }: { items: string[] }) {
 }
 
 function ExecutiveVerdictCard() {
+  const [telemetryOpen, setTelemetryOpen] = useState(false);
+  const telemetryPanelId = useId();
+
   return (
     <section className="space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 backdrop-blur-sm sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -221,69 +227,193 @@ function ExecutiveVerdictCard() {
           </section>
         </div>
 
-        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {METRIC_ROWS.map((row) => (
-            <li
-              key={row.label}
-              className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2.5"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-zinc-100">{row.label}</p>
-                <span
-                  className={`font-mono text-sm font-bold tabular-nums ${metricTone(
-                    row.score
-                  )}`}
-                >
-                  {row.score}
-                </span>
-              </div>
-              <p className="mt-1 font-mono text-[11px] tabular-nums text-zinc-300">
-                {row.score} × {row.weightPct}% = {row.contribution} pts
-              </p>
-              <p className="mt-1 text-sm text-zinc-400">{row.issues}</p>
-            </li>
-          ))}
-        </ul>
+        <div className="md:hidden">
+          <button
+            type="button"
+            aria-expanded={telemetryOpen}
+            aria-controls={telemetryPanelId}
+            onClick={() => setTelemetryOpen((open) => !open)}
+            className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-zinc-700/70 bg-zinc-950/80 px-3 py-2.5 text-xs font-semibold text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-900 hover:text-white active:scale-[0.99]"
+          >
+            {telemetryOpen
+              ? "Hide breakdown ↑"
+              : "Show telemetry breakdown ↓"}
+          </button>
+        </div>
 
-        <p className="font-mono text-[11px] tabular-nums text-zinc-500">
-          Weighted total 84/100 = round(architecture×35% + testing×25% +
-          DevOps×20% + resilience×20%)
-        </p>
+        <div
+          id={telemetryPanelId}
+          className={`space-y-3 ${
+            telemetryOpen ? "block" : "hidden"
+          } md:block`}
+        >
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {METRIC_ROWS.map((row) => (
+              <li
+                key={row.label}
+                className="rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-zinc-100">
+                    {row.label}
+                  </p>
+                  <span
+                    className={`font-mono text-sm font-bold tabular-nums ${metricTone(
+                      row.score
+                    )}`}
+                  >
+                    {row.score}
+                  </span>
+                </div>
+                <p className="mt-1 font-mono text-[11px] tabular-nums text-zinc-300">
+                  {row.score} × {row.weightPct}% = {row.contribution} pts
+                </p>
+                <p className="mt-1 text-sm text-zinc-400">{row.issues}</p>
+              </li>
+            ))}
+          </ul>
+
+          <p className="font-mono text-[11px] tabular-nums text-zinc-500">
+            Weighted total 84/100 = round(architecture×35% + testing×25% +
+            DevOps×20% + resilience×20%)
+          </p>
+        </div>
       </div>
     </section>
   );
 }
 
-function ReadmeBadgePanel() {
+function BenchmarkRepoModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const titleId = useId();
+  const inputId = useId();
+  const [repoUrl, setRepoUrl] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) {
+      setRepoUrl("");
+      setError(null);
+    }
+  }, [open]);
+
+  if (!open) {
+    return null;
+  }
+
+  const continueToAuditor = (githubUrl?: string) => {
+    const next = githubUrl
+      ? `/dashboard/auditor?github=${encodeURIComponent(githubUrl)}`
+      : "/dashboard/auditor";
+    router.push(`/login?next=${encodeURIComponent(next)}`);
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = repoUrl.trim();
+    if (!trimmed) {
+      continueToAuditor();
+      return;
+    }
+
+    const parsed = parseGitHubRepoPath(trimmed);
+    if (!parsed) {
+      setError(
+        "Enter a full repository path (e.g. https://github.com/owner/repo)."
+      );
+      return;
+    }
+
+    continueToAuditor(`https://github.com/${parsed.owner}/${parsed.repo}`);
+  };
+
   return (
-    <div className="space-y-4">
-      <div className={`${GLASS_CARD} px-4 py-6 text-center`}>
-        <p className={`${SECTION_LABEL} mb-4`}>README Badge preview</p>
-        <div className="mx-auto inline-flex items-center gap-2 rounded-md border border-white/[0.08] bg-[#070709] px-3 py-1.5 opacity-60">
-          <Lock className="h-3.5 w-3.5 text-zinc-500" aria-hidden />
-          <span className="font-mono text-xs text-zinc-500">
-            Provix Verified — locked
-          </span>
-        </div>
-      </div>
-      <div className="rounded-xl border border-dashed border-white/[0.1] bg-[#070709] p-4">
-        <p className="text-sm font-semibold text-zinc-200">
-          Badge generated only after verified repo run
-        </p>
-        <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-          Embed snippets are available after an authenticated repository audit —
-          not from this interactive demo preview.
-        </p>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close benchmark dialog"
+        className="absolute inset-0 cursor-pointer bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative w-full max-w-md rounded-xl border border-zinc-800 bg-[#0d0f17] p-6 shadow-2xl"
+      >
         <button
           type="button"
-          disabled
-          aria-disabled="true"
-          title="Badge generated only after verified repo run"
-          className="mt-3 inline-flex cursor-not-allowed items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-semibold text-zinc-500 opacity-70"
+          onClick={onClose}
+          className="absolute top-4 right-4 cursor-pointer text-zinc-500 transition-colors hover:text-zinc-200"
+          aria-label="Close"
         >
-          <Lock className="h-3.5 w-3.5" aria-hidden />
-          Copy Markdown
+          <X className="h-4 w-4" strokeWidth={1.5} />
         </button>
+        <h2
+          id={titleId}
+          className="pr-8 text-lg font-extrabold tracking-tight text-zinc-50"
+        >
+          Benchmark Your Repository
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+          Paste a public GitHub repo to continue into roster verification. Sign
+          in is required to run the audit.
+        </p>
+        <form onSubmit={handleSubmit} className="mt-5 space-y-3">
+          <label htmlFor={inputId} className="block text-xs font-semibold text-zinc-300">
+            GitHub repository URL
+          </label>
+          <input
+            id={inputId}
+            type="text"
+            inputMode="url"
+            autoComplete="url"
+            placeholder="https://github.com/owner/repo"
+            value={repoUrl}
+            onChange={(event) => {
+              setRepoUrl(event.target.value);
+              if (error) {
+                setError(null);
+              }
+            }}
+            className="w-full rounded-lg border border-zinc-700 bg-[#070709] px-3 py-2.5 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+          />
+          {error ? <p className="text-xs text-red-400">{error}</p> : null}
+          <button
+            type="submit"
+            className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-brand px-4 text-sm font-semibold text-white transition-colors hover:bg-brandHover active:scale-[0.99]"
+          >
+            Continue to Audit
+          </button>
+          <button
+            type="button"
+            onClick={() => continueToAuditor()}
+            className="inline-flex w-full cursor-pointer items-center justify-center rounded-lg px-4 py-2 text-xs font-medium text-zinc-400 transition-colors hover:text-zinc-200"
+          >
+            Skip for now — sign in to auditor
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -299,7 +429,6 @@ function ProfilePreview({
   const tabs: { id: ProfileSubTab; label: string }[] = [
     { id: "overview", label: "Overview & Bio" },
     { id: "proof", label: "Proof of Work" },
-    { id: "badge", label: "README Badge" },
   ];
 
   return (
@@ -403,8 +532,6 @@ function ProfilePreview({
             </ul>
           </div>
         ) : null}
-
-        {subTab === "badge" ? <ReadmeBadgePanel /> : null}
       </div>
     </div>
   );
@@ -449,6 +576,7 @@ export default function InteractiveDemo() {
   const [nav, setNav] = useState<DemoNav>("auditor");
   const [profileSubTab, setProfileSubTab] = useState<ProfileSubTab>("overview");
   const [linkCopied, setLinkCopied] = useState(false);
+  const [benchmarkModalOpen, setBenchmarkModalOpen] = useState(false);
 
   const header = headerCopy(nav);
 
@@ -461,6 +589,16 @@ export default function InteractiveDemo() {
       window.setTimeout(() => setLinkCopied(false), 1800);
     } catch {
       setLinkCopied(false);
+    }
+  };
+
+  const handleHeaderAction = () => {
+    if (nav === "auditor") {
+      setBenchmarkModalOpen(true);
+      return;
+    }
+    if (nav === "profile") {
+      void copyProfileLink();
     }
   };
 
@@ -605,20 +743,24 @@ export default function InteractiveDemo() {
                 { id: "profile" as const, label: "Profile" },
                 { id: "talent" as const, label: "Network" },
                 { id: "intros" as const, label: "Intros" },
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setNav(item.id)}
-                  className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
-                    nav === item.id
-                      ? "bg-white/[0.06] text-white"
-                      : "text-zinc-500 hover:text-zinc-200"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
+              ].map((item) => {
+                const active = nav === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setNav(item.id)}
+                    className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-150 active:scale-[0.96] ${
+                      active
+                        ? "bg-brand/25 text-white shadow-[inset_0_0_0_1px_rgba(124,58,237,0.45)]"
+                        : "text-zinc-500 hover:bg-white/[0.08] hover:text-zinc-100 active:bg-white/[0.12]"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="flex shrink-0 flex-col gap-3 border-b border-white/[0.08] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
@@ -630,9 +772,14 @@ export default function InteractiveDemo() {
                   {header.subtitle}
                 </p>
               </div>
-              <span className="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#F4F4F6] px-3.5 py-2 text-xs font-semibold text-[#0B0B0D]">
+              <button
+                type="button"
+                onClick={handleHeaderAction}
+                className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg bg-[#F4F4F6] px-3.5 py-2 text-xs font-semibold text-[#0B0B0D] transition-all hover:bg-white active:scale-[0.98]"
+              >
                 {header.action}
-              </span>
+                {nav === "profile" && linkCopied ? " · Copied" : ""}
+              </button>
             </div>
 
             <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
@@ -706,6 +853,11 @@ export default function InteractiveDemo() {
         </div>
 
       </div>
+
+      <BenchmarkRepoModal
+        open={benchmarkModalOpen}
+        onClose={() => setBenchmarkModalOpen(false)}
+      />
     </section>
   );
 }

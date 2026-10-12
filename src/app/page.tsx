@@ -35,7 +35,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="relative mx-auto flex w-full max-w-6xl flex-col px-6 pb-16 pt-14 sm:pb-20 sm:pt-20">
+      <main className="relative mx-auto flex w-full max-w-6xl flex-col px-6 pb-28 pt-14 sm:pb-20 sm:pt-20 md:pb-16">
         <section className="relative mx-auto w-full max-w-3xl text-center print:hidden">
           <div
             aria-hidden="true"
@@ -53,22 +53,39 @@ export default function Home() {
             Engineers who clear the bar get direct introductions to engineering
             leads.
           </p>
+          <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-5">
+            <Link
+              href="/login?next=/dashboard/auditor"
+              prefetch={false}
+              className="inline-flex min-h-12 cursor-pointer items-center justify-center rounded-lg bg-brand px-8 text-sm font-semibold tracking-tight text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-colors hover:bg-brandHover"
+            >
+              Benchmark Your Repository
+            </Link>
+            <a
+              href="#hiring"
+              className="text-sm font-medium text-zinc-400 transition-colors duration-200 hover:text-zinc-200"
+            >
+              Hiring engineers? View roster →
+            </a>
+          </div>
         </section>
 
         <InteractiveDemo />
 
-        <div className="mx-auto my-8 flex w-full justify-center print:hidden">
+        <LandingHome />
+      </main>
+
+      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-800 bg-black/80 backdrop-blur-md pb-[max(1rem,env(safe-area-inset-bottom))] print:hidden md:hidden">
+        <div className="px-4 pt-3">
           <Link
             href="/login?next=/dashboard/auditor"
             prefetch={false}
-            className="inline-flex min-h-12 cursor-pointer items-center justify-center rounded-lg bg-brand px-8 text-sm font-semibold tracking-tight text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-colors hover:bg-brandHover"
+            className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-lg bg-brand px-8 text-sm font-semibold tracking-tight text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-colors hover:bg-brandHover"
           >
             Benchmark Your Repository
           </Link>
         </div>
-
-        <LandingHome />
-      </main>
+      </div>
 
       <footer className="border-t border-border print:hidden">
         <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-6 py-8 sm:flex-row sm:items-center">
