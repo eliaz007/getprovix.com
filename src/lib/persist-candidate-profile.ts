@@ -156,7 +156,6 @@ export function buildCandidateProfileUpdatePayload(
     contract_hours_per_week: contractHours || null,
     contract_hourly_rate: persistedContractRate,
     is_visible_in_pool: Boolean(input.isVisibleInPool),
-    visible_to_employers: Boolean(input.isVisibleInPool),
     graduation_year: Number.isFinite(parsedGradYear) ? parsedGradYear : null,
     gpa: nullIfEmpty(formatGpa(input.gpa)),
     key_accomplishments: nullIfEmpty(input.keyAccomplishments),
@@ -557,28 +556,12 @@ export async function persistCandidatePoolVisibility(
 
     const payload: ProfilePayload = {
       is_visible_in_pool: isVisibleInPool,
-      visible_to_employers: isVisibleInPool,
     };
 
-    let { error } = await supabase
+    const { error } = await supabase
       .from("profiles")
       .update(payload)
       .or(`id.eq.${userId},user_id.eq.${userId}`);
-
-    if (
-      error &&
-      (isMissingColumnError(error) || isSupabaseSchemaError(error))
-    ) {
-      const mentioned = findMentionedColumn(error, [
-        "visible_to_employers",
-      ]);
-      if (mentioned) {
-        ({ error } = await supabase
-          .from("profiles")
-          .update({ is_visible_in_pool: isVisibleInPool })
-          .or(`id.eq.${userId},user_id.eq.${userId}`));
-      }
-    }
 
     if (error) {
       return { error, userMessage: formatPersistError(error) };
@@ -705,7 +688,7 @@ export async function persistCandidateProfile(
     }
 
     const publishGateSelect =
-      "id, role, full_name, name, first_name, last_name, job_title, headline, bio, skills, github_verified, github_username, verification_status, is_audit_verified, production_score, audit_score, audit_breakdown, portfolio_url, is_visible_in_pool, visible_to_employers";
+      "id, role, full_name, name, first_name, last_name, job_title, headline, bio, skills, github_verified, github_username, verification_status, is_audit_verified, production_score, audit_score, audit_breakdown, portfolio_url, is_visible_in_pool";
     let publishGateProfile = await loadProfileForUserId(
       supabase,
       userId,
@@ -770,7 +753,6 @@ export async function persistCandidateProfile(
       payload = {
         ...payload,
         is_visible_in_pool: true,
-        visible_to_employers: true,
         work_preference: metadata.work_preference,
         timezone: metadata.timezone,
         availability_status: metadata.availability_status,
@@ -916,8 +898,10 @@ export async function persistCandidateProfile(
       }
     }
 
+    const { visible_to_employers: _visibleToEmployersAlias, ...writablePayload } =
+      payload;
     let attemptPayload: ProfilePayload = coerceContractHourlyRateInPayload({
-      ...payload,
+      ...writablePayload,
     });
     const maxAttempts = Object.keys(attemptPayload).length + 3;
 
@@ -929,17 +913,18 @@ export async function persistCandidateProfile(
       }
 
       if (result.error) {
-        console.error(
-          "[persist-candidate-profile] profile write failed",
-          serializePersistError(result.error),
-          {
-            attempt,
-            modeHint: "update/upsert",
-            contract_hourly_rate: attemptPayload.contract_hourly_rate,
-            contract_hours_per_week: attemptPayload.contract_hours_per_week,
-            open_to_contract: attemptPayload.open_to_contract,
-          }
-        );
+        console.error("[persist-candidate-profile] profile write failed:", {
+          message: result.error?.message,
+          details: result.error?.details,
+          hint: result.error?.hint,
+          code: result.error?.code,
+          error: result.error,
+          attempt,
+          modeHint: "update/upsert",
+          contract_hourly_rate: attemptPayload.contract_hourly_rate,
+          contract_hours_per_week: attemptPayload.contract_hours_per_week,
+          open_to_contract: attemptPayload.open_to_contract,
+        });
       }
 
       if (!result.error && result.data) {
