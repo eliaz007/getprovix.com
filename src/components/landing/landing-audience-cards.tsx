@@ -4,7 +4,7 @@ const cardClass =
   "flex h-full flex-col rounded-xl border border-neutral-800/80 bg-[#0d0f17] p-6 text-left sm:p-8";
 
 const cardCtaClass =
-  "mt-auto inline-flex pt-6 text-sm font-medium transition-colors duration-200";
+  "group inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm font-medium transition-all hover:border-zinc-700";
 
 export default function LandingAudienceCards() {
   return (
@@ -22,12 +22,14 @@ export default function LandingAudienceCards() {
             revealing actual test coverage, error resilience, and deployment
             pipelines before first contact.
           </p>
-          <a
-            href="mailto:elias@getprovix.com?subject=Provix%20Roster%20Inquiry"
-            className={`${cardCtaClass} text-violet-300 hover:text-violet-200`}
-          >
-            Request Access to Roster →
-          </a>
+          <div className="mt-auto pt-6">
+            <a
+              href="mailto:elias@getprovix.com?subject=Provix%20Roster%20Inquiry"
+              className={`${cardCtaClass} text-purple-400 group-hover:text-purple-300`}
+            >
+              Request Access to Roster →
+            </a>
+          </div>
         </div>
 
         <div className={cardClass}>
@@ -41,13 +43,15 @@ export default function LandingAudienceCards() {
             Let your codebase speak for itself. Benchmark your repository against
             rigorous production standards and unlock direct founder introductions.
           </p>
-          <Link
-            href="/login?next=/dashboard/auditor"
-            prefetch={false}
-            className={`${cardCtaClass} text-cyan-400 hover:text-cyan-300`}
-          >
-            Audit Your GitHub Repo →
-          </Link>
+          <div className="mt-auto pt-6">
+            <Link
+              href="/login?next=/dashboard/auditor"
+              prefetch={false}
+              className={`${cardCtaClass} text-cyan-400 group-hover:text-cyan-300`}
+            >
+              Audit Your GitHub Repo →
+            </Link>
+          </div>
         </div>
       </div>
     </section>

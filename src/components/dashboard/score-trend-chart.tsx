@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Loader2, Minus, TrendingDown, TrendingUp } from "lucide-react";
+import { assignAuditTier, deriveDualModeScores } from "@/lib/audit-mode";
 import { cn } from "@/lib/cn";
 import {
   formatAuditedAt,
@@ -10,17 +11,20 @@ import {
   PRODUCTION_AUDIT_UPDATED_EVENT,
   type ProductionAuditHistoryEntry,
 } from "@/lib/production-audit";
-import { clampScore0to100 } from "@/lib/score-scale";
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 import { parseGitHubUrl } from "@/lib/validate-github-url";
 import { createClient } from "@/utils/supabase/client";
 
 type TrendPoint = {
   id: string;
-  score: number;
+  contractScore: number;
+  fullTimeScore: number;
   at: string;
   repoUrl: string;
+  commitSha: string | null;
 };
+
+type FocusMode = "both" | "contract" | "fulltime";
 
 type ScoreTrendChartProps = {
   repoUrl?: string;
@@ -28,6 +32,13 @@ type ScoreTrendChartProps = {
     score: number;
     auditedAt?: string;
     repoUrl?: string;
+    architecture?: number;
+    testing?: number;
+    devops?: number;
+    resilience?: number;
+    contractScore?: number;
+    fullTimeScore?: number;
+    commitSha?: string | null;
   } | null;
   className?: string;
   /** Nested under Verification Dossier — no outer chrome / title. */
@@ -38,6 +49,11 @@ const HISTORY_LIMIT = 40;
 const VIEW_WIDTH = 640;
 const VIEW_HEIGHT = 228;
 const PAD = { top: 18, right: 16, bottom: 34, left: 36 };
+
+const CONTRACT_STROKE = "#10b981";
+const CONTRACT_FILL = "#10b981";
+const FULLTIME_STROKE = "#8b5cf6";
+const FULLTIME_FILL = "#8b5cf6";
 
 function canonicalRepoKey(url: string | null | undefined): string {
   const trimmed = (url ?? "").trim();
@@ -77,6 +93,13 @@ function formatAxisDate(value: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function shortSha(sha: string | null | undefined): string | null {
+  if (!sha?.trim()) {
+    return null;
+  }
+  return sha.trim().slice(0, 7);
 }
 
 function formatPercentChange(first: number, latest: number): {
@@ -141,48 +164,116 @@ function scoreDomain(scores: number[]): { min: number; max: number } {
   return { min, max };
 }
 
-function toSmoothPath(points: Array<{ x: number; y: number }>): string {
+/** Monotone cubic Hermite (Fritsch–Carlson) — no overshoot between samples. */
+function toMonotonePath(points: Array<{ x: number; y: number }>): string {
   if (points.length === 0) {
     return "";
   }
   if (points.length === 1) {
     return `M ${points[0].x} ${points[0].y}`;
   }
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+
+  const n = points.length;
+  const dx: number[] = [];
+  const dy: number[] = [];
+  const slope: number[] = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    const xSpan = points[i + 1].x - points[i].x;
+    dx.push(xSpan);
+    dy.push(points[i + 1].y - points[i].y);
+    slope.push(xSpan === 0 ? 0 : dy[i] / xSpan);
+  }
+
+  const tangent = new Array<number>(n).fill(0);
+  tangent[0] = slope[0];
+  tangent[n - 1] = slope[n - 2];
+  for (let i = 1; i < n - 1; i += 1) {
+    if (slope[i - 1] * slope[i] <= 0) {
+      tangent[i] = 0;
+    } else {
+      const harmonic =
+        (2 * slope[i - 1] * slope[i]) / (slope[i - 1] + slope[i]);
+      tangent[i] = Number.isFinite(harmonic) ? harmonic : 0;
+    }
+  }
 
   const parts = [`M ${points[0].x} ${points[0].y}`];
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const from = points[index];
-    const to = points[index + 1];
-    const midX = (from.x + to.x) / 2;
-    parts.push(`C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`);
+  for (let i = 0; i < n - 1; i += 1) {
+    const p0 = points[i];
+    const p1 = points[i + 1];
+    const span = dx[i] / 3;
+    parts.push(
+      `C ${p0.x + span} ${p0.y + tangent[i] * span}, ${p1.x - span} ${
+        p1.y - tangent[i + 1] * span
+      }, ${p1.x} ${p1.y}`
+    );
   }
   return parts.join(" ");
 }
 
+function areaUnderPath(
+  linePath: string,
+  points: Array<{ x: number; y: number }>
+): string {
+  if (!linePath || points.length === 0) {
+    return "";
+  }
+  const baseline = VIEW_HEIGHT - PAD.bottom;
+  return `${linePath} L ${points[points.length - 1].x} ${baseline} L ${points[0].x} ${baseline} Z`;
+}
+
+type MappedPoint = TrendPoint & {
+  x: number;
+  contractY: number;
+  fullTimeY: number;
+};
+
 function chartGeometry(points: TrendPoint[]) {
   const innerWidth = VIEW_WIDTH - PAD.left - PAD.right;
   const innerHeight = VIEW_HEIGHT - PAD.top - PAD.bottom;
-  const domain = scoreDomain(points.map((point) => point.score));
+  const domain = scoreDomain(
+    points.flatMap((point) => [point.contractScore, point.fullTimeScore])
+  );
   const times = points.map(timestampOf);
   const minTime = Math.min(...times);
   const maxTime = Math.max(...times);
   const useTimeScale = maxTime - minTime > 60_000;
 
-  const mapped = points.map((point, index) => {
+  const mapped: MappedPoint[] = points.map((point, index) => {
     const xRatio = useTimeScale
       ? (timestampOf(point) - minTime) / Math.max(1, maxTime - minTime)
       : points.length === 1
         ? 0.5
         : index / (points.length - 1);
-    const yRatio = (point.score - domain.min) / Math.max(1, domain.max - domain.min);
+    const contractRatio =
+      (point.contractScore - domain.min) /
+      Math.max(1, domain.max - domain.min);
+    const fullTimeRatio =
+      (point.fullTimeScore - domain.min) /
+      Math.max(1, domain.max - domain.min);
     return {
       ...point,
       x: PAD.left + xRatio * innerWidth,
-      y: PAD.top + (1 - yRatio) * innerHeight,
+      contractY: PAD.top + (1 - contractRatio) * innerHeight,
+      fullTimeY: PAD.top + (1 - fullTimeRatio) * innerHeight,
     };
   });
 
   return { mapped, domain, innerHeight };
+}
+
+function historyToTrendPoint(entry: ProductionAuditHistoryEntry): TrendPoint {
+  return {
+    id: entry.id,
+    contractScore: entry.contractScore,
+    fullTimeScore: entry.fullTimeScore,
+    at: entry.auditedAt || entry.createdAt,
+    repoUrl: entry.auditedRepoUrl,
+    commitSha: entry.commitSha,
+  };
 }
 
 async function loadVerifiedRepoUrl(
@@ -215,7 +306,7 @@ async function loadAuditHistory(userId: string): Promise<TrendPoint[]> {
   const { data, error } = await supabase
     .from("production_audit_history")
     .select(
-      "id, production_score, audited_repo_url, audited_at, created_at"
+      "id, production_score, audited_repo_url, audited_at, created_at, ci_cd_score, test_density, error_handling"
     )
     .eq("user_id", userId)
     .order("audited_at", { ascending: true })
@@ -231,12 +322,7 @@ async function loadAuditHistory(userId: string): Promise<TrendPoint[]> {
   return (data ?? [])
     .map((row) => parseProductionAuditHistoryRow(row as Record<string, unknown>))
     .filter((entry): entry is ProductionAuditHistoryEntry => Boolean(entry))
-    .map((entry) => ({
-      id: entry.id,
-      score: entry.productionScore,
-      at: entry.auditedAt || entry.createdAt,
-      repoUrl: entry.auditedRepoUrl,
-    }));
+    .map(historyToTrendPoint);
 }
 
 function mergeCurrentPoint(
@@ -247,12 +333,21 @@ function mergeCurrentPoint(
     return points;
   }
 
-  const score = clampScore0to100(current.score);
+  const dual = deriveDualModeScores({
+    productionScore: current.score,
+    contractScore: current.contractScore,
+    fullTimeScore: current.fullTimeScore,
+    architecture: current.architecture,
+    testing: current.testing,
+    devops: current.devops,
+    resilience: current.resilience,
+  });
   const repoUrl = current.repoUrl?.trim() ?? "";
   const at = current.auditedAt?.trim() || new Date().toISOString();
   const alreadyPresent = points.some(
     (point) =>
-      point.score === score &&
+      point.contractScore === dual.contractScore &&
+      point.fullTimeScore === dual.fullTimeScore &&
       Math.abs(timestampOf(point) - Date.parse(at)) < 60_000
   );
 
@@ -264,9 +359,11 @@ function mergeCurrentPoint(
     ...points,
     {
       id: "current-profile-audit",
-      score,
+      contractScore: dual.contractScore,
+      fullTimeScore: dual.fullTimeScore,
       at,
       repoUrl,
+      commitSha: current.commitSha ?? null,
     },
   ];
 }
@@ -301,6 +398,13 @@ function pickSeries(
   };
 }
 
+function seriesOpacity(focus: FocusMode, series: "contract" | "fulltime"): number {
+  if (focus === "both") {
+    return 1;
+  }
+  return focus === series ? 1 : 0.3;
+}
+
 export default function ScoreTrendChart({
   repoUrl = "",
   current = null,
@@ -309,18 +413,28 @@ export default function ScoreTrendChart({
 }: ScoreTrendChartProps) {
   const embedded = variant === "embedded";
   const reactId = useId().replace(/:/g, "");
-  const fillId = `score-trend-fill-${reactId}`;
-  const glowId = `score-trend-glow-${reactId}`;
+  const contractFillId = `score-trend-contract-fill-${reactId}`;
+  const fulltimeFillId = `score-trend-fulltime-fill-${reactId}`;
+  const contractGlowId = `score-trend-contract-glow-${reactId}`;
+  const fulltimeGlowId = `score-trend-fulltime-glow-${reactId}`;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [points, setPoints] = useState<TrendPoint[]>([]);
   const [activeRepo, setActiveRepo] = useState(repoUrl);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [focus, setFocus] = useState<FocusMode>("both");
 
   const currentScore = current?.score;
   const currentAt = current?.auditedAt;
   const currentRepo = current?.repoUrl;
+  const currentArchitecture = current?.architecture;
+  const currentTesting = current?.testing;
+  const currentDevops = current?.devops;
+  const currentResilience = current?.resilience;
+  const currentContract = current?.contractScore;
+  const currentFullTime = current?.fullTimeScore;
+  const currentSha = current?.commitSha;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -342,6 +456,13 @@ export default function ScoreTrendChart({
               score: currentScore,
               auditedAt: currentAt,
               repoUrl: currentRepo,
+              architecture: currentArchitecture,
+              testing: currentTesting,
+              devops: currentDevops,
+              resilience: currentResilience,
+              contractScore: currentContract,
+              fullTimeScore: currentFullTime,
+              commitSha: currentSha,
             };
 
       const [history, verifiedUrl] = await Promise.all([
@@ -362,7 +483,19 @@ export default function ScoreTrendChart({
     } finally {
       setLoading(false);
     }
-  }, [currentAt, currentRepo, currentScore, repoUrl]);
+  }, [
+    currentArchitecture,
+    currentAt,
+    currentContract,
+    currentDevops,
+    currentFullTime,
+    currentRepo,
+    currentResilience,
+    currentScore,
+    currentSha,
+    currentTesting,
+    repoUrl,
+  ]);
 
   useEffect(() => {
     void load();
@@ -383,21 +516,63 @@ export default function ScoreTrendChart({
     [points]
   );
   const mapped = geometry?.mapped ?? [];
-  const linePath = useMemo(() => toSmoothPath(mapped), [mapped]);
-  const areaPath =
-    mapped.length === 0
-      ? ""
-      : `${linePath} L ${mapped[mapped.length - 1].x} ${VIEW_HEIGHT - PAD.bottom} L ${mapped[0].x} ${VIEW_HEIGHT - PAD.bottom} Z`;
+
+  const contractPoints = useMemo(
+    () => mapped.map((point) => ({ x: point.x, y: point.contractY })),
+    [mapped]
+  );
+  const fulltimePoints = useMemo(
+    () => mapped.map((point) => ({ x: point.x, y: point.fullTimeY })),
+    [mapped]
+  );
+
+  const contractLine = useMemo(
+    () => toMonotonePath(contractPoints),
+    [contractPoints]
+  );
+  const fulltimeLine = useMemo(
+    () => toMonotonePath(fulltimePoints),
+    [fulltimePoints]
+  );
+  const contractArea = useMemo(
+    () => areaUnderPath(contractLine, contractPoints),
+    [contractLine, contractPoints]
+  );
+  const fulltimeArea = useMemo(
+    () => areaUnderPath(fulltimeLine, fulltimePoints),
+    [fulltimeLine, fulltimePoints]
+  );
 
   const first = points[0];
   const latest = points[points.length - 1];
   const change =
-    first && latest ? formatPercentChange(first.score, latest.score) : null;
+    first && latest
+      ? formatPercentChange(first.contractScore, latest.contractScore)
+      : null;
   const hovered =
     mapped.find((point) => point.id === hoverId) ??
     (mapped.length > 0 ? mapped[mapped.length - 1] : null);
   const repoLabel = activeRepo ? formatAuditedRepoLabel(activeRepo) : "";
   const canChart = points.length >= 2;
+
+  const latestContract = latest?.contractScore ?? null;
+  const latestFullTime = latest?.fullTimeScore ?? null;
+
+  const toggleFocus = (series: "contract" | "fulltime") => {
+    setFocus((prev) => (prev === series ? "both" : series));
+  };
+
+  const contractOpacity = seriesOpacity(focus, "contract");
+  const fulltimeOpacity = seriesOpacity(focus, "fulltime");
+
+  const tooltipMeta = hovered
+    ? [
+        formatAuditedAt(hovered.at),
+        shortSha(hovered.commitSha) ? shortSha(hovered.commitSha) : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   return (
     <section
@@ -453,7 +628,57 @@ export default function ScoreTrendChart({
         </div>
       ) : null}
 
-      <div className={cn("relative min-h-0 flex-1", !embedded && "mt-3")}>
+      {!loading && !error && points.length > 0 ? (
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-2",
+            embedded ? "mb-2" : "mt-3 mb-1"
+          )}
+          role="group"
+          aria-label="Score mode legend"
+        >
+          <button
+            type="button"
+            onClick={() => toggleFocus("contract")}
+            aria-pressed={focus === "contract"}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-opacity",
+              "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
+              focus === "fulltime" && "opacity-40"
+            )}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-emerald-400"
+              aria-hidden
+            />
+            Contract Work:{" "}
+            <span className="font-mono tabular-nums">
+              {latestContract == null ? "—" : latestContract}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleFocus("fulltime")}
+            aria-pressed={focus === "fulltime"}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-opacity",
+              "border-violet-500/25 bg-violet-500/10 text-violet-300",
+              focus === "contract" && "opacity-40"
+            )}
+          >
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-violet-400"
+              aria-hidden
+            />
+            Full-Time:{" "}
+            <span className="font-mono tabular-nums">
+              {latestFullTime == null ? "—" : latestFullTime}
+            </span>
+          </button>
+        </div>
+      ) : null}
+
+      <div className={cn("relative min-h-0 flex-1", !embedded && "mt-1")}>
         {loading ? (
           <div
             className="flex h-[188px] items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950/50"
@@ -482,9 +707,9 @@ export default function ScoreTrendChart({
             <svg
               role="img"
               aria-label={
-                first && latest
-                  ? `Production score trend from ${first.score} to ${latest.score}`
-                  : "Production score trend"
+                latest
+                  ? `Dual-mode score trend. Contract ${latest.contractScore}, Full-Time ${latest.fullTimeScore}`
+                  : "Dual-mode production score trend"
               }
               viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
               className="h-[188px] w-full"
@@ -510,12 +735,51 @@ export default function ScoreTrendChart({
               }}
             >
               <defs>
-                <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.25" />
-                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
+                <linearGradient id={contractFillId} x1="0" y1="0" x2="0" y2="1">
+                  <stop
+                    offset="0%"
+                    stopColor={CONTRACT_FILL}
+                    stopOpacity="0.10"
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor={CONTRACT_FILL}
+                    stopOpacity="0"
+                  />
                 </linearGradient>
-                <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="2.5" result="blur" />
+                <linearGradient id={fulltimeFillId} x1="0" y1="0" x2="0" y2="1">
+                  <stop
+                    offset="0%"
+                    stopColor={FULLTIME_FILL}
+                    stopOpacity="0.10"
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor={FULLTIME_FILL}
+                    stopOpacity="0"
+                  />
+                </linearGradient>
+                <filter
+                  id={contractGlowId}
+                  x="-20%"
+                  y="-20%"
+                  width="140%"
+                  height="140%"
+                >
+                  <feGaussianBlur stdDeviation="2" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+                <filter
+                  id={fulltimeGlowId}
+                  x="-20%"
+                  y="-20%"
+                  width="140%"
+                  height="140%"
+                >
+                  <feGaussianBlur stdDeviation="2" result="blur" />
                   <feMerge>
                     <feMergeNode in="blur" />
                     <feMergeNode in="SourceGraphic" />
@@ -524,58 +788,85 @@ export default function ScoreTrendChart({
               </defs>
 
               {geometry
-                ? yTicks(geometry.domain.min, geometry.domain.max).map((tick) => {
-                    const yRatio =
-                      (tick - geometry.domain.min) /
-                      Math.max(1, geometry.domain.max - geometry.domain.min);
-                    const y = PAD.top + (1 - yRatio) * geometry.innerHeight;
-                    return (
-                      <g key={tick}>
-                        <line
-                          x1={PAD.left}
-                          x2={VIEW_WIDTH - PAD.right}
-                          y1={y}
-                          y2={y}
-                          className="stroke-zinc-800"
-                          strokeWidth="1"
-                        />
-                        <text
-                          x={PAD.left - 8}
-                          y={y + 3}
-                          textAnchor="end"
-                          className="fill-zinc-500"
-                          fontSize="10"
-                        >
-                          {tick}
-                        </text>
-                      </g>
-                    );
-                  })
+                ? yTicks(geometry.domain.min, geometry.domain.max).map(
+                    (tick) => {
+                      const yRatio =
+                        (tick - geometry.domain.min) /
+                        Math.max(1, geometry.domain.max - geometry.domain.min);
+                      const y = PAD.top + (1 - yRatio) * geometry.innerHeight;
+                      return (
+                        <g key={tick}>
+                          <line
+                            x1={PAD.left}
+                            x2={VIEW_WIDTH - PAD.right}
+                            y1={y}
+                            y2={y}
+                            className="stroke-zinc-800"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={PAD.left - 8}
+                            y={y + 3}
+                            textAnchor="end"
+                            className="fill-zinc-500"
+                            fontSize="10"
+                          >
+                            {tick}
+                          </text>
+                        </g>
+                      );
+                    }
+                  )
                 : null}
 
               {canChart ? (
                 <>
-                  <path d={areaPath} fill={`url(#${fillId})`} />
-                  <path
-                    d={linePath}
-                    fill="none"
-                    stroke="#8b5cf6"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    filter={`url(#${glowId})`}
-                  />
+                  <g opacity={fulltimeOpacity}>
+                    <path d={fulltimeArea} fill={`url(#${fulltimeFillId})`} />
+                    <path
+                      d={fulltimeLine}
+                      fill="none"
+                      stroke={FULLTIME_STROKE}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      filter={`url(#${fulltimeGlowId})`}
+                    />
+                  </g>
+                  <g opacity={contractOpacity}>
+                    <path d={contractArea} fill={`url(#${contractFillId})`} />
+                    <path
+                      d={contractLine}
+                      fill="none"
+                      stroke={CONTRACT_STROKE}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      filter={`url(#${contractGlowId})`}
+                    />
+                  </g>
                 </>
               ) : mapped[0] ? (
-                <line
-                  x1={PAD.left}
-                  x2={VIEW_WIDTH - PAD.right}
-                  y1={mapped[0].y}
-                  y2={mapped[0].y}
-                  stroke="#8b5cf6"
-                  strokeDasharray="4 6"
-                  strokeOpacity="0.45"
-                />
+                <>
+                  <line
+                    x1={PAD.left}
+                    x2={VIEW_WIDTH - PAD.right}
+                    y1={mapped[0].fullTimeY}
+                    y2={mapped[0].fullTimeY}
+                    stroke={FULLTIME_STROKE}
+                    strokeDasharray="4 6"
+                    strokeOpacity={0.45 * fulltimeOpacity}
+                  />
+                  <line
+                    x1={PAD.left}
+                    x2={VIEW_WIDTH - PAD.right}
+                    y1={mapped[0].contractY}
+                    y2={mapped[0].contractY}
+                    stroke={CONTRACT_STROKE}
+                    strokeDasharray="4 6"
+                    strokeOpacity={0.45 * contractOpacity}
+                  />
+                </>
               ) : null}
 
               {mapped.map((point) => {
@@ -584,18 +875,29 @@ export default function ScoreTrendChart({
                   <g key={point.id}>
                     <circle
                       cx={point.x}
-                      cy={point.y}
-                      r={active ? 11 : 8}
+                      cy={(point.contractY + point.fullTimeY) / 2}
+                      r={active ? 14 : 10}
                       className="fill-transparent"
                       onMouseEnter={() => setHoverId(point.id)}
                     />
                     <circle
                       cx={point.x}
-                      cy={point.y}
-                      r={active ? 4.5 : 3.25}
+                      cy={point.fullTimeY}
+                      r={active ? 4.25 : 3}
                       fill={active ? "#ffffff" : "#a78bfa"}
-                      stroke="#8b5cf6"
+                      stroke={FULLTIME_STROKE}
                       strokeWidth="2"
+                      opacity={fulltimeOpacity}
+                      className="pointer-events-none"
+                    />
+                    <circle
+                      cx={point.x}
+                      cy={point.contractY}
+                      r={active ? 4.25 : 3}
+                      fill={active ? "#ffffff" : "#34d399"}
+                      stroke={CONTRACT_STROKE}
+                      strokeWidth="2"
+                      opacity={contractOpacity}
                       className="pointer-events-none"
                     />
                   </g>
@@ -631,51 +933,77 @@ export default function ScoreTrendChart({
                     x2={hovered.x}
                     y1={PAD.top}
                     y2={VIEW_HEIGHT - PAD.bottom}
-                    stroke="#8b5cf6"
-                    strokeOpacity="0.35"
+                    stroke="#71717a"
+                    strokeOpacity="0.45"
                     strokeDasharray="3 4"
                   />
-                  <rect
-                    x={Math.min(
-                      Math.max(hovered.x - 54, PAD.left),
-                      VIEW_WIDTH - PAD.right - 108
-                    )}
-                    y={Math.max(hovered.y - 42, 6)}
-                    width="108"
-                    height="32"
-                    rx="8"
-                    className="fill-[#0B0B0D] stroke-violet-500/30"
-                    strokeWidth="1"
-                  />
-                  <text
-                    x={
-                      Math.min(
-                        Math.max(hovered.x - 54, PAD.left),
-                        VIEW_WIDTH - PAD.right - 108
-                      ) + 54
-                    }
-                    y={Math.max(hovered.y - 42, 6) + 14}
-                    textAnchor="middle"
-                    className="fill-zinc-100"
-                    fontSize="11"
-                    fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                  >
-                    {hovered.score}/100
-                  </text>
-                  <text
-                    x={
-                      Math.min(
-                        Math.max(hovered.x - 54, PAD.left),
-                        VIEW_WIDTH - PAD.right - 108
-                      ) + 54
-                    }
-                    y={Math.max(hovered.y - 42, 6) + 26}
-                    textAnchor="middle"
-                    className="fill-zinc-400"
-                    fontSize="9"
-                  >
-                    {formatAuditedAt(hovered.at)}
-                  </text>
+                  {(() => {
+                    const tipWidth = 220;
+                    const tipHeight = 72;
+                    const tipX = Math.min(
+                      Math.max(hovered.x - tipWidth / 2, PAD.left),
+                      VIEW_WIDTH - PAD.right - tipWidth
+                    );
+                    const tipY = Math.max(
+                      Math.min(hovered.contractY, hovered.fullTimeY) -
+                        tipHeight -
+                        10,
+                      6
+                    );
+                    const contractTier = assignAuditTier(
+                      "contract",
+                      hovered.contractScore
+                    );
+                    const fulltimeTier = assignAuditTier(
+                      "fulltime",
+                      hovered.fullTimeScore
+                    );
+                    return (
+                      <>
+                        <rect
+                          x={tipX}
+                          y={tipY}
+                          width={tipWidth}
+                          height={tipHeight}
+                          rx="8"
+                          className="fill-[#0B0B0D] stroke-zinc-700/80"
+                          strokeWidth="1"
+                        />
+                        <text
+                          x={tipX + 10}
+                          y={tipY + 14}
+                          className="fill-zinc-400"
+                          fontSize="9"
+                        >
+                          {tooltipMeta || formatAuditedAt(hovered.at)}
+                        </text>
+                        <text
+                          x={tipX + 10}
+                          y={tipY + 34}
+                          className="fill-emerald-300"
+                          fontSize="10"
+                          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                        >
+                          {`Contract ${hovered.contractScore}`}
+                          <tspan className="fill-zinc-500" fontSize="8">
+                            {`  ${contractTier}`}
+                          </tspan>
+                        </text>
+                        <text
+                          x={tipX + 10}
+                          y={tipY + 54}
+                          className="fill-violet-300"
+                          fontSize="10"
+                          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                        >
+                          {`Full-Time ${hovered.fullTimeScore}`}
+                          <tspan className="fill-zinc-500" fontSize="8">
+                            {`  ${fulltimeTier}`}
+                          </tspan>
+                        </text>
+                      </>
+                    );
+                  })()}
                 </g>
               ) : null}
             </svg>

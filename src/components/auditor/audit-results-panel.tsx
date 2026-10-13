@@ -1188,6 +1188,7 @@ function safeDeriveAuditView(result: AuditResult): {
     const metrics = resolveProductionAuditMetrics({
       metrics: result?.metrics,
       filesystem,
+      auditMode: result?.auditMode,
     });
     const score = resolveDisplayedReadinessScore({
       score: result?.score ?? 0,
@@ -1388,6 +1389,18 @@ function AuditResultsPanelView({
               <span className="inline-flex items-center rounded-md border border-zinc-700/60 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-semibold text-zinc-300">
                 {roleSpec}
               </span>
+              {result.auditMode ? (
+                <span className="inline-flex items-center rounded-md border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 text-[11px] font-semibold text-violet-300">
+                  {result.auditMode === "fulltime"
+                    ? "Full-Time Work"
+                    : "Contract Work"}
+                </span>
+              ) : null}
+              {result.tier ? (
+                <span className="inline-flex items-center rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-300">
+                  {result.tier}
+                </span>
+              ) : null}
               {isRestricted ? (
                 <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700/60 bg-zinc-900/80 px-2.5 py-1 text-xs font-medium text-zinc-400">
                   <Lock className="h-3.5 w-3.5 text-zinc-400" aria-hidden />

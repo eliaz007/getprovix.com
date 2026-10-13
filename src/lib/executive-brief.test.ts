@@ -6,73 +6,68 @@ import {
 } from "./executive-brief";
 
 describe("assignRecommendedRoleBand", () => {
-  it("requires 75 plus robust tests and resilience for Mid-Level", () => {
+  it("maps Contract scores onto Verified / Elite / Supervised bands", () => {
     expect(
       assignRecommendedRoleBand({
-        productionScore: 75,
-        testing: 65,
-        resilience: 80,
+        productionScore: 88,
+        auditMode: "contract",
       })
-    ).toBe("Mid-Level");
+    ).toBe("Elite Sprint Contractor");
     expect(
       assignRecommendedRoleBand({
-        productionScore: 90,
-        testing: 64,
-        resilience: 90,
+        productionScore: 76,
+        auditMode: "contract",
       })
-    ).toBe("Early-Stage Generalist");
+    ).toBe("Verified Sprint Builder");
+    expect(
+      assignRecommendedRoleBand({
+        productionScore: 68,
+        auditMode: "contract",
+      })
+    ).toBe("Supervised Feature Builder");
   });
 
-  it("keeps a 75+ repo with a weak pillar at Early-Stage Generalist", () => {
-    expect(
-      assignRecommendedRoleBand({
-        productionScore: 82,
-        testing: 70,
-        resilience: 65,
-      })
-    ).toBe("Early-Stage Generalist");
+  it("never labels 80+ Contract scores as Mid-Level or Early-Stage Generalist", () => {
+    const band = assignRecommendedRoleBand({
+      productionScore: 82,
+      testing: 70,
+      resilience: 65,
+      auditMode: "contract",
+    });
+    expect(band).toBe("Elite Sprint Contractor");
+    expect(band).not.toBe("Mid-Level");
+    expect(band).not.toBe("Early-Stage Generalist");
   });
 
-  it("uses Early-Stage Generalist for 70-74 near-misses with a robust pillar", () => {
-    expect(
-      assignRecommendedRoleBand({
-        productionScore: 74,
-        testing: 70,
-        resilience: 40,
-      })
-    ).toBe("Early-Stage Generalist");
-    expect(
-      assignRecommendedRoleBand({
-        productionScore: 70,
-        testing: 40,
-        resilience: 85,
-      })
-    ).toBe("Early-Stage Generalist");
-  });
-
-  it("uses Intern / Junior below 70 when one pillar is robust", () => {
-    expect(
-      assignRecommendedRoleBand({
-        productionScore: 69,
-        testing: 70,
-        resilience: 40,
-      })
-    ).toBe("Intern / Junior");
-  });
-
-  it("uses Needs Hardening when the score and both pillars are weak", () => {
+  it("uses Needs Hardening below 60 in Contract mode", () => {
     expect(
       assignRecommendedRoleBand({
         productionScore: 40,
         testing: 10,
         resilience: 50,
+        auditMode: "contract",
       })
     ).toBe("Needs Hardening");
+  });
+
+  it("mirrors Full-Time tiers when auditMode is fulltime", () => {
+    expect(
+      assignRecommendedRoleBand({
+        productionScore: 82,
+        auditMode: "fulltime",
+      })
+    ).toBe("Production-Grade / Core Lead");
+    expect(
+      assignRecommendedRoleBand({
+        productionScore: 74,
+        auditMode: "fulltime",
+      })
+    ).toBe("Mid/Senior Production-Ready");
   });
 });
 
 describe("finalizeExecutiveBrief", () => {
-  it("keeps model sentences and overwrites the role band from the scores", () => {
+  it("keeps model sentences and overwrites the role band from the mode tier", () => {
     const brief = finalizeExecutiveBrief({
       draft: {
         employerSummary: "Founders should treat this as a scoped product bet.",
@@ -85,14 +80,15 @@ describe("finalizeExecutiveBrief", () => {
       devopsScore: 40,
       resilienceScore: 50,
       isUpstreamDerivative: false,
+      auditMode: "contract",
     });
 
     expect(brief.employerSummary).toMatch(/Founders should treat/);
     expect(brief.developerSummary).toMatch(/data client/);
-    expect(brief.recommendedRoleBand).toBe("Needs Hardening");
+    expect(brief.recommendedRoleBand).toBe("Supervised Feature Builder");
   });
 
-  it("fills empty summaries and ignores a missing draft", () => {
+  it("fills empty summaries and syncs 80+ to Elite Sprint Contractor", () => {
     expect(parseExecutiveBrief(null)).toBeNull();
     const brief = finalizeExecutiveBrief({
       draft: null,
@@ -102,8 +98,9 @@ describe("finalizeExecutiveBrief", () => {
       devopsScore: 85,
       resilienceScore: 90,
       isUpstreamDerivative: true,
+      auditMode: "contract",
     });
-    expect(brief.recommendedRoleBand).toBe("Mid-Level");
+    expect(brief.recommendedRoleBand).toBe("Elite Sprint Contractor");
     expect(brief.employerSummary).toMatch(/88\/100/);
     expect(brief.employerSummary).toMatch(/30-point/);
     expect(brief.developerSummary.length).toBeGreaterThan(40);

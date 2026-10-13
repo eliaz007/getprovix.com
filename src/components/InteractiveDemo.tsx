@@ -604,11 +604,13 @@ export default function InteractiveDemo() {
 
   return (
     <section className="mx-auto mt-10 w-full max-w-6xl print:hidden">
-      <p className="mt-12 mb-6 text-center text-sm font-medium tracking-wide text-zinc-400">
-        Explore Provix — Interactive Demo
-      </p>
-      <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#090A0F] text-zinc-100 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
-        <div className="flex items-center gap-2 border-b border-white/[0.08] bg-[#0E0E12] px-4 py-3">
+      <div className="mt-12 mb-6 flex justify-center">
+        <p className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/80 px-3 py-1 text-xs font-medium text-zinc-400">
+          Explore Provix — Interactive Demo
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-zinc-800/80 border-t-white/10 bg-zinc-950/70 text-zinc-100 shadow-2xl shadow-purple-950/20 backdrop-blur-xl">
+        <div className="flex items-center gap-2 border-b border-white/[0.08] bg-[#0E0E12]/80 px-4 py-3">
           <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" aria-hidden />
           <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" aria-hidden />
           <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" aria-hidden />
@@ -751,10 +753,10 @@ export default function InteractiveDemo() {
                     type="button"
                     aria-pressed={active}
                     onClick={() => setNav(item.id)}
-                    className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-150 active:scale-[0.96] ${
+                    className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors duration-150 active:scale-[0.96] ${
                       active
-                        ? "bg-brand/25 text-white shadow-[inset_0_0_0_1px_rgba(124,58,237,0.45)]"
-                        : "text-zinc-500 hover:bg-white/[0.08] hover:text-zinc-100 active:bg-white/[0.12]"
+                        ? "border border-purple-500/30 bg-purple-950/20 text-white"
+                        : "border border-transparent text-zinc-500 hover:bg-white/[0.08] hover:text-zinc-100 active:bg-white/[0.12]"
                     }`}
                   >
                     {item.label}

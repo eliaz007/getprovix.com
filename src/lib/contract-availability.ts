@@ -271,45 +271,69 @@ export function isOnlyUsingDiagnosticTools(
 export type PreferenceAvailabilityTone = "emerald" | "zinc";
 
 export type PreferenceAvailabilityPresentation = {
-  label: "Full-Time + Contract" | "Full-Time" | "Contract" | "Diagnostic Only";
+  label:
+    | "● Full-Time + Contract"
+    | "● Contract Sprints Only"
+    | "● Full-Time Only"
+    | "○ Verification Required (Private)";
   tone: PreferenceAvailabilityTone;
   dotClass: string;
-  /** True only when publish-eligible and at least one engagement option is on. */
+  /** True when at least one mode-gated engagement option is on. */
   isLive: boolean;
   statusBadge: "Live" | "Not live";
 };
 
+export function formatFullTimeAvailabilityRemediation(
+  fullTimeScore: number | null | undefined
+): string {
+  const current =
+    typeof fullTimeScore === "number" && Number.isFinite(fullTimeScore)
+      ? Math.round(fullTimeScore)
+      : 0;
+  return `Requires 75+ on Full-Time Work audit (Current: ${current}/100). Add test suites and crash boundaries to unlock enterprise listings.`;
+}
+
+export function formatContractAvailabilityRemediation(
+  contractScore: number | null | undefined
+): string {
+  const current =
+    typeof contractScore === "number" && Number.isFinite(contractScore)
+      ? Math.round(contractScore)
+      : 0;
+  return `Requires 75+ on Contract Work audit (Current: ${current}/100). Reach verified sprint builder threshold to unlock.`;
+}
+
 /**
  * Preference label for sidebar / settings.
- * Pass publish-gated engagement flags so Full-Time/Contract never look active
- * when the candidate is not actually listable in the talent pool.
+ * Pass already mode-gated engagement flags (`canToggle* && openTo*`) so the
+ * header pill never shows Full-Time/Contract when that mode is locked.
  */
 export function getPreferenceAvailabilityPresentation(
   openToFulltime: boolean,
   openToContract: boolean,
-  isPublishEligible = false
+  _isPublishEligible = false
 ): PreferenceAvailabilityPresentation {
-  if (isPublishEligible && openToFulltime && openToContract) {
+  if (openToFulltime && openToContract) {
     return {
-      label: "Full-Time + Contract",
+      label: "● Full-Time + Contract",
       tone: "emerald",
       dotClass: "bg-emerald-500",
       isLive: true,
       statusBadge: "Live",
     };
   }
-  if (isPublishEligible && openToFulltime) {
+  if (openToFulltime) {
     return {
-      label: "Full-Time",
+      label: "● Full-Time Only",
       tone: "emerald",
       dotClass: "bg-emerald-500",
       isLive: true,
       statusBadge: "Live",
     };
   }
-  if (isPublishEligible && openToContract) {
+  if (openToContract) {
     return {
-      label: "Contract",
+      label: "● Contract Sprints Only",
       tone: "emerald",
       dotClass: "bg-emerald-500",
       isLive: true,
@@ -317,7 +341,7 @@ export function getPreferenceAvailabilityPresentation(
     };
   }
   return {
-    label: "Diagnostic Only",
+    label: "○ Verification Required (Private)",
     tone: "zinc",
     dotClass: "bg-zinc-500",
     isLive: false,

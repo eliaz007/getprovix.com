@@ -39,16 +39,12 @@ export default function Home() {
         <section className="relative mx-auto w-full max-w-3xl text-center print:hidden">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute top-12 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full md:top-8 md:-z-10 md:h-[380px] md:w-[640px] md:blur-[140px]"
-            style={{
-              background:
-                "radial-gradient(ellipse at center, rgba(124, 58, 237, 0.28), rgba(79, 70, 229, 0.12) 40%, transparent 70%)",
-            }}
+            className="pointer-events-none absolute top-0 left-1/2 -z-10 h-[350px] w-[600px] -translate-x-1/2 rounded-full bg-purple-600/15 blur-[120px]"
           />
-          <h1 className="text-4xl font-extrabold tracking-tight text-textMain sm:text-5xl lg:text-[3.25rem] lg:leading-[1.12]">
+          <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-[3.25rem] lg:leading-[1.12]">
             The Verified Roster of High Signal Engineers
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-base font-normal leading-relaxed text-zinc-300 md:text-lg">
+          <p className="mx-auto mt-4 max-w-2xl text-base font-normal leading-relaxed text-zinc-400 md:text-lg">
             We benchmark public repositories for production architecture.
             Engineers who clear the bar get direct introductions to engineering
             leads.

@@ -108,6 +108,10 @@ export default function VerificationDossierPanel({
                 score: scorecard.productionScore,
                 auditedAt: scorecard.breakdown.audited_at,
                 repoUrl: scorecard.breakdown.audited_repo_url,
+                architecture: scorecard.breakdown.architecture_score,
+                testing: scorecard.breakdown.test_density,
+                devops: scorecard.breakdown.ci_cd_score,
+                resilience: scorecard.breakdown.error_handling,
               }
             : null
         }

@@ -14,7 +14,7 @@ import { classifyRepoFilesystem } from "@/lib/repo-filesystem";
 import { clampScore0to100, scoreBarWidthPercent } from "@/lib/score-scale";
 
 describe("auditor scoring and weighting math", () => {
-  it("uses the four-pillar 35/25/20/20 production weights", () => {
+  it("uses dual-mode production weights (fulltime baseline export)", () => {
     const weightSum =
       PRODUCTION_METRIC_WEIGHTS.architecture +
       PRODUCTION_METRIC_WEIGHTS.testing +
@@ -23,20 +23,23 @@ describe("auditor scoring and weighting math", () => {
 
     expect(weightSum).toBeCloseTo(1);
     expect(PRODUCTION_METRIC_WEIGHTS).toEqual({
-      architecture: 0.35,
-      testing: 0.25,
-      devops: 0.2,
-      resilience: 0.2,
+      architecture: 0.3,
+      testing: 0.3,
+      devops: 0.15,
+      resilience: 0.25,
     });
 
     expect(
-      weightedProductionScore({
-        architecture: 80,
-        testing: 60,
-        devops: 40,
-        resilience: 20,
-      })
-    ).toBe(Math.round(80 * 0.35 + 60 * 0.25 + 40 * 0.2 + 20 * 0.2));
+      weightedProductionScore(
+        {
+          architecture: 80,
+          testing: 60,
+          devops: 40,
+          resilience: 20,
+        },
+        "fulltime"
+      )
+    ).toBe(Math.round(80 * 0.3 + 60 * 0.3 + 40 * 0.15 + 20 * 0.25));
   });
 
   it("clamps headline scores and applies the upstream fork penalty", () => {
@@ -84,13 +87,16 @@ describe("auditor scoring and weighting math", () => {
     expect(devops).toBeGreaterThan(0);
     expect(resilience).toBeGreaterThan(0);
     expect(metrics.productionScore).toBe(
-      weightedProductionScore({
-        architecture: metrics.architecture,
-        testing: metrics.testing,
-        devops: metrics.devops,
-        resilience: metrics.resilience,
-      })
+      weightedProductionScore(
+        {
+          architecture: metrics.architecture,
+          testing: metrics.testing,
+          devops: metrics.devops,
+          resilience: metrics.resilience,
+        },
+        "contract"
+      )
     );
-    expect(metrics.weights.architecture).toBe(0.35);
+    expect(metrics.weights.architecture).toBe(0.45);
   });
 });

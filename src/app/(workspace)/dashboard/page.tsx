@@ -94,6 +94,7 @@ import {
   buildCandidateProfileUpdatePayload,
   persistCandidatePoolVisibility,
   persistCandidateProfile,
+  serializePersistError,
 } from "@/lib/persist-candidate-profile";
 import { handleGitHubLinkIdentity } from "@/lib/github-auth";
 import {
@@ -204,11 +205,13 @@ import {
   JOB_CONTRACT_BANDWIDTH_OPTIONS,
   formatContractBandwidthPill,
   formatContractRatePill,
+  formatContractAvailabilityRemediation,
+  formatFullTimeAvailabilityRemediation,
   formatMarketplaceAuditScoreBadge,
-  formatMarketplaceEligibleBadge,
   getContractDetailsValidationError,
   getPreferenceAvailabilityPresentation,
   getProvixInclusiveHourlyRate,
+  isMarketplaceAvailabilityQualified,
   isOnlyUsingDiagnosticTools,
   marketplaceEngagementEmptyState,
   marketplaceEngagementLabel,
@@ -222,6 +225,7 @@ import {
   type ContractHoursPerWeek,
   type MarketplaceEngagementMode,
 } from "@/lib/contract-availability";
+import { deriveDualModeScores } from "@/lib/audit-mode";
 import {
   getTalentPoolOnboardingStatus,
   isPublishedVerifiedCandidateProfile,
@@ -2569,13 +2573,29 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     };
   }, [employerActiveJobs, employerCompanyNameForMatching]);
 
+  const marketplaceAuditRecord = parseProductionAuditFromProfileRow(dbProfile);
   const marketplaceAuditScore = resolveMarketplaceAuditScore(
     typeof dbProfile?.production_score === "number"
       ? dbProfile.production_score
       : null,
     typeof dbProfile?.audit_score === "number" ? dbProfile.audit_score : null,
-    parseProductionAuditFromProfileRow(dbProfile)?.productionScore
+    marketplaceAuditRecord?.productionScore
   );
+  const marketplaceDualScores = deriveDualModeScores({
+    productionScore: marketplaceAuditScore ?? 0,
+    architecture: marketplaceAuditRecord?.breakdown.architecture_score,
+    testing: marketplaceAuditRecord?.breakdown.test_density,
+    devops: marketplaceAuditRecord?.breakdown.ci_cd_score,
+    resilience: marketplaceAuditRecord?.breakdown.error_handling,
+  });
+  const latestContractScore =
+    marketplaceAuditScore == null && !marketplaceAuditRecord
+      ? null
+      : marketplaceDualScores.contractScore;
+  const latestFullTimeScore =
+    marketplaceAuditScore == null && !marketplaceAuditRecord
+      ? null
+      : marketplaceDualScores.fullTimeScore;
   const marketplaceGitHubUsername = (dbProfile?.github_username ?? "")
     .replace(/^@/, "")
     .trim();
@@ -2587,10 +2607,9 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     verificationStatus: dbProfile?.verification_status,
     isAuditVerified:
       dbProfile?.is_audit_verified === true ||
-      parseProductionAuditFromProfileRow(dbProfile)?.isAuditVerified === true,
+      marketplaceAuditRecord?.isAuditVerified === true,
     auditedRepoUrl: resolveTalentPoolAuditedRepoUrl({
-      auditedRepoUrl: parseProductionAuditFromProfileRow(dbProfile)?.breakdown
-        .audited_repo_url,
+      auditedRepoUrl: marketplaceAuditRecord?.breakdown.audited_repo_url,
       auditBreakdown: dbProfile?.audit_breakdown,
       portfolioUrl: dbProfile?.portfolio_url ?? portfolioUrl,
     }),
@@ -2606,24 +2625,44 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     ownershipVerified: marketplaceOwnershipVerified,
     scores: [
       marketplaceAuditScore,
+      latestContractScore,
+      latestFullTimeScore,
       typeof dbProfile?.production_score === "number"
         ? dbProfile.production_score
         : null,
       typeof dbProfile?.audit_score === "number" ? dbProfile.audit_score : null,
     ],
   });
-  const isQualified = marketplacePublishGateFailures.length === 0;
-  const effectiveOpenToFulltime = isQualified && openToFulltime;
-  const effectiveOpenToContract = isQualified && openToContract;
+  /** Shared non-score publish prerequisites (visibility + GitHub ownership). */
+  const marketplaceBaseReady =
+    marketplacePoolVisible &&
+    marketplaceGithubVerified &&
+    marketplaceOwnershipVerified;
+  const canToggleFullTime =
+    marketplaceBaseReady &&
+    isMarketplaceAvailabilityQualified(latestFullTimeScore);
+  const canToggleContract =
+    marketplaceBaseReady &&
+    isMarketplaceAvailabilityQualified(latestContractScore);
+  const isQualified = canToggleFullTime || canToggleContract;
+  const effectiveOpenToFulltime = canToggleFullTime && openToFulltime;
+  const effectiveOpenToContract = canToggleContract && openToContract;
 
   useEffect(() => {
-    if (!isQualified && (openToFulltime || openToContract)) {
+    if (!canToggleFullTime && openToFulltime) {
       setOpenToFulltime(false);
+    }
+    if (!canToggleContract && openToContract) {
       setOpenToContract(false);
     }
-  }, [isQualified, openToFulltime, openToContract]);
+  }, [
+    canToggleContract,
+    canToggleFullTime,
+    openToContract,
+    openToFulltime,
+  ]);
 
-  // Keep the sidebar widget in sync with publish-gated engagement only.
+  // Keep the sidebar widget in sync with mode-gated engagement only.
   useEffect(() => {
     navSetOpenToFulltime?.(effectiveOpenToFulltime);
     navSetOpenToContract?.(effectiveOpenToContract);
@@ -2969,7 +3008,10 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       } = await supabase.auth.getSession();
 
       if (sessionError || !session?.user?.id) {
-        console.error("Profile update failed:", sessionError);
+        console.error(
+          "Profile update failed: missing session",
+          serializePersistError(sessionError)
+        );
         showToast("You must be logged in to save your profile.");
         return;
       }
@@ -2984,8 +3026,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       if (isVisibleInPool && !effectiveVisibleInPool) {
         setIsVisibleInPool(false);
       }
-      const gatedOpenToFulltime = isQualified && openToFulltime;
-      const gatedOpenToContract = isQualified && openToContract;
+      const gatedOpenToFulltime = canToggleFullTime && openToFulltime;
+      const gatedOpenToContract = canToggleContract && openToContract;
       const normalizedAvailability = normalizeAvailabilityStatus(
         gatedOpenToFulltime || gatedOpenToContract
           ? "Available Now"
@@ -3043,35 +3085,21 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       );
 
       if (error) {
-        const errorRecord =
-          error && typeof error === "object"
-            ? (error as {
-                message?: string;
-                details?: string;
-                hint?: string;
-                code?: string;
-                status?: number | string;
-              })
-            : null;
         console.error("Profile update failed:", {
-          message: errorRecord?.message,
-          details: errorRecord?.details,
-          hint: errorRecord?.hint,
-          code: errorRecord?.code,
-          status: errorRecord?.status,
+          ...serializePersistError(error),
           userMessage,
           contractHourlyRateInput: contractHourlyRate,
           normalizedContractRate,
           payloadContractHourlyRate: payload.contract_hourly_rate,
           payloadContractHoursPerWeek: payload.contract_hours_per_week,
           payloadOpenToContract: payload.open_to_contract,
-          json: (() => {
-            try {
-              return JSON.stringify(error);
-            } catch {
-              return "[unserializable]";
-            }
-          })(),
+          payloadOpenToFulltime: payload.open_to_fulltime,
+          marketplaceBaseReady,
+          canToggleContract,
+          canToggleFullTime,
+          githubUsername: marketplaceGitHubUsername,
+          githubVerified: marketplaceGithubVerified,
+          ownershipVerified: marketplaceOwnershipVerified,
         });
         showToast(userMessage ?? "Could not save profile. Please try again.");
         return;
@@ -3165,23 +3193,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       );
     } catch (error) {
       console.error(
-        "Profile update failed:",
-        error instanceof Error
-          ? {
-              name: error.name,
-              message: error.message,
-              stack: error.stack,
-            }
-          : {
-              error,
-              json: (() => {
-                try {
-                  return JSON.stringify(error);
-                } catch {
-                  return "[unserializable]";
-                }
-              })(),
-            }
+        "Profile update failed: unexpected exception",
+        serializePersistError(error)
       );
       showToast("Could not save profile. Please try again.");
     } finally {
@@ -5586,10 +5599,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               </span>
                               <span className="mt-1 flex min-w-0 items-center gap-2 text-sm font-medium text-textMain">
                                 <span
-                                  className={`h-2 w-2 shrink-0 rounded-full ${preferenceAvailability.dotClass}`}
-                                  aria-hidden
-                                />
-                                <span className="truncate">
+                                  className={`truncate ${
+                                    preferenceAvailability.isLive
+                                      ? "text-emerald-300"
+                                      : "text-textMuted"
+                                  }`}
+                                >
                                   {preferenceAvailability.label}
                                 </span>
                               </span>
@@ -5613,65 +5628,31 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               <span className="text-[11px] text-textMuted">
                                 Tell employers whether you&apos;re open to full-time
                                 roles, contract work, or only using Provix tools.
-                                Requires Visible to Employers, verified GitHub
-                                ownership, and a 75+ audit score.
+                                Each mode unlocks independently at 75+ on that
+                                audit track (plus Visible to Employers and verified
+                                GitHub ownership).
                               </span>
                             </div>
 
                             <div className="space-y-2.5">
-                              <label
-                                className={`flex items-start gap-2.5 select-none ${
-                                  isQualified
-                                    ? "cursor-pointer"
-                                    : "cursor-not-allowed opacity-60"
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={effectiveOpenToFulltime}
-                                  disabled={!isQualified}
-                                  onChange={(event) => {
-                                    if (!isQualified) return;
-                                    const next = event.target.checked;
-                                    setOpenToFulltime(next);
-                                    const nextStatus =
-                                      next || openToContract
-                                        ? "Available Now"
-                                        : "Not Available";
-                                    setAvailabilityStatus(nextStatus);
-                                    navSetAvailabilityStatus?.(nextStatus);
-                                  }}
-                                  className="mt-0.5 h-4 w-4 shrink-0 rounded border border-zinc-700 bg-zinc-950 accent-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40 disabled:cursor-not-allowed"
-                                />
-                                <span className="min-w-0">
-                                  <span className="block text-sm text-zinc-200">
-                                    Open for Full-Time Roles
-                                  </span>
-                                  <span className="block text-[11px] text-textMuted">
-                                    You&apos;re available for permanent full-time
-                                    opportunities.
-                                  </span>
-                                </span>
-                              </label>
-
-                              <div className="space-y-0">
+                              <div className="space-y-1">
                                 <label
                                   className={`flex items-start gap-2.5 select-none ${
-                                    isQualified
+                                    canToggleFullTime
                                       ? "cursor-pointer"
                                       : "cursor-not-allowed opacity-60"
                                   }`}
                                 >
                                   <input
                                     type="checkbox"
-                                    checked={effectiveOpenToContract}
-                                    disabled={!isQualified}
+                                    checked={effectiveOpenToFulltime}
+                                    disabled={!canToggleFullTime}
                                     onChange={(event) => {
-                                      if (!isQualified) return;
+                                      if (!canToggleFullTime) return;
                                       const next = event.target.checked;
-                                      setOpenToContract(next);
+                                      setOpenToFulltime(next);
                                       const nextStatus =
-                                        openToFulltime || next
+                                        next || effectiveOpenToContract
                                           ? "Available Now"
                                           : "Not Available";
                                       setAvailabilityStatus(nextStatus);
@@ -5681,14 +5662,67 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   />
                                   <span className="min-w-0">
                                     <span className="block text-sm text-zinc-200">
-                                      Open for Contract Work
+                                      Open for Full-Time Roles
                                     </span>
                                     <span className="block text-[11px] text-textMuted">
-                                      You&apos;re available for freelance or
-                                      capped weekly retainer engagements.
+                                      You&apos;re available for permanent full-time
+                                      opportunities.
                                     </span>
                                   </span>
                                 </label>
+                                {!canToggleFullTime ? (
+                                  <p className="ml-6 text-[11px] leading-snug text-amber-200/90">
+                                    {formatFullTimeAvailabilityRemediation(
+                                      latestFullTimeScore
+                                    )}
+                                  </p>
+                                ) : null}
+                              </div>
+
+                              <div className="space-y-0">
+                                <div className="space-y-1">
+                                  <label
+                                    className={`flex items-start gap-2.5 select-none ${
+                                      canToggleContract
+                                        ? "cursor-pointer"
+                                        : "cursor-not-allowed opacity-60"
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={effectiveOpenToContract}
+                                      disabled={!canToggleContract}
+                                      onChange={(event) => {
+                                        if (!canToggleContract) return;
+                                        const next = event.target.checked;
+                                        setOpenToContract(next);
+                                        const nextStatus =
+                                          effectiveOpenToFulltime || next
+                                            ? "Available Now"
+                                            : "Not Available";
+                                        setAvailabilityStatus(nextStatus);
+                                        navSetAvailabilityStatus?.(nextStatus);
+                                      }}
+                                      className="mt-0.5 h-4 w-4 shrink-0 rounded border border-zinc-700 bg-zinc-950 accent-zinc-300 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500/40 disabled:cursor-not-allowed"
+                                    />
+                                    <span className="min-w-0">
+                                      <span className="block text-sm text-zinc-200">
+                                        Open for Contract Work
+                                      </span>
+                                      <span className="block text-[11px] text-textMuted">
+                                        You&apos;re available for freelance or
+                                        capped weekly retainer engagements.
+                                      </span>
+                                    </span>
+                                  </label>
+                                  {!canToggleContract ? (
+                                    <p className="ml-6 text-[11px] leading-snug text-amber-200/90">
+                                      {formatContractAvailabilityRemediation(
+                                        latestContractScore
+                                      )}
+                                    </p>
+                                  ) : null}
+                                </div>
 
                                 <div
                                   className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out ${
@@ -5817,11 +5851,22 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                               </label>
                             </div>
 
-                            {isQualified ? (
-                              <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300">
-                                {formatMarketplaceEligibleBadge(marketplaceAuditScore)}
-                              </span>
-                            ) : (
+                            {marketplaceBaseReady && isQualified ? (
+                              <div className="flex flex-wrap gap-2">
+                                {canToggleContract ? (
+                                  <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300">
+                                    Contract Eligible (
+                                    {latestContractScore ?? 0}/100)
+                                  </span>
+                                ) : null}
+                                {canToggleFullTime ? (
+                                  <span className="inline-flex items-center rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold text-violet-300">
+                                    Full-Time Eligible (
+                                    {latestFullTimeScore ?? 0}/100)
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : !marketplaceBaseReady ? (
                               <div
                                 role="status"
                                 className="space-y-1.5 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2"
@@ -5830,22 +5875,23 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                   Marketplace availability locked
                                 </p>
                                 <p className="text-[11px] leading-snug text-amber-100/90">
-                                  Score:{" "}
-                                  {typeof marketplaceAuditScore === "number"
-                                    ? marketplaceAuditScore
-                                    : "—"}
-                                  /100 — Fix the items below before Full-Time or
-                                  Contract can go live:
+                                  Contract {latestContractScore ?? 0}/100 ·
+                                  Full-Time {latestFullTimeScore ?? 0}/100 —
+                                  Fix the items below before either mode can go
+                                  live:
                                 </p>
                                 <ul className="list-disc space-y-0.5 pl-4 text-[11px] leading-snug text-amber-100/90">
-                                  {marketplacePublishGateFailures.map(
-                                    (failure) => (
-                                      <li key={failure}>{failure}</li>
+                                  {marketplacePublishGateFailures
+                                    .filter(
+                                      (failure) =>
+                                        !failure.toLowerCase().includes("score")
                                     )
-                                  )}
+                                    .map((failure) => (
+                                      <li key={failure}>{failure}</li>
+                                    ))}
                                 </ul>
                               </div>
-                            )}
+                            ) : null}
                           </div>
 
                           <div className="flex items-center justify-between gap-4 p-4 bg-panel border border-border rounded-xl">
@@ -5942,6 +5988,18 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                                       repoUrl:
                                         candidateProductionAudit.breakdown
                                           .audited_repo_url,
+                                      architecture:
+                                        candidateProductionAudit.breakdown
+                                          .architecture_score,
+                                      testing:
+                                        candidateProductionAudit.breakdown
+                                          .test_density,
+                                      devops:
+                                        candidateProductionAudit.breakdown
+                                          .ci_cd_score,
+                                      resilience:
+                                        candidateProductionAudit.breakdown
+                                          .error_handling,
                                     }
                                   : null
                               }

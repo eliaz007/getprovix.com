@@ -1,10 +1,24 @@
+import {
+  assignAuditTier,
+  CONTRACT_TIER_ELITE,
+  CONTRACT_TIER_HARDENING,
+  CONTRACT_TIER_SUPERVISED,
+  CONTRACT_TIER_VERIFIED,
+  DEFAULT_AUDIT_MODE,
+  normalizeAuditMode,
+  type AuditMode,
+} from "@/lib/audit-mode";
 import { clampScore0to100 } from "@/lib/score-scale";
 
+/** Founder Verdict / Contract tier titles (synced with assignAuditTier). */
 export const ROLE_BANDS = [
-  "Intern / Junior",
-  "Mid-Level",
-  "Early-Stage Generalist",
-  "Needs Hardening",
+  CONTRACT_TIER_ELITE,
+  CONTRACT_TIER_VERIFIED,
+  CONTRACT_TIER_SUPERVISED,
+  CONTRACT_TIER_HARDENING,
+  "Production-Grade / Core Lead",
+  "Mid/Senior Production-Ready",
+  "Needs Refinement",
 ] as const;
 
 export type RecommendedRoleBand = (typeof ROLE_BANDS)[number];
@@ -15,23 +29,8 @@ export type ExecutiveBrief = {
   recommendedRoleBand: RecommendedRoleBand;
 };
 
-/** Talent-network bar. Matches the existing 75 readiness threshold. */
-export const ROLE_BAND_SCORE_THRESHOLD = 75;
-
-/**
- * Soft near-miss band: 70–74 with a robust pillar maps to Early-Stage
- * Generalist instead of Intern / Junior.
- */
-export const ROLE_BAND_NEAR_THRESHOLD = 70;
-
-/** Testing at 65 is the real-coverage band. Token coverage stays under 20. */
-export const ROBUST_TEST_SCORE = 65;
-
-/**
- * A missing web error boundary lands at 65. 80 means that ding did not apply
- * and unhandled async calls stayed small.
- */
-export const ROBUST_RESILIENCE_SCORE = 80;
+/** Talent-network bar — Verified Sprint Builder and above. */
+export const ROLE_BAND_SCORE_THRESHOLD = 72;
 
 export function isRecommendedRoleBand(
   value: unknown
@@ -43,35 +42,21 @@ export function isRecommendedRoleBand(
 }
 
 /**
- * Mid-Level only when the headline clears 75 and both test and error-handling
- * patterns are robust. 75+ with a gap is Early-Stage Generalist. Scores in
- * 70–74 with either robust pillar also land Early-Stage Generalist so a
- * one-point miss under the bar is not labeled Intern / Junior. Below 70, a
- * single robust pillar is Intern / Junior. Otherwise Needs Hardening.
+ * Founder Hiring Verdict badge — mirrors mode-aware audit tiers so an 80+
+ * Contract score never shows legacy "Mid-Level" / "Early-Stage Generalist".
  */
 export function assignRecommendedRoleBand(input: {
   productionScore: number;
-  testing: number;
-  resilience: number;
+  testing?: number;
+  resilience?: number;
+  auditMode?: AuditMode | string;
 }): RecommendedRoleBand {
-  const score = clampScore0to100(input.productionScore);
-  const robustTests = input.testing >= ROBUST_TEST_SCORE;
-  const robustErrors = input.resilience >= ROBUST_RESILIENCE_SCORE;
-  const hasRobustPillar = robustTests || robustErrors;
-
-  if (score >= ROLE_BAND_SCORE_THRESHOLD && robustTests && robustErrors) {
-    return "Mid-Level";
+  const mode = normalizeAuditMode(input.auditMode ?? DEFAULT_AUDIT_MODE);
+  const tier = assignAuditTier(mode, input.productionScore);
+  if (isRecommendedRoleBand(tier)) {
+    return tier;
   }
-  if (score >= ROLE_BAND_SCORE_THRESHOLD) {
-    return "Early-Stage Generalist";
-  }
-  if (score >= ROLE_BAND_NEAR_THRESHOLD && hasRobustPillar) {
-    return "Early-Stage Generalist";
-  }
-  if (hasRobustPillar) {
-    return "Intern / Junior";
-  }
-  return "Needs Hardening";
+  return CONTRACT_TIER_HARDENING;
 }
 
 function asSummary(value: unknown): string {
@@ -96,7 +81,7 @@ export function parseExecutiveBrief(value: unknown): ExecutiveBrief | null {
     developerSummary,
     recommendedRoleBand: isRecommendedRoleBand(record.recommendedRoleBand)
       ? record.recommendedRoleBand
-      : "Needs Hardening",
+      : CONTRACT_TIER_HARDENING,
   };
 }
 
@@ -113,12 +98,12 @@ function fallbackSummaries(input: {
     ? " The repository is an upstream fork or generated template, and the headline already includes the 30-point deduction."
     : "";
   return {
-    employerSummary: `Headline production score is ${input.productionScore}/100, with architecture ${input.architectureScore}, tests ${input.testScore}, DevOps ${input.devopsScore}, and resilience ${input.resilienceScore}.${upstream} The role band is ${input.recommendedRoleBand} based on the 75-point bar and the test and error-handling scores.`,
-    developerSummary: `Peer review of the file tree: tests are ${input.testScore}/100 and resilience is ${input.resilienceScore}/100.${upstream} The highest-leverage fix is the weaker of those two pillars, because that is what keeps the role band at ${input.recommendedRoleBand}.`,
+    employerSummary: `Headline production score is ${input.productionScore}/100, with architecture ${input.architectureScore}, tests ${input.testScore}, DevOps ${input.devopsScore}, and resilience ${input.resilienceScore}.${upstream} The Founder Verdict is ${input.recommendedRoleBand}.`,
+    developerSummary: `Peer review of the file tree: tests are ${input.testScore}/100 and resilience is ${input.resilienceScore}/100.${upstream} The highest-leverage fix is the weaker of those two pillars, because that is what keeps the verdict at ${input.recommendedRoleBand}.`,
   };
 }
 
-/** Keep the model's sentences. The role band always comes from the pillar scores. */
+/** Keep the model's sentences. The role band always comes from the mode tier. */
 export function finalizeExecutiveBrief(input: {
   draft: unknown;
   productionScore: number;
@@ -127,11 +112,13 @@ export function finalizeExecutiveBrief(input: {
   devopsScore: number;
   resilienceScore: number;
   isUpstreamDerivative: boolean;
+  auditMode?: AuditMode | string;
 }): ExecutiveBrief {
   const recommendedRoleBand = assignRecommendedRoleBand({
     productionScore: input.productionScore,
     testing: input.testScore,
     resilience: input.resilienceScore,
+    auditMode: input.auditMode,
   });
   const fallback = fallbackSummaries({
     ...input,
@@ -152,15 +139,30 @@ export function deterministicMetricsPayload(input: {
   testScore: number;
   devopsScore: number;
   resilienceScore: number;
+  auditMode?: string;
+  overallScore?: number;
+  tier?: string;
+  breakdown?: unknown;
 }) {
+  const mode = normalizeAuditMode(input.auditMode ?? DEFAULT_AUDIT_MODE);
+  const tier =
+    input.tier ?? assignAuditTier(mode, input.overallScore ?? input.productionScore);
   return {
     productionScore: input.productionScore,
+    overallScore: input.overallScore ?? input.productionScore,
+    auditMode: input.auditMode ?? null,
+    tier,
+    breakdown: input.breakdown ?? null,
     is_upstream_derivative: input.isUpstreamDerivative,
     architectureScore: input.architectureScore,
     testScore: input.testScore,
     devopsScore: input.devopsScore,
     resilienceScore: input.resilienceScore,
+    securityScore: input.resilienceScore,
+    toolingScore: input.devopsScore,
     roleBandRule:
-      "Mid-Level only when productionScore >= 75 and testScore >= 65 and resilienceScore >= 80. Early-Stage Generalist when productionScore >= 75 but tests or resilience miss that bar, or when productionScore is 70-74 with either testScore >= 65 or resilienceScore >= 80. Intern / Junior when productionScore < 70 and either testScore >= 65 or resilienceScore >= 80. Otherwise Needs Hardening. Do not invent a different band.",
+      mode === "fulltime"
+        ? 'Copy tier as recommendedRoleBand. Full-time: "Production-Grade / Core Lead" (>= 80), "Mid/Senior Production-Ready" (70-79), "Needs Refinement" (< 70). Do not invent Mid-Level or Early-Stage Generalist.'
+        : 'Copy tier as recommendedRoleBand. Contract: "Elite Sprint Contractor" (>= 80), "Verified Sprint Builder" (72-79), "Supervised Feature Builder" (60-71), "Needs Hardening" (< 60). Do not invent Mid-Level or Early-Stage Generalist.',
   };
 }

@@ -4,9 +4,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { Check, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import type { AuditResult } from "@/app/api/audit/route";
-import ResumeFileUpload, {
-  type StoredResumeMeta,
-} from "@/components/ResumeFileUpload";
 // Alternative/external project artifacts are disabled — GitHub URL only.
 // import ExternalProjectsForm from "@/components/portfolio/external-projects-form";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
@@ -60,8 +57,11 @@ import {
   DAILY_LIMIT_UI_MESSAGE,
   type DailyScanUsage,
 } from "@/lib/daily-scan-limit";
-
-const COMPENSATION_LEVELS = ["Junior", "Mid", "Senior"] as const;
+import {
+  AUDIT_MODE_OPTIONS,
+  DEFAULT_AUDIT_MODE,
+  type AuditMode,
+} from "@/lib/audit-mode";
 
 const AUDIT_STAGES = [
   "Artifact Analysis (Check 1)...",
@@ -91,13 +91,7 @@ export default function GitHubResumeAuditor({
 }) {
   const [targetRole, setTargetRole] = useState("");
   const [githubUrl, setGithubUrl] = useState(initialGithubUrl);
-  const [resumeOpen, setResumeOpen] = useState(false);
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [storedResume, setStoredResume] = useState<StoredResumeMeta | null>(
-    null
-  );
-  const [compensationLevel, setCompensationLevel] =
-    useState<(typeof COMPENSATION_LEVELS)[number]>("Mid");
+  const [auditMode, setAuditMode] = useState<AuditMode>(DEFAULT_AUDIT_MODE);
   // Private/enterprise alternative-artifact path disabled — GitHub required.
   // const [isPrivateWork, setIsPrivateWork] = useState(initialPrivateWork);
   // const [externalProjects, setExternalProjects] = useState<
@@ -201,30 +195,8 @@ export default function GitHubResumeAuditor({
       }
     };
 
-    const loadStoredResume = async () => {
-      try {
-        const response = await fetch("/api/profile/resume");
-        if (response.status === 401) {
-          return;
-        }
-        if (!response.ok) {
-          return;
-        }
-        const data = (await readJsonResponse(response)) as StoredResumeMeta;
-        if (!cancelled) {
-          setStoredResume(data);
-          if (data.hasResume) {
-            setResumeOpen(true);
-          }
-        }
-      } catch (err) {
-        console.error("Could not load saved resume:", err);
-      }
-    };
-
     void loadUsage();
     void loadSession();
-    void loadStoredResume();
 
     return () => {
       cancelled = true;
@@ -314,33 +286,18 @@ export default function GitHubResumeAuditor({
     startStageProgress();
 
     try {
-      let response: Response;
-
-      if (resumeFile) {
-        const formData = new FormData();
-        formData.append("targetRole", targetRole.trim());
-        formData.append("githubUrl", githubUrl.trim());
-        formData.append("compensationLevel", compensationLevel);
-        formData.append("workIsPrivate", "false");
-        formData.append("externalProjects", JSON.stringify([]));
-        formData.append("resumeFile", resumeFile);
-        response = await fetch("/api/audit", {
-          method: "POST",
-          body: formData,
-        });
-      } else {
-        response = await fetch("/api/audit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            targetRole: targetRole.trim(),
-            githubUrl: githubUrl.trim(),
-            compensationLevel,
-            workIsPrivate: false,
-            externalProjects: [],
-          }),
-        });
-      }
+      const response = await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetRole: targetRole.trim(),
+          githubUrl: githubUrl.trim(),
+          repoUrl: githubUrl.trim(),
+          auditMode,
+          workIsPrivate: false,
+          externalProjects: [],
+        }),
+      });
 
       const data = (await readJsonResponse(response)) as AuditResult &
         DailyScanUsage & {
@@ -625,36 +582,57 @@ export default function GitHubResumeAuditor({
                 the Founder Roster.
               </p>
             ) : null}
-            <div className="relative">
-              <input
-                id="audit-github-url"
-                type="url"
-                inputMode="url"
-                autoComplete="url"
-                spellCheck={false}
-                value={githubUrl}
-                onChange={(e) => setGithubUrl(e.target.value)}
-                placeholder={
-                  isEmployerView
-                    ? "https://github.com/owner/repository-name"
-                    : "https://github.com/your-username/your-repo"
-                }
-                aria-invalid={Boolean(githubValidationMessage)}
-                aria-describedby={
-                  githubValidationMessage ? "github-url-validation" : undefined
-                }
-                className={`${TERMINAL_INPUT} ${
-                  repoAccessStatus === "verified" ? "pr-40" : ""
-                } ${
-                  githubValidationMessage
-                    ? "border-red-500/60 focus:border-red-400 focus:ring-red-500/20"
-                    : ""
-                }`}
-              />
-              <VerifiedContributorMark
-                visible={repoAccessStatus === "verified"}
-                className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2"
-              />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <div className="relative min-w-0 flex-1">
+                <input
+                  id="audit-github-url"
+                  type="url"
+                  inputMode="url"
+                  autoComplete="url"
+                  spellCheck={false}
+                  value={githubUrl}
+                  onChange={(e) => setGithubUrl(e.target.value)}
+                  placeholder={
+                    isEmployerView
+                      ? "https://github.com/owner/repository-name"
+                      : "https://github.com/your-username/your-repo"
+                  }
+                  aria-invalid={Boolean(githubValidationMessage)}
+                  aria-describedby={
+                    githubValidationMessage ? "github-url-validation" : undefined
+                  }
+                  className={`${TERMINAL_INPUT} ${
+                    repoAccessStatus === "verified" ? "pr-40" : ""
+                  } ${
+                    githubValidationMessage
+                      ? "border-red-500/60 focus:border-red-400 focus:ring-red-500/20"
+                      : ""
+                  }`}
+                />
+                <VerifiedContributorMark
+                  visible={repoAccessStatus === "verified"}
+                  className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2"
+                />
+              </div>
+              <div className="sm:w-[min(100%,17.5rem)] sm:shrink-0">
+                <label htmlFor="audit-mode" className="sr-only">
+                  Evaluation mode
+                </label>
+                <select
+                  id="audit-mode"
+                  value={auditMode}
+                  onChange={(e) =>
+                    setAuditMode(e.target.value as AuditMode)
+                  }
+                  className={TERMINAL_INPUT}
+                >
+                  {AUDIT_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             {githubValidationMessage ? (
               <p
@@ -687,30 +665,6 @@ export default function GitHubResumeAuditor({
             */}
           </div>
 
-          {!isEmployerView ? (
-            <div>
-              <FormLabel htmlFor="audit-compensation-level">
-                Target Compensation & Level
-              </FormLabel>
-              <select
-                id="audit-compensation-level"
-                value={compensationLevel}
-                onChange={(e) =>
-                  setCompensationLevel(
-                    e.target.value as (typeof COMPENSATION_LEVELS)[number]
-                  )
-                }
-                className={TERMINAL_INPUT}
-              >
-                {COMPENSATION_LEVELS.map((level) => (
-                  <option key={level} value={level}>
-                    {level}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-
           {/* Alternative project artifacts disabled — GitHub URL only.
           {isPrivateWork && (
             <div className="border-t border-white/[0.08] pt-4">
@@ -724,37 +678,6 @@ export default function GitHubResumeAuditor({
             </div>
           )}
           */}
-
-          {!isEmployerView ? (
-            <div className="border-t border-white/[0.08] pt-1">
-              <button
-                type="button"
-                onClick={() => setResumeOpen((open) => !open)}
-                aria-expanded={resumeOpen}
-                className="w-full cursor-pointer py-2 text-left text-[13px] text-zinc-500 transition-colors hover:text-zinc-300"
-              >
-                {resumeOpen ? "–" : "+"} Add resume for claim cross-verification
-                <span className="text-zinc-600"> (Optional)</span>
-              </button>
-              {resumeOpen && (
-                <div className="mt-1">
-                  <ResumeFileUpload
-                    persistToProfile
-                    localFallbackOnAuthError
-                    initialFilename={storedResume?.filename ?? null}
-                    helperText="The auditor reads the parsed resume and checks it against your GitHub repository artifacts."
-                    onLocalFileChange={setResumeFile}
-                    onPersisted={(meta) => {
-                      setStoredResume(meta);
-                      if (!meta.hasResume) {
-                        setResumeFile(null);
-                      }
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          ) : null}
 
           {limitReached && (
             <div

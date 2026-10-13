@@ -12,21 +12,24 @@ import {
 import { classifyRepoFilesystem } from "@/lib/repo-filesystem";
 
 describe("core production scoring", () => {
-  it("weights pillars at 35/25/20/20", () => {
+  it("weights fulltime pillars at 30/25/15/30", () => {
     expect(PRODUCTION_METRIC_WEIGHTS).toEqual({
-      architecture: 0.35,
-      testing: 0.25,
-      devops: 0.2,
-      resilience: 0.2,
+      architecture: 0.3,
+      testing: 0.3,
+      devops: 0.15,
+      resilience: 0.25,
     });
     expect(
-      weightedProductionScore({
-        architecture: 100,
-        testing: 80,
-        devops: 60,
-        resilience: 40,
-      })
-    ).toBe(Math.round(100 * 0.35 + 80 * 0.25 + 60 * 0.2 + 40 * 0.2));
+      weightedProductionScore(
+        {
+          architecture: 100,
+          testing: 80,
+          devops: 60,
+          resilience: 40,
+        },
+        "fulltime"
+      )
+    ).toBe(Math.round(100 * 0.3 + 80 * 0.3 + 60 * 0.15 + 40 * 0.25));
   });
 
   it("caps scaffold architecture and floors upstream forks", () => {
@@ -70,12 +73,15 @@ describe("core production scoring", () => {
       0
     );
     expect(metrics.productionScore).toBe(
-      weightedProductionScore({
-        architecture: metrics.architecture,
-        testing: metrics.testing,
-        devops: metrics.devops,
-        resilience: metrics.resilience,
-      })
+      weightedProductionScore(
+        {
+          architecture: metrics.architecture,
+          testing: metrics.testing,
+          devops: metrics.devops,
+          resilience: metrics.resilience,
+        },
+        "contract"
+      )
     );
   });
 });

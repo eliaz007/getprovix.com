@@ -6,6 +6,11 @@ import type { AuditResult } from "@/app/api/audit/route";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
 import Button from "@/components/ui/Button";
 import FormLabel from "@/components/ui/FormLabel";
+import {
+  DEFAULT_AUDIT_MODE,
+  auditModeLabel,
+  type AuditMode,
+} from "@/lib/audit-mode";
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
   hasUsableGitHubAuditTarget,
@@ -22,6 +27,11 @@ type AdminAuditResponse = AuditResult & {
   adminAudit?: boolean;
 };
 
+const ADMIN_AUDIT_MODE_OPTIONS: Array<{ value: AuditMode; label: string }> = [
+  { value: "contract", label: "Contract Work (Speed & Arch)" },
+  { value: "fulltime", label: "Full-Time Work (Enterprise & Tests)" },
+];
+
 const GLASS_CARD =
   "rounded-xl border border-white/[0.08] bg-[#131316]/90 p-6 shadow-2xl backdrop-blur-xl";
 const TERMINAL_INPUT =
@@ -29,6 +39,7 @@ const TERMINAL_INPUT =
 
 export default function AdminUnlimitedAuditor() {
   const [githubUrl, setGithubUrl] = useState("");
+  const [auditMode, setAuditMode] = useState<AuditMode>(DEFAULT_AUDIT_MODE);
   const [candidateName, setCandidateName] = useState("");
   const [candidateHandle, setCandidateHandle] = useState("");
   const [loading, setLoading] = useState(false);
@@ -61,7 +72,8 @@ export default function AdminUnlimitedAuditor() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           githubUrl: trimmed,
-          compensationLevel: "Mid",
+          repoUrl: trimmed,
+          auditMode,
           adminAudit: true,
           candidateName: candidateName.trim() || undefined,
           candidateHandle: candidateHandle.trim() || undefined,
@@ -114,16 +126,37 @@ export default function AdminUnlimitedAuditor() {
             <FormLabel htmlFor="admin-audit-github-url">
               GitHub repository URL
             </FormLabel>
-            <input
-              id="admin-audit-github-url"
-              type="url"
-              inputMode="url"
-              spellCheck={false}
-              value={githubUrl}
-              onChange={(event) => setGithubUrl(event.target.value)}
-              placeholder="https://github.com/owner/repo"
-              className={TERMINAL_INPUT}
-            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <input
+                id="admin-audit-github-url"
+                type="url"
+                inputMode="url"
+                spellCheck={false}
+                value={githubUrl}
+                onChange={(event) => setGithubUrl(event.target.value)}
+                placeholder="https://github.com/owner/repo"
+                className={`${TERMINAL_INPUT} min-w-0 flex-1`}
+              />
+              <div className="sm:w-[min(100%,17.5rem)] sm:shrink-0">
+                <label htmlFor="admin-audit-mode" className="sr-only">
+                  Audit mode
+                </label>
+                <select
+                  id="admin-audit-mode"
+                  value={auditMode}
+                  onChange={(event) =>
+                    setAuditMode(event.target.value as AuditMode)
+                  }
+                  className={TERMINAL_INPUT}
+                >
+                  {ADMIN_AUDIT_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
           <div>
             <FormLabel htmlFor="admin-audit-candidate-name">
@@ -204,10 +237,24 @@ export default function AdminUnlimitedAuditor() {
                 />
               </li>
             </ul>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-md border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 text-[11px] font-semibold text-violet-300">
+                {result.auditMode === "fulltime"
+                  ? "Full-Time Work"
+                  : "Contract Work"}
+              </span>
+              {result.tier ? (
+                <span className="inline-flex items-center rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-300">
+                  {result.tier}
+                </span>
+              ) : null}
+            </div>
             <p className="text-xs leading-relaxed text-zinc-500">
-              Score {result.score}/100
-              {repoLabel ? ` · ${repoLabel}` : ""}. PDF opens the shared report
-              with print dialog (browser Save as PDF).
+              Score {result.overallScore ?? result.score}/100
+              {repoLabel ? ` · ${repoLabel}` : ""} ·{" "}
+              {auditModeLabel(result.auditMode ?? auditMode)}
+              {result.tier ? ` · ${result.tier}` : ""}. PDF opens the shared
+              report with print dialog (browser Save as PDF).
             </p>
           </div>
 

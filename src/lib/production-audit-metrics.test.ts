@@ -10,6 +10,7 @@ import {
   scoreDevops,
   scoreResilience,
   scoreTesting,
+  unhandledAsyncPenalty,
   weightedProductionScore,
 } from "./production-audit-metrics";
 import {
@@ -52,33 +53,40 @@ describe("four-pillar production audit", () => {
     expect(filesystem.error_handling_paths).toHaveLength(0);
 
     const metrics = computeProductionAuditMetrics(filesystem);
-    expect(metrics.resilience).toBe(65);
+    // Missing error.tsx is a moderate −15 ding, not a collapse to the teens.
+    expect(metrics.resilience).toBe(85);
     expect(metrics.architecture).toBeGreaterThan(60);
     expect(metrics.architecture).toBeLessThanOrEqual(82);
     expect(metrics.testing).toBeGreaterThan(0);
     expect(metrics.devops).toBeGreaterThan(0);
     expect(metrics.productionScore).toBe(
-      weightedProductionScore({
-        architecture: metrics.architecture,
-        testing: metrics.testing,
-        devops: metrics.devops,
-        resilience: metrics.resilience,
-      })
+      weightedProductionScore(
+        {
+          architecture: metrics.architecture,
+          testing: metrics.testing,
+          devops: metrics.devops,
+          resilience: metrics.resilience,
+        },
+        "contract"
+      )
     );
     expect(metrics.productionScore).toBeGreaterThan(60);
     expect(filesystemScoreCeiling(filesystem)).toBe(100);
     expect(capScoreForFilesystemEvidence(92, filesystem)).toBe(92);
   });
 
-  it("uses the explicit 35/25/20/20 weighted formula", () => {
+  it("uses the explicit fulltime 30/25/15/30 weighted formula", () => {
     expect(
-      weightedProductionScore({
-        architecture: 100,
-        testing: 80,
-        devops: 60,
-        resilience: 40,
-      })
-    ).toBe(Math.round(100 * 0.35 + 80 * 0.25 + 60 * 0.2 + 40 * 0.2));
+      weightedProductionScore(
+        {
+          architecture: 100,
+          testing: 80,
+          devops: 60,
+          resilience: 40,
+        },
+        "fulltime"
+      )
+    ).toBe(Math.round(100 * 0.3 + 80 * 0.3 + 60 * 0.15 + 40 * 0.25));
   });
 
   it("does not penalize libraries for missing React error boundaries", () => {
@@ -88,9 +96,10 @@ describe("four-pillar production audit", () => {
     expect(filesystem.repo_kind).toBe("library");
     expect(filesystem.error_handling_paths).toContain("src/errors.ts");
 
-    const resilience = scoreResilience(filesystem, "library");
+    const resilience = scoreResilience(filesystem, "library", "contract");
     expect(resilience).toBe(100);
-    expect(scoreResilience(filesystem, "web_app")).toBe(65);
+    expect(scoreResilience(filesystem, "web_app", "contract")).toBe(85);
+    expect(scoreResilience(filesystem, "web_app", "fulltime")).toBe(70);
   });
 
   it("deducts missing web-app error boundaries from resilience only", () => {
@@ -100,9 +109,17 @@ describe("four-pillar production audit", () => {
     );
     const metrics = computeProductionAuditMetrics(filesystem);
     expect(metrics.evidence.repoKind).toBe("web_app");
-    expect(metrics.resilience).toBeGreaterThan(0);
-    expect(metrics.resilience).toBeLessThan(75);
-    expect(metrics.productionScore).toBeGreaterThan(metrics.resilience);
+    expect(metrics.resilience).toBeGreaterThanOrEqual(50);
+    expect(metrics.resilience).toBeLessThan(100);
+    expect(
+      scoreResilience(
+        {
+          ...filesystem,
+          error_handling_paths: ["src/app/error.tsx", "src/errors.ts"],
+        },
+        "web_app"
+      )
+    ).toBeGreaterThan(metrics.resilience);
     expect(capScoreForFilesystemEvidence(metrics.productionScore, filesystem)).toBe(
       metrics.productionScore
     );
@@ -305,17 +322,143 @@ describe("four-pillar production audit", () => {
     ).toBeGreaterThanOrEqual(85);
   });
 
-  it("applies a 15-point resilience ding for one unhandled async call", () => {
+  it("applies an 8-point resilience ding for one unhandled async call on small repos", () => {
     const filesystem = classifyRepoFilesystem(
       [...WEB_APP_PATHS, "src/app/error.tsx"],
       { inspected: true }
     );
+    // Pass a mid testing score so the high-coverage soft-cap does not apply.
     expect(
-      scoreResilience({ ...filesystem, unhandled_async_count: 1 }, "web_app")
-    ).toBe(85);
+      scoreResilience(
+        { ...filesystem, unhandled_async_count: 1 },
+        "web_app",
+        "contract",
+        60
+      )
+    ).toBe(92);
     expect(
-      scoreResilience({ ...filesystem, unhandled_async_count: 4 }, "web_app")
-    ).toBe(50);
+      scoreResilience(
+        { ...filesystem, unhandled_async_count: 4 },
+        "web_app",
+        "contract",
+        60
+      )
+    ).toBe(76);
+  });
+
+  it("scales async penalties by incident rate on large monorepos", () => {
+    const filesystem = classifyRepoFilesystem(
+      [...WEB_APP_PATHS, "src/app/error.tsx", "src/lib/api/errors.ts"],
+      { inspected: true }
+    );
+    const dubLike = {
+      ...filesystem,
+      file_count: 1995,
+      source_file_count: 1600,
+      executable_source_count: 1600,
+      unhandled_async_count: 10,
+      error_handling_paths: [
+        "src/app/error.tsx",
+        "src/lib/api/errors.ts",
+      ],
+    };
+    // 10 / 1995 ≈ 0.5% → ~2 points, soft-capped by centralized errors.
+    expect(unhandledAsyncPenalty(dubLike, 10, 90)).toBeLessThanOrEqual(12);
+    expect(unhandledAsyncPenalty(dubLike, 10, 90)).toBeLessThanOrEqual(4);
+    expect(scoreResilience(dubLike, "web_app", "contract", 90)).toBeGreaterThanOrEqual(
+      96
+    );
+  });
+
+  it("soft-caps async penalty at 12 when Testing >= 85", () => {
+    const filesystem = classifyRepoFilesystem(
+      [...WEB_APP_PATHS, "src/app/error.tsx"],
+      { inspected: true }
+    );
+    const smallButWellTested = {
+      ...filesystem,
+      unhandled_async_count: 10,
+    };
+    expect(unhandledAsyncPenalty(smallButWellTested, 10, 40)).toBe(24);
+    expect(unhandledAsyncPenalty(smallButWellTested, 10, 85)).toBe(12);
+  });
+
+  it("keeps Contract resilience at or above 50 for clean structure despite heavy async gaps", () => {
+    const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
+      inspected: true,
+    });
+    expect(
+      scoreResilience(
+        { ...filesystem, unhandled_async_count: 10 },
+        "web_app",
+        "contract"
+      )
+    ).toBeGreaterThanOrEqual(50);
+  });
+
+  it("does not apply a resilience structure floor in Full-Time mode", () => {
+    const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
+      inspected: true,
+    });
+    expect(
+      scoreResilience(
+        { ...filesystem, unhandled_async_count: 10 },
+        "web_app",
+        "fulltime",
+        40
+      )
+    ).toBeLessThan(50);
+  });
+
+  it("scales Full-Time testing under a 50 cap when test files are under 25% of source", () => {
+    const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
+      inspected: true,
+    });
+    const sparse = {
+      ...filesystem,
+      unit_test_file_count: 5,
+      source_file_count: 32,
+      executable_source_count: 32,
+      has_e2e_tools: false,
+    };
+    expect(scoreTesting(sparse, "contract")).toBeGreaterThan(50);
+    expect(scoreTesting(sparse, "fulltime")).toBeLessThanOrEqual(50);
+    expect(scoreTesting(sparse, "fulltime")).toBe(
+      Math.round((5 / 32 / 0.25) * 50)
+    );
+  });
+
+  it("scores thin-test web apps ~76 Contract vs ~58-64 Full-Time", () => {
+    const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
+      inspected: true,
+    });
+    const carfaxLike = {
+      ...filesystem,
+      unit_test_file_count: 5,
+      source_file_count: 32,
+      executable_source_count: 32,
+      has_e2e_tools: false,
+      error_handling_paths: [] as string[],
+      unhandled_async_count: 2,
+      ci_has_lint: true,
+      ci_has_tests: true,
+      ci_has_build: true,
+      ci_depth: "lint_build" as const,
+    };
+
+    const contract = computeProductionAuditMetrics(carfaxLike, "contract");
+    const fulltime = computeProductionAuditMetrics(carfaxLike, "fulltime");
+
+    expect(contract.architecture).toBeGreaterThanOrEqual(75);
+    expect(contract.devops).toBeGreaterThanOrEqual(85);
+    expect(contract.resilience).toBeGreaterThanOrEqual(50);
+    expect(fulltime.resilience).toBe(54); // 100 − 30 boundaries − 16 async
+    expect(fulltime.testing).toBeLessThanOrEqual(50);
+    expect(contract.productionScore).toBeGreaterThanOrEqual(74);
+    expect(contract.productionScore).toBeLessThanOrEqual(82);
+    expect(fulltime.productionScore).toBeGreaterThanOrEqual(58);
+    expect(fulltime.productionScore).toBeLessThanOrEqual(64);
+    expect(fulltime.productionScore).toBeLessThan(contract.productionScore);
   });
 
   it("subtracts 30 from an upstream fork or template and floors at 0", () => {

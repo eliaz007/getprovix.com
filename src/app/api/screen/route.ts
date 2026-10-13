@@ -233,7 +233,7 @@ Return strict JSON only in this exact structure:
   "executiveBrief": {
     "employerSummary": "2-3 concise sentences on production risk and team fit for a founder",
     "developerSummary": "2-3 direct sentences of peer review plus the highest-leverage architectural fix",
-    "recommendedRoleBand": "Intern / Junior | Mid-Level | Early-Stage Generalist | Needs Hardening"
+    "recommendedRoleBand": "Elite Sprint Contractor | Verified Sprint Builder | Supervised Feature Builder | Needs Hardening | Production-Grade / Core Lead | Mid/Senior Production-Ready | Needs Refinement"
   }
 }
 
@@ -320,7 +320,7 @@ const SCREEN_RESPONSE_SCHEMA = {
         recommendedRoleBand: {
           type: Type.STRING,
           description:
-            "Intern / Junior, Mid-Level, Early-Stage Generalist, or Needs Hardening. Follow deterministicMetrics.roleBandRule.",
+            "Mode tier from deterministicMetrics. Never invent Mid-Level or Early-Stage Generalist.",
         },
       },
       required: [
@@ -531,6 +531,7 @@ function finalizeScreenWithBreakdown(
     devopsScore: metrics.devops,
     resilienceScore: metrics.resilience,
     isUpstreamDerivative,
+    auditMode: "contract",
   });
 
   return {
@@ -609,6 +610,7 @@ function applyScreenFilesystemCap(
     devopsScore: metrics.devops,
     resilienceScore: metrics.resilience,
     isUpstreamDerivative,
+    auditMode: "contract",
   });
   const github_audit = result.github_audit
     ? { ...result.github_audit, executiveBrief }

@@ -7,6 +7,7 @@ import type {
   RepoFilesystemEvidence,
   ScoreCapAudit,
 } from "@/lib/repo-filesystem";
+import { deriveDualModeScores } from "@/lib/audit-mode";
 import { computeProductionAuditMetrics } from "@/lib/production-audit-metrics";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
@@ -71,11 +72,16 @@ export function isVerifiedDossier(
 export type ProductionAuditHistoryEntry = {
   id: string;
   productionScore: number;
+  /** Mode-aware scores for dual-line trajectory charts. */
+  contractScore: number;
+  fullTimeScore: number;
   auditedRepoUrl: string;
   auditedAt: string;
   ciCdScore: number;
   testDensity: number;
   errorHandling: number;
+  architectureScore: number;
+  commitSha: string | null;
   createdAt: string;
 };
 
@@ -583,14 +589,53 @@ export function parseProductionAuditHistoryRow(
   const createdAt =
     typeof row.created_at === "string" ? row.created_at : auditedAt;
 
+  const productionScore = clampScore0to100(row.production_score);
+  const ciCdScore = clampScore0to100(row.ci_cd_score);
+  const testDensity = clampScore0to100(row.test_density);
+  const errorHandling = clampScore0to100(row.error_handling);
+  const architectureScore = clampScore0to100(
+    row.architecture_score ?? row.architectureScore
+  );
+  const dual = deriveDualModeScores({
+    productionScore,
+    contractScore:
+      typeof row.contract_score === "number"
+        ? row.contract_score
+        : typeof row.contractScore === "number"
+          ? row.contractScore
+          : null,
+    fullTimeScore:
+      typeof row.fulltime_score === "number"
+        ? row.fulltime_score
+        : typeof row.full_time_score === "number"
+          ? row.full_time_score
+          : typeof row.fullTimeScore === "number"
+            ? row.fullTimeScore
+            : null,
+    architecture: architectureScore > 0 ? architectureScore : null,
+    testing: testDensity,
+    devops: ciCdScore,
+    resilience: errorHandling,
+  });
+  const commitSha =
+    typeof row.commit_sha === "string" && row.commit_sha.trim()
+      ? row.commit_sha.trim()
+      : typeof row.commitSha === "string" && row.commitSha.trim()
+        ? row.commitSha.trim()
+        : null;
+
   return {
     id: row.id,
-    productionScore: clampScore0to100(row.production_score),
+    productionScore,
+    contractScore: dual.contractScore,
+    fullTimeScore: dual.fullTimeScore,
     auditedRepoUrl,
     auditedAt,
-    ciCdScore: clampScore0to100(row.ci_cd_score),
-    testDensity: clampScore0to100(row.test_density),
-    errorHandling: clampScore0to100(row.error_handling),
+    ciCdScore,
+    testDensity,
+    errorHandling,
+    architectureScore,
+    commitSha,
     createdAt,
   };
 }

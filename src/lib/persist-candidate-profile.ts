@@ -220,17 +220,66 @@ export function serializePersistError(error: unknown): Record<string, unknown> {
     } catch {
       json = "[unserializable]";
     }
+    // Prefer own + inherited enumerable fields; fall back to explicit keys
+    // because some PostgrestError shapes serialize to "{}".
+    const message =
+      typeof record.message === "string"
+        ? record.message
+        : typeof (record as { msg?: unknown }).msg === "string"
+          ? String((record as { msg: string }).msg)
+          : undefined;
     return {
-      message: typeof record.message === "string" ? record.message : undefined,
+      message,
       details: record.details,
       hint: record.hint,
       code: record.code,
       status: record.status ?? record.statusCode,
-      json,
+      userMessage:
+        typeof record.userMessage === "string" ? record.userMessage : undefined,
+      json: json && json !== "{}" ? json : undefined,
+      keys: Object.keys(record),
+      stringTag: Object.prototype.toString.call(error),
     };
   }
 
   return { error: String(error) };
+}
+
+function asProfileRow(data: unknown): Record<string, unknown> | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+  return data as Record<string, unknown>;
+}
+
+/** Load a profile by auth user id, trying `id` then `user_id`. */
+async function loadProfileForUserId(
+  supabase: SupabaseClient,
+  userId: string,
+  select: string
+): Promise<Record<string, unknown> | null> {
+  const byId = await supabase
+    .from("profiles")
+    .select(select)
+    .eq("id", userId)
+    .maybeSingle();
+  if (!byId.error) {
+    const row = asProfileRow(byId.data);
+    if (row) {
+      return row;
+    }
+  }
+
+  const byUserId = await supabase
+    .from("profiles")
+    .select(select)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!byUserId.error) {
+    return asProfileRow(byUserId.data);
+  }
+
+  return null;
 }
 
 function formatPersistError(
@@ -395,41 +444,13 @@ export async function persistCandidatePoolVisibility(
       const visibilitySelectFallback =
         "id, user_id, github_verified, github_username, verification_status, production_score, audit_score, portfolio_url";
 
-      async function loadVisibilityProfile(select: string) {
-        // Dynamic `.select(string)` makes Supabase infer `GenericStringError`;
-        // normalize through `unknown` so we can read fields safely below.
-        const asRow = (data: unknown): Record<string, unknown> | null => {
-          if (!data || typeof data !== "object" || Array.isArray(data)) {
-            return null;
-          }
-          return data as Record<string, unknown>;
-        };
-
-        const byId = await supabase
-          .from("profiles")
-          .select(select)
-          .eq("id", userId)
-          .maybeSingle();
-        if (!byId.error) {
-          const row = asRow(byId.data);
-          if (row) {
-            return row;
-          }
-        }
-        const byUserId = await supabase
-          .from("profiles")
-          .select(select)
-          .eq("user_id", userId)
-          .maybeSingle();
-        if (!byUserId.error) {
-          return asRow(byUserId.data);
-        }
-        return null;
-      }
-
       let profile =
-        (await loadVisibilityProfile(visibilitySelectFull)) ??
-        (await loadVisibilityProfile(visibilitySelectFallback));
+        (await loadProfileForUserId(supabase, userId, visibilitySelectFull)) ??
+        (await loadProfileForUserId(
+          supabase,
+          userId,
+          visibilitySelectFallback
+        ));
 
       const history = await supabase
         .from("production_audit_history")
@@ -683,13 +704,13 @@ export async function persistCandidateProfile(
       };
     }
 
-    const { data: publishGateProfile } = await supabase
-      .from("profiles")
-      .select(
-        "id, role, full_name, name, first_name, last_name, job_title, headline, bio, skills, github_verified, github_username, verification_status, is_audit_verified, production_score, audit_score, audit_breakdown, portfolio_url, is_visible_in_pool, visible_to_employers"
-      )
-      .eq("id", userId)
-      .maybeSingle();
+    const publishGateSelect =
+      "id, role, full_name, name, first_name, last_name, job_title, headline, bio, skills, github_verified, github_username, verification_status, is_audit_verified, production_score, audit_score, audit_breakdown, portfolio_url, is_visible_in_pool, visible_to_employers";
+    let publishGateProfile = await loadProfileForUserId(
+      supabase,
+      userId,
+      publishGateSelect
+    );
 
     const mergedForPublish: PublishedCandidateProfileRow = {
       ...(publishGateProfile ?? {}),
@@ -697,17 +718,28 @@ export async function persistCandidateProfile(
       full_name:
         typeof payload.full_name === "string"
           ? payload.full_name
-          : publishGateProfile?.full_name,
+          : typeof publishGateProfile?.full_name === "string"
+            ? publishGateProfile.full_name
+            : null,
       job_title:
         typeof payload.job_title === "string"
           ? payload.job_title
-          : publishGateProfile?.job_title,
+          : typeof publishGateProfile?.job_title === "string"
+            ? publishGateProfile.job_title
+            : null,
       bio:
-        typeof payload.bio === "string" ? payload.bio : publishGateProfile?.bio,
-      skills:
-        Array.isArray(payload.skills)
-          ? payload.skills
-          : publishGateProfile?.skills,
+        typeof payload.bio === "string"
+          ? payload.bio
+          : typeof publishGateProfile?.bio === "string"
+            ? publishGateProfile.bio
+            : null,
+      skills: Array.isArray(payload.skills)
+        ? (payload.skills as string[])
+        : Array.isArray(publishGateProfile?.skills)
+          ? (publishGateProfile.skills as string[]).filter(
+              (skill): skill is string => typeof skill === "string"
+            )
+          : null,
       github_verified: publishGateProfile?.github_verified === true,
       production_score:
         typeof publishGateProfile?.production_score === "number"
@@ -749,6 +781,33 @@ export async function persistCandidateProfile(
       payload.open_to_fulltime === true || payload.open_to_contract === true;
 
     if (wantsMarketplaceAvailability) {
+      // Match the green "✓ Linked / Ownership verified" UI: sync OAuth GitHub
+      // onto the profile before gating, and resolve ownership via audit history
+      // when the profile row is still catching up.
+      const syncedLink = await syncGitHubIdentityToProfile(
+        supabase,
+        session.user
+      );
+      publishGateProfile =
+        (await loadProfileForUserId(supabase, userId, publishGateSelect)) ??
+        publishGateProfile;
+
+      const history = await supabase
+        .from("production_audit_history")
+        .select("production_score, audited_repo_url")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const historyScore =
+        typeof history.data?.production_score === "number"
+          ? history.data.production_score
+          : null;
+      const historyRepoUrl =
+        typeof history.data?.audited_repo_url === "string"
+          ? history.data.audited_repo_url
+          : null;
+
       const profileScores = [
         typeof publishGateProfile?.production_score === "number"
           ? publishGateProfile.production_score
@@ -758,54 +817,62 @@ export async function persistCandidateProfile(
           : null,
       ];
 
-      let historyScore: number | null = null;
-      if (!hasQualifyingTalentPoolAudit(...profileScores)) {
-        const history = await supabase
-          .from("production_audit_history")
-          .select("production_score")
-          .eq("user_id", userId)
-          .gte("production_score", 75)
-          .limit(1)
-          .maybeSingle();
-        if (typeof history.data?.production_score === "number") {
-          historyScore = history.data.production_score;
-        }
-      }
-
       const githubUsername =
-        typeof publishGateProfile?.github_username === "string"
-          ? publishGateProfile.github_username
-          : null;
+        (typeof publishGateProfile?.github_username === "string" &&
+        publishGateProfile.github_username.trim()
+          ? String(publishGateProfile.github_username)
+          : null) ??
+        syncedLink?.github_username ??
+        null;
       const githubVerified = isTalentPoolGitHubLinked({
-        githubVerified: publishGateProfile?.github_verified === true,
+        githubVerified:
+          publishGateProfile?.github_verified === true ||
+          syncedLink?.github_verified === true,
         githubUsername,
       });
-      const publishAudit = parseProductionAuditFromProfileRow(publishGateProfile);
+      const publishAudit = parseProductionAuditFromProfileRow(
+        publishGateProfile
+          ? {
+              production_score:
+                typeof publishGateProfile.production_score === "number" ||
+                typeof publishGateProfile.production_score === "string"
+                  ? publishGateProfile.production_score
+                  : null,
+              audit_breakdown: publishGateProfile.audit_breakdown,
+              is_audit_verified:
+                typeof publishGateProfile.is_audit_verified === "boolean"
+                  ? publishGateProfile.is_audit_verified
+                  : null,
+              verification_status:
+                typeof publishGateProfile.verification_status === "string"
+                  ? publishGateProfile.verification_status
+                  : null,
+            }
+          : null
+      );
+      const portfolioUrl =
+        typeof publishGateProfile?.portfolio_url === "string"
+          ? publishGateProfile.portfolio_url
+          : typeof payload.portfolio_url === "string"
+            ? payload.portfolio_url
+            : null;
       const ownershipVerified = isTalentPoolOwnershipVerified({
         verificationStatus:
           typeof publishGateProfile?.verification_status === "string"
             ? publishGateProfile.verification_status
-            : null,
+            : publishAudit?.verificationStatus ?? null,
         isAuditVerified:
           publishGateProfile?.is_audit_verified === true ||
           publishAudit?.isAuditVerified === true,
         auditedRepoUrl: resolveTalentPoolAuditedRepoUrl({
           auditedRepoUrl: publishAudit?.breakdown.audited_repo_url,
           auditBreakdown: publishGateProfile?.audit_breakdown,
-          portfolioUrl:
-            typeof publishGateProfile?.portfolio_url === "string"
-              ? publishGateProfile.portfolio_url
-              : typeof payload.portfolio_url === "string"
-                ? payload.portfolio_url
-                : null,
+          portfolioUrl,
+          historyRepoUrl,
         }),
         auditBreakdown: publishGateProfile?.audit_breakdown,
-        portfolioUrl:
-          typeof publishGateProfile?.portfolio_url === "string"
-            ? publishGateProfile.portfolio_url
-            : typeof payload.portfolio_url === "string"
-              ? payload.portfolio_url
-              : null,
+        portfolioUrl,
+        historyRepoUrl,
         githubUsername,
       });
       const isVisibleInPool =
@@ -826,6 +893,21 @@ export async function persistCandidateProfile(
       if (publishFailures.length > 0) {
         const message =
           formatMarketplacePublishSaveBlockedMessage(publishFailures);
+        console.error(
+          "[persist-candidate-profile] marketplace availability blocked",
+          {
+            failures: publishFailures,
+            githubVerified,
+            ownershipVerified,
+            githubUsername,
+            isVisibleInPool,
+            historyRepoUrl,
+            syncedLink,
+            profileGithubVerified: publishGateProfile?.github_verified,
+            verificationStatus: publishGateProfile?.verification_status,
+            isAuditVerified: publishGateProfile?.is_audit_verified,
+          }
+        );
         return {
           data: null,
           error: { message },

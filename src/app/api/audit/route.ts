@@ -71,6 +71,15 @@ import {
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import {
+  assignAuditTier,
+  auditModeLabel,
+  buildAuditModeRubricPrompt,
+  buildModeAwareEvaluation,
+  normalizeAuditMode,
+  type AuditMode,
+  type EvaluationBreakdown,
+} from "@/lib/audit-mode";
+import {
   applyUpstreamDerivativePenalty,
   computeProductionAuditMetrics,
   emptyProductionAuditMetrics,
@@ -116,8 +125,12 @@ export const runtime = "nodejs";
 export type AuditRequestBody = {
   targetRole?: string;
   githubUrl?: string;
+  /** Alias accepted from clients that send repoUrl instead of githubUrl. */
+  repoUrl?: string;
   resumeSummary?: string;
   compensationLevel?: string;
+  /** Dual-mode evaluation: contract (sprint) vs fulltime (enterprise). */
+  auditMode?: AuditMode;
   workIsPrivate?: boolean;
   playground?: boolean;
   /** Homepage teaser: score any public repo without authorship or session gates. */
@@ -135,8 +148,10 @@ export type AuditRequestBody = {
 const auditRequestBodySchema = z.object({
   targetRole: z.string().optional(),
   githubUrl: z.string().optional(),
+  repoUrl: z.string().optional(),
   resumeSummary: z.string().optional(),
   compensationLevel: z.string().optional(),
+  auditMode: z.string().optional(),
   workIsPrivate: z.unknown().optional(),
   playground: z.boolean().optional(),
   isPublicTeaser: z.boolean().optional(),
@@ -152,9 +167,19 @@ export type { ScoreCapAudit };
 
 export type { ProductionAuditMetrics };
 
+export type { AuditMode, EvaluationBreakdown };
+
 export type AuditResult = {
   score: number;
+  /** Alias of score for the dual-mode evaluation schema. */
+  overallScore: number;
+  auditMode: AuditMode;
+  tier: string;
+  breakdown: EvaluationBreakdown;
+  summary: string;
   strengths: string[];
+  /** Alias of recommendations for the dual-mode evaluation schema. */
+  improvements: string[];
   redFlags: string[];
   recommendations: string[];
   checks: AuditCheck[];
@@ -169,25 +194,22 @@ export type AuditResult = {
   executiveBrief: ExecutiveBrief | null;
 };
 
-const SYSTEM_PROMPT = `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws. Strict penalties are required — and every hard deduction must come with a concrete repair plan the candidate can implement.
+function buildSystemPrompt(auditMode: AuditMode): string {
+  return `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws. Strict penalties are required — and every hard deduction must come with a concrete repair plan the candidate can implement.
 
 RULES FOR YOUR AUDIT:
 1. NO BUZZWORDS: Never use words like "resiliency," "robust," "seamless," "leverage," "cutting-edge," or "paradigm." Speak in plain, direct, technical English.
 2. CITE SPECIFIC EVIDENCE: You are forbidden from claiming a code flaw or strength unless you can point to a specific file path from filesystem inspection, file type, directory pattern, commit history detail, live/documentation URL, or technical-breakdown detail you actually observed in the provided artifacts.
-3. HARSH SCORING: Grade out of 100 like a strict employer using the four-pillar weighted model. A score of 100 requires strong architecture plus file-system proof of tests, CI, and structured error handling. Never clamp the overall score to 60 (or 50) because error handling, tests, or CI is missing — those gaps lower only their pillar. Do not deduct any numerical points for commit age or inactivity; tag the repo "active" or "stable" instead.
+3. MODE-AWARE SCORING: Grade out of 100 using the EVALUATION MODE rubric injected below (contract vs fulltime). Never invent your own weights. Copy overallScore, auditMode, tier, and breakdown from deterministicMetrics. Do not deduct any numerical points for commit age or inactivity; tag the repo "active" or "stable" instead.
 4. CONSTRUCTIVE, ACTIONABLE FIXES: Do not stop at the penalty. Pair every major deduction with a recommendation that names the exact file, nested package path, config, or command to add, the test runner or CI system to use, and what file-tree proof would raise that pillar. Vague coaching ("add more tests", "improve quality") is forbidden.
 5. CODE-FIRST: Provix scores repositories and file-system artifacts, not paperwork. A missing resume or experience summary must not lower the score and must not appear in redFlags. If resumeText is empty, ignore that absence. If a resume is present, use it only to check claim-vs-code mismatches.
 6. CALL OUT DISCREPANCIES: If the resume claims advanced capabilities (like distributed systems or complex state management) but the GitHub repo or external project write-up is a basic template, you must penalize the score heavily and state the mismatch explicitly.
 7. FILE-SYSTEM EVIDENCE VS PROSE: README text, resume bullets, commit messages, and external project write-ups are claims, not proof. They must never override missing code artifacts. Treat scorePolicy.coreArtifacts and scorePolicy.missingCoreArtifacts as the authority for whether tests, CI, and error handling exist. If those lists say an artifact is present, it is present — even when the files live in a nested package or use a non-Jest runner. Do not invent files that are not listed.
-8. FOUR-PILLAR WEIGHTED SCORE (proportional grades, no binary 0/100 drops):
-   - Overall score = Math.round(architecture * 0.35 + testing * 0.25 + devops * 0.20 + resilience * 0.20). Each pillar is 0-100.
-   - Architecture (35%): structure, type safety, modularity.
-   - Testing (25%): 0 only when no *.test.* / *.spec.* files exist among core application/library paths. The test/source ratio denominator counts only core executable source (*.ts/*.tsx/*.js/*.jsx), excluding examples/, example/, demo/, demos/, tutorials/, tutorial/, samples/, and docs/. Token coverage (test/source ratio < 0.10) caps at 35. Ratio 0.10–0.30 maps to 65–75. Ratio > 0.30 with Playwright/Cypress reaches 85–100.
-   - DevOps / CI (20%): proportional to lint/test/build gates aggregated across all inspected workflow bodies (including turbo lint/test/build). No workflows → 0. Workflows without detected gates → 0–30. One gate → 65–72. Two gates → 78–84. All three → 90–100 (deploy / multi-workflow lifts toward 100).
-   - Resilience (20%): start at 100. Web apps missing root error.tsx / ErrorBoundary lose 35. Each unhandled async/await or fetch without try/catch loses 15, max −50. Floor at 0. A single unhandled error is 85, never 0.
-   - A pillar is 0 only when the capability is genuinely absent. Superficial testing or resilience must be capped, not zeroed. Never cap the total score at 60 or 50. Never invent a missing-test or missing-CI failure because the repo is a monorepo or the runner is not Jest.
-   - If scorePolicy.repoKind is "library" (library, package, or backend tool), do not penalize missing React error boundaries; grade resilience from unhandled async/fetch only.
-   - If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct 35 from resilience only.
+8. FOUR-CATEGORY WEIGHTED SCORE — follow the EVALUATION MODE block exactly (contract vs fulltime). Pillar keys map as: architecture→architecture, security→resilience, tooling→devops, testing→testing. Never invent a missing-test or missing-CI failure because the repo is a monorepo or the runner is not Jest.
+   - If scorePolicy.repoKind is "library" (library, package, or backend tool), do not penalize missing React error boundaries; grade security from unhandled async/fetch and validation only.
+   - If scorePolicy.repoKind is "web_app" and error boundaries are missing, deduct from the security pillar only per deterministicMetrics.
+
+${buildAuditModeRubricPrompt(auditMode)}
 9. MONOREPOS AND ALTERNATIVE TEST RUNNERS: Nested packages under apps/, packages/, services/, libs/, modules/, or workspaces/ are valid production layouts. Tests, CI, and error-handling files inside those packages count. Jest, Vitest, Ava, Mocha, node:test, Pytest, Go testing, Playwright, Cypress, RSpec, JUnit, and similar runners count when their files or configs appear in filesystem.test_paths / ci_workflow_paths / error_handling_paths. Do not treat a missing repo-root /tests folder as a missing suite. If filesystem.truncated is true, do not assume nested package artifacts are absent just because they are not at the repository root; only treat an artifact as missing when scorePolicy lists it in missingCoreArtifacts.
 10. PRIVATE / ENTERPRISE FALLBACK: If workIsPrivate is true, no public GitHub repository is available, or githubArtifacts are empty/thin (ghost repository), do NOT fail the audit for a missing public repo. Evaluate externalProjects for qualitative checks (architecture notes, APIs, ownership). Those write-ups remain prose: they cannot substitute for missing file-system artifacts. Never say the audit could not be completed solely because GitHub is private.
 11. REPO ACTIVITY: Do not deduct any numerical quality points for commit age, inactivity, clustered commits, or a finished repository. You may mention an informational activity tag of "active" (recent commits) or "stable" (older / inactive). Never apply a History −25 or similar cadence penalty. When scorePolicy shows tests, CI, and error handling are present, the score should stay aligned with that production evidence.
@@ -195,10 +217,21 @@ RULES FOR YOUR AUDIT:
 
 Return strict JSON only:
 {
-  "score": number (integer 0-100 after the four-pillar weighted model; never hard-capped at 60),
-  "strengths": ["strength cited with a file path, file type, directory pattern, or commit-history detail", "..."],
+  "score": number (alias of overallScore),
+  "overallScore": number (0-100; copy deterministicMetrics.overallScore),
+  "auditMode": "contract" | "fulltime",
+  "tier": string (copy deterministicMetrics.tier),
+  "breakdown": {
+    "architecture": number,
+    "security": number,
+    "tooling": number,
+    "testing": number
+  },
+  "summary": "2-4 sentence founder-facing summary naming the mode and tier",
+  "strengths": ["strength cited with evidence", "..."],
+  "improvements": ["concrete fix", "...", "..."],
   "redFlags": ["flaw or resume/repo mismatch cited with evidence", "..."],
-  "recommendations": ["concrete file/config/command to add, including nested package paths when relevant", "...", "..."],
+  "recommendations": ["same as improvements — exactly 3 actionable fixes", "...", "..."],
   "checks": [
     {
       "id": "artifact_analysis",
@@ -219,24 +252,21 @@ Return strict JSON only:
   "executiveBrief": {
     "employerSummary": "2-3 concise sentences on production risk and team fit for a founder",
     "developerSummary": "2-3 direct sentences of peer review plus the highest-leverage architectural fix",
-    "recommendedRoleBand": "Intern / Junior | Mid-Level | Early-Stage Generalist | Needs Hardening"
+    "recommendedRoleBand": "Elite Sprint Contractor | Verified Sprint Builder | Supervised Feature Builder | Needs Hardening | Production-Grade / Core Lead | Mid/Senior Production-Ready | Needs Refinement"
   }
 }
 
 JSON field rules:
-- score: integer 0-100 from the four-pillar weighted model in rule 8. 100 is only for production-grade architecture with file-system proof of tests, CI, and error handling. Do not deduct for a missing resume. Do not deduct merely for a monorepo layout or a non-Jest test runner. Do not deduct for inactivity (rule 11).
-- strengths: 3-5 bullets. Each must cite a file path, file type, directory pattern, commit-history detail, live/documentation URL, or technical-breakdown detail from the provided artifacts. If you cannot cite it, omit it. Nested package paths and alternative test-runner files are valid citations. Do not cite README claims as proof of tests, CI, or error handling.
-- redFlags: 2-5 bullets. Include resume claims that the GitHub or external-project artifacts do not support. If scorePolicy.missingCoreArtifacts is non-empty, say so. Do not red-flag a missing repo-root /tests folder when nested package tests or alternative runners are listed. Do not treat a missing public GitHub repo as a hard fail when externalProjects were provided or workIsPrivate is true. Never list a missing resume, CV, or experience summary as a red flag.
-- recommendations: exactly 3 constructive, actionable fixes. Each must name a concrete file, nested package path, config, or command from the primaryLanguage toolchain (rule 12), plus what evidence would lift the related penalty.
-- checks: exactly 3 objects in this order. Each summary is 1-3 sentences, no markdown, and must cite observed evidence. If scorePolicy says an artifact is missing, say so and deduct; if it is present in a nested package, credit it.
-  - Check 1 artifact_analysis: README quality, commit history, repo age, languages, live/docs URLs, and whether artifacts support resume claims. Treat README as a claim sheet, not as a substitute for files. Stale but real history is an informational "stable" tag (rule 11), not a score deduction.
-  - Check 2 architecture_review: folder/module structure from the file tree or technical-breakdown architecture and whether the candidate shows real system design, not a template. Monorepo package maps count as architecture, not as a flaw.
-  - Check 3 api_resiliency: API design, data handling, error handling, tests, and production standards. Pass/fail tests, CI, and error handling from scorePolicy.coreArtifacts and the listed filesystem paths, including nested packages and alternative runners.
-- executiveBrief is required. Use deterministicMetrics as the only source for productionScore, is_upstream_derivative, architectureScore, testScore, devopsScore, and resilienceScore. Do not recompute those numbers.
-  - employerSummary: 2-3 concise sentences for a founder. Cover production risk and whether this person fits a small team. Mention the upstream-fork deduction when is_upstream_derivative is true.
-  - developerSummary: 2-3 direct sentences of objective peer review. Name the highest-leverage architectural fix.
-  - recommendedRoleBand: copy deterministicMetrics.roleBandRule exactly. Mid-Level only when productionScore >= 75 and testScore >= 65 and resilienceScore >= 80. Early-Stage Generalist when productionScore >= 75 but tests or resilience miss that bar, or when productionScore is 70-74 with either testScore >= 65 or resilienceScore >= 80. Intern / Junior when productionScore < 70 and either testScore >= 65 or resilienceScore >= 80. Otherwise Needs Hardening.
+- overallScore / score / auditMode / tier / breakdown: copy deterministicMetrics exactly. Do not recompute. Do not deduct for a missing resume, monorepo layout, non-Jest runner, or inactivity (rule 11).
+- summary: 2-4 sentences for a founder. Name the evaluation mode (${auditMode}) and tier. Mention upstream-fork deduction when is_upstream_derivative is true.
+- strengths: 3-5 bullets with file-path evidence. Do not cite README claims as proof of tests, CI, or error handling.
+- improvements / recommendations: exactly 3 constructive fixes (same content in both arrays). Name concrete files/commands from the primaryLanguage toolchain (rule 12).
+- redFlags: 2-5 bullets. Prefer mode-relevant gaps (fulltime: missing tests/CI; contract: architecture/security). Never list a missing resume as a red flag.
+- checks: exactly 3 objects in order. Summaries must cite observed evidence.
+- executiveBrief is required. Use deterministicMetrics for productionScore, overallScore, auditMode, tier, breakdown, and pillar scores.
+  - recommendedRoleBand: copy deterministicMetrics.roleBandRule exactly.
 - No markdown, no extra keys. Never use the banned buzzwords above.`;
+}
 
 const AUDIT_CHECK_SCHEMA = {
   type: Type.OBJECT,
@@ -252,17 +282,52 @@ const AUDIT_CHECK_SCHEMA = {
   required: ["id", "title", "summary"],
 };
 
+const EVALUATION_BREAKDOWN_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    architecture: { type: Type.INTEGER },
+    security: { type: Type.INTEGER },
+    tooling: { type: Type.INTEGER },
+    testing: { type: Type.INTEGER },
+  },
+  required: ["architecture", "security", "tooling", "testing"],
+};
+
 const AUDIT_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     score: {
       type: Type.INTEGER,
       description:
-        "Overall hiring readiness score from 0 to 100 from the four-pillar weighted model (architecture 35%, testing 25%, DevOps 20%, resilience 20%). Do not lower the score for a missing resume. Do not hard-cap at 60 for missing error handling. Do not deduct for commit age.",
+        "Alias of overallScore. Copy deterministicMetrics.overallScore.",
+    },
+    overallScore: {
+      type: Type.INTEGER,
+      description:
+        "0–100 mode-weighted score. Copy deterministicMetrics.overallScore.",
+    },
+    auditMode: {
+      type: Type.STRING,
+      description: 'contract | fulltime. Copy deterministicMetrics.auditMode.',
+    },
+    tier: {
+      type: Type.STRING,
+      description: "Mode-specific readiness tier. Copy deterministicMetrics.tier.",
+    },
+    breakdown: EVALUATION_BREAKDOWN_SCHEMA,
+    summary: {
+      type: Type.STRING,
+      description:
+        "2–4 sentence founder-facing summary naming mode and tier.",
     },
     strengths: {
       type: Type.ARRAY,
       items: { type: Type.STRING },
+    },
+    improvements: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: "Same content as recommendations — exactly 3 actionable fixes.",
     },
     redFlags: {
       type: Type.ARRAY,
@@ -298,7 +363,7 @@ const AUDIT_RESPONSE_SCHEMA = {
         recommendedRoleBand: {
           type: Type.STRING,
           description:
-            "Intern / Junior, Mid-Level, Early-Stage Generalist, or Needs Hardening. Follow deterministicMetrics.roleBandRule.",
+            "Mode tier from deterministicMetrics (Contract: Elite Sprint Contractor / Verified Sprint Builder / Supervised Feature Builder / Needs Hardening). Never invent Mid-Level or Early-Stage Generalist.",
         },
       },
       required: [
@@ -310,13 +375,66 @@ const AUDIT_RESPONSE_SCHEMA = {
   },
   required: [
     "score",
+    "overallScore",
+    "auditMode",
+    "tier",
+    "breakdown",
+    "summary",
     "strengths",
+    "improvements",
     "redFlags",
     "recommendations",
     "checks",
     "executiveBrief",
   ],
 };
+
+function emptyBreakdown(): EvaluationBreakdown {
+  return {
+    architecture: 0,
+    security: 0,
+    tooling: 0,
+    testing: 0,
+  };
+}
+
+function attachModeEvaluation(
+  result: AuditResult,
+  mode: AuditMode,
+  metrics: ProductionAuditMetrics,
+  summaryFallback?: string
+): AuditResult {
+  const evaluation = buildModeAwareEvaluation(mode, {
+    architecture: metrics.architecture,
+    testing: metrics.testing,
+    devops: metrics.devops,
+    resilience: metrics.resilience,
+  });
+  const summary =
+    result.summary?.trim() ||
+    result.executiveBrief?.employerSummary?.trim() ||
+    summaryFallback?.trim() ||
+    `${auditModeLabel(mode)} · ${evaluation.tier} · ${evaluation.overallScore}/100.`;
+  const improvements =
+    result.improvements?.length >= 3
+      ? result.improvements.slice(0, 3)
+      : result.recommendations.slice(0, 3);
+
+  return {
+    ...result,
+    score: evaluation.overallScore,
+    overallScore: evaluation.overallScore,
+    auditMode: mode,
+    tier: evaluation.tier,
+    breakdown: evaluation.breakdown,
+    summary,
+    improvements,
+    metrics: {
+      ...metrics,
+      productionScore: evaluation.overallScore,
+    },
+  };
+}
 
 const MODEL_CANDIDATES = [
   "gemini-3.6-flash",
@@ -677,27 +795,70 @@ function normalizeAuditResult(raw: unknown): AuditResult {
         )
       : clampScore(record.score);
 
+  const resolvedRecommendations =
+    recommendations.length >= 3
+      ? recommendations.slice(0, 3)
+      : [
+          ...recommendations,
+          "Add a public GitHub repo with README, architecture notes, and recent commits.",
+          "Add file-system proof of tests, CI workflows, and error handling.",
+          "Align project stack keywords with the target role in your headline and bio.",
+        ].slice(0, 3);
+  const improvements = normalizeStringArray(
+    record.improvements ?? resolvedRecommendations,
+    3
+  ).map(sanitizeHistoryPenaltyCopy);
+  const auditMode = normalizeAuditMode(record.auditMode);
+  const breakdown =
+    record.breakdown &&
+    typeof record.breakdown === "object" &&
+    !Array.isArray(record.breakdown)
+      ? {
+          architecture: clampScore(
+            (record.breakdown as Record<string, unknown>).architecture
+          ),
+          security: clampScore(
+            (record.breakdown as Record<string, unknown>).security
+          ),
+          tooling: clampScore(
+            (record.breakdown as Record<string, unknown>).tooling
+          ),
+          testing: clampScore(
+            (record.breakdown as Record<string, unknown>).testing
+          ),
+        }
+      : emptyBreakdown();
+  const overallScore = clampScore(record.overallScore ?? score);
+  const summary =
+    typeof record.summary === "string"
+      ? sanitizeHistoryPenaltyCopy(record.summary)
+      : "";
+
   return {
-    score,
+    score: overallScore,
+    overallScore,
+    auditMode,
+    tier:
+      typeof record.tier === "string" && record.tier.trim()
+        ? record.tier.trim()
+        : "Needs Refinement",
+    breakdown,
+    summary,
     strengths: normalizeStringArray(record.strengths, 5).map(
       sanitizeHistoryPenaltyCopy
     ),
+    improvements:
+      improvements.length >= 3
+        ? improvements.slice(0, 3)
+        : resolvedRecommendations,
     redFlags,
-    recommendations:
-      recommendations.length >= 3
-        ? recommendations.slice(0, 3)
-        : [
-            ...recommendations,
-            "Add a public GitHub repo with README, architecture notes, and recent commits.",
-            "Add file-system proof of tests, CI workflows, and error handling.",
-            "Align project stack keywords with the target role in your headline and bio.",
-          ].slice(0, 3),
+    recommendations: resolvedRecommendations,
     checks: normalizeAuditChecks(record.checks).map((check) => ({
       ...check,
       summary: sanitizeHistoryPenaltyCopy(check.summary),
     })),
     scoreCap:
-      parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(score),
+      parseScoreCapAudit(record.scoreCap) ?? emptyScoreCapAudit(overallScore),
     metrics: emptyProductionAuditMetrics(),
     filesystem: optionalFilesystem(record.filesystem),
     commitDates: normalizeCommitDates(record.commitDates ?? record.commit_dates),
@@ -740,11 +901,14 @@ function parseJsonValue(value: string | undefined): unknown {
 function normalizeAuditRequestBody(
   body: z.infer<typeof auditRequestBodySchema>
 ): AuditRequestBody {
+  const githubUrl = body.githubUrl?.trim() || body.repoUrl?.trim() || undefined;
   return {
     targetRole: body.targetRole,
-    githubUrl: body.githubUrl,
+    githubUrl,
+    repoUrl: body.repoUrl,
     resumeSummary: body.resumeSummary,
     compensationLevel: body.compensationLevel,
+    auditMode: normalizeAuditMode(body.auditMode),
     workIsPrivate: parseWorkIsPrivate(body.workIsPrivate),
     playground: body.playground === true,
     isPublicTeaser: body.isPublicTeaser === true,
@@ -769,9 +933,12 @@ async function readAuditRequest(request: Request): Promise<
         ok: true,
         body: {
           targetRole: formString(form, "targetRole"),
-          githubUrl: formString(form, "githubUrl"),
+          githubUrl:
+            formString(form, "githubUrl") || formString(form, "repoUrl"),
+          repoUrl: formString(form, "repoUrl"),
           resumeSummary: formString(form, "resumeSummary"),
           compensationLevel: formString(form, "compensationLevel"),
+          auditMode: normalizeAuditMode(formString(form, "auditMode")),
           workIsPrivate: parseWorkIsPrivate(formString(form, "workIsPrivate")),
           playground: formString(form, "playground") === "true",
           isPublicTeaser: formString(form, "isPublicTeaser") === "true",
@@ -974,19 +1141,44 @@ async function generateGeminiAudit(
     !usedExternalFallback &&
       githubArtifacts?.artifacts.some((artifact) => artifact.is_upstream_derivative)
   );
-  let promptMetrics = computeProductionAuditMetrics(filesystemEvidence);
+  const auditMode = normalizeAuditMode(body.auditMode);
+  let promptMetrics = computeProductionAuditMetrics(
+    filesystemEvidence,
+    auditMode
+  );
+  let modeEvaluation = buildModeAwareEvaluation(auditMode, {
+    architecture: promptMetrics.architecture,
+    testing: promptMetrics.testing,
+    devops: promptMetrics.devops,
+    resilience: promptMetrics.resilience,
+  });
   if (promptMetrics.evidence.inspected && isUpstreamDerivative) {
+    const penalizedScore = applyUpstreamDerivativePenalty(
+      modeEvaluation.overallScore,
+      true
+    );
+    modeEvaluation = {
+      ...modeEvaluation,
+      overallScore: penalizedScore,
+      tier: assignAuditTier(auditMode, penalizedScore),
+    };
     promptMetrics = {
       ...promptMetrics,
-      productionScore: applyUpstreamDerivativePenalty(
-        promptMetrics.productionScore,
-        true
-      ),
+      productionScore: penalizedScore,
       upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
+    };
+  } else {
+    promptMetrics = {
+      ...promptMetrics,
+      productionScore: modeEvaluation.overallScore,
     };
   }
   const deterministicMetrics = deterministicMetricsPayload({
     productionScore: promptMetrics.productionScore,
+    overallScore: modeEvaluation.overallScore,
+    auditMode,
+    tier: modeEvaluation.tier,
+    breakdown: modeEvaluation.breakdown,
     isUpstreamDerivative,
     architectureScore: promptMetrics.architecture,
     testScore: promptMetrics.testing,
@@ -997,6 +1189,8 @@ async function generateGeminiAudit(
     primaryRepoLanguage(githubArtifacts)?.trim() || "unknown";
 
   const userPrompt = JSON.stringify({
+    evaluationMode: auditMode,
+    evaluationModeLabel: auditModeLabel(auditMode),
     deterministicMetrics,
     primaryLanguage,
     languageConstraint: {
@@ -1064,7 +1258,7 @@ async function generateGeminiAudit(
           model,
           contents: userPrompt,
           config: {
-            systemInstruction: SYSTEM_PROMPT,
+            systemInstruction: buildSystemPrompt(auditMode),
             responseMimeType: "application/json",
             responseSchema: AUDIT_RESPONSE_SCHEMA,
             temperature: 0,
@@ -1528,35 +1722,43 @@ export async function POST(request: Request) {
     );
   }
 
+  const auditMode = normalizeAuditMode(payload.auditMode);
   const filesystem = strongestFilesystemEvidence(
     githubArtifacts?.artifacts ?? []
   );
   const commitDates = commitDatesFromArtifacts(githubArtifacts);
   let metrics = computeProductionAuditMetrics(
-    usedExternalFallback ? null : filesystem
+    usedExternalFallback ? null : filesystem,
+    auditMode
   );
   result = attachAuditEvidence(
     applyFilesystemScoreCap(result, filesystem),
     filesystem,
     commitDates
   );
-  result = { ...result, metrics };
+  result = attachModeEvaluation(result, auditMode, metrics);
+  metrics = result.metrics;
 
-  // Headline grade is the four-pillar file-tree index only.
+  // Headline grade is the mode-weighted file-tree index only.
   // Gemini text stays on strengths, red flags, and recommendations.
   if (metrics.evidence.inspected) {
     result = applyFilesystemScoreCap(
-      { ...result, score: metrics.productionScore },
+      {
+        ...result,
+        score: metrics.productionScore,
+        overallScore: metrics.productionScore,
+      },
       filesystem
     );
-    result = { ...result, metrics };
+    result = attachModeEvaluation(result, auditMode, metrics);
+    metrics = result.metrics;
   }
 
   const isUpstreamDerivative = Boolean(
     githubArtifacts?.artifacts.some((artifact) => artifact.is_upstream_derivative)
   );
   if (metrics.evidence.inspected && isUpstreamDerivative) {
-    const penalized = applyUpstreamDerivativePenalty(result.score, true);
+    const penalized = applyUpstreamDerivativePenalty(result.overallScore, true);
     metrics = {
       ...metrics,
       productionScore: penalized,
@@ -1565,6 +1767,8 @@ export async function POST(request: Request) {
     result = {
       ...result,
       score: penalized,
+      overallScore: penalized,
+      tier: assignAuditTier(auditMode, penalized),
       metrics,
       redFlags: result.redFlags.includes(UPSTREAM_DERIVATIVE_WARNING)
         ? result.redFlags
@@ -1582,27 +1786,36 @@ export async function POST(request: Request) {
       devopsScore: metrics.devops,
       resilienceScore: metrics.resilience,
       isUpstreamDerivative: metrics.upstreamDerivativePenalty > 0,
+      auditMode,
     }),
   };
+  if (!result.summary.trim() && result.executiveBrief?.employerSummary) {
+    result = {
+      ...result,
+      summary: result.executiveBrief.employerSummary,
+    };
+  }
 
+  const refinedRecommendations = refineActionableFixes(result.recommendations, {
+    productionScore: metrics.productionScore,
+    architecture: metrics.architecture,
+    testingScore: metrics.testing,
+    devopsScore: metrics.devops,
+    resilience: metrics.resilience,
+    testFileCount: filesystem?.unit_test_file_count ?? 0,
+    language: primaryRepoLanguage(githubArtifacts),
+    hasReadme: repoHasReadme(githubArtifacts, filesystem),
+    needsSchemaValidation:
+      filesystem?.route_contracts_sampled === true &&
+      filesystem.route_schema_validation !== true,
+    needsBuildGate:
+      (filesystem?.ci_workflow_paths.length ?? 0) > 0 &&
+      filesystem?.ci_has_build !== true,
+  });
   result = {
     ...result,
-    recommendations: refineActionableFixes(result.recommendations, {
-      productionScore: metrics.productionScore,
-      architecture: metrics.architecture,
-      testingScore: metrics.testing,
-      devopsScore: metrics.devops,
-      resilience: metrics.resilience,
-      testFileCount: filesystem?.unit_test_file_count ?? 0,
-      language: primaryRepoLanguage(githubArtifacts),
-      hasReadme: repoHasReadme(githubArtifacts, filesystem),
-      needsSchemaValidation:
-        filesystem?.route_contracts_sampled === true &&
-        filesystem.route_schema_validation !== true,
-      needsBuildGate:
-        (filesystem?.ci_workflow_paths.length ?? 0) > 0 &&
-        filesystem?.ci_has_build !== true,
-    }),
+    recommendations: refinedRecommendations,
+    improvements: refinedRecommendations,
   };
 
   const usage = await bumpUsage();

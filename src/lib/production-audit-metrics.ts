@@ -1,3 +1,10 @@
+import {
+  DEFAULT_AUDIT_MODE,
+  normalizeAuditMode,
+  weightedScoreForMode,
+  weightsForAuditMode,
+  type AuditMode,
+} from "@/lib/audit-mode";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   emptyArchitectureSignals,
@@ -14,12 +21,15 @@ import {
   type RepoKind,
 } from "@/lib/repo-filesystem";
 
-/** Weights for the production audit scorecard (must sum to 1). */
+/**
+ * Default weights (full-time enterprise baseline).
+ * Prefer `weightsForAuditMode(auditMode)` when a mode is selected.
+ */
 export const PRODUCTION_METRIC_WEIGHTS = {
-  architecture: 0.35,
-  testing: 0.25,
-  devops: 0.2,
-  resilience: 0.2,
+  architecture: 0.3,
+  testing: 0.3,
+  devops: 0.15,
+  resilience: 0.25,
 } as const;
 
 export type ProductionAuditMetrics = {
@@ -84,13 +94,16 @@ export function isReactErrorBoundaryPath(path: string): boolean {
   return REACT_ERROR_BOUNDARY_PATH.test(path);
 }
 
-function withAliases(parts: {
-  architecture: number;
-  testing: number;
-  devops: number;
-  resilience: number;
-  productionScore: number;
-}): Pick<
+function withAliases(
+  parts: {
+    architecture: number;
+    testing: number;
+    devops: number;
+    resilience: number;
+    productionScore: number;
+  },
+  mode: AuditMode = DEFAULT_AUDIT_MODE
+): Pick<
   ProductionAuditMetrics,
   | "architecture"
   | "testing"
@@ -102,6 +115,7 @@ function withAliases(parts: {
   | "errorBoundaries"
   | "weights"
 > {
+  const modeWeights = weightsForAuditMode(mode);
   return {
     architecture: parts.architecture,
     testing: parts.testing,
@@ -112,13 +126,13 @@ function withAliases(parts: {
     testAssertionDensity: parts.testing,
     errorBoundaries: parts.resilience,
     weights: {
-      architecture: PRODUCTION_METRIC_WEIGHTS.architecture,
-      testing: PRODUCTION_METRIC_WEIGHTS.testing,
-      devops: PRODUCTION_METRIC_WEIGHTS.devops,
-      resilience: PRODUCTION_METRIC_WEIGHTS.resilience,
-      ciCdHealth: PRODUCTION_METRIC_WEIGHTS.devops,
-      testAssertionDensity: PRODUCTION_METRIC_WEIGHTS.testing,
-      errorBoundaries: PRODUCTION_METRIC_WEIGHTS.resilience,
+      architecture: modeWeights.architecture,
+      testing: modeWeights.testing,
+      devops: modeWeights.devops,
+      resilience: modeWeights.resilience,
+      ciCdHealth: modeWeights.devops,
+      testAssertionDensity: modeWeights.testing,
+      errorBoundaries: modeWeights.resilience,
     },
   };
 }
@@ -328,18 +342,27 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
   return scoreDevops(evidence);
 }
 
+/** Full-time: sparse suites cannot clear Mid/Senior on density alone. */
+const FULLTIME_LOW_DENSITY_RATIO = 0.25;
+const FULLTIME_LOW_DENSITY_TESTING_CAP = 50;
+
 /**
  * Testing (0-100). Ratios use core executable *.ts/*.tsx/*.js/*.jsx files only.
  * Demo, sample, tutorial, and docs trees are excluded from the source denominator.
  * Fewer than 10% of those files tested stays under 20.
  * More than 50 source files with ratio under 0.08 caps at 15.
  * 50+ test files plus Playwright/Cypress scores 85–95.
+ * Full-time: test files below 25% of source files scale Testing up to a 50 cap.
  */
-export function scoreTesting(evidence: RepoFilesystemEvidence): number {
+export function scoreTesting(
+  evidence: RepoFilesystemEvidence,
+  auditMode: AuditMode = DEFAULT_AUDIT_MODE
+): number {
   if (!evidence.inspected) {
     return 0;
   }
 
+  const mode = normalizeAuditMode(auditMode);
   const testFiles =
     typeof evidence.unit_test_file_count === "number"
       ? evidence.unit_test_file_count
@@ -377,7 +400,16 @@ export function scoreTesting(evidence: RepoFilesystemEvidence): number {
   }
 
   if (sourceFiles > 50 && ratio < 0.08) {
-    return Math.min(score, 15);
+    score = Math.min(score, 15);
+  }
+
+  // Full-time enterprise bar: below 25% density, scale toward a hard 50 cap
+  // (5 tests / 32 sources → ~31) so thin suites cannot clear Mid/Senior alone.
+  if (mode === "fulltime" && ratio < FULLTIME_LOW_DENSITY_RATIO) {
+    const densityScaled = Math.round(
+      (ratio / FULLTIME_LOW_DENSITY_RATIO) * FULLTIME_LOW_DENSITY_TESTING_CAP
+    );
+    score = Math.min(score, densityScaled, FULLTIME_LOW_DENSITY_TESTING_CAP);
   }
 
   return score;
@@ -393,6 +425,31 @@ export function scoreTestAssertionDensity(
 /** Routes that cast payloads with `as Type` and skip schema parsing cannot exceed this. */
 const RESILIENCE_UNVALIDATED_ROUTE_CAP = 65;
 
+/** Contract: missing error.tsx is polish — keep a usable floor. */
+const CONTRACT_RESILIENCE_STRUCTURE_FLOOR = 50;
+const CONTRACT_RESILIENCE_MISSING_BOUNDARY_PENALTY = 15;
+/** Full-time: enterprise-grade — no structure floor; missing boundaries hurt. */
+const FULLTIME_RESILIENCE_MISSING_BOUNDARY_PENALTY = 30;
+/** Small repos: per-incident async ding. */
+const RESILIENCE_UNHANDLED_ASYNC_PENALTY = 8;
+const RESILIENCE_UNHANDLED_ASYNC_CAP = 24;
+/**
+ * Large monorepos / high-coverage apps: never wipe resilience for a handful of
+ * sample hits (matches forensic-dossier LOC estimate).
+ */
+const LARGE_REPO_FILE_THRESHOLD = 150;
+const LARGE_REPO_LOC_THRESHOLD = 20_000;
+const LOC_PER_EXECUTABLE_FILE = 72;
+/** Every 1% incident rate → 4 resilience points on large codebases. */
+const LARGE_REPO_ASYNC_RATE_SCALE = 4;
+/** Soft ceiling when tests are elite or error infra is centralized. */
+const RESILIENCE_ASYNC_SOFT_CAP = 12;
+const RESILIENCE_ASYNC_SOFT_TEST_FLOOR = 85;
+
+/** Shared error helpers / middleware — not Next.js app/error.tsx boundaries. */
+const CENTRALIZED_ERROR_INFRA_PATH =
+  /(?:^|\/)(lib\/api\/errors|lib\/[^/]*errors?|api\/errors|utils\/errors?|helpers\/errors?)(\.[cm]?[jt]sx?)?$|(?:^|\/)errors\.(ts|js|tsx|jsx)$|(?:^|\/)middleware\.[cm]?[jt]sx?$|middleware\/.*error/i;
+
 function routesLackSchemaValidation(evidence: RepoFilesystemEvidence): boolean {
   if (evidence.route_contracts_sampled !== true) {
     return false;
@@ -404,32 +461,131 @@ function routesLackSchemaValidation(evidence: RepoFilesystemEvidence): boolean {
     evidence.route_schema_validation === false;
 }
 
+function estimateAuthoredLoc(evidence: RepoFilesystemEvidence): number {
+  const executable =
+    typeof evidence.executable_source_count === "number" &&
+    evidence.executable_source_count > 0
+      ? evidence.executable_source_count
+      : evidence.source_file_count;
+  return Math.max(0, executable) * LOC_PER_EXECUTABLE_FILE;
+}
+
+function isLargeCodebase(evidence: RepoFilesystemEvidence): boolean {
+  return (
+    evidence.file_count > LARGE_REPO_FILE_THRESHOLD ||
+    estimateAuthoredLoc(evidence) > LARGE_REPO_LOC_THRESHOLD
+  );
+}
+
+function hasCentralizedErrorInfrastructure(
+  evidence: RepoFilesystemEvidence
+): boolean {
+  const paths = [
+    ...evidence.error_handling_paths,
+    ...(evidence.architecture_paths ?? []),
+  ];
+  return paths.some((path) => CENTRALIZED_ERROR_INFRA_PATH.test(path));
+}
+
 /**
- * Resilience (0-100): start at 100 and deduct proportionally.
- * Missing root error boundaries in a web app: −35.
- * Each unhandled async/fetch without try/catch: −15, max −50.
+ * Unhandled async/fetch penalty. Small repos use raw counts (−8 each, max −24).
+ * Large monorepos (>150 files or >20k authored LOC) use incident rate so 10
+ * hits in a 2k-file tree do not look like a systemic outage. Soft-capped at
+ * −12 when Testing ≥ 85 or centralized error helpers/middleware are present.
+ */
+export function unhandledAsyncPenalty(
+  evidence: RepoFilesystemEvidence,
+  unhandledCount: number,
+  testingScore: number
+): number {
+  const unhandled = Math.max(0, unhandledCount);
+  if (unhandled === 0) {
+    return 0;
+  }
+
+  let penalty: number;
+  if (isLargeCodebase(evidence)) {
+    const denominator = Math.max(
+      evidence.file_count,
+      evidence.source_file_count,
+      typeof evidence.executable_source_count === "number"
+        ? evidence.executable_source_count
+        : 0,
+      1
+    );
+    const ratePercent = (unhandled / denominator) * 100;
+    penalty = Math.min(
+      RESILIENCE_UNHANDLED_ASYNC_CAP,
+      Math.round(ratePercent * LARGE_REPO_ASYNC_RATE_SCALE)
+    );
+    if (penalty === 0) {
+      penalty = 1;
+    }
+  } else {
+    penalty = Math.min(
+      RESILIENCE_UNHANDLED_ASYNC_CAP,
+      unhandled * RESILIENCE_UNHANDLED_ASYNC_PENALTY
+    );
+  }
+
+  const softCap =
+    testingScore >= RESILIENCE_ASYNC_SOFT_TEST_FLOOR ||
+    hasCentralizedErrorInfrastructure(evidence);
+  if (softCap) {
+    penalty = Math.min(penalty, RESILIENCE_ASYNC_SOFT_CAP);
+  }
+
+  return penalty;
+}
+
+/**
+ * Resilience / security hygiene (0-100): start at 100 and deduct by mode.
+ * Contract: missing root error boundaries −15; clean structure floors at ~50.
+ * Full-time: missing root error boundaries −30; no softening floors.
+ * Unhandled async/fetch: count-based on small repos; rate-based on large ones.
  * Route handlers that use `as Type` without runtime schema parsing cap at 65.
  */
 export function scoreResilience(
   evidence: RepoFilesystemEvidence,
-  repoKind: RepoKind = evidence.repo_kind ?? "library"
+  repoKind: RepoKind = evidence.repo_kind ?? "library",
+  auditMode: AuditMode = DEFAULT_AUDIT_MODE,
+  testingScore?: number
 ): number {
   if (!evidence.inspected) {
     return 0;
   }
 
+  const mode = normalizeAuditMode(auditMode);
   const handlers = evidence.error_handling_paths.filter(isErrorHandlingPath);
   const reactBoundaries = handlers.filter(isReactErrorBoundaryPath);
   const missingBoundaries = reactBoundaries.length === 0;
   const unhandled = Math.max(0, evidence.unhandled_async_count ?? 0);
+  const signals = evidence.architecture_signals ?? emptyArchitectureSignals();
+  const hasCleanStructure =
+    signals.has_structure ||
+    signals.has_typed_source ||
+    signals.has_type_config ||
+    evidence.file_count >= 8;
+  const testing =
+    typeof testingScore === "number"
+      ? clampScore0to100(testingScore)
+      : scoreTesting(evidence, mode);
 
   let score = 100;
   if (repoKind === "web_app" && missingBoundaries) {
-    score -= 35;
+    score -=
+      mode === "fulltime"
+        ? FULLTIME_RESILIENCE_MISSING_BOUNDARY_PENALTY
+        : CONTRACT_RESILIENCE_MISSING_BOUNDARY_PENALTY;
   }
-  score -= Math.min(50, unhandled * 15);
+  score -= unhandledAsyncPenalty(evidence, unhandled, testing);
   if (routesLackSchemaValidation(evidence)) {
     score = Math.min(score, RESILIENCE_UNVALIDATED_ROUTE_CAP);
+  }
+
+  // Soft floor is Contract-only — Full-Time keeps the raw enterprise ding.
+  if (mode === "contract" && hasCleanStructure) {
+    score = Math.max(score, CONTRACT_RESILIENCE_STRUCTURE_FLOOR);
   }
 
   return clampScore0to100(score);
@@ -440,20 +596,16 @@ export function scoreErrorBoundaries(evidence: RepoFilesystemEvidence): number {
   return scoreResilience(evidence, evidence.repo_kind ?? "library");
 }
 
-export function weightedProductionScore(parts: {
-  architecture: number;
-  testing: number;
-  devops: number;
-  resilience: number;
-}): number {
-  return clampScore0to100(
-    Math.round(
-      parts.architecture * PRODUCTION_METRIC_WEIGHTS.architecture +
-        parts.testing * PRODUCTION_METRIC_WEIGHTS.testing +
-        parts.devops * PRODUCTION_METRIC_WEIGHTS.devops +
-        parts.resilience * PRODUCTION_METRIC_WEIGHTS.resilience
-    )
-  );
+export function weightedProductionScore(
+  parts: {
+    architecture: number;
+    testing: number;
+    devops: number;
+    resilience: number;
+  },
+  auditMode: AuditMode = DEFAULT_AUDIT_MODE
+): number {
+  return weightedScoreForMode(auditMode, parts);
 }
 
 export const UPSTREAM_DERIVATIVE_PENALTY = 30;
@@ -472,8 +624,10 @@ export function applyUpstreamDerivativePenalty(
 }
 
 export function computeProductionAuditMetrics(
-  evidence: RepoFilesystemEvidence | null | undefined
+  evidence: RepoFilesystemEvidence | null | undefined,
+  auditMode: AuditMode = DEFAULT_AUDIT_MODE
 ): ProductionAuditMetrics {
+  const mode = normalizeAuditMode(auditMode);
   const normalized = evidence ?? emptyRepoFilesystemEvidence();
 
   if (!normalized.inspected) {
@@ -489,24 +643,30 @@ export function computeProductionAuditMetrics(
   const architecturePaths = normalized.architecture_paths ?? [];
 
   const architecture = scoreArchitecture(normalized);
-  const testing = scoreTesting(normalized);
+  const testing = scoreTesting(normalized, mode);
   const devops = scoreDevops(normalized);
-  const resilience = scoreResilience(normalized, repoKind);
-  const productionScore = weightedProductionScore({
-    architecture,
-    testing,
-    devops,
-    resilience,
-  });
-
-  return {
-    ...withAliases({
+  const resilience = scoreResilience(normalized, repoKind, mode, testing);
+  const productionScore = weightedProductionScore(
+    {
       architecture,
       testing,
       devops,
       resilience,
-      productionScore,
-    }),
+    },
+    mode
+  );
+
+  return {
+    ...withAliases(
+      {
+        architecture,
+        testing,
+        devops,
+        resilience,
+        productionScore,
+      },
+      mode
+    ),
     upstreamDerivativePenalty: 0,
     evidence: {
       inspected: true,
@@ -537,9 +697,13 @@ export function computeProductionAuditMetrics(
 export function resolveProductionAuditMetrics(input: {
   metrics?: unknown;
   filesystem?: RepoFilesystemEvidence | null;
+  auditMode?: AuditMode;
 }): ProductionAuditMetrics {
   if (input.filesystem?.inspected) {
-    return computeProductionAuditMetrics(input.filesystem);
+    return computeProductionAuditMetrics(
+      input.filesystem,
+      normalizeAuditMode(input.auditMode)
+    );
   }
 
   const parsed = parseProductionAuditMetrics(input.metrics);
