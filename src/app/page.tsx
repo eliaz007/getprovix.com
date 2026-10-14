@@ -35,7 +35,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="relative mx-auto flex w-full max-w-6xl flex-col px-6 pb-28 pt-14 sm:pb-20 sm:pt-20 md:pb-16">
+      <main className="relative mx-auto flex w-full max-w-6xl flex-col px-6 pb-16 pt-14 sm:pt-20">
         <section className="relative mx-auto w-full max-w-3xl text-center print:hidden">
           <div
             aria-hidden="true"
@@ -70,18 +70,6 @@ export default function Home() {
 
         <LandingHome />
       </main>
-
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-800 bg-black/80 backdrop-blur-md pb-[max(1rem,env(safe-area-inset-bottom))] print:hidden md:hidden">
-        <div className="px-4 pt-3">
-          <Link
-            href="/login?next=/dashboard/auditor"
-            prefetch={false}
-            className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-lg bg-brand px-8 text-sm font-semibold tracking-tight text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-colors hover:bg-brandHover"
-          >
-            Benchmark Your Repository
-          </Link>
-        </div>
-      </div>
 
       <footer className="border-t border-border print:hidden">
         <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-6 py-8 sm:flex-row sm:items-center">
