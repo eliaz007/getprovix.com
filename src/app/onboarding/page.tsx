@@ -46,6 +46,10 @@ import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { getStandardEmailValidationMessage } from "@/lib/validate-email";
 import {
+  buildStarterCandidateBio,
+  limitCandidateBio,
+} from "@/lib/candidate-bio";
+import {
   limitCandidateSkills,
   MAX_CORE_SKILLS,
 } from "@/lib/candidate-skills";
@@ -64,7 +68,7 @@ type CandidateFlowStep = 1 | 2 | 3;
 type OnboardingWorkPreference = "fulltime" | "contract" | "both";
 
 const FULLTIME_TRACK_THRESHOLD = 75;
-const CONTRACT_TRACK_THRESHOLD = 70;
+const CONTRACT_TRACK_THRESHOLD = 75;
 
 type DualTrackScores = {
   contractScore: number;
@@ -715,23 +719,70 @@ export default function OnboardingPage() {
         dualTrackScores.fullTimeScore,
         auditScore
       );
+
+      // Onboarding never collects a bio — always attach a starter when joining.
+      const starterBio = joinNetwork
+        ? buildStarterCandidateBio({
+            experienceLevel,
+            primarySkills,
+          })
+        : null;
+
+      const placementPayload: Record<string, unknown> = {
+        experience_level: experienceLevel,
+        skills: limitCandidateSkills(primarySkills),
+        production_score: headlineScore,
+        audit_score: headlineScore,
+        is_visible_in_pool: joinNetwork,
+        is_publicly_visible: joinNetwork,
+        open_to_fulltime: engagement.open_to_fulltime,
+        open_to_contract: engagement.open_to_contract,
+      };
+
+      if (starterBio) {
+        const { data: existingProfile, error: bioReadError } = await supabase
+          .from("profiles")
+          .select("bio")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (bioReadError) {
+          console.warn("[onboarding] bio pre-read failed; writing starter anyway", {
+            message: bioReadError.message,
+          });
+        }
+        const existingBio = limitCandidateBio(existingProfile?.bio ?? "").trim();
+        if (!existingBio) {
+          placementPayload.bio = starterBio;
+        }
+        console.info("[onboarding] Enter Talent Network bio", {
+          willWriteStarter: !existingBio,
+          existingBioLength: existingBio.length,
+          starterBioLength: starterBio.length,
+        });
+      }
+
       const { error: saveError } = await supabase
         .from("profiles")
-        .update({
-          experience_level: experienceLevel,
-          skills: limitCandidateSkills(primarySkills),
-          production_score: headlineScore,
-          audit_score: headlineScore,
-          is_visible_in_pool: joinNetwork,
-          visible_to_employers: joinNetwork,
-          is_publicly_visible: joinNetwork,
-          open_to_fulltime: engagement.open_to_fulltime,
-          open_to_contract: engagement.open_to_contract,
-        })
+        .update(placementPayload)
         .eq("id", user.id);
 
       if (saveError) {
         throw new Error(saveError.message);
+      }
+
+      // If the main update omitted bio (e.g. race), force a dedicated bio write.
+      if (
+        typeof placementPayload.bio === "string" &&
+        placementPayload.bio.trim()
+      ) {
+        const { error: bioSaveError } = await supabase
+          .from("profiles")
+          .update({ bio: placementPayload.bio })
+          .eq("id", user.id);
+        if (bioSaveError) {
+          console.error("[onboarding] dedicated bio write failed", bioSaveError);
+          throw new Error(bioSaveError.message);
+        }
       }
 
       goToDashboard();
@@ -1154,9 +1205,8 @@ export default function OnboardingPage() {
                   {initializingAudit ? "Initializing Audit..." : "Run Audit"}
                 </Button>
                 <p className="text-center text-[11px] leading-relaxed text-textMuted">
-                  Audits take ~60 seconds. Full-Time qualifies at{" "}
-                  {FULLTIME_TRACK_THRESHOLD}+; Contract at{" "}
-                  {CONTRACT_TRACK_THRESHOLD}+.
+                  Audits take ~60 seconds. Score 75+ on either track to
+                  qualify for placement.
                 </p>
               </>
             ) : null}

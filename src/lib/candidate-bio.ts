@@ -26,3 +26,29 @@ export function getCandidateBioValidationError(
 
   return result.error.issues[0]?.message ?? CANDIDATE_BIO_LIMIT_TEXT;
 }
+
+const STARTER_BIO_BY_EXPERIENCE: Record<string, string> = {
+  "Student / Intern": "Aspiring software engineer",
+  "Junior / Entry-Level":
+    "Software engineer with 1–2 years of experience",
+  "Mid-Level": "Software engineer with 3–5 years of experience",
+  "Senior+": "Senior software engineer with 5+ years of experience",
+};
+
+/** Default bio when joining the talent network with an empty profile bio. */
+export function buildStarterCandidateBio(input: {
+  experienceLevel: string;
+  primarySkills: string[];
+}): string {
+  const experiencePhrase =
+    STARTER_BIO_BY_EXPERIENCE[input.experienceLevel.trim()] ??
+    "Software engineer";
+  const skills = input.primarySkills
+    .map((skill) => skill.trim())
+    .filter(Boolean)
+    .join(", ");
+  const body = skills
+    ? `${experiencePhrase} specializing in ${skills}. Verified on Provix production roster.`
+    : `${experiencePhrase}. Verified on Provix production roster.`;
+  return limitCandidateBio(body);
+}

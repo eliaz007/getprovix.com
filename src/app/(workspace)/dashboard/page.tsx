@@ -72,6 +72,7 @@ import { buildProfileSlug, buildUniqueProfileSlug } from "@/lib/profile-slug";
 import {
   CANDIDATE_BIO_PLACEHOLDER,
   MAX_CANDIDATE_BIO_LENGTH,
+  buildStarterCandidateBio,
   getCandidateBioValidationError,
   limitCandidateBio,
 } from "@/lib/candidate-bio";
@@ -1339,7 +1340,6 @@ export default function DashboardPage() {
 
         const loadedName = displayName || "";
         const loadedTitle = profileWithRole?.job_title ?? "";
-        const loadedBio = limitCandidateBio(profileWithRole?.bio ?? "");
         const education = educationFromProfileRow(
           profileWithRole as unknown as Record<string, unknown>
         );
@@ -1353,9 +1353,32 @@ export default function DashboardPage() {
         const loadedSchool = primaryEducation.institution || education.university;
         const loadedDegree = primaryEducation.fieldOfStudy || education.major;
         const loadedSkills = limitCandidateSkills(profileWithRole?.skills);
-        const loadedYoutubeUrl = profileWithRole?.youtube_url ?? "";
         const loadedExperienceLevel =
           profileWithRole?.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL;
+        let loadedBio = limitCandidateBio(profileWithRole?.bio ?? "");
+        // Backfill starter bio if network join saved visibility/skills but missed bio.
+        if (!loadedBio.trim() && loadedSkills.length > 0) {
+          const starterBio = buildStarterCandidateBio({
+            experienceLevel: loadedExperienceLevel,
+            primarySkills: loadedSkills,
+          });
+          loadedBio = starterBio;
+          void supabase
+            .from("profiles")
+            .update({ bio: starterBio })
+            .eq("id", user.id)
+            .then(({ error: bioBackfillError }) => {
+              if (bioBackfillError) {
+                console.error(
+                  "[dashboard] starter bio backfill failed",
+                  bioBackfillError
+                );
+              } else {
+                console.info("[dashboard] starter bio backfilled");
+              }
+            });
+        }
+        const loadedYoutubeUrl = profileWithRole?.youtube_url ?? "";
         const loadedAvailabilityStatus = normalizeAvailabilityStatus(
           profileWithRole?.availability_status
         );
@@ -5331,6 +5354,11 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         }
                         className="w-full bg-background border border-border rounded-xl p-3.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none leading-relaxed"
                       />
+                      <p className="mt-1.5 text-xs text-textMuted leading-snug">
+                        ✨ We generated a starter bio based on your audit and
+                        experience level. Feel free to edit or rewrite it
+                        anytime.
+                      </p>
                       <p
                         aria-live="polite"
                         className={`mt-1.5 text-right font-mono text-[11px] ${
