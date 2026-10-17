@@ -170,16 +170,18 @@ function buildSystemPrompt(mode: ScreeningMode): string {
   const modeBlock =
     mode === "job_aware"
       ? `SCREENING MODE: job_aware
-- Ground every judgment in the target job's tech stack, required skills, tags, and description.
-- Prefer stored audit_breakdown pillar scores (architecture, CI/CD, test density, error handling) plus live repo signals when present.
-- technical_depth_summary: role-specific match proof — what audited evidence supports fit for THIS role.
-- timeline_flags: unverified stack gaps — job requirements not evidenced by audit_breakdown or repo artifacts (empty array if none).
-- interview_questions: exactly 2 role-targeted prompts tied to the job's stack and the candidate's verified/unverified gaps.`
+- Ground every judgment in (1) candidate bio/background/experience/skills vs the FULL job description and requirements, and (2) stored audit_breakdown / live repo signals as TECHNICAL PROOF only.
+- technical_depth_summary: role-specific fit — how profile narrative AND audited evidence support (or fail) THIS role.
+- timeline_flags: unverified stack gaps — job requirements not evidenced by profile claims, audit_breakdown, or repo artifacts (empty array if none). Flag empty/thin bios that leave JD requirements unverified.
+- interview_questions: exactly 2 role-targeted prompts tied to the job's stack and the candidate's verified/unverified gaps.
+- executiveBrief.recommendedRoleBand: OVERALL hiring verdict for this role (profile + JD + technical proof). Do NOT set the band from productionScore/tier alone.
+- integrity_score / deterministicMetrics: codebase technical-proof pillar only (separate from hiring verdict).`
       : `SCREENING MODE: baseline
 - No target job. Run baseline technical diligence on stored audit_breakdown and repo metrics in isolation.
 - technical_depth_summary: general architectural strengths evidenced by the audit/repo.
 - timeline_flags: technical blind spots (missing tests/CI/resilience, thin architecture) — not job-stack gaps.
-- interview_questions: exactly 2 code-design interview prompts grounded in the audited codebase.`;
+- interview_questions: exactly 2 code-design interview prompts grounded in the audited codebase.
+- executiveBrief.recommendedRoleBand: follow deterministicMetrics.roleBandRule (metric tier).`;
 
   return `You are a rigorous Technical & Academic Auditor for Provix employer screening.
 
@@ -231,7 +233,7 @@ Return strict JSON only in this exact structure:
     { "id": "api_resiliency", "title": "API & Data Resiliency Check (Check 3)", "summary": "1-3 sentence paragraph" }
   ],
   "executiveBrief": {
-    "employerSummary": "2-3 concise sentences on production risk and team fit for a founder",
+    "employerSummary": "2-3 concise sentences on hiring fit (job_aware: background vs JD, then technical proof) or production risk (baseline)",
     "developerSummary": "2-3 direct sentences of peer review plus the highest-leverage architectural fix",
     "recommendedRoleBand": "Elite Sprint Contractor | Verified Sprint Builder | Supervised Feature Builder | Needs Hardening | Production-Grade / Core Lead | Mid/Senior Production-Ready | Needs Refinement"
   }
@@ -242,13 +244,15 @@ Employer Interview Cheat Sheet:
 - Each question must include a category badge label and a concise what_to_listen_for tip.
 
 Rules:
-- integrity_score: 0-100 integer. Do not deduct for handle/name mismatch or a missing resume.
+- integrity_score: 0-100 integer. Do not deduct for handle/name mismatch or a missing resume. This is the codebase technical-proof pillar only.
 - timeline_flags: specific strings; empty array if none. Never include handle-vs-name or missing-resume flags.
 - checks: exactly 3 objects in order. Each summary is 1-3 sentences, no markdown.
 - artifact_analysis should match Check 1.
 - interview_questions: exactly 2 objects.
-- executiveBrief is required. Use deterministicMetrics as the only source for productionScore and pillar scores; do not recompute those numbers.
-  - recommendedRoleBand: follow deterministicMetrics.roleBandRule.
+- executiveBrief is required.
+  - Cite deterministicMetrics only for productionScore / pillar numbers in prose; do not recompute those numbers.
+  - recommendedRoleBand: follow deterministicMetrics.roleBandRule (job_aware = overall fit verdict; baseline = metric tier).
+  - employerSummary must address candidate background vs JD when screening_mode is job_aware, then note technical proof separately.
 - Do not include extra keys or markdown fences.`;
 }
 
@@ -532,6 +536,8 @@ function finalizeScreenWithBreakdown(
     resilienceScore: metrics.resilience,
     isUpstreamDerivative,
     auditMode: "contract",
+    // Keep Gemini hiring verdict when valid; repo metrics are technical proof only.
+    preferModelRoleBand: true,
   });
 
   return {
@@ -611,6 +617,8 @@ function applyScreenFilesystemCap(
     resilienceScore: metrics.resilience,
     isUpstreamDerivative,
     auditMode: "contract",
+    // Keep Gemini hiring verdict when valid; repo metrics are technical proof only.
+    preferModelRoleBand: true,
   });
   const github_audit = result.github_audit
     ? { ...result.github_audit, executiveBrief }
@@ -1114,8 +1122,10 @@ async function persistScreeningResult(
 
 function resolveDeterministicMetricsForPrompt(
   githubAudit: GitHubAuditContext | null,
-  auditBreakdown: ProductionAuditBreakdown | null
+  auditBreakdown: ProductionAuditBreakdown | null,
+  mode: ScreeningMode = "baseline"
 ) {
+  const hiringVerdictFromFit = mode === "job_aware";
   const isUpstreamDerivative = githubAudit?.is_upstream_derivative === true;
   let promptMetrics = computeProductionAuditMetrics(githubAudit?.filesystem);
 
@@ -1138,6 +1148,7 @@ function resolveDeterministicMetricsForPrompt(
       testScore: testing,
       devopsScore: devops,
       resilienceScore: resilience,
+      hiringVerdictFromFit,
     });
   }
 
@@ -1159,6 +1170,7 @@ function resolveDeterministicMetricsForPrompt(
     testScore: promptMetrics.testing,
     devopsScore: promptMetrics.devops,
     resilienceScore: promptMetrics.resilience,
+    hiringVerdictFromFit,
   });
 }
 
@@ -1231,7 +1243,8 @@ async function generateGeminiScreen(
       scorePolicy: buildFilesystemScorePolicy(githubAudit?.filesystem),
       deterministicMetrics: resolveDeterministicMetricsForPrompt(
         githubAudit,
-        auditBreakdown
+        auditBreakdown,
+        mode
       ),
       codeFirst: true,
       resumeOptional: true,

@@ -67,7 +67,7 @@ describe("assignRecommendedRoleBand", () => {
 });
 
 describe("finalizeExecutiveBrief", () => {
-  it("keeps model sentences and overwrites the role band from the mode tier", () => {
+  it("overwrites invalid model bands with the metric tier by default", () => {
     const brief = finalizeExecutiveBrief({
       draft: {
         employerSummary: "Founders should treat this as a scoped product bet.",
@@ -86,6 +86,49 @@ describe("finalizeExecutiveBrief", () => {
     expect(brief.employerSummary).toMatch(/Founders should treat/);
     expect(brief.developerSummary).toMatch(/data client/);
     expect(brief.recommendedRoleBand).toBe("Supervised Feature Builder");
+  });
+
+  it("keeps a valid Gemini hiring verdict when preferModelRoleBand is true", () => {
+    const brief = finalizeExecutiveBrief({
+      draft: {
+        employerSummary:
+          "Strong JD narrative fit for Frontend; codebase proof is mid-tier.",
+        developerSummary: "Tighten test density on the checkout route.",
+        recommendedRoleBand: "Verified Sprint Builder",
+      },
+      productionScore: 88,
+      architectureScore: 90,
+      testScore: 85,
+      devopsScore: 80,
+      resilienceScore: 88,
+      isUpstreamDerivative: false,
+      auditMode: "contract",
+      preferModelRoleBand: true,
+    });
+
+    // Metric tier would be Elite (88), but overall fit verdict stays model-chosen.
+    expect(brief.recommendedRoleBand).toBe("Verified Sprint Builder");
+    expect(brief.employerSummary).toMatch(/JD narrative fit/);
+  });
+
+  it("falls back to metric tier when preferModelRoleBand is true but band is invalid", () => {
+    const brief = finalizeExecutiveBrief({
+      draft: {
+        employerSummary: "Fit is unclear.",
+        developerSummary: "Add CI gates.",
+        recommendedRoleBand: "Mid-Level",
+      },
+      productionScore: 88,
+      architectureScore: 90,
+      testScore: 85,
+      devopsScore: 80,
+      resilienceScore: 88,
+      isUpstreamDerivative: false,
+      auditMode: "contract",
+      preferModelRoleBand: true,
+    });
+
+    expect(brief.recommendedRoleBand).toBe("Elite Sprint Contractor");
   });
 
   it("fills empty summaries and syncs 80+ to Elite Sprint Contractor", () => {
