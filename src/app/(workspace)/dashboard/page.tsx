@@ -1357,7 +1357,8 @@ export default function DashboardPage() {
           profileWithRole?.experience_level?.trim() || DEFAULT_EXPERIENCE_LEVEL;
         let loadedBio = limitCandidateBio(profileWithRole?.bio ?? "");
         // Backfill starter bio if network join saved visibility/skills but missed bio.
-        if (!loadedBio.trim() && loadedSkills.length > 0) {
+        const backfillUserId = user?.id;
+        if (!loadedBio.trim() && loadedSkills.length > 0 && backfillUserId) {
           const starterBio = buildStarterCandidateBio({
             experienceLevel: loadedExperienceLevel,
             primarySkills: loadedSkills,
@@ -1366,7 +1367,7 @@ export default function DashboardPage() {
           void supabase
             .from("profiles")
             .update({ bio: starterBio })
-            .eq("id", user.id)
+            .eq("id", backfillUserId)
             .then(({ error: bioBackfillError }) => {
               if (bioBackfillError) {
                 console.error(
