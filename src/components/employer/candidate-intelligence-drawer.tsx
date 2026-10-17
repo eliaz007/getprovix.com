@@ -19,7 +19,10 @@ import {
   getPublicCandidateInitials,
   redactPersonalNamesFromText,
 } from "@/lib/candidate-anonymization";
-import { buildDeterministicEmployerMatch } from "@/lib/employer-match";
+import {
+  assessBioQuality,
+  buildDeterministicEmployerMatch,
+} from "@/lib/employer-match";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
 import { jobDisplayTags, parseJobListInput } from "@/lib/jobs";
 import { readJsonResponse } from "@/lib/read-json-response";
@@ -191,9 +194,14 @@ export default function CandidateIntelligenceDrawer({
   const contactEmail = candidate?.email?.trim() || null;
   const contactPhone = candidate?.phone?.trim() || null;
   const hasScreeningJob = isValidDeepScreeningJob(screeningJob);
-  const roleFitSkills = useMemo(() => {
-    if (!liveCandidate || !hasScreeningJob || !screeningJob) {
-      return { matching: [] as string[], missing: [] as string[] };
+  const roleFitInsight = useMemo(() => {
+    if (!liveCandidate) {
+      return {
+        matching: [] as string[],
+        missing: [] as string[],
+        reasoning: "",
+        flag: null as string | null,
+      };
     }
 
     const match = buildDeterministicEmployerMatch(
@@ -209,20 +217,28 @@ export default function CandidateIntelligenceDrawer({
         githubAudit: liveCandidate.githubAudit,
         github_url: liveCandidate.github || liveCandidate.github_url || "",
       },
-      {
-        title: screeningJob.title,
-        company: screeningJob.company ?? "",
-        tags: jobDisplayTags(screeningJob),
-        tech_stack: parseJobListInput(screeningJob.tech_stack),
-        required_skills: parseJobListInput(screeningJob.required_skills),
-        location: screeningJob.location ?? "",
-        description: screeningJob.description ?? "",
-      }
+      hasScreeningJob && screeningJob
+        ? {
+            title: screeningJob.title,
+            company: screeningJob.company ?? "",
+            tags: jobDisplayTags(screeningJob),
+            tech_stack: parseJobListInput(screeningJob.tech_stack),
+            required_skills: parseJobListInput(screeningJob.required_skills),
+            location: screeningJob.location ?? "",
+            description: screeningJob.description ?? "",
+          }
+        : { title: "", tags: [], description: "", searchQuery: "" }
     );
+
+    const bioQuality = assessBioQuality(liveCandidate.bio);
+    // Scorer no longer embeds Flag: in reasoning; use it as-is.
+    const reasoning = match.reasoning.trim();
 
     return {
       matching: match.matching_skills.slice(0, 6),
       missing: match.missing_skills.slice(0, 6),
+      reasoning,
+      flag: bioQuality.flag,
     };
   }, [liveCandidate, hasScreeningJob, screeningJob]);
 
@@ -332,32 +348,58 @@ export default function CandidateIntelligenceDrawer({
               {!liveCandidate.matchPending ? (
                 <ScoreMeter score={liveCandidate.matchScore} />
               ) : null}
-              {hasScreeningJob && !liveCandidate.matchPending ? (
-                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  {roleFitSkills.matching.map((skill) => (
-                    <span
-                      key={`match-${skill}`}
-                      className="inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
-                    >
-                      {skill}
+              {!liveCandidate.matchPending && roleFitInsight.flag ? (
+                <div
+                  role="status"
+                  className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-2"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 inline-flex shrink-0 rounded-md border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-300">
+                      Flag
                     </span>
-                  ))}
-                  {roleFitSkills.missing.map((skill) => (
-                    <span
-                      key={`miss-${skill}`}
-                      className="inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/10 text-amber-200/90 border border-amber-500/20"
-                      title="Missing for this role"
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                  {roleFitSkills.matching.length === 0 &&
-                  roleFitSkills.missing.length === 0 ? (
-                    <span className="text-[10px] text-textMuted">
-                      No explicit stack tags on this job yet.
-                    </span>
-                  ) : null}
+                    <p className="min-w-0 text-[11px] leading-snug text-amber-100/90">
+                      {roleFitInsight.flag}
+                    </p>
+                  </div>
                 </div>
+              ) : null}
+              {!liveCandidate.matchPending && roleFitInsight.reasoning ? (
+                <p className="text-[11px] leading-relaxed text-textMuted">
+                  {roleFitInsight.reasoning}
+                </p>
+              ) : null}
+              {hasScreeningJob && !liveCandidate.matchPending ? (
+                roleFitInsight.matching.length > 0 ||
+                roleFitInsight.missing.length > 0 ? (
+                  <div className="space-y-1.5 pt-0.5">
+                    <div className="text-[10px] uppercase font-bold text-textMuted tracking-wider">
+                      Job Criteria
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {roleFitInsight.matching.map((skill) => (
+                        <span
+                          key={`match-${skill}`}
+                          className="inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                      {roleFitInsight.missing.map((skill) => (
+                        <span
+                          key={`miss-${skill}`}
+                          className="inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/10 text-amber-200/90 border border-amber-500/20"
+                          title="Missing for this role"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-textMuted pt-0.5">
+                    No explicit stack tags on this job yet.
+                  </span>
+                )
               ) : null}
               {!hasScreeningJob ? (
                 <p className="text-[11px] text-textMuted leading-relaxed">

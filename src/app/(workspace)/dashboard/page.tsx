@@ -3537,6 +3537,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     );
 
     return candidates.map((candidate) => {
+      // Role Fit % is always live TypeScript — never blocked by stale
+      // talent_match_scores rows. DB/API cache is reserved for AI reasoning.
       const heuristic = buildDeterministicEmployerMatch(
         {
           title: candidate.role,
@@ -3552,32 +3554,14 @@ const showToast = (msg: string, variant?: ToastVariant) => {
         },
         jobPayload
       );
-      const matchId = getTalentMatchId(candidate);
-      const live =
-        talentMatchScores[matchId] ?? talentMatchScores[candidate.id];
-      const isLoading = Boolean(
-        talentMatchLoadingIds[matchId] ?? talentMatchLoadingIds[candidate.id]
-      );
-      const liveScore =
-        live && !isCannedMatchScore(live.match_percentage)
-          ? live.match_percentage
-          : null;
-      const matchPending = Boolean(user?.id) && (isLoading || live == null);
 
       return {
         ...candidate,
-        matchScore: liveScore ?? heuristic.match_percentage,
-        matchPending,
+        matchScore: heuristic.match_percentage,
+        matchPending: false,
       };
     });
-  }, [
-    candidates,
-    primaryMatchingJob,
-    talentSearch,
-    talentMatchScores,
-    talentMatchLoadingIds,
-    user?.id,
-  ]);
+  }, [candidates, primaryMatchingJob, talentSearch]);
 
   const filteredCandidates = scoredCandidates.filter((candidate) => {
     const auditScore = resolveMarketplaceAuditScore(candidate.productionScore);
@@ -3791,6 +3775,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     void (async () => {
       const supabase = createClient();
 
+      // Cache is for AI reasoning only — Role Fit % is always live in scoredCandidates.
       const cachedByCandidate = await loadCachedTalentMatchScores(
         supabase,
         userId,

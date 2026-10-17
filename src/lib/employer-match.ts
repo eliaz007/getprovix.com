@@ -32,6 +32,8 @@ const BIO_JUNK_PATTERNS = [
 
 export type BioQuality = {
   substantive: boolean;
+  /** severe = empty/placeholder (drawer shows amber + single executive line). */
+  severity: "none" | "mild" | "severe";
   penalty: number;
   flag: string | null;
 };
@@ -42,26 +44,29 @@ export function assessBioQuality(bio: string | undefined | null): BioQuality {
   if (!text) {
     return {
       substantive: false,
+      severity: "severe",
       penalty: 18,
-      flag: "Empty profile bio — background vs job description could not be verified.",
+      flag: "Empty bio",
     };
   }
   if (text.length < 40 || BIO_JUNK_PATTERNS.some((re) => re.test(text))) {
     return {
       substantive: false,
+      severity: "severe",
       penalty: 12,
-      flag: "Thin or placeholder bio — limited evidence of role-specific background.",
+      flag: "Placeholder or thin bio",
     };
   }
   // Very short "real" bios still under-inform JD fit.
   if (text.length < 80) {
     return {
       substantive: false,
+      severity: "mild",
       penalty: 6,
-      flag: "Short bio — profile narrative is light relative to the job description.",
+      flag: "Short bio",
     };
   }
-  return { substantive: true, penalty: 0, flag: null };
+  return { substantive: true, severity: "none", penalty: 0, flag: null };
 }
 
 function tokenizeForFit(text: string): string[] {
@@ -268,22 +273,28 @@ export function buildDeterministicEmployerMatch(
     job.title?.trim() ||
     (job.searchQuery?.trim() ? `"${job.searchQuery.trim()}"` : "this search");
 
-  const skillBit =
-    base.matching_skills.length > 0
-      ? `Verified overlap on ${base.matching_skills.slice(0, 3).join(", ")} for ${roleLabel}.`
-      : requirementCount > 0
-        ? `Limited verified skill overlap with ${roleLabel} based on audited stack.`
-        : "No active job stack yet — score reflects profile depth and audit confidence.";
-
-  const jdBit =
-    profileJdScore >= 55
-      ? " Profile background aligns with the job description."
-      : profileJdScore >= 30
-        ? " Partial alignment between profile narrative and the job description."
-        : " Weak alignment between profile narrative and the job description.";
-
-  const flagBit = bioQuality.flag ? ` Flag: ${bioQuality.flag}` : "";
-  const reasoning = `${skillBit}${jdBit}${flagBit}`.trim();
+  // One executive line. Severe bio flags use a single verdict — no skill/JD echo.
+  // Do not append Flag text here; the drawer owns the amber callout.
+  let reasoning: string;
+  if (bioQuality.severity === "severe") {
+    reasoning = `Candidate profile lacks verifiable background narrative against ${roleLabel} criteria.`;
+  } else if (base.matching_skills.length > 0) {
+    reasoning = `Verified overlap on ${base.matching_skills
+      .slice(0, 3)
+      .join(", ")} for ${roleLabel}.`;
+    if (profileJdScore < 55) {
+      reasoning +=
+        " Profile narrative only partially aligns with the role criteria.";
+    }
+  } else if (requirementCount > 0) {
+    reasoning = `Limited verified skill overlap with ${roleLabel}.`;
+    if (profileJdScore < 30) {
+      reasoning += " Profile narrative does not align with the role criteria.";
+    }
+  } else {
+    reasoning =
+      "No active job stack yet — score reflects profile depth and audit confidence.";
+  }
 
   return {
     match_percentage,

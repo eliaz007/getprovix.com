@@ -38,6 +38,12 @@ export function resolveMatchInsight(
   return deterministic;
 }
 
+/**
+ * Loads persisted match insights. Callers should treat `reasoning` (and skill
+ * lists) as the cache payload; Role Fit % must be recomputed live via
+ * `buildDeterministicEmployerMatch` so scorer changes are never stuck behind
+ * stale `match_percentage` rows.
+ */
 export async function loadCachedTalentMatchScores(
   supabase: SupabaseClient,
   employerId: string,
