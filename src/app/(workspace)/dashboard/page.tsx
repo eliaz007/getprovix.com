@@ -3598,6 +3598,25 @@ const showToast = (msg: string, variant?: ToastVariant) => {
       return false;
     }
 
+    // Contract tab: require weekly bandwidth + target rate > 0.
+    if (marketplaceEngagementMode === "contract") {
+      const hours = normalizeContractHoursPerWeek(
+        candidate.contractHoursPerWeek
+      );
+      const rate = normalizeContractHourlyRate(candidate.contractHourlyRate);
+      if (!hours || rate == null || rate <= 0) {
+        console.warn(
+          "[talent-pool] filteredCandidates drop: incomplete contract details",
+          {
+            profileId: candidate.profileId,
+            contractHoursPerWeek: candidate.contractHoursPerWeek,
+            contractHourlyRate: candidate.contractHourlyRate,
+          }
+        );
+        return false;
+      }
+    }
+
     const matchesSearch = candidateMatchesTalentSearch(
       candidate,
       talentSearch
@@ -4535,6 +4554,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     visible_to_employers: dbProfile?.visible_to_employers,
     open_to_fulltime: effectiveOpenToFulltime,
     open_to_contract: effectiveOpenToContract,
+    contract_hours_per_week: contractHoursPerWeek,
+    contract_hourly_rate: contractHourlyRate,
   });
   const githubUsername = (dbProfile?.github_username ?? "")
     .replace(/^@/, "")

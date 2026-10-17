@@ -18,6 +18,10 @@ import {
 import { hasUsableGitHubAuditTarget } from "@/lib/validate-github-url";
 import { hasQualifyingTalentPoolAudit } from "@/lib/talent-pool-visibility";
 import {
+  normalizeContractHourlyRate,
+  normalizeContractHoursPerWeek,
+} from "@/lib/contract-availability";
+import {
   DEFAULT_CANDIDATE_TIMEZONE,
   DEFAULT_WORK_PREFERENCE,
 } from "@/lib/work-preference";
@@ -49,6 +53,11 @@ export type PublishedCandidateProfileRow = {
   visible_to_employers?: boolean | string | number | null;
   open_to_fulltime?: boolean | string | number | null;
   open_to_contract?: boolean | string | number | null;
+  contract_hours_per_week?: string | null;
+  contract_hourly_rate?: number | string | null;
+  /** UI aliases — mapped onto the contract_* columns when present. */
+  weekly_bandwidth?: string | null;
+  target_payout_rate?: number | string | null;
   integrity_score?: number | string | null;
   production_score?: number | string | null;
   audit_score?: number | string | null;
@@ -73,6 +82,53 @@ export function hasTalentPoolEngagementMode(
     coerceEngagementFlag(row.open_to_fulltime) ||
     coerceEngagementFlag(row.open_to_contract)
   );
+}
+
+/** Bandwidth + positive payout rate required for contract-only placement. */
+export function hasCompleteContractPlacementDetails(
+  row: PublishedCandidateProfileRow | null | undefined
+): boolean {
+  if (!row) {
+    return false;
+  }
+  const hours = normalizeContractHoursPerWeek(
+    row.contract_hours_per_week ?? row.weekly_bandwidth
+  );
+  const rate = normalizeContractHourlyRate(
+    row.contract_hourly_rate ?? row.target_payout_rate
+  );
+  return Boolean(hours) && rate != null && rate > 0;
+}
+
+export function isContractOnlyEngagement(
+  row: PublishedCandidateProfileRow | null | undefined
+): boolean {
+  if (!row) {
+    return false;
+  }
+  return (
+    coerceEngagementFlag(row.open_to_contract) &&
+    !coerceEngagementFlag(row.open_to_fulltime)
+  );
+}
+
+/** Engagement that actually unlocks employer visibility. */
+export function hasEmployerActiveEngagement(
+  row: PublishedCandidateProfileRow | null | undefined
+): boolean {
+  if (!row) {
+    return false;
+  }
+  if (coerceEngagementFlag(row.open_to_fulltime)) {
+    return true;
+  }
+  if (
+    coerceEngagementFlag(row.open_to_contract) &&
+    hasCompleteContractPlacementDetails(row)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function isNonEmptyText(value: unknown): boolean {
@@ -244,9 +300,13 @@ export function meetsTalentPoolAutoPublishCriteria(
 export type TalentPoolOnboardingStatus = {
   /** Employer visibility toggle is on (is_visible_in_pool / visible_to_employers). */
   isVisibleInPool: boolean;
-  /** Live on roster: visible + qualifying score + at least one engagement mode. */
+  /** Live on roster: visible + qualifying score + employer-active engagement. */
   isLiveOnRoster: boolean;
   hasEngagementMode: boolean;
+  /** Contract-only + missing bandwidth/rate — amber Action Needed. */
+  needsContractPlacementDetails: boolean;
+  /** Live with contract-only engagement (bandwidth + rate set). */
+  isContractOnlyLive: boolean;
   scoreMet: boolean;
   githubVerified: boolean;
   profileDetailsComplete: boolean;
@@ -264,13 +324,20 @@ export function getTalentPoolOnboardingStatus(
   const profileDetailsComplete = missingFieldLabels.length === 0;
   const isVisibleInPool = profileRowIsPublicToEmployers(row ?? {});
   const hasEngagementMode = hasTalentPoolEngagementMode(row);
-  const isLiveOnRoster =
-    isVisibleInPool && scoreMet && hasEngagementMode;
+  const contractDetailsComplete = hasCompleteContractPlacementDetails(row);
+  const needsContractPlacementDetails =
+    isVisibleInPool &&
+    isContractOnlyEngagement(row) &&
+    !contractDetailsComplete;
+  const hasActiveEngagement = hasEmployerActiveEngagement(row);
+  const isLiveOnRoster = isVisibleInPool && scoreMet && hasActiveEngagement;
 
   return {
     isVisibleInPool,
     isLiveOnRoster,
     hasEngagementMode,
+    needsContractPlacementDetails,
+    isContractOnlyLive: isLiveOnRoster && isContractOnlyEngagement(row),
     scoreMet,
     githubVerified,
     profileDetailsComplete,
@@ -515,6 +582,14 @@ export function explainPublishedVerifiedCandidateRejection(
   const productionScore = resolveHighestProductionScore(row);
   if (!hasQualifyingTalentPoolAudit(productionScore)) {
     return `score below 75 (production_score=${String(row.production_score)}, audit_score=${String(row.audit_score)}, resolved=${String(productionScore)})`;
+  }
+
+  // Contract-only without bandwidth/rate stays out of employer searches.
+  if (
+    isContractOnlyEngagement(row) &&
+    !hasCompleteContractPlacementDetails(row)
+  ) {
+    return "contract-only missing weekly bandwidth or target payout rate (> 0)";
   }
 
   return null;

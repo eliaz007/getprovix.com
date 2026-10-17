@@ -124,6 +124,52 @@ describe("required profile fields", () => {
     expect(noEngagement.isLiveOnRoster).toBe(false);
   });
 
+  it("keeps contract-only incomplete details out of Live and published pool", () => {
+    const incomplete = getTalentPoolOnboardingStatus(
+      completeVerifiedRow({
+        open_to_fulltime: false,
+        open_to_contract: true,
+        contract_hours_per_week: null,
+        contract_hourly_rate: null,
+      })
+    );
+    expect(incomplete.needsContractPlacementDetails).toBe(true);
+    expect(incomplete.isLiveOnRoster).toBe(false);
+    expect(incomplete.isContractOnlyLive).toBe(false);
+    expect(
+      isPublishedVerifiedCandidateProfile(
+        completeVerifiedRow({
+          open_to_fulltime: false,
+          open_to_contract: true,
+          contract_hours_per_week: null,
+          contract_hourly_rate: 0,
+        })
+      )
+    ).toBe(false);
+
+    const complete = getTalentPoolOnboardingStatus(
+      completeVerifiedRow({
+        open_to_fulltime: false,
+        open_to_contract: true,
+        contract_hours_per_week: "20 hrs/week (Part-Time Core Sprint)",
+        contract_hourly_rate: 85,
+      })
+    );
+    expect(complete.needsContractPlacementDetails).toBe(false);
+    expect(complete.isLiveOnRoster).toBe(true);
+    expect(complete.isContractOnlyLive).toBe(true);
+    expect(
+      isPublishedVerifiedCandidateProfile(
+        completeVerifiedRow({
+          open_to_fulltime: false,
+          open_to_contract: true,
+          contract_hours_per_week: "20 hrs/week (Part-Time Core Sprint)",
+          contract_hourly_rate: 85,
+        })
+      )
+    ).toBe(true);
+  });
+
   it("surfaces missing core fields in the onboarding status", () => {
     const status = getTalentPoolOnboardingStatus(
       completeVerifiedRow({

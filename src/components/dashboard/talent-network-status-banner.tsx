@@ -56,7 +56,26 @@ export default function TalentNetworkStatusBanner({
           Live
         </span>
         <p className="text-sm font-semibold text-emerald-100">
-          Live on Roster (Network-Visible to Employers)
+          {status.isContractOnlyLive
+            ? "Live • Contract Sprints Only"
+            : "Live on Roster (Network-Visible to Employers)"}
+        </p>
+      </div>
+    );
+  }
+
+  if (status.needsContractPlacementDetails) {
+    return (
+      <div
+        role="status"
+        className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3"
+      >
+        <span className="mt-0.5 inline-flex shrink-0 items-center rounded-full bg-amber-500/20 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-200">
+          Action Needed
+        </span>
+        <p className="text-sm font-medium leading-snug text-amber-100/95">
+          Action Needed — Set your weekly bandwidth and target rate below to
+          activate contract placement.
         </p>
       </div>
     );
