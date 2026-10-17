@@ -36,7 +36,7 @@ import {
   DEFAULT_CANDIDATE_TIMEZONE,
   DEFAULT_WORK_PREFERENCE,
 } from "@/lib/work-preference";
-import { PUBLIC_SCORECARD_THRESHOLD } from "@/lib/production-audit";
+import { deriveDualModeScores } from "@/lib/audit-mode";
 import {
   buildProvixVerificationToken,
   canonicalGitHubRepoUrl,
@@ -61,6 +61,100 @@ import { ProvixLogo } from "@/components/ProvixLogo";
 
 type AccountRole = "candidate" | "business";
 type CandidateFlowStep = 1 | 2 | 3;
+type OnboardingWorkPreference = "fulltime" | "contract" | "both";
+
+const FULLTIME_TRACK_THRESHOLD = 75;
+const CONTRACT_TRACK_THRESHOLD = 70;
+
+type DualTrackScores = {
+  contractScore: number;
+  fullTimeScore: number;
+};
+
+const ONBOARDING_WORK_PREFERENCE_OPTIONS: Array<{
+  id: OnboardingWorkPreference;
+  label: string;
+}> = [
+  { id: "fulltime", label: "Full-Time" },
+  { id: "contract", label: "Contract" },
+  { id: "both", label: "Both" },
+];
+
+function qualifiesFullTimeTrack(score: number): boolean {
+  return score >= FULLTIME_TRACK_THRESHOLD;
+}
+
+function qualifiesContractTrack(score: number): boolean {
+  return score >= CONTRACT_TRACK_THRESHOLD;
+}
+
+function defaultWorkPreferenceForTracks(
+  dual: DualTrackScores
+): OnboardingWorkPreference {
+  const fullTimeOk = qualifiesFullTimeTrack(dual.fullTimeScore);
+  const contractOk = qualifiesContractTrack(dual.contractScore);
+  if (fullTimeOk && contractOk) {
+    return "both";
+  }
+  if (contractOk) {
+    return "contract";
+  }
+  if (fullTimeOk) {
+    return "fulltime";
+  }
+  return "both";
+}
+
+function engagementFlagsFromWorkPreference(
+  preference: OnboardingWorkPreference
+): { open_to_fulltime: boolean; open_to_contract: boolean } {
+  if (preference === "fulltime") {
+    return { open_to_fulltime: true, open_to_contract: false };
+  }
+  if (preference === "contract") {
+    return { open_to_fulltime: false, open_to_contract: true };
+  }
+  return { open_to_fulltime: true, open_to_contract: true };
+}
+
+function TrackScoreCard({
+  label,
+  score,
+  qualified,
+  requireLabel,
+}: {
+  label: string;
+  score: number;
+  qualified: boolean;
+  requireLabel: string;
+}) {
+  return (
+    <div
+      className={`rounded-lg border px-3 py-3 ${
+        qualified
+          ? "border-emerald-500/30 bg-emerald-500/10"
+          : "border-border/70 bg-panel/40"
+      }`}
+    >
+      <p className="text-[10px] font-bold uppercase tracking-wider text-textMuted">
+        {label}
+      </p>
+      <p className="mt-1 font-mono text-2xl font-extrabold tabular-nums text-textMain">
+        {Math.round(score)}
+        <span className="text-sm font-semibold text-textMuted">/100</span>
+      </p>
+      <span
+        className={`mt-2 inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+          qualified
+            ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+            : "border-amber-500/25 bg-amber-500/10 text-amber-200/90"
+        }`}
+      >
+        {qualified ? "Qualified" : requireLabel}
+      </span>
+    </div>
+  );
+}
 
 const AUDIT_TELEMETRY_STAGES = [
   "Cloning repository snapshot",
@@ -188,6 +282,8 @@ export default function OnboardingPage() {
   );
   const [primarySkills, setPrimarySkills] = useState<string[]>([]);
   const [joiningNetwork, setJoiningNetwork] = useState(false);
+  const [workPreference, setWorkPreference] =
+    useState<OnboardingWorkPreference>("both");
 
   const [companyName, setCompanyName] = useState("");
   const [industry, setIndustry] = useState(INDUSTRIES[0]);
@@ -203,6 +299,8 @@ export default function OnboardingPage() {
   const [telemetryStage, setTelemetryStage] = useState(0);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditScore, setAuditScore] = useState<number | null>(null);
+  const [dualTrackScores, setDualTrackScores] =
+    useState<DualTrackScores | null>(null);
 
   const [tokenPanelOpen, setTokenPanelOpen] = useState(false);
   const [tokenRepoUrl, setTokenRepoUrl] = useState("");
@@ -430,8 +528,22 @@ export default function OnboardingPage() {
 
         const data = await readJsonResponse<{
           score?: number;
+          overallScore?: number;
           error?: string;
           message?: string;
+          metrics?: {
+            architecture?: number;
+            testing?: number;
+            devops?: number;
+            resilience?: number;
+            productionScore?: number;
+          } | null;
+          breakdown?: {
+            architecture?: number;
+            testing?: number;
+            security?: number;
+            tooling?: number;
+          } | null;
           filesystem?: {
             sample_paths?: string[];
             architecture_paths?: string[];
@@ -447,10 +559,28 @@ export default function OnboardingPage() {
         }
 
         const nextScore =
-          typeof data.score === "number" && Number.isFinite(data.score)
-            ? Math.round(data.score)
-            : null;
+          typeof data.overallScore === "number" &&
+          Number.isFinite(data.overallScore)
+            ? Math.round(data.overallScore)
+            : typeof data.score === "number" && Number.isFinite(data.score)
+              ? Math.round(data.score)
+              : null;
         setAuditScore(nextScore);
+
+        const dual = deriveDualModeScores({
+          productionScore:
+            nextScore ??
+            (typeof data.metrics?.productionScore === "number"
+              ? data.metrics.productionScore
+              : 0),
+          architecture:
+            data.metrics?.architecture ?? data.breakdown?.architecture,
+          testing: data.metrics?.testing ?? data.breakdown?.testing,
+          devops: data.metrics?.devops ?? data.breakdown?.tooling,
+          resilience: data.metrics?.resilience ?? data.breakdown?.security,
+        });
+        setDualTrackScores(dual);
+        setWorkPreference(defaultWorkPreferenceForTracks(dual));
 
         const inferred = inferSkillsFromAuditPaths([
           ...(data.filesystem?.sample_paths ?? []),
@@ -463,11 +593,16 @@ export default function OnboardingPage() {
         }
 
         if (user && nextScore != null) {
+          const headlineScore = Math.max(
+            dual.contractScore,
+            dual.fullTimeScore,
+            nextScore
+          );
           await createClient()
             .from("profiles")
             .update({
-              production_score: nextScore,
-              audit_score: nextScore,
+              production_score: headlineScore,
+              audit_score: headlineScore,
             })
             .eq("id", user.id);
         }
@@ -501,6 +636,7 @@ export default function OnboardingPage() {
     setError(null);
     setAuditError(null);
     setAuditScore(null);
+    setDualTrackScores(null);
     setTelemetryStage(0);
     setInitializingAudit(true);
 
@@ -531,6 +667,7 @@ export default function OnboardingPage() {
 
     setAuditError(null);
     setAuditScore(null);
+    setDualTrackScores(null);
     setTelemetryStage(0);
     setAuditingRepoUrl(repoUrl);
     dispatchBackgroundAudit(repoUrl);
@@ -544,12 +681,13 @@ export default function OnboardingPage() {
     setFlowStep(2);
     setAuditError(null);
     setAuditScore(null);
+    setDualTrackScores(null);
     setTelemetryStage(0);
     setInitializingAudit(false);
   };
 
   const finalizePlacement = async (joinNetwork: boolean) => {
-    if (!user || auditScore == null || joiningNetwork) {
+    if (!user || auditScore == null || dualTrackScores == null || joiningNetwork) {
       return;
     }
 
@@ -563,16 +701,32 @@ export default function OnboardingPage() {
 
     try {
       const supabase = createClient();
+      const fullTimeOk = qualifiesFullTimeTrack(dualTrackScores.fullTimeScore);
+      const contractOk = qualifiesContractTrack(dualTrackScores.contractScore);
+      const rawEngagement = joinNetwork
+        ? engagementFlagsFromWorkPreference(workPreference)
+        : { open_to_fulltime: false, open_to_contract: false };
+      const engagement = {
+        open_to_fulltime: rawEngagement.open_to_fulltime && fullTimeOk,
+        open_to_contract: rawEngagement.open_to_contract && contractOk,
+      };
+      const headlineScore = Math.max(
+        dualTrackScores.contractScore,
+        dualTrackScores.fullTimeScore,
+        auditScore
+      );
       const { error: saveError } = await supabase
         .from("profiles")
         .update({
           experience_level: experienceLevel,
           skills: limitCandidateSkills(primarySkills),
-          production_score: auditScore,
-          audit_score: auditScore,
+          production_score: headlineScore,
+          audit_score: headlineScore,
           is_visible_in_pool: joinNetwork,
           visible_to_employers: joinNetwork,
           is_publicly_visible: joinNetwork,
+          open_to_fulltime: engagement.open_to_fulltime,
+          open_to_contract: engagement.open_to_contract,
         })
         .eq("id", user.id);
 
@@ -1000,9 +1154,9 @@ export default function OnboardingPage() {
                   {initializingAudit ? "Initializing Audit..." : "Run Audit"}
                 </Button>
                 <p className="text-center text-[11px] leading-relaxed text-textMuted">
-                  Audits take ~60 seconds. A benchmark score of{" "}
-                  {PUBLIC_SCORECARD_THRESHOLD}+ qualifies you for the verified
-                  talent roster.
+                  Audits take ~60 seconds. Full-Time qualifies at{" "}
+                  {FULLTIME_TRACK_THRESHOLD}+; Contract at{" "}
+                  {CONTRACT_TRACK_THRESHOLD}+.
                 </p>
               </>
             ) : null}
@@ -1069,16 +1223,32 @@ export default function OnboardingPage() {
                   </ul>
                 </div>
 
-                {auditScore != null &&
-                auditScore < PUBLIC_SCORECARD_THRESHOLD ? (
+                {dualTrackScores != null &&
+                !qualifiesFullTimeTrack(dualTrackScores.fullTimeScore) &&
+                !qualifiesContractTrack(dualTrackScores.contractScore) ? (
                   <div className="space-y-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] px-4 py-5">
                     <h3 className="text-xl font-extrabold tracking-tight text-textMain">
-                      Score: {auditScore}/100 — Needs Improvement
+                      Needs Improvement
                     </h3>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <TrackScoreCard
+                        label="Full-Time Track"
+                        score={dualTrackScores.fullTimeScore}
+                        qualified={false}
+                        requireLabel={`Requires ${FULLTIME_TRACK_THRESHOLD}+`}
+                      />
+                      <TrackScoreCard
+                        label="Contract Track"
+                        score={dualTrackScores.contractScore}
+                        qualified={false}
+                        requireLabel={`Requires ${CONTRACT_TRACK_THRESHOLD}+`}
+                      />
+                    </div>
                     <p className="text-sm leading-relaxed text-textMuted">
-                      You haven&apos;t hit the {PUBLIC_SCORECARD_THRESHOLD}-point
-                      threshold for the verified candidate roster yet, but your
-                      repository data is completely confidential.
+                      You haven&apos;t hit the track thresholds yet (Full-Time{" "}
+                      {FULLTIME_TRACK_THRESHOLD}+ or Contract{" "}
+                      {CONTRACT_TRACK_THRESHOLD}+), but your repository data is
+                      completely confidential.
                     </p>
                     <p className="text-sm leading-relaxed text-textMuted">
                       Treat this as an automated code health check. Use Provix to
@@ -1103,23 +1273,38 @@ export default function OnboardingPage() {
                   </div>
                 ) : null}
 
-                {auditScore != null &&
-                auditScore >= PUBLIC_SCORECARD_THRESHOLD ? (
+                {dualTrackScores != null &&
+                (qualifiesFullTimeTrack(dualTrackScores.fullTimeScore) ||
+                  qualifiesContractTrack(dualTrackScores.contractScore)) ? (
                   <div className="space-y-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-5">
                     <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-300">
                       Verified Roster Qualified • Production Grade
                     </p>
-                    <h3 className="text-xl font-extrabold tracking-tight text-textMain">
-                      Score: {auditScore}/100
-                    </h3>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <TrackScoreCard
+                        label="Full-Time Track"
+                        score={dualTrackScores.fullTimeScore}
+                        qualified={qualifiesFullTimeTrack(
+                          dualTrackScores.fullTimeScore
+                        )}
+                        requireLabel={`Requires ${FULLTIME_TRACK_THRESHOLD}+`}
+                      />
+                      <TrackScoreCard
+                        label="Contract Track"
+                        score={dualTrackScores.contractScore}
+                        qualified={qualifiesContractTrack(
+                          dualTrackScores.contractScore
+                        )}
+                        requireLabel={`Requires ${CONTRACT_TRACK_THRESHOLD}+`}
+                      />
+                    </div>
                     <p className="text-sm leading-relaxed text-emerald-100/90">
-                      Your repository met our production readiness benchmarks
-                      across architecture, testing, and error handling. You&apos;ve
-                      earned a verified spot on the Provix talent roster.
+                      Your repository met production readiness benchmarks on at
+                      least one hiring track. Confirm your focus below to activate
+                      placement.
                     </p>
                     <p className="text-sm leading-relaxed text-emerald-100/80">
-                      Confirm your primary engineering focus and experience level
-                      below to activate your placement.
+                      Work preferences are limited to tracks you qualified for.
                     </p>
 
                     <div className="flex flex-col gap-1.5">
@@ -1160,6 +1345,59 @@ export default function OnboardingPage() {
                         Pre-filled from detected repository languages and
                         frameworks when available.
                       </p>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-sm font-medium text-emerald-100/90">
+                        Work Preference
+                      </span>
+                      <div
+                        role="group"
+                        aria-label="Work Preference"
+                        className="flex flex-wrap gap-2"
+                      >
+                        {ONBOARDING_WORK_PREFERENCE_OPTIONS.map((option) => {
+                          const fullTimeOk = qualifiesFullTimeTrack(
+                            dualTrackScores.fullTimeScore
+                          );
+                          const contractOk = qualifiesContractTrack(
+                            dualTrackScores.contractScore
+                          );
+                          const locked =
+                            (option.id === "fulltime" && !fullTimeOk) ||
+                            (option.id === "contract" && !contractOk) ||
+                            (option.id === "both" &&
+                              !(fullTimeOk && contractOk));
+                          const selected = workPreference === option.id;
+                          const lockTitle =
+                            option.id === "fulltime"
+                              ? `Requires Full-Time score ${FULLTIME_TRACK_THRESHOLD}+`
+                              : option.id === "contract"
+                                ? `Requires Contract score ${CONTRACT_TRACK_THRESHOLD}+`
+                                : "Requires qualification on both tracks";
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              disabled={joiningNetwork || locked}
+                              aria-pressed={selected}
+                              title={locked ? lockTitle : undefined}
+                              onClick={() => {
+                                if (!locked) {
+                                  setWorkPreference(option.id);
+                                }
+                              }}
+                              className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                selected
+                                  ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-100"
+                                  : "border-border/70 bg-panel/50 text-emerald-100/70 hover:border-emerald-500/30 hover:text-emerald-50"
+                              } ${locked ? "" : "cursor-pointer"}`}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     <Button

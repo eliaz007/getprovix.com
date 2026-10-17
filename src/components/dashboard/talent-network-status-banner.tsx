@@ -46,7 +46,7 @@ function StepRow({
 export default function TalentNetworkStatusBanner({
   status,
 }: TalentNetworkStatusBannerProps) {
-  if (status.isVisibleInPool) {
+  if (status.isLiveOnRoster) {
     return (
       <div
         role="status"
@@ -56,7 +56,25 @@ export default function TalentNetworkStatusBanner({
           Live
         </span>
         <p className="text-sm font-semibold text-emerald-100">
-          Live in Talent Network (Visible to Employers)
+          Live on Roster (Network-Visible to Employers)
+        </p>
+      </div>
+    );
+  }
+
+  // Visible toggle on, but no Full-Time / Contract preference selected.
+  if (status.isVisibleInPool && !status.hasEngagementMode) {
+    return (
+      <div
+        role="status"
+        className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3"
+      >
+        <span className="mt-0.5 inline-flex shrink-0 items-center rounded-full bg-amber-500/20 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-200">
+          Inactive
+        </span>
+        <p className="text-sm font-medium leading-snug text-amber-100/95">
+          Inactive — Select at least one work preference (Full-Time or Contract)
+          to appear in employer searches.
         </p>
       </div>
     );
@@ -99,6 +117,15 @@ export default function TalentNetworkStatusBanner({
           met={status.profileDetailsComplete}
           label="Profile Details Completed"
           detail={profileDetail}
+        />
+        <StepRow
+          met={status.hasEngagementMode}
+          label="Work preference selected"
+          detail={
+            status.hasEngagementMode
+              ? "Full-Time and/or Contract enabled"
+              : "Turn on Full-Time or Contract to appear in employer searches"
+          }
         />
       </ul>
     </div>

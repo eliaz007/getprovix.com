@@ -4533,6 +4533,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     github_verified: dbProfile?.github_verified === true,
     is_visible_in_pool: isVisibleInPool || dbProfile?.is_visible_in_pool,
     visible_to_employers: dbProfile?.visible_to_employers,
+    open_to_fulltime: effectiveOpenToFulltime,
+    open_to_contract: effectiveOpenToContract,
   });
   const githubUsername = (dbProfile?.github_username ?? "")
     .replace(/^@/, "")

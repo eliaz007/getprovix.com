@@ -99,6 +99,31 @@ describe("required profile fields", () => {
     ).toBe(false);
   });
 
+  it("is live on roster only with visibility, score, and an engagement mode", () => {
+    const live = getTalentPoolOnboardingStatus(
+      completeVerifiedRow({
+        is_visible_in_pool: true,
+        open_to_fulltime: true,
+        open_to_contract: false,
+      })
+    );
+    expect(live.isLiveOnRoster).toBe(true);
+    expect(live.hasEngagementMode).toBe(true);
+
+    const noEngagement = getTalentPoolOnboardingStatus(
+      completeVerifiedRow({
+        is_visible_in_pool: true,
+        visible_to_employers: true,
+        open_to_fulltime: false,
+        open_to_contract: false,
+      })
+    );
+    expect(noEngagement.isVisibleInPool).toBe(true);
+    expect(noEngagement.scoreMet).toBe(true);
+    expect(noEngagement.hasEngagementMode).toBe(false);
+    expect(noEngagement.isLiveOnRoster).toBe(false);
+  });
+
   it("surfaces missing core fields in the onboarding status", () => {
     const status = getTalentPoolOnboardingStatus(
       completeVerifiedRow({
@@ -112,6 +137,7 @@ describe("required profile fields", () => {
       })
     );
     expect(status.isVisibleInPool).toBe(false);
+    expect(status.isLiveOnRoster).toBe(false);
     expect(status.scoreMet).toBe(false);
     expect(status.githubVerified).toBe(false);
     expect(status.profileDetailsComplete).toBe(false);

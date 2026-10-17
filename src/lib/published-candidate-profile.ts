@@ -47,6 +47,8 @@ export type PublishedCandidateProfileRow = {
   timezone?: string | null;
   is_visible_in_pool?: boolean | string | number | null;
   visible_to_employers?: boolean | string | number | null;
+  open_to_fulltime?: boolean | string | number | null;
+  open_to_contract?: boolean | string | number | null;
   integrity_score?: number | string | null;
   production_score?: number | string | null;
   audit_score?: number | string | null;
@@ -55,6 +57,23 @@ export type PublishedCandidateProfileRow = {
   audit_data?: unknown;
   github_audit?: unknown;
 };
+
+function coerceEngagementFlag(value: unknown): boolean {
+  return value === true;
+}
+
+/** At least one employer-facing engagement mode must be explicitly selected. */
+export function hasTalentPoolEngagementMode(
+  row: PublishedCandidateProfileRow | null | undefined
+): boolean {
+  if (!row) {
+    return false;
+  }
+  return (
+    coerceEngagementFlag(row.open_to_fulltime) ||
+    coerceEngagementFlag(row.open_to_contract)
+  );
+}
 
 function isNonEmptyText(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
@@ -223,7 +242,11 @@ export function meetsTalentPoolAutoPublishCriteria(
 }
 
 export type TalentPoolOnboardingStatus = {
+  /** Employer visibility toggle is on (is_visible_in_pool / visible_to_employers). */
   isVisibleInPool: boolean;
+  /** Live on roster: visible + qualifying score + at least one engagement mode. */
+  isLiveOnRoster: boolean;
+  hasEngagementMode: boolean;
   scoreMet: boolean;
   githubVerified: boolean;
   profileDetailsComplete: boolean;
@@ -239,9 +262,15 @@ export function getTalentPoolOnboardingStatus(
   const githubVerified = row?.github_verified === true;
   const missingFieldLabels = getMissingTalentPoolProfileFieldLabels(row);
   const profileDetailsComplete = missingFieldLabels.length === 0;
+  const isVisibleInPool = profileRowIsPublicToEmployers(row ?? {});
+  const hasEngagementMode = hasTalentPoolEngagementMode(row);
+  const isLiveOnRoster =
+    isVisibleInPool && scoreMet && hasEngagementMode;
 
   return {
-    isVisibleInPool: profileRowIsPublicToEmployers(row ?? {}),
+    isVisibleInPool,
+    isLiveOnRoster,
+    hasEngagementMode,
     scoreMet,
     githubVerified,
     profileDetailsComplete,
