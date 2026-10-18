@@ -48,7 +48,7 @@ export function buildStarterCandidateBio(input: {
     .filter(Boolean)
     .join(", ");
   const body = skills
-    ? `${experiencePhrase} specializing in ${skills}. Verified on Provix production roster.`
-    : `${experiencePhrase}. Verified on Provix production roster.`;
+    ? `${experiencePhrase} specializing in ${skills}. Codebase verified on Provix.`
+    : `${experiencePhrase}. Codebase verified on Provix.`;
   return limitCandidateBio(body);
 }

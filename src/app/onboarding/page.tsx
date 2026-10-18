@@ -54,6 +54,13 @@ import {
   MAX_CORE_SKILLS,
 } from "@/lib/candidate-skills";
 import {
+  CONTRACT_HOURS_OPTIONS,
+  getContractDetailsValidationError,
+  normalizeContractHourlyRate,
+  normalizeContractHoursPerWeek,
+  type ContractHoursPerWeek,
+} from "@/lib/contract-availability";
+import {
   normalizeGitHubAuditTarget,
   parseGitHubRepoPath,
 } from "@/lib/validate-github-url";
@@ -69,6 +76,15 @@ type OnboardingWorkPreference = "fulltime" | "contract" | "both";
 
 const FULLTIME_TRACK_THRESHOLD = 75;
 const CONTRACT_TRACK_THRESHOLD = 75;
+
+const ONBOARDING_BANDWIDTH_LABELS: Record<ContractHoursPerWeek, string> = {
+  "10 hrs/week (Fractional / Nights & Weekends)": "10 hrs/week",
+  "20 hrs/week (Part-Time Core Sprint)": "20 hrs/week",
+  "30+ hrs/week (Dedicated Fractional)": "30 hrs/week",
+};
+
+const DEFAULT_ONBOARDING_BANDWIDTH: ContractHoursPerWeek =
+  "20 hrs/week (Part-Time Core Sprint)";
 
 type DualTrackScores = {
   contractScore: number;
@@ -288,6 +304,9 @@ export default function OnboardingPage() {
   const [joiningNetwork, setJoiningNetwork] = useState(false);
   const [workPreference, setWorkPreference] =
     useState<OnboardingWorkPreference>("both");
+  const [contractHoursPerWeek, setContractHoursPerWeek] =
+    useState<ContractHoursPerWeek>(DEFAULT_ONBOARDING_BANDWIDTH);
+  const [contractHourlyRate, setContractHourlyRate] = useState("");
 
   const [companyName, setCompanyName] = useState("");
   const [industry, setIndustry] = useState(INDUSTRIES[0]);
@@ -700,6 +719,21 @@ export default function OnboardingPage() {
       return;
     }
 
+    const wantsContract =
+      joinNetwork &&
+      (workPreference === "contract" || workPreference === "both");
+    if (wantsContract) {
+      const contractError = getContractDetailsValidationError(
+        true,
+        contractHoursPerWeek,
+        contractHourlyRate
+      );
+      if (contractError) {
+        setError(contractError);
+        return;
+      }
+    }
+
     setJoiningNetwork(true);
     setError(null);
 
@@ -738,6 +772,13 @@ export default function OnboardingPage() {
         open_to_fulltime: engagement.open_to_fulltime,
         open_to_contract: engagement.open_to_contract,
       };
+
+      if (engagement.open_to_contract) {
+        placementPayload.contract_hours_per_week =
+          normalizeContractHoursPerWeek(contractHoursPerWeek);
+        placementPayload.contract_hourly_rate =
+          normalizeContractHourlyRate(contractHourlyRate);
+      }
 
       if (starterBio) {
         const { data: existingProfile, error: bioReadError } = await supabase
@@ -1450,9 +1491,78 @@ export default function OnboardingPage() {
                       </div>
                     </div>
 
+                    {workPreference === "contract" ||
+                    workPreference === "both" ? (
+                      <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="flex min-w-0 w-full flex-col gap-1.5">
+                          <label
+                            htmlFor="onboarding-contract-bandwidth"
+                            className="text-sm font-medium text-emerald-100/90"
+                          >
+                            Weekly Bandwidth
+                          </label>
+                          <select
+                            id="onboarding-contract-bandwidth"
+                            value={contractHoursPerWeek}
+                            disabled={joiningNetwork}
+                            onChange={(e) =>
+                              setContractHoursPerWeek(
+                                normalizeContractHoursPerWeek(e.target.value) ||
+                                  DEFAULT_ONBOARDING_BANDWIDTH
+                              )
+                            }
+                            className={`${inputClass} min-w-0 w-full`}
+                          >
+                            {CONTRACT_HOURS_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {ONBOARDING_BANDWIDTH_LABELS[option]}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex min-w-0 w-full flex-col gap-1.5">
+                          <label
+                            htmlFor="onboarding-contract-rate"
+                            className="text-sm font-medium text-emerald-100/90"
+                          >
+                            Target Hourly Rate
+                          </label>
+                          <div className="flex h-10 w-full min-w-0 items-center rounded-lg border border-border bg-input px-3">
+                            <span className="mr-1 text-sm text-muted-foreground">
+                              $
+                            </span>
+                            <input
+                              id="onboarding-contract-rate"
+                              type="number"
+                              min={1}
+                              step={1}
+                              inputMode="numeric"
+                              placeholder="50"
+                              value={contractHourlyRate}
+                              disabled={joiningNetwork}
+                              onChange={(e) =>
+                                setContractHourlyRate(e.target.value)
+                              }
+                              className="w-full min-w-0 bg-transparent text-sm text-textMain placeholder:text-textMuted focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            />
+                            <span className="ml-1 shrink-0 text-sm text-muted-foreground">
+                              /hr
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
                     <Button
                       type="button"
-                      disabled={joiningNetwork || primarySkills.length === 0}
+                      disabled={
+                        joiningNetwork ||
+                        primarySkills.length === 0 ||
+                        ((workPreference === "contract" ||
+                          workPreference === "both") &&
+                          ((normalizeContractHourlyRate(contractHourlyRate) ??
+                            0) <= 0))
+                      }
                       onClick={() => void finalizePlacement(true)}
                       className="w-full"
                     >

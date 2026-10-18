@@ -2485,6 +2485,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
   // --- CANDIDATE PROFILE STUDIO STATE (persisted to Supabase) ---
   const [title, setTitle] = useState("");
   const [bio, setBio] = useState("");
+  const [dismissedBioHint, setDismissedBioHint] = useState(false);
   const [school, setSchool] = useState("");
   const [degree, setDegree] = useState("");
   const [educationEntries, setEducationEntries] = useState<EducationEntry[]>([]);
@@ -5350,16 +5351,31 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                         maxLength={MAX_CANDIDATE_BIO_LENGTH}
                         value={bio}
                         placeholder={CANDIDATE_BIO_PLACEHOLDER}
-                        onChange={(e) =>
-                          setBio(limitCandidateBio(e.target.value))
-                        }
+                        onChange={(e) => {
+                          if (!dismissedBioHint) {
+                            setDismissedBioHint(true);
+                          }
+                          setBio(limitCandidateBio(e.target.value));
+                        }}
                         className="w-full bg-background border border-border rounded-xl p-3.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand resize-none leading-relaxed"
                       />
-                      <p className="mt-1.5 text-xs text-textMuted leading-snug">
-                        ✨ We generated a starter bio based on your audit and
-                        experience level. Feel free to edit or rewrite it
-                        anytime.
-                      </p>
+                      {!dismissedBioHint ? (
+                        <p className="mt-2.5 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-200/90">
+                          <span className="min-w-0 flex-1">
+                            ✨ We generated a starter bio based on your audit
+                            and experience level. Feel free to edit or rewrite
+                            it anytime.
+                          </span>
+                          <button
+                            type="button"
+                            aria-label="Dismiss bio hint"
+                            onClick={() => setDismissedBioHint(true)}
+                            className="ml-auto p-0.5 text-amber-300/70 hover:text-amber-100"
+                          >
+                            ✕
+                          </button>
+                        </p>
+                      ) : null}
                       <p
                         aria-live="polite"
                         className={`mt-1.5 text-right font-mono text-[11px] ${
