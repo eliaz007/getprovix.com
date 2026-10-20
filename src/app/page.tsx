@@ -44,25 +44,25 @@ export default function Home() {
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-[3.25rem] lg:leading-[1.12]">
             Vetted Next.js & TypeScript Engineers, Verified in Code
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-base font-normal leading-relaxed text-zinc-400 md:text-lg">
-            Built for technical founders who need engineering bandwidth to ship
-            faster. Clear out secondary backlog tickets via isolated PRs, or
-            hire vetted full-time developers.
+          <p className="mt-4 text-base sm:text-lg text-neutral-400 max-w-2xl mx-auto text-center">
+            Built for production-grade developers and technical founders. Get
+            verified through repository code audits to join the network, or
+            create a founder account to hire contract and full-time talent for
+            isolated backlog sprints.
           </p>
-          <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-5">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8">
             <Link
-              href="/login?next=/dashboard/auditor"
-              prefetch={false}
-              className="inline-flex min-h-12 cursor-pointer items-center justify-center rounded-lg bg-brand px-8 text-sm font-semibold tracking-tight text-white shadow-[0_0_20px_rgba(124,58,237,0.25)] transition-colors hover:bg-brandHover"
+              href="/apply"
+              className="w-full sm:w-auto px-7 py-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium text-center transition-colors shadow-lg shadow-purple-900/30"
             >
-              Benchmark Your Repository
+              Join Talent Network
             </Link>
-            <a
-              href="#hiring"
-              className="text-sm font-medium text-zinc-400 transition-colors duration-200 hover:text-zinc-200"
+            <Link
+              href="/signup?role=founder"
+              className="w-full sm:w-auto px-6 py-3 rounded-lg border border-neutral-800 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-300 font-medium text-center transition-colors"
             >
-              Hiring engineers? View roster →
-            </a>
+              Hire Talent &rarr;
+            </Link>
           </div>
         </section>
 
