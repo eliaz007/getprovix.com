@@ -42,12 +42,12 @@ export default function Home() {
             className="pointer-events-none absolute top-0 left-1/2 -z-10 h-[350px] w-[600px] -translate-x-1/2 rounded-full bg-purple-600/15 blur-[120px]"
           />
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-[3.25rem] lg:leading-[1.12]">
-            The Verified Roster of High Signal Engineers
+            Vetted Next.js & TypeScript Engineers, Verified in Code
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-base font-normal leading-relaxed text-zinc-400 md:text-lg">
-            We benchmark public repositories for production architecture.
-            Engineers who clear the bar get direct introductions to engineering
-            leads.
+            Built for technical founders who need engineering bandwidth to ship
+            faster. Clear out secondary backlog tickets via isolated PRs, or
+            hire vetted full-time developers.
           </p>
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-5">
             <Link
