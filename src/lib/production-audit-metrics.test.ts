@@ -125,9 +125,13 @@ describe("four-pillar production audit", () => {
     );
   });
 
-  it("does not deduct points for commit inactivity", () => {
+  it("penalizes one-shot histories and leaves multi-day inactivity alone", () => {
     const stale = ["2023-01-01T00:00:00.000Z"];
-    expect(scoreCommitHistoryPenalty(stale, Date.parse("2026-09-22"))).toBe(0);
+    expect(scoreCommitHistoryPenalty(stale, Date.parse("2026-09-22"))).toBe(
+      -25
+    );
+    expect(scoreCommitHistoryPenalty(null)).toBe(0);
+    expect(scoreCommitHistoryPenalty([])).toBe(-25);
     expect(classifyRepoActivityStatus(stale, Date.parse("2026-09-22"))).toBe(
       "stable"
     );
@@ -137,6 +141,34 @@ describe("four-pillar production audit", () => {
         Date.parse("2026-09-22")
       )
     ).toBe("active");
+    expect(
+      scoreCommitHistoryPenalty([
+        "2023-01-01T00:00:00.000Z",
+        "2023-06-01T00:00:00.000Z",
+      ])
+    ).toBe(0);
+    expect(
+      scoreCommitHistoryPenalty([
+        "2026-05-02T12:00:00.000Z",
+        "2026-05-02T12:40:00.000Z",
+        "2026-05-02T13:10:00.000Z",
+        "2026-05-02T13:50:00.000Z",
+        "2026-05-02T18:30:00.000Z",
+      ])
+    ).toBe(-20);
+    expect(
+      scoreCommitHistoryPenalty([
+        "2026-05-02T08:00:00.000Z",
+        "2026-05-02T14:00:00.000Z",
+        "2026-05-02T20:00:00.000Z",
+      ])
+    ).toBe(0);
+    expect(
+      scoreCommitHistoryPenalty([
+        "2026-05-02T22:30:00.000Z",
+        "2026-05-03T01:00:00.000Z",
+      ])
+    ).toBe(0);
   });
 
   it("grades testing density in proportional bands", () => {
@@ -304,6 +336,59 @@ describe("four-pillar production audit", () => {
         "web_app"
       )
     ).toBeLessThanOrEqual(65);
+  });
+
+  it("caps architecture at 72 when sampled routes lack schema validation", () => {
+    const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
+      inspected: true,
+    });
+    expect(scoreArchitecture(filesystem)).toBeGreaterThan(72);
+    expect(
+      scoreArchitecture({
+        ...filesystem,
+        route_contracts_sampled: true,
+        route_schema_validation: false,
+        unvalidated_type_assertions: 3,
+        has_contract_boundaries: false,
+      })
+    ).toBeLessThanOrEqual(72);
+    expect(
+      scoreArchitecture({
+        ...filesystem,
+        route_contracts_sampled: true,
+        route_schema_validation: true,
+        unvalidated_type_assertions: 2,
+        has_contract_boundaries: false,
+      })
+    ).toBeGreaterThan(72);
+  });
+
+  it("caps testing at 35 when at least half of sampled tests are hollow", () => {
+    const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
+      inspected: true,
+    });
+    const dense = {
+      ...filesystem,
+      unit_test_file_count: 8,
+      source_file_count: 20,
+      executable_source_count: 20,
+      has_e2e_tools: true,
+    };
+    expect(scoreTesting(dense)).toBeGreaterThan(35);
+    expect(
+      scoreTesting({
+        ...dense,
+        sampled_test_file_count: 4,
+        hollow_test_file_count: 1,
+      })
+    ).toBe(scoreTesting(dense));
+    expect(
+      scoreTesting({
+        ...dense,
+        sampled_test_file_count: 4,
+        hollow_test_file_count: 2,
+      })
+    ).toBe(35);
   });
 
   it("allows architecture above 85 only with proven route contracts", () => {

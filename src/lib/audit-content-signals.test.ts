@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   analyzeCiGates,
+  analyzeRouteContracts,
+  analyzeTestFileContent,
   analyzeWorkflowDepth,
   countUnhandledAsyncCalls,
   preferWorkflowSamplePaths,
   selectPrimaryCiWorkflowPath,
+  summarizeSampledTests,
 } from "./audit-content-signals";
 
 describe("countUnhandledAsyncCalls", () => {
@@ -114,5 +117,81 @@ describe("preferWorkflowSamplePaths", () => {
         ".github/workflows/test.yml",
       ])
     ).toBe(".github/workflows/test.yml");
+  });
+});
+
+describe("analyzeRouteContracts", () => {
+  it("treats schema.parse as validation and ignores JSON.parse casts", () => {
+    expect(
+      analyzeRouteContracts([
+        {
+          path: "src/app/api/widgets/route.ts",
+          text: `export async function POST(req: Request) {
+            const body = widgetSchema.parse(await req.json());
+            return Response.json(body);
+          }`,
+        },
+      ])
+    ).toMatchObject({
+      sampled: true,
+      schemaValidated: true,
+      completeContracts: true,
+      unvalidatedAssertions: 0,
+    });
+
+    expect(
+      analyzeRouteContracts([
+        {
+          path: "src/app/api/widgets/route.ts",
+          text: `export async function POST(req: Request) {
+            const body = JSON.parse(await req.text()) as Widget;
+            return Response.json(body);
+          }`,
+        },
+      ])
+    ).toMatchObject({
+      sampled: true,
+      schemaValidated: false,
+    });
+  });
+});
+
+describe("hollow test files", () => {
+  it("flags empty and tautological tests, and keeps genuine assertions", () => {
+    expect(analyzeTestFileContent(`it("works", () => {})`).hollow).toBe(true);
+    expect(analyzeTestFileContent(`expect(true).toBe(true);`).hollow).toBe(true);
+    expect(analyzeTestFileContent(`expect(1).toBe(1);`).hollow).toBe(true);
+    expect(analyzeTestFileContent(`assert.strictEqual(1, 1);`).hollow).toBe(
+      true
+    );
+
+    const genuine = analyzeTestFileContent(`
+      expect(true).toBe(true);
+      expect(add(1, 1)).toBe(2);
+    `);
+    expect(genuine.hollow).toBe(false);
+    expect(genuine.genuineAssertionCount).toBe(1);
+  });
+
+  it("marks a sample mostly hollow only at a 50% share", () => {
+    const mixed = summarizeSampledTests([
+      { path: "src/a.test.ts", text: "expect(true).toBe(true)" },
+      { path: "src/b.spec.ts", text: "it('x', () => {})" },
+      { path: "src/c.test.ts", text: "expect(add(1, 1)).toBe(2)" },
+      { path: "src/d.test.ts", text: "expect(add(2, 2)).toBe(4)" },
+      { path: "examples/e.test.ts", text: "expect(true).toBe(true)" },
+    ]);
+    expect(mixed.sampled).toBe(4);
+    expect(mixed.hollow).toBe(2);
+    expect(mixed.mostlyHollow).toBe(true);
+
+    const mostlyReal = summarizeSampledTests([
+      { path: "src/a.test.ts", text: "expect(true).toBe(true)" },
+      { path: "src/b.test.ts", text: "expect(add(1, 1)).toBe(2)" },
+      { path: "src/c.test.ts", text: "assert.equal(add(1, 1), 2)" },
+      { path: "src/d.spec.ts", text: "expect(add(2, 2)).toBe(4)" },
+    ]);
+    expect(mostlyReal.hollow).toBe(1);
+    expect(mostlyReal.mostlyHollow).toBe(false);
   });
 });

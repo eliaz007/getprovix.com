@@ -169,6 +169,11 @@ export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
 
 /** Standard app scaffolding (tsconfig, src/, lint, framework config) cannot exceed this. */
 const ARCHITECTURE_SCAFFOLD_CAP = 82;
+/**
+ * Route handlers were sampled and do not parse input with Zod `.parse`
+ * or an equivalent schema guard.
+ */
+const ARCHITECTURE_UNVALIDATED_ROUTE_CAP = 72;
 
 function hasProvenArchitectureContracts(
   evidence: RepoFilesystemEvidence
@@ -181,9 +186,17 @@ function hasProvenArchitectureContracts(
   );
 }
 
+function routesSampledWithoutSchema(evidence: RepoFilesystemEvidence): boolean {
+  return (
+    evidence.route_contracts_sampled === true &&
+    evidence.route_schema_validation !== true
+  );
+}
+
 /**
  * Architecture (0-100): structure, type safety, and modularity from the file tree.
- * Scaffolding caps at 82. 85+ requires route-level schema validation, zero
+ * Scaffolding caps at 82. Sampled route handlers that lack runtime schema
+ * validation cap at 72. 85+ requires route-level schema validation, zero
  * unvalidated `as Type` assertions, and complete contract boundaries.
  */
 export function scoreArchitecture(evidence: RepoFilesystemEvidence): number {
@@ -225,10 +238,13 @@ export function scoreArchitecture(evidence: RepoFilesystemEvidence): number {
   }
 
   const raw = clampScore0to100(score);
-  if (!hasProvenArchitectureContracts(evidence)) {
-    return Math.min(raw, ARCHITECTURE_SCAFFOLD_CAP);
+  if (hasProvenArchitectureContracts(evidence)) {
+    return raw;
   }
-  return raw;
+  if (routesSampledWithoutSchema(evidence)) {
+    return Math.min(raw, ARCHITECTURE_UNVALIDATED_ROUTE_CAP);
+  }
+  return Math.min(raw, ARCHITECTURE_SCAFFOLD_CAP);
 }
 
 function ciGatesKnown(evidence: RepoFilesystemEvidence): boolean {
@@ -345,6 +361,32 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
 /** Full-time: sparse suites cannot clear Mid/Senior on density alone. */
 const FULLTIME_LOW_DENSITY_RATIO = 0.25;
 const FULLTIME_LOW_DENSITY_TESTING_CAP = 50;
+/** Half or more of sampled *.test.ts / *.spec.ts files are hollow. */
+const HOLLOW_TEST_SAMPLE_RATIO = 0.5;
+const HOLLOW_TEST_TESTING_CAP = 35;
+
+/**
+ * Cap only when the inspected sample is mostly hollow. A sample with genuine
+ * assertions in more than half of the files is left on the density score.
+ * Unsampled suites (count missing or zero) are not penalized.
+ */
+function applyHollowTestingCap(
+  score: number,
+  evidence: RepoFilesystemEvidence
+): number {
+  const sampled = evidence.sampled_test_file_count;
+  if (typeof sampled !== "number" || sampled <= 0) {
+    return score;
+  }
+  const hollow =
+    typeof evidence.hollow_test_file_count === "number"
+      ? evidence.hollow_test_file_count
+      : 0;
+  if (hollow / sampled < HOLLOW_TEST_SAMPLE_RATIO) {
+    return score;
+  }
+  return Math.min(score, HOLLOW_TEST_TESTING_CAP);
+}
 
 /**
  * Testing (0-100). Ratios use core executable *.ts/*.tsx/*.js/*.jsx files only.
@@ -353,6 +395,7 @@ const FULLTIME_LOW_DENSITY_TESTING_CAP = 50;
  * More than 50 source files with ratio under 0.08 caps at 15.
  * 50+ test files plus Playwright/Cypress scores 85–95.
  * Full-time: test files below 25% of source files scale Testing up to a 50 cap.
+ * When at least half of sampled test files are hollow, Testing caps at 35.
  */
 export function scoreTesting(
   evidence: RepoFilesystemEvidence,
@@ -383,7 +426,7 @@ export function scoreTesting(
 
   if (testFiles >= 50 && hasE2e) {
     const extra = Math.min(10, Math.floor((testFiles - 50) / 10));
-    return 85 + extra;
+    return applyHollowTestingCap(85 + extra, evidence);
   }
 
   let score: number;
@@ -412,7 +455,7 @@ export function scoreTesting(
     score = Math.min(score, densityScaled, FULLTIME_LOW_DENSITY_TESTING_CAP);
   }
 
-  return score;
+  return applyHollowTestingCap(score, evidence);
 }
 
 /** @deprecated Use scoreTesting. */

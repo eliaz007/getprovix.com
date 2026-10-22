@@ -4,7 +4,9 @@ import {
   analyzeWorkflowDepth,
   countUnhandledAsyncCalls,
   preferSourceSamplePaths,
+  preferTestSamplePaths,
   preferWorkflowSamplePaths,
+  summarizeSampledTests,
 } from "@/lib/audit-content-signals";
 import {
   classifyRepoFilesystem,
@@ -961,6 +963,7 @@ async function collectTruncatedTreePaths(
 /** Enterprise monorepos often ship many chore workflows before real CI alphabetically. */
 const MAX_WORKFLOW_SAMPLES = 10;
 const MAX_SOURCE_SAMPLES = 6;
+const MAX_TEST_SAMPLES = 6;
 
 async function fetchGithubFileRaw(
   owner: string,
@@ -1007,12 +1010,16 @@ async function enrichFilesystemFromContents(
     allPaths.filter(isSourceFile),
     MAX_SOURCE_SAMPLES
   );
+  const testPaths = preferTestSamplePaths(allPaths, MAX_TEST_SAMPLES);
 
-  const [workflowTexts, sourceTexts] = await Promise.all([
+  const [workflowTexts, sourceTexts, testTexts] = await Promise.all([
     mapWithConcurrency(workflowPaths, GITHUB_FETCH_CONCURRENCY, (path) =>
       fetchGithubFileRaw(owner, repo, path, commitSha)
     ),
     mapWithConcurrency(sourcePaths, GITHUB_FETCH_CONCURRENCY, (path) =>
+      fetchGithubFileRaw(owner, repo, path, commitSha)
+    ),
+    mapWithConcurrency(testPaths, GITHUB_FETCH_CONCURRENCY, (path) =>
       fetchGithubFileRaw(owner, repo, path, commitSha)
     ),
   ]);
@@ -1040,6 +1047,12 @@ async function enrichFilesystemFromContents(
       return text ? [{ path, text }] : [];
     })
   );
+  const hollowTests = summarizeSampledTests(
+    testPaths.flatMap((path, index) => {
+      const text = testTexts[index];
+      return typeof text === "string" ? [{ path, text }] : [];
+    })
+  );
 
   return {
     ...evidence,
@@ -1058,6 +1071,8 @@ async function enrichFilesystemFromContents(
     route_schema_validation: contracts.schemaValidated,
     unvalidated_type_assertions: contracts.unvalidatedAssertions,
     has_contract_boundaries: contracts.completeContracts,
+    sampled_test_file_count: hollowTests.sampled,
+    hollow_test_file_count: hollowTests.hollow,
   };
 }
 

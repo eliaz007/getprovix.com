@@ -56,6 +56,10 @@ export type RepoFilesystemEvidence = {
   unvalidated_type_assertions?: number;
   /** Every sampled route has a schema contract and zero bare type assertions. */
   has_contract_boundaries?: boolean;
+  /** `*.test.ts` / `*.spec.ts` files whose contents were read. Absent when not sampled. */
+  sampled_test_file_count?: number;
+  /** Sampled test files with no assertions or only tautological checks. */
+  hollow_test_file_count?: number;
   /** HEAD SHA the file tree was pinned to. Absent when the audit predates pinning. */
   audited_commit_sha?: string;
   /** Branch ref used when pinning audited_commit_sha. */
@@ -199,6 +203,13 @@ const FRAMEWORK_CONFIG =
   /(^|\/)(next\.config\.|vite\.config\.|nuxt\.config\.|remix\.config\.|astro\.config\.|svelte\.config\.|angular\.json$|webpack\.config\.|turbo\.json$|nx\.json$|pnpm-workspace\.ya?ml$)/i;
 const LINT_CONFIG =
   /(^|\/)(\.eslintrc|eslint\.config\.|biome\.json|\.prettierrc|prettier\.config\.)/i;
+
+function optionalNonNegative(input: unknown): number | undefined {
+  if (typeof input !== "number" || !Number.isFinite(input)) {
+    return undefined;
+  }
+  return Math.max(0, Math.round(input));
+}
 
 function asStringPaths(value: unknown, limit = MAX_PATHS_PER_BUCKET): string[] {
   if (!Array.isArray(value)) {
@@ -596,6 +607,8 @@ export function parseRepoFilesystemEvidence(
           : undefined,
     unvalidated_type_assertions: asCount(record.unvalidated_type_assertions),
     has_contract_boundaries: record.has_contract_boundaries === true,
+    sampled_test_file_count: optionalNonNegative(record.sampled_test_file_count),
+    hollow_test_file_count: optionalNonNegative(record.hollow_test_file_count),
     audited_commit_sha: commitShaFromRecord(record.audited_commit_sha),
     audited_branch: branchFromRecord(record.audited_branch),
   };

@@ -59,9 +59,14 @@ export function getReadinessBadge(score: number): ReadinessBadge {
 
 /** @deprecated Inactivity is an informational tag only — never a numeric ding. */
 export const STALE_COMMIT_HISTORY_PENALTY = 0;
-export const CLUSTERED_COMMIT_HISTORY_PENALTY = 0;
-export const MAX_COMMIT_HISTORY_PENALTY = 0;
+/** Empty or single-commit payloads. Not applied when dates were never fetched. */
+export const SINGLE_COMMIT_HISTORY_PENALTY = -25;
+/** >=80% of commits inside 4 hours on one calendar day. */
+export const CLUSTERED_COMMIT_HISTORY_PENALTY = -20;
+export const MAX_COMMIT_HISTORY_PENALTY = -25;
 const STALE_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
+const BURST_WINDOW_MS = 4 * 60 * 60 * 1000;
+const BURST_COMMIT_FRACTION = 0.8;
 
 export const READINESS_QUALITATIVE_WEIGHT = 0.45;
 export const READINESS_PRODUCTION_WEIGHT = 0.55;
@@ -106,11 +111,61 @@ export function classifyRepoActivityStatus(
     : "active";
 }
 
-/** Always 0 — commit age / inactivity is informational, not a quality ding. */
+function utcCalendarDay(timestamp: number): string {
+  const date = new Date(timestamp);
+  return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+}
+
+/**
+ * True when some window shorter than 4 hours holds at least 80% of the commits.
+ * `timestamps` must be sorted ascending.
+ */
+function isOneShotCommitBurst(timestamps: number[]): boolean {
+  const total = timestamps.length;
+  for (let start = 0; start < total; start += 1) {
+    let end = start;
+    while (
+      end + 1 < total &&
+      timestamps[end + 1]! - timestamps[start]! < BURST_WINDOW_MS
+    ) {
+      end += 1;
+    }
+    if ((end - start + 1) / total >= BURST_COMMIT_FRACTION) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Synthetic-history penalty from GitHub commit timestamps.
+ * Missing payload (`null` / `undefined`) is 0 — a failed fetch is not evidence.
+ * 0–1 parsed commits → -25. A single calendar day where >=80% of commits
+ * land inside 4 hours → -20. Two or more calendar days, or a same-day
+ * history with natural gaps, → 0. Age alone does not deduct.
+ */
 export function scoreCommitHistoryPenalty(
-  _commitDates?: string[] | null,
+  commitDates?: string[] | null,
   _now?: number
 ): number {
+  if (commitDates == null) {
+    return 0;
+  }
+
+  const parsed = parseCommitTimestamps(commitDates);
+  if (parsed.length <= 1) {
+    return SINGLE_COMMIT_HISTORY_PENALTY;
+  }
+
+  const days = new Set(parsed.map(utcCalendarDay));
+  if (days.size >= 2) {
+    return 0;
+  }
+
+  if (isOneShotCommitBurst(parsed)) {
+    return CLUSTERED_COMMIT_HISTORY_PENALTY;
+  }
+
   return 0;
 }
 
@@ -291,7 +346,7 @@ export function classifyCommitCadence(
     status: activity,
     activity,
     tone: activity === "active" ? "pass" : "warn",
-    penalty: 0,
+    penalty: scoreCommitHistoryPenalty(commitDates, now),
   };
 }
 

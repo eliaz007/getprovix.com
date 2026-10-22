@@ -1,4 +1,4 @@
-import type { CiPipelineDepth } from "@/lib/repo-filesystem";
+import { isNoisePath, type CiPipelineDepth } from "@/lib/repo-filesystem";
 
 const ASYNC_CALL = /\b(?:fetch\s*\(|axios\.|got\s*\(|ky\s*\()/g;
 const TRY_BLOCK = /try\s*\{/g;
@@ -108,9 +108,22 @@ export type RouteContractReport = {
 };
 
 const ROUTE_HANDLER = /\/api\/.+\/route\.[cm]?[jt]sx?$/i;
-const SCHEMA_PARSE =
-  /\b(z\.(?:object|strictObject)|safeParse\s*\(|from\s+["']zod["']|valibot|yup\.|ajv|superstruct)\b/;
+const SCHEMA_LIBRARY =
+  /\b(z\.(?:object|strictObject|string|number|boolean|array|record|union|discriminatedUnion|enum|instanceof)|safeParse\s*\(|valibot|yup\.|ajv|superstruct)\b/;
+const BUILTIN_PARSE =
+  /\b(?:JSON|Date|Number|BigInt|path|url|URL|URLSearchParams|querystring|qs|YAML|yaml|Buffer)\s*\.\s*parse\s*\(/g;
 const TYPE_ASSERTION = /\bas\s+(?!const\b)[A-Z][A-Za-z0-9_]*/g;
+
+/** Zod `.parse` / `.safeParse`, schema libraries, or equivalent guards. Not `JSON.parse`. */
+function hasRuntimeSchemaValidation(source: string): boolean {
+  const cleaned = stripNoise(source);
+  if (SCHEMA_LIBRARY.test(cleaned)) {
+    return true;
+  }
+  BUILTIN_PARSE.lastIndex = 0;
+  const withoutBuiltin = cleaned.replace(BUILTIN_PARSE, " ");
+  return /\.\s*parse\s*\(/.test(withoutBuiltin);
+}
 
 /** Route handlers need runtime schema parsing, not `as Type` casts. */
 export function analyzeRouteContracts(
@@ -128,24 +141,185 @@ export function analyzeRouteContracts(
 
   let unvalidatedAssertions = 0;
   let schemaRoutes = 0;
+  let cleanSchemaRoutes = 0;
   for (const route of routes) {
     const cleaned = stripNoise(route.text);
-    const hasSchema = SCHEMA_PARSE.test(cleaned);
+    const hasSchema = hasRuntimeSchemaValidation(route.text);
+    TYPE_ASSERTION.lastIndex = 0;
     const assertions = cleaned.match(TYPE_ASSERTION)?.length ?? 0;
     unvalidatedAssertions += assertions;
-    if (hasSchema && assertions === 0) {
+    if (hasSchema) {
       schemaRoutes += 1;
+    }
+    if (hasSchema && assertions === 0) {
+      cleanSchemaRoutes += 1;
     }
   }
 
+  const schemaValidated = schemaRoutes === routes.length;
   const completeContracts =
-    schemaRoutes === routes.length && unvalidatedAssertions === 0;
+    cleanSchemaRoutes === routes.length && unvalidatedAssertions === 0;
 
   return {
     sampled: true,
-    schemaValidated: completeContracts,
+    schemaValidated,
     unvalidatedAssertions,
     completeContracts,
+  };
+}
+
+const SAMPLED_UNIT_TEST = /\.(?:test|spec)\.[cm]?[jt]sx?$/i;
+const ASSERTION_CALL =
+  /\b(?:expect|assert(?:Equal|Equals|StrictEqual|DeepEqual|DeepStrictEqual|NotEqual|NotStrictEqual)?)\s*(?:\.\s*[A-Za-z_]\w*\s*)?\(/g;
+const TAUTOLOGICAL_EXPECT =
+  /\bexpect\s*(?:\.\s*[A-Za-z_]\w*\s*)?\(\s*([^()\n]+?)\s*\)\s*\.\s*(toBeTruthy|toBeFalsy|toStrictEqual|toEqual|toBe)\s*\(\s*([^()\n]*?)\s*\)/g;
+const TAUTOLOGICAL_ASSERT =
+  /\bassert\s*(?:\.\s*(deepStrictEqual|strictEqual|deepEqual|equal|ok)\s*)?\(\s*([^()\n]+?)\s*(?:,\s*([^()\n]+?)\s*)?\)/g;
+
+export type TestContentReport = {
+  assertionCount: number;
+  tautologicalCount: number;
+  genuineAssertionCount: number;
+  hollow: boolean;
+};
+
+/** `*.test.ts` / `*.spec.ts` (and js/tsx twins), excluding vendor and demo trees. */
+export function isSampledUnitTestPath(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/").trim();
+  if (!normalized || isNoisePath(normalized)) {
+    return false;
+  }
+  return SAMPLED_UNIT_TEST.test(normalized);
+}
+
+/**
+ * Spread samples across the tree so one stub directory does not hide real suites.
+ */
+export function preferTestSamplePaths(paths: string[], limit = 6): string[] {
+  const eligible = [
+    ...new Set(paths.map((path) => path.replace(/\\/g, "/").trim()).filter(Boolean)),
+  ]
+    .filter(isSampledUnitTestPath)
+    .sort((left, right) => left.localeCompare(right));
+  const budget = Math.max(0, limit);
+  if (eligible.length <= budget) {
+    return eligible;
+  }
+
+  const picked: string[] = [];
+  for (let index = 0; index < budget; index += 1) {
+    picked.push(eligible[Math.floor((index * eligible.length) / budget)]!);
+  }
+  return picked;
+}
+
+function readLiteral(raw: string): { kind: string; value: string } | null {
+  const value = raw.trim();
+  if (value === "true" || value === "false") {
+    return { kind: "bool", value };
+  }
+  if (value === "null") {
+    return { kind: "null", value };
+  }
+  if (value === "undefined") {
+    return { kind: "undef", value };
+  }
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) {
+    return { kind: "num", value: String(Number(value)) };
+  }
+  return null;
+}
+
+function sameLiteral(
+  left: { kind: string; value: string } | null,
+  right: { kind: string; value: string } | null
+): boolean {
+  return Boolean(left && right && left.kind === right.kind && left.value === right.value);
+}
+
+function countTautologicalAssertions(source: string): number {
+  let count = 0;
+  TAUTOLOGICAL_EXPECT.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = TAUTOLOGICAL_EXPECT.exec(source))) {
+    const actual = readLiteral(match[1] ?? "");
+    const matcher = match[2];
+    if (matcher === "toBeTruthy" && actual?.value === "true") {
+      count += 1;
+      continue;
+    }
+    if (matcher === "toBeFalsy" && actual?.value === "false") {
+      count += 1;
+      continue;
+    }
+    if (
+      (matcher === "toBe" || matcher === "toEqual" || matcher === "toStrictEqual") &&
+      sameLiteral(actual, readLiteral(match[3] ?? ""))
+    ) {
+      count += 1;
+    }
+  }
+
+  TAUTOLOGICAL_ASSERT.lastIndex = 0;
+  while ((match = TAUTOLOGICAL_ASSERT.exec(source))) {
+    const method = match[1];
+    const left = readLiteral(match[2] ?? "");
+    const right = match[3] !== undefined ? readLiteral(match[3]) : null;
+    if (!method || method === "ok") {
+      if (left?.value === "true" || (left?.kind === "num" && left.value === "1")) {
+        count += 1;
+      }
+      continue;
+    }
+    if (sameLiteral(left, right)) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Hollow when the file has no executable assertions, or every assertion is a
+ * tautology such as `expect(true).toBe(true)` / `expect(1).toBe(1)`.
+ * A single genuine assertion keeps the file out of the hollow bucket.
+ */
+export function analyzeTestFileContent(source: string): TestContentReport {
+  const cleaned = stripNoise(source);
+  ASSERTION_CALL.lastIndex = 0;
+  const assertionCount = cleaned.match(ASSERTION_CALL)?.length ?? 0;
+  const tautologicalCount = Math.min(
+    assertionCount,
+    countTautologicalAssertions(cleaned)
+  );
+  const genuineAssertionCount = Math.max(0, assertionCount - tautologicalCount);
+  return {
+    assertionCount,
+    tautologicalCount,
+    genuineAssertionCount,
+    hollow: assertionCount === 0 || genuineAssertionCount === 0,
+  };
+}
+
+export function summarizeSampledTests(
+  files: Array<{ path: string; text: string }>
+): { sampled: number; hollow: number; mostlyHollow: boolean } {
+  const tests = files.filter((file) => isSampledUnitTestPath(file.path));
+  if (tests.length === 0) {
+    return { sampled: 0, hollow: 0, mostlyHollow: false };
+  }
+
+  let hollow = 0;
+  for (const file of tests) {
+    if (analyzeTestFileContent(file.text).hollow) {
+      hollow += 1;
+    }
+  }
+
+  return {
+    sampled: tests.length,
+    hollow,
+    mostlyHollow: hollow / tests.length >= 0.5,
   };
 }
 
