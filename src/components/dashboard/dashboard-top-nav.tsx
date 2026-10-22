@@ -236,6 +236,7 @@ function UserAvatar() {
       className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-700/80 bg-zinc-900 text-[10px] font-bold text-zinc-100 transition-colors hover:border-zinc-500"
     >
       {userAvatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- avatar URL is dynamic/remote; next/image optimization isn't worth the config overhead here
         <img
           src={userAvatarUrl}
           alt=""

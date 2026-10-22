@@ -333,6 +333,8 @@ function DashboardNavProviderImpl({
     params.delete("tab");
     const next = `${pathname}${params.toString() ? `?${params}` : ""}`;
     router.replace(next, { scroll: false });
+    // tabHold is a one-shot strip guard; including it would re-fire the replace loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional omit of tabHold
   }, [pathname, urlTab, router, accountRole]);
 
   useEffect(() => {
@@ -563,6 +565,7 @@ function DashboardNavProviderImpl({
     // Intentionally omit `pathname`: re-bootstrapping auth on every client
     // transition (Pitch Studio / Auditor / Interview Simulator) stalls the
     // shell behind authLoading and reintroduced the navigation deadlock.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount auth only
   }, [router]);
 
   const isGuest = !userId;
@@ -627,7 +630,9 @@ function DashboardNavProviderImpl({
       userAvatarUrl,
       userInitials,
       userDisplayName,
+      setUserDisplayName,
       companyName,
+      setCompanyName,
       companyNameReady,
       availabilityStatus,
       openToFulltime,
@@ -660,6 +665,11 @@ export function useDashboardNav() {
     throw new Error("useDashboardNav must be used within DashboardNavProvider");
   }
   return context;
+}
+
+/** Same context as useDashboardNav, but returns null outside the provider. */
+export function useOptionalDashboardNav() {
+  return useContext(DashboardNavContext);
 }
 
 /** Mark this route as painted. Multiple gates can be mounted; unmounting one

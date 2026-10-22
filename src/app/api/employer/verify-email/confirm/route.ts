@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token")?.trim() ?? "";
   const preferJson = wantsJsonResponse(request);
 
-  let cookieResponse = NextResponse.next({ request });
+  const cookieResponse = NextResponse.next({ request });
   let signedIn = false;
 
   try {

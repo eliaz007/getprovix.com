@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { ProvixLogo } from "@/components/ProvixLogo";
@@ -11,6 +12,7 @@ import { createClient } from "@/utils/supabase/client";
 const supabase = createClient();
 
 export default function UpdatePasswordPage() {
+  const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -136,7 +138,7 @@ export default function UpdatePasswordPage() {
       return;
     }
 
-    window.location.href = "/?passwordUpdated=1";
+    router.push("/?passwordUpdated=1");
   };
 
   if (checkingSession) {

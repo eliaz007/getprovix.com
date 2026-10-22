@@ -12,7 +12,7 @@ export default function LandingAudienceCards() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
         <div className={cardClass}>
           <p className="font-mono text-[11px] tracking-widest text-violet-300">
-            // FOUNDERS
+            {"// FOUNDERS"}
           </p>
           <h2 className="mt-4 text-xl font-semibold tracking-tight text-white">
             Objective Code Telemetry Over Resumes
@@ -34,7 +34,7 @@ export default function LandingAudienceCards() {
 
         <div className={cardClass}>
           <p className="font-mono text-[11px] tracking-widest text-cyan-400">
-            // BUILDERS
+            {"// BUILDERS"}
           </p>
           <h2 className="mt-4 text-xl font-semibold tracking-tight text-white">
             Production Proof Over Interviews

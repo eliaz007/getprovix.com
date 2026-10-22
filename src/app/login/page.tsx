@@ -11,7 +11,10 @@ import { getPostLoginPath } from "@/lib/admin-access";
 import {
   isEmployerSignup,
   loadProfileAccountKind,
+  persistAccountRole,
+  persistEmployerAccount,
   resolvePostAuthDestination,
+  signupMetadataForKind,
   signupRoleFromSearch,
 } from "@/lib/account-role";
 import {
@@ -125,16 +128,29 @@ export default function LoginPage() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [isClaimAudit, setIsClaimAudit] = useState(false);
+  const [signupKind, setSignupKind] = useState<SignUpType>("candidate");
 
   useEffect(() => {
     const search = window.location.search;
     const params = new URLSearchParams(search);
+    const roleFromQuery = signupRoleFromSearch(search);
+    const modeParam = params.get("mode")?.trim().toLowerCase();
+
+    if (roleFromQuery === "employer") {
+      setSignupKind("business");
+      setMode("sign-up");
+    } else if (roleFromQuery === "developer") {
+      setSignupKind("candidate");
+      setMode("sign-up");
+    } else if (modeParam === "sign-up" || modeParam === "signup") {
+      setMode("sign-up");
+    }
+
     if (params.get("intent")?.trim() === CLAIM_AUDIT_INTENT) {
       setMode("sign-up");
       setIsClaimAudit(true);
-    } else if (signupRoleFromSearch(search)) {
-      setMode("sign-up");
     }
+
     const authError = params.get("error")?.trim();
     if (!authError) {
       return;
@@ -161,7 +177,7 @@ export default function LoginPage() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
-        window.location.href = "/update-password";
+        router.push("/update-password");
       }
     });
 
@@ -193,7 +209,7 @@ export default function LoginPage() {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [router]);
 
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode);
@@ -311,10 +327,10 @@ export default function LoginPage() {
       email: trimmedEmail,
       password,
       options: {
-        data: {
-          first_name: firstName,
-          last_name: lastName,
-        },
+        data: signupMetadataForKind(signupKind, {
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+        }),
       },
     });
 
@@ -331,8 +347,23 @@ export default function LoginPage() {
       return;
     }
 
+    const signedUpUser = data.session.user;
     try {
-      await redirectAfterAuth(data.session?.user ?? null);
+      if (signupKind === "business") {
+        await persistEmployerAccount(
+          supabase,
+          signedUpUser.id,
+          signedUpUser.email ?? trimmedEmail
+        );
+      } else {
+        await persistAccountRole(
+          supabase,
+          signedUpUser.id,
+          "candidate",
+          signedUpUser.email ?? trimmedEmail
+        );
+      }
+      await redirectAfterAuth(signedUpUser, signupKind);
     } catch (redirectError) {
       console.error("Post-signup redirect failed:", redirectError);
       setError("Account created, but we could not redirect you. Please refresh and try again.");
@@ -372,7 +403,9 @@ export default function LoginPage() {
                 ? "Sign in or create an account to attach this production score to your anonymous developer profile. GitHub is the fastest way."
                 : mode === "sign-in"
                   ? "Sign in to access your account"
-                  : "Create an account to get started"}
+                  : signupKind === "business"
+                    ? "Create a founder account to post roles and hire verified talent"
+                    : "Create a developer account to connect GitHub and run audits"}
           </p>
 
           {error && (
@@ -389,6 +422,13 @@ export default function LoginPage() {
           {!showResetPassword && (
             <>
               <OAuthSignInButtons
+                accountKind={
+                  mode === "sign-up"
+                    ? signupKind === "business"
+                      ? "employer"
+                      : "candidate"
+                    : undefined
+                }
                 onError={(message) => {
                   setMessage(null);
                   setError(message || null);
@@ -419,6 +459,25 @@ export default function LoginPage() {
                 className={tabButtonClass(mode === "sign-up")}
               >
                 Sign Up
+              </button>
+            </div>
+          )}
+
+          {!showResetPassword && mode === "sign-up" && !isClaimAudit && (
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-md border border-border p-1">
+              <button
+                type="button"
+                onClick={() => setSignupKind("candidate")}
+                className={tabButtonClass(signupKind === "candidate")}
+              >
+                Developer
+              </button>
+              <button
+                type="button"
+                onClick={() => setSignupKind("business")}
+                className={tabButtonClass(signupKind === "business")}
+              >
+                Founder
               </button>
             </div>
           )}

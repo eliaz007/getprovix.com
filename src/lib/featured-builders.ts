@@ -3,10 +3,7 @@ import {
   getPublicCandidateInitials,
 } from "@/lib/candidate-anonymization";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  hasCandidateProofOfWork,
-  isPublishedVerifiedCandidateProfile,
-} from "@/lib/published-candidate-profile";
+import { isPublishedVerifiedCandidateProfile } from "@/lib/published-candidate-profile";
 import {
   normalizeCandidateTimezone,
   normalizeWorkPreference,
@@ -68,10 +65,6 @@ function truncateBio(value: string, maxLength = 140): string {
   }
 
   return `${trimmed.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
-function hasProofOfWork(row: FeaturedBuilderRow): boolean {
-  return hasCandidateProofOfWork(row);
 }
 
 export function isPublishedVerifiedFeaturedBuilderRow(

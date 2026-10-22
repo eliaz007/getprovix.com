@@ -515,7 +515,7 @@ export default function ScoreTrendChart({
     () => (points.length > 0 ? chartGeometry(points) : null),
     [points]
   );
-  const mapped = geometry?.mapped ?? [];
+  const mapped = useMemo(() => geometry?.mapped ?? [], [geometry]);
 
   const contractPoints = useMemo(
     () => mapped.map((point) => ({ x: point.x, y: point.contractY })),

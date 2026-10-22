@@ -148,13 +148,14 @@ export function isOpportunitiesPath(pathname: string): boolean {
   return pathname === "/opportunities" || pathname.startsWith("/opportunities/");
 }
 
-export function isPublicOpportunitiesPath(pathname: string): boolean {
+export function isPublicOpportunitiesPath(_pathname: string): boolean {
   return false;
 }
 
 const PUBLIC_EXACT_PATHS = new Set([
   "/",
   "/login",
+  "/signup",
   "/privacy",
   "/terms",
   "/pricing",
@@ -170,6 +171,7 @@ const PUBLIC_EXACT_PATHS = new Set([
 
 const PUBLIC_PREFIXES = [
   "/login/",
+  "/signup/",
   "/auth/",
   "/p/",
   "/update-password/",

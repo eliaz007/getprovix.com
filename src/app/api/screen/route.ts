@@ -1474,7 +1474,6 @@ export async function POST(request: Request) {
     // Never 500 solely because audit_breakdown was missing — fall back to a
     // deterministic screen from whatever repo signals we can gather.
     try {
-      const writer = createServiceRoleClient() ?? access.supabase;
       const githubUrl = resolveCandidateGitHubUrl(candidate);
       let githubAudit: GitHubAuditContext | null = null;
       try {

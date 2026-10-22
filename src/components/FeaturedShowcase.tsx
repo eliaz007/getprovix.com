@@ -15,6 +15,8 @@ type FeaturedShowcaseProps = {
 function BuilderAvatar({ builder }: { builder: FeaturedBuilder }) {
   if (builder.avatarUrl) {
     return (
+      // Dynamic remote avatar URLs — next/image would need a broad remotePatterns allowlist.
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={builder.avatarUrl}
         alt=""

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  CANDIDATE_DASHBOARD_PATH,
   EMPLOYER_DASHBOARD_PATH,
   ROLE_ONBOARDING_PATH,
   isEmployerAuthIntent,

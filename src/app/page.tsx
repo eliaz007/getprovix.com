@@ -52,7 +52,7 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8">
             <Link
-              href="/apply"
+              href="/signup?role=developer"
               className="w-full sm:w-auto px-7 py-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium text-center transition-colors shadow-lg shadow-purple-900/30"
             >
               Join Talent Network

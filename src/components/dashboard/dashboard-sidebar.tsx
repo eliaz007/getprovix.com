@@ -460,6 +460,7 @@ function SidebarAvatar({
 
   if (showImage && usableUrl) {
     return (
+      // eslint-disable-next-line @next/next/no-img-element -- avatar URL is dynamic/remote; next/image optimization isn't worth the config overhead here
       <img
         src={usableUrl}
         alt=""

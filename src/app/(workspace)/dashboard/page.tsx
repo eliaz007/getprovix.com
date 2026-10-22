@@ -28,7 +28,6 @@ import {
   type EmployerApplicantView,
 } from "@/lib/job-applicants";
 import {
-  formatExternalUrl,
   formatTalentMatchLabel,
   type TalentPoolCandidate,
 } from "@/lib/talent-pool-candidate";
@@ -36,7 +35,10 @@ import CandidateIntroRequestsPanel from "@/components/dashboard/candidate-intro-
 import SkillPicker from "@/components/dashboard/skill-picker";
 import SelfTaughtEngineerBadge from "@/components/SelfTaughtEngineerBadge";
 import EducationEntriesForm from "@/components/dashboard/education-entries-form";
-import { DashboardContentGate, useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
+import {
+  DashboardContentGate,
+  useOptionalDashboardNav,
+} from "@/components/dashboard/dashboard-nav-context";
 import { DashboardContentSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import {
   EmployerConsoleSkeleton,
@@ -111,7 +113,6 @@ import {
   resolveTalentPoolAuditedRepoUrl,
   talentPoolVisibilityFailureMessage,
   TALENT_POOL_CONNECT_GITHUB_MESSAGE,
-  TALENT_POOL_SCORE_REQUIRED_MESSAGE,
 } from "@/lib/talent-pool-visibility";
 import { createClient, readBrowserSession } from "@/utils/supabase/client";
 import { fetchWithAuth } from "@/lib/fetch-with-auth";
@@ -263,8 +264,6 @@ import { formatGpa } from "@/lib/gpa";
 import ScoreMeter from "@/components/ScoreMeter";
 import AuditResultsPanel from "@/components/auditor/audit-results-panel";
 import GitHubResumeAuditor from "@/components/auditor/github-resume-auditor";
-
-const PROFILE_STORAGE_KEY = "vanguardx_profile_data";
 
 const COLLEGE_FIT_STAGES = [
   "Analyzing academic stats...",
@@ -699,20 +698,6 @@ function mapProfileRowToTalentCandidate(
   };
 }
 
-function getCandidateProfileLink(candidate: TalentPoolCandidate): string | null {
-  const linkedin = candidate.linkedin_url?.trim();
-  if (linkedin) {
-    return formatExternalUrl(linkedin);
-  }
-
-  const github =
-    candidate.github_url?.trim() ||
-    candidate.github?.trim() ||
-    null;
-
-  return github ? formatExternalUrl(github) : null;
-}
-
 type MatchingJob = {
   id: string;
   title: string;
@@ -927,12 +912,7 @@ function displayNameFromSources(
 
 export default function DashboardPage() {
   const router = useRouter();
-  let dashboardNav: ReturnType<typeof useDashboardNav> | null = null;
-  try {
-    dashboardNav = useDashboardNav();
-  } catch {
-    dashboardNav = null;
-  }
+  const dashboardNav = useOptionalDashboardNav();
 
   const [fallbackActiveTab, setFallbackActiveTab] =
     useState<DashboardTab>("my_profile");
@@ -1059,10 +1039,10 @@ export default function DashboardPage() {
   const [introRespondLoadingId, setIntroRespondLoadingId] = useState<
     string | null
   >(null);
-  const [talentMatchScores, setTalentMatchScores] = useState<
+  const [_talentMatchScores, setTalentMatchScores] = useState<
     Record<string, MatchResult>
   >({});
-  const [talentMatchLoadingIds, setTalentMatchLoadingIds] = useState<
+  const [_talentMatchLoadingIds, setTalentMatchLoadingIds] = useState<
     Record<string, boolean>
   >({});
   const talentMatchFetchedRef = useRef<Set<string>>(new Set());
@@ -1078,7 +1058,6 @@ export default function DashboardPage() {
   const [privateAuditorIntent, setPrivateAuditorIntent] = useState(false);
   const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
   const [isLinkingGitHub, setIsLinkingGitHub] = useState(false);
-  const [showPrivateAuditor, setShowPrivateAuditor] = useState(false);
 
   // Prefer the loaded profile role. Fall back to the nav bootstrap role so the
   // Company Hub never paints the candidate studio while the page query is in flight.
@@ -1644,6 +1623,8 @@ export default function DashboardPage() {
       isMounted = false;
       window.clearTimeout(timeoutId);
     };
+    // Bootstrap once on mount; nav setters are stable enough and must not re-run profile load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only session bootstrap
   }, [router]);
 
   useEffect(() => {
@@ -1932,7 +1913,7 @@ export default function DashboardPage() {
       window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [showTalentPoolNav, activeTab, talentPoolRefreshKey]);
+  }, [showTalentPoolNav, activeTab, talentPoolRefreshKey, user?.id]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -2284,6 +2265,7 @@ export default function DashboardPage() {
   }, [setMobileNavOpen]);
 
   const handleSignOut = () => {
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- intentional full page reload on sign-out to guarantee all client state/session caches are cleared
     window.location.href = "/";
     void signOutAndClearSession();
   };
@@ -2537,7 +2519,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
   // --- USER PROFILE DATA STATE (name + legacy portfolio fields) ---
   const [profileData, setProfileData] = useState(EMPTY_PROFILE_DATA);
-  const [savedProfileData, setSavedProfileData] = useState(EMPTY_PROFILE_DATA);
+  const [_savedProfileData, setSavedProfileData] = useState(EMPTY_PROFILE_DATA);
 
   // Mirrors profileData/savedProfileData above, but for business accounts —
   // business name, industry, work email, and phone instead of dev credentials.
@@ -3526,6 +3508,8 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     return () => {
       cancelled = true;
     };
+    // Identity fields only — full selectedCandidate object churn would refetch education.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- profile id slice
   }, [selectedCandidate?.profileId, selectedCandidate?.id, showTalentPoolNav]);
 
   useEffect(() => {
@@ -3534,6 +3518,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
     }
 
     void fetchIntroUnlocks(user.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- profile id slice
   }, [
     selectedCandidate?.profileId,
     selectedCandidate?.id,
@@ -5401,7 +5386,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
 
                     <div className="rounded-lg border border-neutral-800 bg-[#0d0f17] p-4">
                       <p className="mb-3 font-mono text-[11px] uppercase tracking-wider text-neutral-500">
-                        // Academic Snapshot
+                        {"// Academic Snapshot"}
                       </p>
                       {isSelfTaught ? (
                         <SelfTaughtEngineerBadge />
@@ -6074,7 +6059,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                           Sign out of Provix
                         </span>
                         <span className="text-[11px] text-textMuted">
-                          You'll be returned to the login screen on this device.
+                          You&apos;ll be returned to the login screen on this device.
                         </span>
                         <span className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
                           {user?.email
@@ -7714,7 +7699,7 @@ const showToast = (msg: string, variant?: ToastVariant) => {
             <div>
               <div className="mb-8 print:hidden">
                 <h1 className="text-3xl font-extrabold tracking-tight text-textMain">Employer AI Screen</h1>
-                <p className="text-textMuted text-sm mt-2">Paste a candidate's resume or project links to generate a hiring summary.</p>
+                <p className="text-textMuted text-sm mt-2">Paste a candidate&apos;s resume or project links to generate a hiring summary.</p>
               </div>
 
               <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12 print:block print:gap-0">

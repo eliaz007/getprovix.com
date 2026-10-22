@@ -697,7 +697,7 @@ export default function OnboardingPage() {
   };
 
   const goToDashboard = () => {
-    window.location.assign(DASHBOARD_HOME);
+    router.push(DASHBOARD_HOME);
   };
 
   const resetToRepositoryStep = () => {

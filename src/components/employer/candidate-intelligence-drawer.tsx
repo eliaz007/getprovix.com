@@ -152,6 +152,8 @@ export default function CandidateIntelligenceDrawer({
     return () => {
       cancelled = true;
     };
+    // Depend on education fields only — full `candidate` identity changes would refetch constantly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- education field slice
   }, [
     open,
     profileId,
@@ -162,17 +164,21 @@ export default function CandidateIntelligenceDrawer({
     candidate?.isSelfTaught,
   ]);
 
-  const liveCandidate = candidate
-    ? educationOverlay
-      ? {
-          ...candidate,
-          ...mergeTalentEducation(
-            candidateEducationFields(candidate),
-            educationOverlay
-          ),
-        }
-      : candidate
-    : null;
+  const liveCandidate = useMemo(
+    () =>
+      candidate
+        ? educationOverlay
+          ? {
+              ...candidate,
+              ...mergeTalentEducation(
+                candidateEducationFields(candidate),
+                educationOverlay
+              ),
+            }
+          : candidate
+        : null,
+    [candidate, educationOverlay]
+  );
 
   const publicName = liveCandidate
     ? buildAlliterativeAliasIdentity(liveCandidate.profileId?.trim() || "").alias

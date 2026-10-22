@@ -10,6 +10,8 @@ describe("shouldSkipMiddlewareAuth", () => {
   it("skips the public homepage and marketing routes", () => {
     expect(shouldSkipMiddlewareAuth("/")).toBe(true);
     expect(shouldSkipMiddlewareAuth("/login")).toBe(true);
+    expect(shouldSkipMiddlewareAuth("/signup")).toBe(true);
+    expect(isPublicRoute("/signup")).toBe(true);
     expect(shouldSkipMiddlewareAuth("/pricing")).toBe(true);
     expect(shouldSkipMiddlewareAuth("/privacy")).toBe(true);
     expect(shouldSkipMiddlewareAuth("/terms")).toBe(true);

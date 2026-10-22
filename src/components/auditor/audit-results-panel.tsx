@@ -458,7 +458,7 @@ function highlightCode(
 
   return lines.map((line, index) => {
     const nodes: ReactNode[] = [];
-    let remaining = line;
+    const remaining = line;
 
     const pushPlain = (text: string) => {
       if (text) {

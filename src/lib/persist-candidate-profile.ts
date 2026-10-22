@@ -30,7 +30,6 @@ import {
 import {
   canEnableTalentPoolVisibility,
   formatMarketplacePublishSaveBlockedMessage,
-  hasQualifyingTalentPoolAudit,
   isTalentPoolGitHubLinked,
   isTalentPoolOwnershipVerified,
   listMarketplacePublishGateFailures,
@@ -443,7 +442,7 @@ export async function persistCandidatePoolVisibility(
       const visibilitySelectFallback =
         "id, user_id, github_verified, github_username, verification_status, production_score, audit_score, portfolio_url";
 
-      let profile =
+      const profile =
         (await loadProfileForUserId(supabase, userId, visibilitySelectFull)) ??
         (await loadProfileForUserId(
           supabase,

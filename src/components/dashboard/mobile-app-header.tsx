@@ -61,6 +61,7 @@ export default function MobileAppHeader({
             className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/[0.08] bg-[#131316] text-[11px] font-bold text-zinc-100 transition-colors duration-200 ease-out hover:border-indigo-400"
           >
             {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- avatar URL is dynamic/remote; next/image optimization isn't worth the config overhead here
               <img
                 src={avatarUrl}
                 alt=""

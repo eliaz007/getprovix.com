@@ -6,7 +6,6 @@ import {
   MAX_EDUCATION_ENTRIES,
   SELF_TAUGHT_CHECKBOX_LABEL,
   SELF_TAUGHT_ENGINEER_LABEL,
-  SELF_TAUGHT_PROFILE_CONFIRMATION,
   createEmptyEducationEntry,
   type EducationEntry,
 } from "@/lib/candidate-education";
