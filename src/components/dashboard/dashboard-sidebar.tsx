@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   Briefcase,
   Building2,
+  ClipboardList,
   Compass,
   FileText,
   Mail,
@@ -26,6 +27,7 @@ import {
   isOpportunitiesPath,
   type DashboardTab,
 } from "@/lib/dashboard-account";
+import { isEmployerJobsPath } from "@/lib/account-role";
 import {
   isCandidateIntroDismissed,
   isPendingCandidateIntroStatus,
@@ -91,6 +93,7 @@ type IconName =
   | "Users"
   | "Shield"
   | "Briefcase"
+  | "Clipboard"
   | "Terminal";
 
 const ICON_MAP = {
@@ -102,6 +105,7 @@ const ICON_MAP = {
   Users,
   Shield: ShieldCheck,
   Briefcase,
+  Clipboard: ClipboardList,
   Terminal,
 } as const;
 
@@ -154,21 +158,6 @@ const EMPLOYEE_HUB_NAV = [
     tab: "applications" as const,
     label: "Applications",
     icon: "Document" as const,
-  },
-] as const;
-
-const EMPLOYER_HUB_NAV = [
-  {
-    key: "my_profile",
-    tab: "my_profile" as const,
-    label: "Company Profile",
-    icon: "User" as const,
-  },
-  {
-    key: "applicants",
-    tab: "applicants" as const,
-    label: "Applicants",
-    icon: "Briefcase" as const,
   },
 ] as const;
 
@@ -764,14 +753,27 @@ export default function DashboardSidebar() {
           <>
             {isBusinessAccount && (
               <NavSection title="Organization">
-                {EMPLOYER_HUB_NAV.map((item) => (
-                  <DashboardTabLink
-                    key={item.key}
-                    tab={item.tab}
-                    label={item.label}
-                    iconName={item.icon}
-                  />
-                ))}
+                <DashboardTabLink
+                  tab="my_profile"
+                  label="Company Profile"
+                  iconName="User"
+                />
+                <ProtectedNavLink
+                  href="/dashboard/jobs"
+                  label="Job Postings"
+                  isActive={isEmployerJobsPath(pathname)}
+                  icon={
+                    <NavIcon
+                      name="Clipboard"
+                      active={isEmployerJobsPath(pathname)}
+                    />
+                  }
+                />
+                <DashboardTabLink
+                  tab="applicants"
+                  label="Applicants"
+                  iconName="Briefcase"
+                />
               </NavSection>
             )}
 

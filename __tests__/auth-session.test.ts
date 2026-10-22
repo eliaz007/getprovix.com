@@ -108,6 +108,9 @@ describe("authentication and session validation", () => {
     expect(canAccessTalentPool("candidate", true)).toBe(true);
 
     expect(isEmployerDashboardRequest("/dashboard", "?tab=talent")).toBe(true);
+    expect(isEmployerDashboardRequest("/dashboard/jobs")).toBe(true);
+    expect(isEmployerAllowedDashboardRequest("/dashboard/jobs")).toBe(true);
+    expect(isEmployerDashboardRequest("/dashboard/profile")).toBe(false);
     expect(isEmployerAllowedDashboardRequest("/dashboard", "?tab=auditor")).toBe(
       true
     );

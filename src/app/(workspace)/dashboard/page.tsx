@@ -7339,13 +7339,12 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                   </p>
                 </div>
                 {isBusinessAccount && (
-                  <button
-                    type="button"
-                    onClick={openPostJobModal}
+                  <Link
+                    href="/dashboard/jobs"
                     className="bg-brand hover:bg-brandHover text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer shrink-0"
                   >
                     + Post New Job
-                  </button>
+                  </Link>
                 )}
               </div>
 
@@ -7375,18 +7374,28 @@ const showToast = (msg: string, variant?: ToastVariant) => {
                     {newMatchesCount}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveRolesPanelOpen(true)}
-                  className="card-edge cursor-pointer rounded-2xl border border-border bg-panel p-5 text-left transition-colors hover:border-emerald-500/30 hover:bg-emerald-500/[0.03]"
-                >
-                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-widest text-textMuted">
-                    Active Roles
-                  </span>
-                  <span className="font-mono text-3xl font-extrabold tabular-nums text-emerald-400">
-                    {activeRolesCount}
-                  </span>
-                </button>
+                {isBusinessAccount ? (
+                  <Link
+                    href="/dashboard/jobs"
+                    className="card-edge cursor-pointer rounded-2xl border border-border bg-panel p-5 text-left transition-colors hover:border-emerald-500/30 hover:bg-emerald-500/[0.03]"
+                  >
+                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-widest text-textMuted">
+                      Active Roles
+                    </span>
+                    <span className="font-mono text-3xl font-extrabold tabular-nums text-emerald-400">
+                      {activeRolesCount}
+                    </span>
+                  </Link>
+                ) : (
+                  <div className="card-edge rounded-2xl border border-border bg-panel p-5 text-left">
+                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-widest text-textMuted">
+                      Active Roles
+                    </span>
+                    <span className="font-mono text-3xl font-extrabold tabular-nums text-emerald-400">
+                      {activeRolesCount}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

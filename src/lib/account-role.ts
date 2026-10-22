@@ -21,6 +21,13 @@ export { CANDIDATE_SETUP_PATH };
 
 const EMPLOYER_ONLY_TABS = new Set(["talent", "applicants", "evaluator"]);
 
+/** Dedicated employer job-listings page. Not part of the candidate shell. */
+export function isEmployerJobsPath(pathname: string): boolean {
+  return (
+    pathname === "/dashboard/jobs" || pathname.startsWith("/dashboard/jobs/")
+  );
+}
+
 /** Tabs an employer may keep on /dashboard. Bare /dashboard is not included. */
 const EMPLOYER_ALLOWED_DASHBOARD_TABS = new Set([
   "talent",
@@ -124,6 +131,10 @@ export function isEmployerAllowedDashboardRequest(
   pathname: string,
   search = ""
 ): boolean {
+  if (isEmployerJobsPath(pathname)) {
+    return true;
+  }
+
   if (pathname === "/employer" || pathname.startsWith("/employer/")) {
     return true;
   }
@@ -153,6 +164,10 @@ export function isEmployerDashboardRequest(
   pathname: string,
   search = ""
 ): boolean {
+  if (isEmployerJobsPath(pathname)) {
+    return true;
+  }
+
   if (pathname === "/employer" || pathname.startsWith("/employer/")) {
     return true;
   }
