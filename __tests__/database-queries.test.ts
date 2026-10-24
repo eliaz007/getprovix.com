@@ -134,8 +134,9 @@ describe("database query helpers", () => {
   });
 
   it("loads and increments daily scan counters through profiles queries", async () => {
+    const today = new Date().toISOString().slice(0, 10);
     const loaded = createProfilesClient({
-      selectData: { daily_scans: 2, last_scan_date: "2026-10-02" },
+      selectData: { daily_scans: 2, last_scan_date: today },
     });
     const usage = await loadDailyScanUsage(
       loaded.client as never,
@@ -159,7 +160,7 @@ describe("database query helpers", () => {
     const next = await incrementDailyScanUsage(
       writer.client as never,
       "11111111-1111-4111-8111-111111111111",
-      resolveDailyScanUsage(2, "2026-10-02", "2026-10-02")
+      resolveDailyScanUsage(2, today, today)
     );
     expect(next.daily_scans).toBe(3);
     expect(writer.calls.some((call) => call.op === "update")).toBe(true);
