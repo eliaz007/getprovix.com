@@ -64,6 +64,36 @@ export type RepoFilesystemEvidence = {
   audited_commit_sha?: string;
   /** Branch ref used when pinning audited_commit_sha. */
   audited_branch?: string;
+  /** TypeScript hygiene was measured on sampled source. */
+  typescript_hygiene_sampled?: boolean;
+  /** `: any` / `as any` / `Array<any>` hits in sampled TS. */
+  ts_any_count?: number;
+  /** `as unknown as T` double-casts in sampled TS. */
+  ts_double_assert_count?: number;
+  /** `as any|unknown|object|Function` loose asserts in sampled TS. */
+  ts_loose_assert_count?: number;
+  /** Sampled tsconfig enables strict / noImplicitAny. Absent when unread. */
+  tsconfig_strict?: boolean;
+  /** Credential / service-role scan ran on sampled source. */
+  credential_leak_sampled?: boolean;
+  /** SUPABASE_SERVICE_ROLE (or similar) references in sampled source. */
+  service_role_exposure_count?: number;
+  /** Service-role / secret pattern observed in client / NEXT_PUBLIC surface. */
+  service_role_on_client?: boolean;
+  /** Supabase / SQL hygiene scan ran (tree, SQL, or client sample). */
+  supabase_hygiene_sampled?: boolean;
+  /** supabase/ migrations, schema SQL, or client usage detected. */
+  supabase_surface_present?: boolean;
+  /** Sampled SQL enables row-level security. */
+  supabase_rls_enabled?: boolean;
+  /** CREATE POLICY count in sampled SQL. */
+  supabase_policy_count?: number;
+  /** CREATE/ALTER TABLE count in sampled SQL. */
+  supabase_table_ddl_count?: number;
+  /** True when SQL migration/schema bodies were read. */
+  supabase_sql_sampled?: boolean;
+  /** Supabase mutations without nearby error/status handling. */
+  supabase_unchecked_mutation_count?: number;
 };
 
 export type FilesystemScorePolicy = {
@@ -611,6 +641,32 @@ export function parseRepoFilesystemEvidence(
     hollow_test_file_count: optionalNonNegative(record.hollow_test_file_count),
     audited_commit_sha: commitShaFromRecord(record.audited_commit_sha),
     audited_branch: branchFromRecord(record.audited_branch),
+    typescript_hygiene_sampled: record.typescript_hygiene_sampled === true,
+    ts_any_count: optionalNonNegative(record.ts_any_count),
+    ts_double_assert_count: optionalNonNegative(record.ts_double_assert_count),
+    ts_loose_assert_count: optionalNonNegative(record.ts_loose_assert_count),
+    tsconfig_strict:
+      record.tsconfig_strict === true
+        ? true
+        : record.tsconfig_strict === false
+          ? false
+          : undefined,
+    credential_leak_sampled: record.credential_leak_sampled === true,
+    service_role_exposure_count: optionalNonNegative(
+      record.service_role_exposure_count
+    ),
+    service_role_on_client: record.service_role_on_client === true,
+    supabase_hygiene_sampled: record.supabase_hygiene_sampled === true,
+    supabase_surface_present: record.supabase_surface_present === true,
+    supabase_rls_enabled: record.supabase_rls_enabled === true,
+    supabase_policy_count: optionalNonNegative(record.supabase_policy_count),
+    supabase_table_ddl_count: optionalNonNegative(
+      record.supabase_table_ddl_count
+    ),
+    supabase_sql_sampled: record.supabase_sql_sampled === true,
+    supabase_unchecked_mutation_count: optionalNonNegative(
+      record.supabase_unchecked_mutation_count
+    ),
   };
 }
 

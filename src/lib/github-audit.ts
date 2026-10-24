@@ -1,13 +1,20 @@
 import {
   analyzeCiGates,
+  analyzeCredentialExposure,
   analyzeRouteContracts,
+  analyzeSupabaseHygiene,
+  analyzeTsconfigStrict,
+  analyzeTypeScriptHygiene,
   analyzeWorkflowDepth,
   countUnhandledAsyncCalls,
   preferSourceSamplePaths,
+  preferSupabaseSqlSamplePaths,
   preferTestSamplePaths,
+  preferTsconfigSamplePaths,
   preferWorkflowSamplePaths,
   summarizeSampledTests,
 } from "@/lib/audit-content-signals";
+import type { CommitHistoryStat } from "@/lib/commit-history-score";
 import {
   classifyRepoFilesystem,
   CORE_ARTIFACT_PROBE_DIRS,
@@ -40,6 +47,8 @@ export type GitHubAuditContext = {
   language: string | null;
   commit_count_sampled: number;
   commit_dates: string[];
+  /** Optional per-commit churn for dump detection. */
+  commit_stats: CommitHistoryStat[];
   readme_excerpt: string | null;
   fetch_warnings: string[];
   filesystem: RepoFilesystemEvidence;
@@ -62,6 +71,7 @@ export function emptyGitHubAuditContext(
     language: null,
     commit_count_sampled: 0,
     commit_dates: [],
+    commit_stats: [],
     readme_excerpt: null,
     fetch_warnings: [],
     filesystem: emptyRepoFilesystemEvidence(),
@@ -964,6 +974,10 @@ async function collectTruncatedTreePaths(
 const MAX_WORKFLOW_SAMPLES = 10;
 const MAX_SOURCE_SAMPLES = 6;
 const MAX_TEST_SAMPLES = 6;
+const MAX_TSCONFIG_SAMPLES = 2;
+const MAX_SUPABASE_SQL_SAMPLES = 8;
+/** Cap commit-detail fetches so dump detection stays inside rate budgets. */
+const MAX_COMMIT_STAT_SAMPLES = 5;
 
 async function fetchGithubFileRaw(
   owner: string,
@@ -1011,18 +1025,30 @@ async function enrichFilesystemFromContents(
     MAX_SOURCE_SAMPLES
   );
   const testPaths = preferTestSamplePaths(allPaths, MAX_TEST_SAMPLES);
+  const tsconfigPaths = preferTsconfigSamplePaths(allPaths, MAX_TSCONFIG_SAMPLES);
+  const supabaseSqlPaths = preferSupabaseSqlSamplePaths(
+    allPaths,
+    MAX_SUPABASE_SQL_SAMPLES
+  );
 
-  const [workflowTexts, sourceTexts, testTexts] = await Promise.all([
-    mapWithConcurrency(workflowPaths, GITHUB_FETCH_CONCURRENCY, (path) =>
-      fetchGithubFileRaw(owner, repo, path, commitSha)
-    ),
-    mapWithConcurrency(sourcePaths, GITHUB_FETCH_CONCURRENCY, (path) =>
-      fetchGithubFileRaw(owner, repo, path, commitSha)
-    ),
-    mapWithConcurrency(testPaths, GITHUB_FETCH_CONCURRENCY, (path) =>
-      fetchGithubFileRaw(owner, repo, path, commitSha)
-    ),
-  ]);
+  const [workflowTexts, sourceTexts, testTexts, tsconfigTexts, sqlTexts] =
+    await Promise.all([
+      mapWithConcurrency(workflowPaths, GITHUB_FETCH_CONCURRENCY, (path) =>
+        fetchGithubFileRaw(owner, repo, path, commitSha)
+      ),
+      mapWithConcurrency(sourcePaths, GITHUB_FETCH_CONCURRENCY, (path) =>
+        fetchGithubFileRaw(owner, repo, path, commitSha)
+      ),
+      mapWithConcurrency(testPaths, GITHUB_FETCH_CONCURRENCY, (path) =>
+        fetchGithubFileRaw(owner, repo, path, commitSha)
+      ),
+      mapWithConcurrency(tsconfigPaths, GITHUB_FETCH_CONCURRENCY, (path) =>
+        fetchGithubFileRaw(owner, repo, path, commitSha)
+      ),
+      mapWithConcurrency(supabaseSqlPaths, GITHUB_FETCH_CONCURRENCY, (path) =>
+        fetchGithubFileRaw(owner, repo, path, commitSha)
+      ),
+    ]);
 
   const readableWorkflows = workflowTexts.filter(
     (text): text is string => Boolean(text)
@@ -1030,6 +1056,14 @@ async function enrichFilesystemFromContents(
   const readableSources = sourceTexts.filter(
     (text): text is string => Boolean(text)
   );
+  const sourceFiles = sourcePaths.flatMap((path, index) => {
+    const text = sourceTexts[index];
+    return text ? [{ path, text }] : [];
+  });
+  const sqlFiles = supabaseSqlPaths.flatMap((path, index) => {
+    const text = sqlTexts[index];
+    return text ? [{ path, text }] : [];
+  });
 
   const contentDepth =
     readableWorkflows.length > 0
@@ -1041,18 +1075,23 @@ async function enrichFilesystemFromContents(
     (sum, text) => sum + countUnhandledAsyncCalls(text),
     0
   );
-  const contracts = analyzeRouteContracts(
-    sourcePaths.flatMap((path, index) => {
-      const text = sourceTexts[index];
-      return text ? [{ path, text }] : [];
-    })
-  );
+  const contracts = analyzeRouteContracts(sourceFiles);
   const hollowTests = summarizeSampledTests(
     testPaths.flatMap((path, index) => {
       const text = testTexts[index];
       return typeof text === "string" ? [{ path, text }] : [];
     })
   );
+  const hygiene = analyzeTypeScriptHygiene(sourceFiles);
+  const tsconfig = analyzeTsconfigStrict(
+    tsconfigTexts.filter((text): text is string => Boolean(text))
+  );
+  const credentials = analyzeCredentialExposure(sourceFiles);
+  const supabase = analyzeSupabaseHygiene({
+    sqlFiles,
+    sourceFiles,
+    treePaths: allPaths,
+  });
 
   return {
     ...evidence,
@@ -1073,6 +1112,22 @@ async function enrichFilesystemFromContents(
     has_contract_boundaries: contracts.completeContracts,
     sampled_test_file_count: hollowTests.sampled,
     hollow_test_file_count: hollowTests.hollow,
+    typescript_hygiene_sampled: hygiene.sampled || tsconfig.sampled,
+    ts_any_count: hygiene.anyCount,
+    ts_double_assert_count: hygiene.doubleAssertCount,
+    ts_loose_assert_count: hygiene.looseAssertCount,
+    tsconfig_strict:
+      tsconfig.strict === null ? undefined : tsconfig.strict,
+    credential_leak_sampled: credentials.sampled,
+    service_role_exposure_count: credentials.serviceRoleExposureCount,
+    service_role_on_client: credentials.serviceRoleOnClient,
+    supabase_hygiene_sampled: supabase.sampled,
+    supabase_surface_present: supabase.surfacePresent,
+    supabase_rls_enabled: supabase.rlsEnabled,
+    supabase_policy_count: supabase.policyCount,
+    supabase_table_ddl_count: supabase.tableDdlCount,
+    supabase_sql_sampled: supabase.sqlSampled,
+    supabase_unchecked_mutation_count: supabase.uncheckedMutationCount,
   };
 }
 
@@ -1354,11 +1409,57 @@ async function fetchRepoMetadata(
   }
 }
 
+async function fetchCommitStatDetail(
+  base: string,
+  sha: string,
+  fallbackDate: string,
+  fallbackMessage: string
+): Promise<CommitHistoryStat> {
+  try {
+    const response = await githubFetch(`${base}/commits/${encodeURIComponent(sha)}`);
+    if (!response.ok) {
+      return {
+        date: fallbackDate,
+        message: fallbackMessage,
+      };
+    }
+    const detail = (await readJsonResponse(response)) as {
+      commit?: {
+        author?: { date?: string };
+        message?: string;
+      };
+      stats?: { additions?: number; deletions?: number };
+      files?: unknown[];
+    };
+    return {
+      date: detail.commit?.author?.date ?? fallbackDate,
+      message: detail.commit?.message?.split("\n")[0]?.trim() || fallbackMessage,
+      additions:
+        typeof detail.stats?.additions === "number"
+          ? detail.stats.additions
+          : undefined,
+      deletions:
+        typeof detail.stats?.deletions === "number"
+          ? detail.stats.deletions
+          : undefined,
+      filesChanged: Array.isArray(detail.files) ? detail.files.length : undefined,
+    };
+  } catch {
+    return {
+      date: fallbackDate,
+      message: fallbackMessage,
+    };
+  }
+}
+
 async function fetchRepoCommitSummaries(
   base: string,
   owner: string,
   repo: string
-): Promise<{ commits: Array<{ date: string }>; warnings: string[] }> {
+): Promise<{
+  commits: CommitHistoryStat[];
+  warnings: string[];
+}> {
   try {
     const commitsResponse = await githubFetch(`${base}/commits?per_page=10`);
 
@@ -1372,15 +1473,41 @@ async function fetchRepoCommitSummaries(
     }
 
     const commitsData = (await readJsonResponse(commitsResponse)) as Array<{
-      commit?: { author?: { date?: string } };
+      sha?: string;
+      commit?: { author?: { date?: string }; message?: string };
     }>;
-    const commits: Array<{ date: string }> = [];
 
-    for (const entry of commitsData) {
-      commits.push({
-        date: entry.commit?.author?.date ?? "unknown",
-      });
-    }
+    const summaries = commitsData.map((entry) => ({
+      sha: entry.sha?.trim() ?? "",
+      date: entry.commit?.author?.date ?? "unknown",
+      message: entry.commit?.message?.split("\n")[0]?.trim() ?? "",
+    }));
+
+    const detailTargets = summaries
+      .filter((entry) => /^[0-9a-f]{7,40}$/i.test(entry.sha))
+      .slice(0, MAX_COMMIT_STAT_SAMPLES);
+
+    const details = await mapWithConcurrency(
+      detailTargets,
+      GITHUB_FETCH_CONCURRENCY,
+      (entry) =>
+        fetchCommitStatDetail(base, entry.sha, entry.date, entry.message)
+    );
+
+    const detailBySha = new Map(
+      detailTargets.map((entry, index) => [entry.sha, details[index]!])
+    );
+
+    const commits: CommitHistoryStat[] = summaries.map((entry) => {
+      const detail = detailBySha.get(entry.sha);
+      if (detail) {
+        return detail;
+      }
+      return {
+        date: entry.date,
+        message: entry.message || undefined,
+      };
+    });
 
     return { commits, warnings: [] };
   } catch (error) {
@@ -1462,6 +1589,7 @@ async function fetchRepoAudit(
     language: metadata.language,
     commit_count_sampled: commitSummaries.commits.length,
     commit_dates: commitSummaries.commits.map((commit) => commit.date),
+    commit_stats: commitSummaries.commits,
     readme_excerpt: readme.excerpt,
     fetch_warnings: warnings,
     filesystem,

@@ -569,7 +569,10 @@ function applyScreenFilesystemCap(
     8
   );
 
-  let metrics = computeProductionAuditMetrics(githubAudit?.filesystem);
+  let metrics = computeProductionAuditMetrics(githubAudit?.filesystem, undefined, {
+    commitDates: githubAudit?.commit_dates,
+    commitStats: githubAudit?.commit_stats,
+  });
   let integrity_score = capped.score;
   let timeline_flags = capped.redFlags;
   let scoreCap = capped.scoreCap;
@@ -1127,7 +1130,14 @@ function resolveDeterministicMetricsForPrompt(
 ) {
   const hiringVerdictFromFit = mode === "job_aware";
   const isUpstreamDerivative = githubAudit?.is_upstream_derivative === true;
-  let promptMetrics = computeProductionAuditMetrics(githubAudit?.filesystem);
+  let promptMetrics = computeProductionAuditMetrics(
+    githubAudit?.filesystem,
+    undefined,
+    {
+      commitDates: githubAudit?.commit_dates,
+      commitStats: githubAudit?.commit_stats,
+    }
+  );
 
   if (!promptMetrics.evidence.inspected && auditBreakdown) {
     const architecture = clampScore0to100(auditBreakdown.architecture_score);

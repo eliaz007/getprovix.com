@@ -58,6 +58,7 @@ import {
   normalizeCommitDates,
   PRODUCTION_READY_VERIFIED,
   targetedAuditSuggestions,
+  type CommitHistoryStat,
 } from "@/lib/audit-readiness";
 import {
   applyFilesystemScoreCap,
@@ -188,6 +189,8 @@ export type AuditResult = {
   metrics: ProductionAuditMetrics;
   filesystem: RepoFilesystemEvidence | null;
   commitDates: string[];
+  /** Optional per-commit churn samples used for dump / stub detection. */
+  commitStats?: CommitHistoryStat[];
   inaccessibleRepo?: boolean;
   /** Rank of this production score among completed audits. Null when the count is unavailable. */
   benchmark?: CodebaseBenchmark | null;
@@ -410,11 +413,15 @@ function attachModeEvaluation(
     devops: metrics.devops,
     resilience: metrics.resilience,
   });
+  // Prefer the metrics headline (already includes commit-history / derivative dings)
+  // over the raw pillar blend so stub-repo penalties stay visible in the UI.
+  const headlineScore = clampScore0to100(metrics.productionScore);
+  const tier = assignAuditTier(mode, headlineScore);
   const summary =
     result.summary?.trim() ||
     result.executiveBrief?.employerSummary?.trim() ||
     summaryFallback?.trim() ||
-    `${auditModeLabel(mode)} · ${evaluation.tier} · ${evaluation.overallScore}/100.`;
+    `${auditModeLabel(mode)} · ${tier} · ${headlineScore}/100.`;
   const improvements =
     result.improvements?.length >= 3
       ? result.improvements.slice(0, 3)
@@ -422,16 +429,16 @@ function attachModeEvaluation(
 
   return {
     ...result,
-    score: evaluation.overallScore,
-    overallScore: evaluation.overallScore,
+    score: headlineScore,
+    overallScore: headlineScore,
     auditMode: mode,
-    tier: evaluation.tier,
+    tier,
     breakdown: evaluation.breakdown,
     summary,
     improvements,
     metrics: {
       ...metrics,
-      productionScore: evaluation.overallScore,
+      productionScore: headlineScore,
     },
   };
 }
@@ -525,12 +532,14 @@ function optionalFilesystem(value: unknown): RepoFilesystemEvidence | null {
 function attachAuditEvidence(
   result: AuditResult,
   filesystem: RepoFilesystemEvidence | null,
-  commitDates: string[]
+  commitDates: string[],
+  commitStats?: CommitHistoryStat[]
 ): AuditResult {
   return {
     ...result,
     filesystem,
     commitDates: normalizeCommitDates(commitDates),
+    commitStats: Array.isArray(commitStats) ? commitStats : [],
   };
 }
 
@@ -764,16 +773,38 @@ function refineActionableFixes(
   return cleaned.slice(0, 3);
 }
 
+function primaryArtifactFromAudit(
+  githubArtifacts: GitHubArtifactAudit | null
+) {
+  const artifacts = githubArtifacts?.artifacts ?? [];
+  const filesystem = strongestFilesystemEvidence(artifacts);
+  return (
+    artifacts.find((artifact) => artifact.filesystem === filesystem) ??
+    artifacts[0]
+  );
+}
+
 function commitDatesFromArtifacts(
   githubArtifacts: GitHubArtifactAudit | null
 ): string[] {
-  const artifacts = githubArtifacts?.artifacts ?? [];
-  const filesystem = strongestFilesystemEvidence(artifacts);
-  const primary =
-    artifacts.find((artifact) => artifact.filesystem === filesystem) ??
-    artifacts[0];
+  return normalizeCommitDates(primaryArtifactFromAudit(githubArtifacts)?.commit_dates);
+}
 
-  return normalizeCommitDates(primary?.commit_dates);
+function commitHistoryFromArtifacts(
+  githubArtifacts: GitHubArtifactAudit | null
+): {
+  commitDates: string[];
+  commitStats: NonNullable<
+    GitHubArtifactAudit["artifacts"][number]["commit_stats"]
+  >;
+} {
+  const primary = primaryArtifactFromAudit(githubArtifacts);
+  return {
+    commitDates: normalizeCommitDates(primary?.commit_dates),
+    commitStats: Array.isArray(primary?.commit_stats)
+      ? primary.commit_stats
+      : [],
+  };
 }
 
 function normalizeAuditResult(raw: unknown): AuditResult {
@@ -862,6 +893,32 @@ function normalizeAuditResult(raw: unknown): AuditResult {
     metrics: emptyProductionAuditMetrics(),
     filesystem: optionalFilesystem(record.filesystem),
     commitDates: normalizeCommitDates(record.commitDates ?? record.commit_dates),
+    commitStats: Array.isArray(record.commitStats)
+      ? record.commitStats.flatMap((entry) => {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+            return [];
+          }
+          const row = entry as Record<string, unknown>;
+          if (typeof row.date !== "string" || !row.date.trim()) {
+            return [];
+          }
+          return [
+            {
+              date: row.date.trim(),
+              additions:
+                typeof row.additions === "number" ? row.additions : undefined,
+              deletions:
+                typeof row.deletions === "number" ? row.deletions : undefined,
+              filesChanged:
+                typeof row.filesChanged === "number"
+                  ? row.filesChanged
+                  : undefined,
+              message:
+                typeof row.message === "string" ? row.message : undefined,
+            },
+          ];
+        })
+      : [],
     executiveBrief: parseExecutiveBrief(record.executiveBrief),
   };
 }
@@ -1142,9 +1199,13 @@ async function generateGeminiAudit(
       githubArtifacts?.artifacts.some((artifact) => artifact.is_upstream_derivative)
   );
   const auditMode = normalizeAuditMode(body.auditMode);
+  const promptHistory = commitHistoryFromArtifacts(
+    usedExternalFallback ? null : githubArtifacts
+  );
   let promptMetrics = computeProductionAuditMetrics(
     filesystemEvidence,
-    auditMode
+    auditMode,
+    promptHistory
   );
   let modeEvaluation = buildModeAwareEvaluation(auditMode, {
     architecture: promptMetrics.architecture,
@@ -1236,6 +1297,7 @@ async function generateGeminiAudit(
           language: artifact.language,
           commit_count_sampled: artifact.commit_count_sampled,
           commit_dates: artifact.commit_dates,
+          commit_stats: artifact.commit_stats,
           readme_excerpt: artifact.readme_excerpt,
           filesystem: compactFilesystemForPrompt(artifact.filesystem),
         })),
@@ -1727,14 +1789,17 @@ export async function POST(request: Request) {
     githubArtifacts?.artifacts ?? []
   );
   const commitDates = commitDatesFromArtifacts(githubArtifacts);
+  const commitHistory = commitHistoryFromArtifacts(githubArtifacts);
   let metrics = computeProductionAuditMetrics(
     usedExternalFallback ? null : filesystem,
-    auditMode
+    auditMode,
+    commitHistory
   );
   result = attachAuditEvidence(
     applyFilesystemScoreCap(result, filesystem),
     filesystem,
-    commitDates
+    commitDates,
+    commitHistory.commitStats
   );
   result = attachModeEvaluation(result, auditMode, metrics);
   metrics = result.metrics;

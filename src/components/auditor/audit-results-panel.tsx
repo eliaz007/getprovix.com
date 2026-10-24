@@ -41,6 +41,9 @@ import {
   isProductionReadyAudit,
   PRODUCTION_READY_VERIFIED,
   resolveDisplayedReadinessScore,
+  scoreCommitHistoryPenalty,
+  SUSPICIOUS_COMMIT_CADENCE_SUMMARY,
+  SUSPICIOUS_COMMIT_CADENCE_TITLE,
   type ChecklistTone,
   type ExecutiveChecklistItem,
 } from "@/lib/audit-readiness";
@@ -156,6 +159,7 @@ type RemediationId =
   | "error_handling"
   | "ci_depth"
   | "tests_coverage"
+  | "commit_cadence"
   | "production_ready";
 
 type RemediationDrawer = {
@@ -341,6 +345,27 @@ function buildRemediationItems(result: AuditResult): RemediationItem[] {
   }
 }
 
+function resolveCommitHistoryPenalty(result: AuditResult): number {
+  const fromMetrics =
+    typeof result?.metrics?.commitHistoryPenalty === "number" &&
+    Number.isFinite(result.metrics.commitHistoryPenalty)
+      ? Math.max(0, Math.round(result.metrics.commitHistoryPenalty))
+      : 0;
+  if (fromMetrics > 0) {
+    return fromMetrics;
+  }
+  return Math.abs(
+    Math.min(
+      0,
+      scoreCommitHistoryPenalty(
+        result?.commitDates ?? null,
+        undefined,
+        result?.commitStats ?? null
+      )
+    )
+  );
+}
+
 function buildActionableFixes(result: AuditResult): ActionableFix[] {
   try {
     const artifacts = result?.scoreCap?.coreArtifacts ?? {
@@ -352,9 +377,29 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
     const metrics = resolveProductionAuditMetrics({
       metrics: result?.metrics,
       filesystem: result?.filesystem ?? null,
+      auditMode: result?.auditMode,
+      history: {
+        commitDates: result?.commitDates ?? null,
+        commitStats: result?.commitStats ?? null,
+      },
     });
     const testingScore = clampScore0to100(metrics.testing);
     const devopsScore = clampScore0to100(metrics.devops);
+    const historyPenalty = Math.max(
+      metrics.commitHistoryPenalty,
+      resolveCommitHistoryPenalty(result)
+    );
+
+    const fixes: ActionableFix[] = [];
+
+    if (historyPenalty > 0) {
+      fixes.push({
+        id: "commit_cadence",
+        title: SUSPICIOUS_COMMIT_CADENCE_TITLE,
+        deductionLabel: `−${historyPenalty} pts`,
+        summary: SUSPICIOUS_COMMIT_CADENCE_SUMMARY,
+      });
+    }
 
     if (
       isProductionReadyAudit({
@@ -365,17 +410,18 @@ function buildActionableFixes(result: AuditResult): ActionableFix[] {
         resilience: metrics.resilience,
       })
     ) {
-      return [
-        {
-          id: "production_ready",
-          title: "Production-ready",
-          deductionLabel: "",
-          summary: PRODUCTION_READY_VERIFIED,
-        },
-      ];
+      if (fixes.length === 0) {
+        return [
+          {
+            id: "production_ready",
+            title: "Production-ready",
+            deductionLabel: "",
+            summary: PRODUCTION_READY_VERIFIED,
+          },
+        ];
+      }
+      return fixes;
     }
-
-    const fixes: ActionableFix[] = [];
 
     if (!artifacts.ci) {
       const points = remediationPointsFor(result, "ci");
@@ -1189,6 +1235,10 @@ function safeDeriveAuditView(result: AuditResult): {
       metrics: result?.metrics,
       filesystem,
       auditMode: result?.auditMode,
+      history: {
+        commitDates: result?.commitDates ?? null,
+        commitStats: result?.commitStats ?? null,
+      },
     });
     const score = resolveDisplayedReadinessScore({
       score: result?.score ?? 0,
@@ -1204,6 +1254,8 @@ function safeDeriveAuditView(result: AuditResult): {
         scoreCap: result?.scoreCap,
         filesystem,
         commitDates: result?.commitDates ?? [],
+        commitStats: result?.commitStats ?? null,
+        commitHistoryPenalty: metrics.commitHistoryPenalty,
         testingScore: metrics.testing,
       }),
       visibleRedFlags: (result?.redFlags ?? []).filter(
@@ -1550,7 +1602,9 @@ function AuditResultsPanelView({
             const statusText =
               !rawStatus || /History\s*\(\s*\)/i.test(rawStatus)
                 ? item.id === "commit_cadence"
-                  ? "active"
+                  ? item.tone === "pass"
+                    ? "active"
+                    : "Single dump / Low cadence"
                   : "Unavailable"
                 : rawStatus;
             return (

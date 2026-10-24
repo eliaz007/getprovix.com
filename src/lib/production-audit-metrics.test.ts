@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildExecutiveChecklist,
+  classifyCommitCadence,
   classifyRepoActivityStatus,
   scoreCommitHistoryPenalty,
+  SINGLE_DUMP_CADENCE_LABEL,
 } from "./audit-readiness";
 import {
   applyUpstreamDerivativePenalty,
@@ -146,7 +149,7 @@ describe("four-pillar production audit", () => {
         "2023-01-01T00:00:00.000Z",
         "2023-06-01T00:00:00.000Z",
       ])
-    ).toBe(0);
+    ).toBe(-20);
     expect(
       scoreCommitHistoryPenalty([
         "2026-05-02T12:00:00.000Z",
@@ -168,7 +171,155 @@ describe("four-pillar production audit", () => {
         "2026-05-02T22:30:00.000Z",
         "2026-05-03T01:00:00.000Z",
       ])
-    ).toBe(0);
+    ).toBe(-20);
+    expect(
+      scoreCommitHistoryPenalty(
+        [
+          "2026-05-01T00:00:00.000Z",
+          "2026-05-02T00:00:00.000Z",
+          "2026-05-03T00:00:00.000Z",
+        ],
+        undefined,
+        [
+          {
+            date: "2026-05-01T00:00:00.000Z",
+            additions: 12,
+            deletions: 0,
+            message: "feat: all the code",
+          },
+          {
+            date: "2026-05-02T00:00:00.000Z",
+            additions: 0,
+            deletions: 0,
+            message: "chore: empty",
+          },
+          {
+            date: "2026-05-03T00:00:00.000Z",
+            additions: 0,
+            deletions: 0,
+            message: "docs",
+          },
+        ]
+      )
+    ).toBe(-20);
+    expect(
+      scoreCommitHistoryPenalty(
+        [
+          "2026-05-01T00:00:00.000Z",
+          "2026-05-02T00:00:00.000Z",
+          "2026-05-03T00:00:00.000Z",
+        ],
+        undefined,
+        [
+          {
+            date: "2026-05-01T00:00:00.000Z",
+            additions: 1800,
+            deletions: 40,
+            message: "Initial commit",
+          },
+          {
+            date: "2026-05-02T00:00:00.000Z",
+            additions: 2,
+            deletions: 1,
+            message: "typo",
+          },
+          {
+            date: "2026-05-03T00:00:00.000Z",
+            additions: 1,
+            deletions: 0,
+            message: "readme",
+          },
+        ]
+      )
+    ).toBe(-25);
+  });
+
+  it("wires commit history penalty into the headline production score", () => {
+    const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
+      inspected: true,
+    });
+    const baseline = computeProductionAuditMetrics(filesystem, "fulltime");
+    const penalized = computeProductionAuditMetrics(filesystem, "fulltime", {
+      commitDates: ["2026-01-01T00:00:00.000Z"],
+    });
+    expect(penalized.commitHistoryPenalty).toBe(25);
+    expect(penalized.productionScore).toBe(
+      Math.max(0, baseline.productionScore - 25)
+    );
+  });
+
+  it("flags stub repos on the executive checklist instead of active", () => {
+    const recentStub = [
+      "2026-10-20T12:00:00.000Z",
+      "2026-10-20T18:00:00.000Z",
+    ];
+    const cadence = classifyCommitCadence(recentStub, Date.parse("2026-10-22"));
+    expect(cadence.commitHistoryPenalty).toBe(20);
+    expect(cadence.status).toBe(SINGLE_DUMP_CADENCE_LABEL);
+    expect(cadence.tone).toBe("warn");
+    expect(cadence.activity).toBe("active");
+
+    const checklist = buildExecutiveChecklist({
+      commitDates: recentStub,
+      commitHistoryPenalty: 20,
+    });
+    const activity = checklist.find((item) => item.id === "commit_cadence");
+    expect(activity?.status).toBe(SINGLE_DUMP_CADENCE_LABEL);
+    expect(activity?.tone).toBe("warn");
+  });
+
+  it("caps architecture for abusive TypeScript hygiene and non-strict tsconfig", () => {
+    const filesystem = {
+      ...classifyRepoFilesystem(WEB_APP_PATHS, { inspected: true }),
+      typescript_hygiene_sampled: true,
+      ts_any_count: 4,
+      ts_double_assert_count: 1,
+      ts_loose_assert_count: 0,
+      tsconfig_strict: false,
+    };
+    expect(scoreArchitecture(filesystem)).toBeLessThanOrEqual(70);
+  });
+
+  it("hard-caps resilience when service role leaks to the client", () => {
+    const filesystem = {
+      ...classifyRepoFilesystem(WEB_APP_PATHS, { inspected: true }),
+      credential_leak_sampled: true,
+      service_role_on_client: true,
+      service_role_exposure_count: 1,
+    };
+    expect(scoreResilience(filesystem, "web_app")).toBe(25);
+  });
+
+  it("caps resilience when Supabase SQL defines tables without RLS", () => {
+    const filesystem = {
+      ...classifyRepoFilesystem(WEB_APP_PATHS, { inspected: true }),
+      error_handling_paths: ["src/app/error.tsx"],
+      supabase_hygiene_sampled: true,
+      supabase_surface_present: true,
+      supabase_sql_sampled: true,
+      supabase_table_ddl_count: 2,
+      supabase_rls_enabled: false,
+      supabase_policy_count: 0,
+    };
+    expect(scoreResilience(filesystem, "web_app", "fulltime")).toBeLessThanOrEqual(
+      55
+    );
+  });
+
+  it("caps resilience when RLS is enabled without policies", () => {
+    const filesystem = {
+      ...classifyRepoFilesystem(WEB_APP_PATHS, { inspected: true }),
+      error_handling_paths: ["src/app/error.tsx"],
+      supabase_hygiene_sampled: true,
+      supabase_surface_present: true,
+      supabase_sql_sampled: true,
+      supabase_table_ddl_count: 1,
+      supabase_rls_enabled: true,
+      supabase_policy_count: 0,
+    };
+    expect(scoreResilience(filesystem, "web_app", "fulltime")).toBeLessThanOrEqual(
+      60
+    );
   });
 
   it("grades testing density in proportional bands", () => {

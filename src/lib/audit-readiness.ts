@@ -1,3 +1,19 @@
+import {
+  applyCommitHistoryPenalty,
+  CLUSTERED_COMMIT_HISTORY_PENALTY,
+  DUMP_CHURN_HISTORY_PENALTY,
+  INITIAL_COMMIT_MESSAGE_PENALTY,
+  isStubCommitHistory,
+  MAX_COMMIT_HISTORY_PENALTY,
+  SINGLE_COMMIT_HISTORY_PENALTY,
+  SINGLE_DUMP_CADENCE_LABEL,
+  STALE_COMMIT_HISTORY_PENALTY,
+  STUB_REPO_HISTORY_PENALTY,
+  SUSPICIOUS_COMMIT_CADENCE_SUMMARY,
+  SUSPICIOUS_COMMIT_CADENCE_TITLE,
+  scoreCommitHistoryPenalty,
+  type CommitHistoryStat,
+} from "@/lib/commit-history-score";
 import { clampScore0to100 } from "@/lib/score-scale";
 import { scoreTesting } from "@/lib/production-audit-metrics";
 import {
@@ -5,6 +21,23 @@ import {
   type RepoFilesystemEvidence,
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
+
+export {
+  applyCommitHistoryPenalty,
+  CLUSTERED_COMMIT_HISTORY_PENALTY,
+  DUMP_CHURN_HISTORY_PENALTY,
+  INITIAL_COMMIT_MESSAGE_PENALTY,
+  isStubCommitHistory,
+  MAX_COMMIT_HISTORY_PENALTY,
+  SINGLE_COMMIT_HISTORY_PENALTY,
+  SINGLE_DUMP_CADENCE_LABEL,
+  STALE_COMMIT_HISTORY_PENALTY,
+  STUB_REPO_HISTORY_PENALTY,
+  SUSPICIOUS_COMMIT_CADENCE_SUMMARY,
+  SUSPICIOUS_COMMIT_CADENCE_TITLE,
+  scoreCommitHistoryPenalty,
+  type CommitHistoryStat,
+};
 
 export type ReadinessBadge = {
   label: string;
@@ -57,16 +90,7 @@ export function getReadinessBadge(score: number): ReadinessBadge {
   };
 }
 
-/** @deprecated Inactivity is an informational tag only — never a numeric ding. */
-export const STALE_COMMIT_HISTORY_PENALTY = 0;
-/** Empty or single-commit payloads. Not applied when dates were never fetched. */
-export const SINGLE_COMMIT_HISTORY_PENALTY = -25;
-/** >=80% of commits inside 4 hours on one calendar day. */
-export const CLUSTERED_COMMIT_HISTORY_PENALTY = -20;
-export const MAX_COMMIT_HISTORY_PENALTY = -25;
 const STALE_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
-const BURST_WINDOW_MS = 4 * 60 * 60 * 1000;
-const BURST_COMMIT_FRACTION = 0.8;
 
 export const READINESS_QUALITATIVE_WEIGHT = 0.45;
 export const READINESS_PRODUCTION_WEIGHT = 0.55;
@@ -109,64 +133,6 @@ export function classifyRepoActivityStatus(
   return isStaleCommitHistory(parseCommitTimestamps(commitDates), now)
     ? "stable"
     : "active";
-}
-
-function utcCalendarDay(timestamp: number): string {
-  const date = new Date(timestamp);
-  return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
-}
-
-/**
- * True when some window shorter than 4 hours holds at least 80% of the commits.
- * `timestamps` must be sorted ascending.
- */
-function isOneShotCommitBurst(timestamps: number[]): boolean {
-  const total = timestamps.length;
-  for (let start = 0; start < total; start += 1) {
-    let end = start;
-    while (
-      end + 1 < total &&
-      timestamps[end + 1]! - timestamps[start]! < BURST_WINDOW_MS
-    ) {
-      end += 1;
-    }
-    if ((end - start + 1) / total >= BURST_COMMIT_FRACTION) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Synthetic-history penalty from GitHub commit timestamps.
- * Missing payload (`null` / `undefined`) is 0 — a failed fetch is not evidence.
- * 0–1 parsed commits → -25. A single calendar day where >=80% of commits
- * land inside 4 hours → -20. Two or more calendar days, or a same-day
- * history with natural gaps, → 0. Age alone does not deduct.
- */
-export function scoreCommitHistoryPenalty(
-  commitDates?: string[] | null,
-  _now?: number
-): number {
-  if (commitDates == null) {
-    return 0;
-  }
-
-  const parsed = parseCommitTimestamps(commitDates);
-  if (parsed.length <= 1) {
-    return SINGLE_COMMIT_HISTORY_PENALTY;
-  }
-
-  const days = new Set(parsed.map(utcCalendarDay));
-  if (days.size >= 2) {
-    return 0;
-  }
-
-  if (isOneShotCommitBurst(parsed)) {
-    return CLUSTERED_COMMIT_HISTORY_PENALTY;
-  }
-
-  return 0;
 }
 
 /** UI label kept for older dossiers. Inactivity no longer deducts points. */
@@ -333,20 +299,40 @@ export function classifyTestSuites(
 
 export function classifyCommitCadence(
   commitDates: string[] | null | undefined,
-  now = Date.now()
+  now = Date.now(),
+  commitStats?: CommitHistoryStat[] | null
 ): {
-  status: RepoActivityStatus;
+  /** Checklist pill label — dump repos never read as "active". */
+  status: string;
   tone: ChecklistTone;
+  /** Negative ding from `scoreCommitHistoryPenalty` (0 when clean). */
   penalty: number;
+  /** Absolute points deducted (mirrors metrics.commitHistoryPenalty). */
+  commitHistoryPenalty: number;
   activity: RepoActivityStatus;
 } {
   const activity = classifyRepoActivityStatus(commitDates, now);
+  const penalty = scoreCommitHistoryPenalty(commitDates, now, commitStats);
+  const commitHistoryPenalty = Math.abs(Math.min(0, penalty));
+  const stubOrDump =
+    commitHistoryPenalty > 0 || isStubCommitHistory(commitDates, commitStats);
+
+  if (stubOrDump) {
+    return {
+      status: SINGLE_DUMP_CADENCE_LABEL,
+      activity,
+      tone: commitHistoryPenalty >= 25 ? "fail" : "warn",
+      penalty,
+      commitHistoryPenalty,
+    };
+  }
 
   return {
     status: activity,
     activity,
     tone: activity === "active" ? "pass" : "warn",
-    penalty: scoreCommitHistoryPenalty(commitDates, now),
+    penalty,
+    commitHistoryPenalty,
   };
 }
 
@@ -430,6 +416,9 @@ export function buildExecutiveChecklist(input: {
   scoreCap?: ScoreCapAudit | null;
   filesystem?: RepoFilesystemEvidence | null;
   commitDates?: string[] | null;
+  commitStats?: CommitHistoryStat[] | null;
+  /** Absolute history ding from metrics; used when dates alone are ambiguous. */
+  commitHistoryPenalty?: number | null;
   testingScore?: number | null;
 }): ExecutiveChecklistItem[] {
   const artifacts = coreArtifactFlags(input.scoreCap, input.filesystem);
@@ -438,7 +427,20 @@ export function buildExecutiveChecklist(input: {
     input.filesystem,
     input.testingScore
   );
-  const cadence = classifyCommitCadence(input.commitDates);
+  const cadence = classifyCommitCadence(
+    input.commitDates,
+    Date.now(),
+    input.commitStats
+  );
+  const storedPenalty =
+    typeof input.commitHistoryPenalty === "number" &&
+    Number.isFinite(input.commitHistoryPenalty)
+      ? Math.max(0, Math.round(input.commitHistoryPenalty))
+      : 0;
+  const dumpVisible =
+    cadence.commitHistoryPenalty > 0 ||
+    storedPenalty > 0 ||
+    isStubCommitHistory(input.commitDates, input.commitStats);
 
   return [
     {
@@ -462,8 +464,12 @@ export function buildExecutiveChecklist(input: {
     {
       id: "commit_cadence",
       label: "Repo Activity",
-      status: cadence.activity,
-      tone: cadence.tone,
+      status: dumpVisible ? SINGLE_DUMP_CADENCE_LABEL : cadence.status,
+      tone: dumpVisible
+        ? Math.max(cadence.commitHistoryPenalty, storedPenalty) >= 25
+          ? "fail"
+          : "warn"
+        : cadence.tone,
     },
   ];
 }

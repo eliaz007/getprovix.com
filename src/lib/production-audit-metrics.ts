@@ -5,6 +5,11 @@ import {
   weightsForAuditMode,
   type AuditMode,
 } from "@/lib/audit-mode";
+import {
+  applyCommitHistoryPenalty,
+  scoreCommitHistoryPenalty,
+  type CommitHistoryStat,
+} from "@/lib/commit-history-score";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   emptyArchitectureSignals,
@@ -32,6 +37,11 @@ export const PRODUCTION_METRIC_WEIGHTS = {
   resilience: 0.25,
 } as const;
 
+export type ProductionAuditHistoryInput = {
+  commitDates?: string[] | null;
+  commitStats?: CommitHistoryStat[] | null;
+};
+
 export type ProductionAuditMetrics = {
   architecture: number;
   testing: number;
@@ -40,6 +50,8 @@ export type ProductionAuditMetrics = {
   productionScore: number;
   /** 30 when the repo is a fork or generated template; otherwise 0. */
   upstreamDerivativePenalty: number;
+  /** Absolute points deducted for synthetic / dump commit history (0–30). */
+  commitHistoryPenalty: number;
   /** @deprecated Alias of devops — kept for persisted / UI consumers. */
   ciCdHealth: number;
   /** @deprecated Alias of testing. */
@@ -147,6 +159,7 @@ export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
       productionScore: 0,
     }),
     upstreamDerivativePenalty: 0,
+    commitHistoryPenalty: 0,
     evidence: {
       inspected: false,
       truncated: false,
@@ -174,6 +187,19 @@ const ARCHITECTURE_SCAFFOLD_CAP = 82;
  * or an equivalent schema guard.
  */
 const ARCHITECTURE_UNVALIDATED_ROUTE_CAP = 72;
+/** Sampled source abuses `: any` / `as unknown as` double-casts. */
+const ARCHITECTURE_TS_HYGIENE_CAP = 70;
+/** tsconfig present but strict/noImplicitAny off or unset. */
+const ARCHITECTURE_NON_STRICT_TSCONFIG_CAP = 78;
+/** Service-role / secret pattern in a client bundle — P0 Resilience ceiling. */
+const RESILIENCE_SERVICE_ROLE_CLIENT_CAP = 25;
+/** Supabase SQL sampled with tables but no ENABLE ROW LEVEL SECURITY. */
+const RESILIENCE_MISSING_RLS_CAP = 55;
+/** RLS enabled in SQL but zero CREATE POLICY statements. */
+const RESILIENCE_RLS_NO_POLICY_CAP = 60;
+/** Soft ding per unchecked Supabase mutation (insert/update/delete without error check). */
+const RESILIENCE_UNCHECKED_MUTATION_PENALTY = 4;
+const RESILIENCE_UNCHECKED_MUTATION_CAP = 16;
 
 function hasProvenArchitectureContracts(
   evidence: RepoFilesystemEvidence
@@ -193,11 +219,31 @@ function routesSampledWithoutSchema(evidence: RepoFilesystemEvidence): boolean {
   );
 }
 
+function hasAbusiveTypeScriptHygiene(
+  evidence: RepoFilesystemEvidence
+): boolean {
+  if (evidence.typescript_hygiene_sampled !== true) {
+    return false;
+  }
+  const anyCount = evidence.ts_any_count ?? 0;
+  const doubleAssert = evidence.ts_double_assert_count ?? 0;
+  const looseAssert = evidence.ts_loose_assert_count ?? 0;
+  return anyCount >= 3 || doubleAssert >= 1 || looseAssert >= 5;
+}
+
+function hasNonStrictTsconfig(evidence: RepoFilesystemEvidence): boolean {
+  return (
+    evidence.typescript_hygiene_sampled === true &&
+    evidence.tsconfig_strict === false
+  );
+}
+
 /**
  * Architecture (0-100): structure, type safety, and modularity from the file tree.
  * Scaffolding caps at 82. Sampled route handlers that lack runtime schema
- * validation cap at 72. 85+ requires route-level schema validation, zero
- * unvalidated `as Type` assertions, and complete contract boundaries.
+ * validation cap at 72. Abusive `: any` / `as unknown as` caps at 70.
+ * Non-strict tsconfig caps at 78. 85+ requires route-level schema validation,
+ * zero unvalidated `as Type` assertions, and complete contract boundaries.
  */
 export function scoreArchitecture(evidence: RepoFilesystemEvidence): number {
   if (!evidence.inspected) {
@@ -237,7 +283,13 @@ export function scoreArchitecture(evidence: RepoFilesystemEvidence): number {
     score += 10;
   }
 
-  const raw = clampScore0to100(score);
+  let raw = clampScore0to100(score);
+  if (hasAbusiveTypeScriptHygiene(evidence)) {
+    raw = Math.min(raw, ARCHITECTURE_TS_HYGIENE_CAP);
+  }
+  if (hasNonStrictTsconfig(evidence)) {
+    raw = Math.min(raw, ARCHITECTURE_NON_STRICT_TSCONFIG_CAP);
+  }
   if (hasProvenArchitectureContracts(evidence)) {
     return raw;
   }
@@ -581,12 +633,46 @@ export function unhandledAsyncPenalty(
   return penalty;
 }
 
+function missingSupabaseRls(evidence: RepoFilesystemEvidence): boolean {
+  if (evidence.supabase_hygiene_sampled !== true) {
+    return false;
+  }
+  if (evidence.supabase_sql_sampled !== true) {
+    return false;
+  }
+  if (evidence.supabase_surface_present !== true) {
+    return false;
+  }
+  // Only ding when DDL was observed — empty/comment SQL is not proof of tables.
+  if ((evidence.supabase_table_ddl_count ?? 0) <= 0) {
+    return false;
+  }
+  return evidence.supabase_rls_enabled !== true;
+}
+
+function supabaseRlsWithoutPolicies(
+  evidence: RepoFilesystemEvidence
+): boolean {
+  if (evidence.supabase_hygiene_sampled !== true) {
+    return false;
+  }
+  if (evidence.supabase_sql_sampled !== true) {
+    return false;
+  }
+  if (evidence.supabase_rls_enabled !== true) {
+    return false;
+  }
+  return (evidence.supabase_policy_count ?? 0) === 0;
+}
+
 /**
  * Resilience / security hygiene (0-100): start at 100 and deduct by mode.
  * Contract: missing root error boundaries −15; clean structure floors at ~50.
  * Full-time: missing root error boundaries −30; no softening floors.
  * Unhandled async/fetch: count-based on small repos; rate-based on large ones.
  * Route handlers that use `as Type` without runtime schema parsing cap at 65.
+ * Service-role / secret leakage into client bundles hard-caps at 25 (P0).
+ * Supabase SQL with tables but no RLS caps at 55; RLS without policies at 60.
  */
 export function scoreResilience(
   evidence: RepoFilesystemEvidence,
@@ -614,6 +700,14 @@ export function scoreResilience(
       ? clampScore0to100(testingScore)
       : scoreTesting(evidence, mode);
 
+  // P0: client service-role exposure bypasses polish floors.
+  if (
+    evidence.credential_leak_sampled === true &&
+    evidence.service_role_on_client === true
+  ) {
+    return RESILIENCE_SERVICE_ROLE_CLIENT_CAP;
+  }
+
   let score = 100;
   if (repoKind === "web_app" && missingBoundaries) {
     score -=
@@ -626,9 +720,27 @@ export function scoreResilience(
     score = Math.min(score, RESILIENCE_UNVALIDATED_ROUTE_CAP);
   }
 
+  const uncheckedMutations = Math.max(
+    0,
+    evidence.supabase_unchecked_mutation_count ?? 0
+  );
+  if (uncheckedMutations > 0) {
+    score -= Math.min(
+      RESILIENCE_UNCHECKED_MUTATION_CAP,
+      uncheckedMutations * RESILIENCE_UNCHECKED_MUTATION_PENALTY
+    );
+  }
+
   // Soft floor is Contract-only — Full-Time keeps the raw enterprise ding.
   if (mode === "contract" && hasCleanStructure) {
     score = Math.max(score, CONTRACT_RESILIENCE_STRUCTURE_FLOOR);
+  }
+
+  // RLS caps apply after the contract floor so polish cannot hide missing policies.
+  if (missingSupabaseRls(evidence)) {
+    score = Math.min(score, RESILIENCE_MISSING_RLS_CAP);
+  } else if (supabaseRlsWithoutPolicies(evidence)) {
+    score = Math.min(score, RESILIENCE_RLS_NO_POLICY_CAP);
   }
 
   return clampScore0to100(score);
@@ -668,7 +780,8 @@ export function applyUpstreamDerivativePenalty(
 
 export function computeProductionAuditMetrics(
   evidence: RepoFilesystemEvidence | null | undefined,
-  auditMode: AuditMode = DEFAULT_AUDIT_MODE
+  auditMode: AuditMode = DEFAULT_AUDIT_MODE,
+  history?: ProductionAuditHistoryInput | null
 ): ProductionAuditMetrics {
   const mode = normalizeAuditMode(auditMode);
   const normalized = evidence ?? emptyRepoFilesystemEvidence();
@@ -689,7 +802,7 @@ export function computeProductionAuditMetrics(
   const testing = scoreTesting(normalized, mode);
   const devops = scoreDevops(normalized);
   const resilience = scoreResilience(normalized, repoKind, mode, testing);
-  const productionScore = weightedProductionScore(
+  const weighted = weightedProductionScore(
     {
       architecture,
       testing,
@@ -698,6 +811,14 @@ export function computeProductionAuditMetrics(
     },
     mode
   );
+
+  const historyDing = scoreCommitHistoryPenalty(
+    history?.commitDates,
+    undefined,
+    history?.commitStats
+  );
+  const commitHistoryPenalty = Math.abs(Math.min(0, historyDing));
+  const productionScore = applyCommitHistoryPenalty(weighted, historyDing);
 
   return {
     ...withAliases(
@@ -711,6 +832,7 @@ export function computeProductionAuditMetrics(
       mode
     ),
     upstreamDerivativePenalty: 0,
+    commitHistoryPenalty,
     evidence: {
       inspected: true,
       truncated: Boolean(normalized.truncated),
@@ -741,11 +863,13 @@ export function resolveProductionAuditMetrics(input: {
   metrics?: unknown;
   filesystem?: RepoFilesystemEvidence | null;
   auditMode?: AuditMode;
+  history?: ProductionAuditHistoryInput | null;
 }): ProductionAuditMetrics {
   if (input.filesystem?.inspected) {
     return computeProductionAuditMetrics(
       input.filesystem,
-      normalizeAuditMode(input.auditMode)
+      normalizeAuditMode(input.auditMode),
+      input.history
     );
   }
 
@@ -859,6 +983,7 @@ export function parseProductionAuditMetrics(
       asCount(record.upstreamDerivativePenalty) > 0
         ? UPSTREAM_DERIVATIVE_PENALTY
         : 0,
+    commitHistoryPenalty: Math.min(30, asCount(record.commitHistoryPenalty)),
     evidence: {
       inspected: evidenceRecord?.inspected === true,
       truncated: evidenceRecord?.truncated === true,

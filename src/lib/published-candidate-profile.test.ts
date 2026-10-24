@@ -36,6 +36,7 @@ function completeVerifiedRow(
         repo: "engine",
         commit_count_sampled: 12,
         commit_dates: ["2026-01-01"],
+        commit_stats: [{ date: "2026-01-01", additions: 40, deletions: 2 }],
         readme_excerpt: "# Engine",
       },
     },

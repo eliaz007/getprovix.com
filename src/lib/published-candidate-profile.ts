@@ -401,6 +401,32 @@ function readGitHubAuditContext(value: unknown): GitHubAuditContext | null {
     commit_dates: Array.isArray(record.commit_dates)
       ? record.commit_dates.filter((date): date is string => typeof date === "string")
       : [],
+    commit_stats: Array.isArray(record.commit_stats)
+      ? record.commit_stats.flatMap((entry) => {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+            return [];
+          }
+          const row = entry as Record<string, unknown>;
+          if (typeof row.date !== "string" || !row.date.trim()) {
+            return [];
+          }
+          return [
+            {
+              date: row.date.trim(),
+              additions:
+                typeof row.additions === "number" ? row.additions : undefined,
+              deletions:
+                typeof row.deletions === "number" ? row.deletions : undefined,
+              filesChanged:
+                typeof row.filesChanged === "number"
+                  ? row.filesChanged
+                  : undefined,
+              message:
+                typeof row.message === "string" ? row.message : undefined,
+            },
+          ];
+        })
+      : [],
     readme_excerpt:
       typeof record.readme_excerpt === "string" ? record.readme_excerpt : null,
     fetch_warnings: Array.isArray(record.fetch_warnings)

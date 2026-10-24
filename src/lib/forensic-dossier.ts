@@ -328,9 +328,21 @@ export function buildSubsystemBlastRadius(input: {
   const dbFinding =
     dbCount === 0
       ? "No prisma/supabase/drizzle paths classified — state layer opaque to audit"
-      : `DB/state surface ~${dbCount} paths; contract boundaries ${
-          fs?.has_contract_boundaries ? "present" : "weak"
-        }`;
+      : fs?.supabase_sql_sampled &&
+          fs.supabase_table_ddl_count &&
+          fs.supabase_table_ddl_count > 0 &&
+          fs.supabase_rls_enabled !== true
+        ? `Supabase SQL defines tables without ENABLE ROW LEVEL SECURITY (${fs.supabase_table_ddl_count} DDL)`
+        : fs?.supabase_rls_enabled === true &&
+            (fs.supabase_policy_count ?? 0) === 0
+          ? "RLS enabled in sampled SQL but no CREATE POLICY statements found"
+          : `DB/state surface ~${dbCount} paths; contract boundaries ${
+              fs?.has_contract_boundaries ? "present" : "weak"
+            }${
+              fs?.supabase_rls_enabled
+                ? `; RLS on (${fs.supabase_policy_count ?? 0} policies)`
+                : ""
+            }`;
 
   const testFinding =
     testCount === 0

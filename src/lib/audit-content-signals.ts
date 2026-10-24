@@ -3,10 +3,14 @@ import { isNoisePath, type CiPipelineDepth } from "@/lib/repo-filesystem";
 const ASYNC_CALL = /\b(?:fetch\s*\(|axios\.|got\s*\(|ky\s*\()/g;
 const TRY_BLOCK = /try\s*\{/g;
 
-function stripNoise(source: string): string {
+function stripComments(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+function stripNoise(source: string): string {
+  return stripComments(source)
     .replace(/`(?:\\.|[^`\\])*`/g, "''")
     .replace(/'(?:\\.|[^'\\])*'/g, "''")
     .replace(/"(?:\\.|[^"\\])*"/g, "''");
@@ -438,4 +442,342 @@ export function selectPrimaryCiWorkflowPath(
     return null;
   }
   return preferWorkflowSamplePaths(paths, 1)[0] ?? null;
+}
+
+const ANY_ANNOTATION =
+  /(?::\s*any\b|<\s*any\s*>|\bas\s+any\b|\bArray\s*<\s*any\s*>|\bPromise\s*<\s*any\s*>|\bRecord\s*<\s*[^,>]+,\s*any\s*>)/g;
+const DOUBLE_ASSERT = /\bas\s+unknown\s+as\s+[A-Za-z_$][\w$]*/g;
+const LOOSE_ASSERT =
+  /\bas\s+(?:any|unknown|object|Function)\b/g;
+
+export type TypeScriptHygieneReport = {
+  sampled: boolean;
+  anyCount: number;
+  doubleAssertCount: number;
+  looseAssertCount: number;
+  /** True when sampled files show abusive any / double-cast density. */
+  abusive: boolean;
+};
+
+/**
+ * Penalize vibecoder TypeScript: `: any`, `as any`, and `as unknown as T`
+ * double-casts across sampled source files.
+ */
+export function analyzeTypeScriptHygiene(
+  files: Array<{ path: string; text: string }>
+): TypeScriptHygieneReport {
+  const tsFiles = files.filter((file) =>
+    /\.[cm]?tsx?$/i.test(file.path.replace(/\\/g, "/"))
+  );
+  if (tsFiles.length === 0) {
+    return {
+      sampled: false,
+      anyCount: 0,
+      doubleAssertCount: 0,
+      looseAssertCount: 0,
+      abusive: false,
+    };
+  }
+
+  let anyCount = 0;
+  let doubleAssertCount = 0;
+  let looseAssertCount = 0;
+  for (const file of tsFiles) {
+    const cleaned = stripNoise(file.text);
+    ANY_ANNOTATION.lastIndex = 0;
+    DOUBLE_ASSERT.lastIndex = 0;
+    LOOSE_ASSERT.lastIndex = 0;
+    anyCount += cleaned.match(ANY_ANNOTATION)?.length ?? 0;
+    doubleAssertCount += cleaned.match(DOUBLE_ASSERT)?.length ?? 0;
+    looseAssertCount += cleaned.match(LOOSE_ASSERT)?.length ?? 0;
+  }
+
+  return {
+    sampled: true,
+    anyCount,
+    doubleAssertCount,
+    looseAssertCount,
+    abusive: anyCount >= 3 || doubleAssertCount >= 1 || looseAssertCount >= 5,
+  };
+}
+
+export type TsconfigStrictReport = {
+  sampled: boolean;
+  /** null when no tsconfig was readable. */
+  strict: boolean | null;
+};
+
+/**
+ * Read `strict` / `noImplicitAny` from sampled tsconfig JSON text.
+ * Missing both flags → not strict. `"strict": true` or explicit noImplicitAny true → strict.
+ */
+export function analyzeTsconfigStrict(contents: string[]): TsconfigStrictReport {
+  if (contents.length === 0) {
+    return { sampled: false, strict: null };
+  }
+
+  for (const raw of contents) {
+    const text = raw.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/.*$/gm, " ");
+    try {
+      const parsed = JSON.parse(text) as {
+        compilerOptions?: Record<string, unknown>;
+      };
+      const options = parsed.compilerOptions ?? {};
+      if (options.strict === true) {
+        return { sampled: true, strict: true };
+      }
+      if (options.noImplicitAny === true && options.strict !== false) {
+        return { sampled: true, strict: true };
+      }
+      if (options.strict === false || options.noImplicitAny === false) {
+        return { sampled: true, strict: false };
+      }
+      // tsconfig present but neither flag set — treat as non-strict for scoring.
+      return { sampled: true, strict: false };
+    } catch {
+      // try next / fall through
+    }
+  }
+
+  return { sampled: true, strict: null };
+}
+
+const USE_CLIENT = /^['"]use client['"]\s*;?\s*$/m;
+const SERVICE_ROLE_TOKEN =
+  /\b(SUPABASE_SERVICE_ROLE(?:_KEY)?|SERVICE_ROLE_KEY|service[_-]?role(?:_key)?)\b/i;
+const HARDCODED_SECRET =
+  /\b(sk_live_[A-Za-z0-9]+|sk_test_[A-Za-z0-9]+|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,})/;
+const NEXT_PUBLIC_SECRET =
+  /\bNEXT_PUBLIC_(?:SUPABASE_SERVICE_ROLE(?:_KEY)?|[A-Z0-9_]*(?:SECRET|PRIVATE_KEY|SERVICE_ROLE)[A-Z0-9_]*)\b/;
+const BROWSER_SUPABASE =
+  /\bcreateBrowserClient\b|\bcreateClientComponentClient\b/;
+
+export type CredentialExposureReport = {
+  sampled: boolean;
+  serviceRoleExposureCount: number;
+  /** Service-role token or secret pattern inside a client bundle / 'use client' file. */
+  serviceRoleOnClient: boolean;
+  nextPublicSecretCount: number;
+};
+
+function isClientSource(text: string): boolean {
+  return USE_CLIENT.test(text) || BROWSER_SUPABASE.test(text);
+}
+
+/**
+ * Detect Supabase service-role / secret leakage into client-side code.
+ * Scans comment-stripped source so string literals still match.
+ * `NEXT_PUBLIC_*SERVICE_ROLE*` is always treated as client exposure.
+ */
+export function analyzeCredentialExposure(
+  files: Array<{ path: string; text: string }>
+): CredentialExposureReport {
+  if (files.length === 0) {
+    return {
+      sampled: false,
+      serviceRoleExposureCount: 0,
+      serviceRoleOnClient: false,
+      nextPublicSecretCount: 0,
+    };
+  }
+
+  let serviceRoleExposureCount = 0;
+  let serviceRoleOnClient = false;
+  let nextPublicSecretCount = 0;
+
+  for (const file of files) {
+    const scanned = stripComments(file.text);
+    const roleHits = scanned.match(SERVICE_ROLE_TOKEN)?.length ?? 0;
+    const hardcoded = scanned.match(HARDCODED_SECRET)?.length ?? 0;
+    const nextPublic = scanned.match(NEXT_PUBLIC_SECRET)?.length ?? 0;
+    serviceRoleExposureCount += roleHits + hardcoded;
+    nextPublicSecretCount += nextPublic;
+
+    if (nextPublic > 0) {
+      serviceRoleOnClient = true;
+      continue;
+    }
+    if (isClientSource(file.text) && (roleHits > 0 || hardcoded > 0)) {
+      serviceRoleOnClient = true;
+    }
+  }
+
+  return {
+    sampled: true,
+    serviceRoleExposureCount,
+    serviceRoleOnClient,
+    nextPublicSecretCount,
+  };
+}
+
+/** Prefer tsconfig.json / tsconfig.*.json when sampling config bodies. */
+export function preferTsconfigSamplePaths(
+  paths: string[],
+  limit = 2
+): string[] {
+  return [...paths]
+    .map((path) => path.replace(/\\/g, "/").trim())
+    .filter((path) => /(^|\/)tsconfig(?:\.[^/]+)?\.json$/i.test(path))
+    .sort((left, right) => {
+      const leftRoot = /(^|\/)tsconfig\.json$/i.test(left) ? 0 : 1;
+      const rightRoot = /(^|\/)tsconfig\.json$/i.test(right) ? 0 : 1;
+      return leftRoot - rightRoot || left.localeCompare(right);
+    })
+    .slice(0, Math.max(0, limit));
+}
+
+const SUPABASE_SQL_PATH =
+  /(^|\/)(supabase\/migrations\/|supabase\/.*\.sql$|.*\/migrations\/.*\.sql$|.*schema\.sql$)/i;
+const SUPABASE_DIR_PATH = /(^|\/)supabase\//i;
+const SUPABASE_CLIENT_IMPORT =
+  /@supabase\/supabase-js|createBrowserClient|createServerClient|createClientComponentClient|createServerComponentClient/;
+const RLS_ENABLE =
+  /\benable\s+row\s+level\s+security\b|\balter\s+table\b[\s\S]{0,200}?\benable\s+row\s+level\s+security\b/gi;
+const RLS_POLICY = /\bcreate\s+policy\b/gi;
+const SQL_TABLE_DDL =
+  /\bcreate\s+table\b|\balter\s+table\b/gi;
+const SUPABASE_MUTATION =
+  /\.from\s*\(\s*(['"`])[^'"`]+\1\s*\)\s*\.\s*(insert|update|upsert|delete)\s*\(/g;
+
+export type SupabaseHygieneReport = {
+  sampled: boolean;
+  /** Repo has supabase SQL/migrations and/or client usage in the sample. */
+  surfacePresent: boolean;
+  /** At least one sampled SQL body enables RLS. */
+  rlsEnabled: boolean;
+  policyCount: number;
+  /** CREATE/ALTER TABLE statements observed in sampled SQL. */
+  tableDdlCount: number;
+  /**
+   * `.from(...).insert|update|upsert|delete` calls whose nearby result
+   * handling does not reference `.error` / status checks.
+   */
+  uncheckedMutationCount: number;
+  /** SQL migrations/schema were read for this report. */
+  sqlSampled: boolean;
+};
+
+function countUncheckedSupabaseMutations(source: string): number {
+  const cleaned = stripComments(source);
+  let count = 0;
+  SUPABASE_MUTATION.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SUPABASE_MUTATION.exec(cleaned))) {
+    const window = cleaned.slice(match.index, match.index + 500);
+    const checksError =
+      /\.error\b/.test(window) ||
+      /\bstatus\s*(?:===|!==|==|!=)\s*/.test(window) ||
+      /\bthrow\b/.test(window) ||
+      /\bcatch\s*\(/.test(window);
+    if (!checksError) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Audit Supabase / Postgres hygiene: RLS enablement, policies, and
+ * mutation error handling in sampled SQL + client source.
+ */
+export function analyzeSupabaseHygiene(input: {
+  sqlFiles?: Array<{ path: string; text: string }>;
+  sourceFiles?: Array<{ path: string; text: string }>;
+  /** All inspected tree paths — used to detect a supabase/ surface even before reads. */
+  treePaths?: string[];
+}): SupabaseHygieneReport {
+  const sqlFiles = input.sqlFiles ?? [];
+  const sourceFiles = input.sourceFiles ?? [];
+  const treePaths = (input.treePaths ?? []).map((path) =>
+    path.replace(/\\/g, "/")
+  );
+
+  const treeHasSupabase =
+    treePaths.some((path) => SUPABASE_DIR_PATH.test(path)) ||
+    treePaths.some((path) => SUPABASE_SQL_PATH.test(path));
+
+  let rlsEnabled = false;
+  let policyCount = 0;
+  let tableDdlCount = 0;
+  for (const file of sqlFiles) {
+    const text = file.text;
+    RLS_ENABLE.lastIndex = 0;
+    RLS_POLICY.lastIndex = 0;
+    SQL_TABLE_DDL.lastIndex = 0;
+    if (RLS_ENABLE.test(text)) {
+      rlsEnabled = true;
+    }
+    policyCount += text.match(RLS_POLICY)?.length ?? 0;
+    tableDdlCount += text.match(SQL_TABLE_DDL)?.length ?? 0;
+  }
+
+  let clientPresent = false;
+  let uncheckedMutationCount = 0;
+  for (const file of sourceFiles) {
+    if (SUPABASE_CLIENT_IMPORT.test(file.text) || /supabase/i.test(file.path)) {
+      clientPresent = true;
+    }
+    uncheckedMutationCount += countUncheckedSupabaseMutations(file.text);
+  }
+
+  const sqlSampled = sqlFiles.length > 0;
+  const surfacePresent =
+    treeHasSupabase ||
+    sqlSampled ||
+    clientPresent ||
+    sqlFiles.some((file) => SUPABASE_SQL_PATH.test(file.path));
+
+  const sampled = sqlSampled || sourceFiles.length > 0 || treeHasSupabase;
+
+  return {
+    sampled,
+    surfacePresent,
+    rlsEnabled,
+    policyCount,
+    tableDdlCount,
+    uncheckedMutationCount,
+    sqlSampled,
+  };
+}
+
+/** Prefer supabase/migrations and schema SQL when sampling DB hygiene. */
+export function preferSupabaseSqlSamplePaths(
+  paths: string[],
+  limit = 8
+): string[] {
+  const scored = paths
+    .map((path) => path.replace(/\\/g, "/").trim())
+    .filter(Boolean)
+    .filter(
+      (path) =>
+        /\.sql$/i.test(path) ||
+        SUPABASE_DIR_PATH.test(path) ||
+        SUPABASE_SQL_PATH.test(path)
+    )
+    .filter((path) => /\.sql$/i.test(path))
+    .map((path) => {
+      let score = 0;
+      if (/(^|\/)supabase\/migrations\//i.test(path)) {
+        score += 10;
+      } else if (/(^|\/)supabase\//i.test(path)) {
+        score += 6;
+      } else if (/(^|\/)migrations?\//i.test(path)) {
+        score += 4;
+      }
+      if (/rls|policy|policies/i.test(path)) {
+        score += 5;
+      }
+      if (/schema/i.test(path)) {
+        score += 2;
+      }
+      return { path, score };
+    });
+
+  return scored
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.path.localeCompare(right.path)
+    )
+    .slice(0, Math.max(0, limit))
+    .map((item) => item.path);
 }
