@@ -410,12 +410,69 @@ export function scoreCiCdHealth(evidence: RepoFilesystemEvidence): number {
   return scoreDevops(evidence);
 }
 
-/** Full-time: sparse suites cannot clear Mid/Senior on density alone. */
-const FULLTIME_LOW_DENSITY_RATIO = 0.25;
-const FULLTIME_LOW_DENSITY_TESTING_CAP = 50;
+/** Full-time volume floor once a repo ships a substantive suite. */
+const FULLTIME_VOLUME_FLOOR_MIN_TESTS = 25;
+/** Midpoint of the 48–52 floor band for ≥25 verified test files. */
+const FULLTIME_VOLUME_FLOOR = 50;
 /** Half or more of sampled *.test.ts / *.spec.ts files are hollow. */
 const HOLLOW_TEST_SAMPLE_RATIO = 0.5;
 const HOLLOW_TEST_TESTING_CAP = 35;
+
+/**
+ * Full-Time testing curve: reward absolute suite investment so large apps with
+ * dozens of real tests are not crushed by a low test/source ratio.
+ * - 0 → 0
+ * - 1–5 → 20–35
+ * - 6–24 → 35–48
+ * - 25+ → floor 50, then scale toward 90+ with route/API/E2E coverage signals
+ */
+function scoreFulltimeTestingByVolume(
+  testFiles: number,
+  evidence: RepoFilesystemEvidence,
+  ratio: number,
+  hasE2e: boolean
+): number {
+  if (testFiles <= 0) {
+    return 0;
+  }
+
+  if (testFiles <= 5) {
+    const t = (testFiles - 1) / 4;
+    return clampScore0to100(Math.round(20 + t * 15));
+  }
+
+  if (testFiles < FULLTIME_VOLUME_FLOOR_MIN_TESTS) {
+    const t = (testFiles - 6) / 18;
+    return clampScore0to100(Math.round(35 + t * 13));
+  }
+
+  // 25+: substantive investment floor, then lift on volume + critical path signals.
+  let score = FULLTIME_VOLUME_FLOOR;
+  score += Math.min(20, Math.floor((testFiles - FULLTIME_VOLUME_FLOOR_MIN_TESTS) / 2));
+
+  if (evidence.route_schema_validation === true) {
+    score += 8;
+  }
+  if (evidence.has_contract_boundaries === true) {
+    score += 6;
+  }
+  if (hasE2e) {
+    score += 8;
+  }
+  // Density still helps; it no longer hard-caps large full-stack trees.
+  if (ratio >= 0.15) {
+    score += 6;
+  } else if (ratio >= 0.1) {
+    score += 3;
+  }
+
+  if (testFiles >= 50 && hasE2e) {
+    score = Math.max(score, 85 + Math.min(10, Math.floor((testFiles - 50) / 10)));
+  }
+
+  const ceiling = hasE2e && testFiles >= 50 ? 95 : 90;
+  return clampScore0to100(Math.min(Math.max(score, FULLTIME_VOLUME_FLOOR), ceiling));
+}
 
 /**
  * Cap only when the inspected sample is mostly hollow. A sample with genuine
@@ -443,10 +500,11 @@ function applyHollowTestingCap(
 /**
  * Testing (0-100). Ratios use core executable *.ts/*.tsx/*.js/*.jsx files only.
  * Demo, sample, tutorial, and docs trees are excluded from the source denominator.
- * Fewer than 10% of those files tested stays under 20.
- * More than 50 source files with ratio under 0.08 caps at 15.
- * 50+ test files plus Playwright/Cypress scores 85–95.
- * Full-time: test files below 25% of source files scale Testing up to a 50 cap.
+ * Contract: fewer than 10% of those files tested stays under 20; thin large repos
+ * (50+ sources, ratio under 0.08) cap at 15; 50+ tests + E2E scores 85–95.
+ * Full-time: volume bands (1–5 → 20–35, 6–24 → 35–48, 25+ floors at 50 then
+ * scales toward 90+ with route/API/E2E coverage) so large apps with dozens of
+ * real suites are not crushed by a low test/source ratio.
  * When at least half of sampled test files are hollow, Testing caps at 35.
  */
 export function scoreTesting(
@@ -476,6 +534,13 @@ export function scoreTesting(
   const ratio = testFiles / sourceFiles;
   const hasE2e = evidence.has_e2e_tools === true;
 
+  if (mode === "fulltime") {
+    return applyHollowTestingCap(
+      scoreFulltimeTestingByVolume(testFiles, evidence, ratio, hasE2e),
+      evidence
+    );
+  }
+
   if (testFiles >= 50 && hasE2e) {
     const extra = Math.min(10, Math.floor((testFiles - 50) / 10));
     return applyHollowTestingCap(85 + extra, evidence);
@@ -496,15 +561,6 @@ export function scoreTesting(
 
   if (sourceFiles > 50 && ratio < 0.08) {
     score = Math.min(score, 15);
-  }
-
-  // Full-time enterprise bar: below 25% density, scale toward a hard 50 cap
-  // (5 tests / 32 sources → ~31) so thin suites cannot clear Mid/Senior alone.
-  if (mode === "fulltime" && ratio < FULLTIME_LOW_DENSITY_RATIO) {
-    const densityScaled = Math.round(
-      (ratio / FULLTIME_LOW_DENSITY_RATIO) * FULLTIME_LOW_DENSITY_TESTING_CAP
-    );
-    score = Math.min(score, densityScaled, FULLTIME_LOW_DENSITY_TESTING_CAP);
   }
 
   return applyHollowTestingCap(score, evidence);

@@ -306,7 +306,7 @@ export function buildAuditModeRubricPrompt(mode: AuditMode): string {
 Prioritize enterprise maintainability, automated test coverage, error boundaries, and strict CI/CD. No polish floors — sparse tests and missing error.tsx must lower the headline score.
 Weighted score = Math.round(architecture * 0.30 + testing * 0.30 + security * 0.25 + tooling * 0.15).
 - Code Architecture & Clean Patterns (30%, key: architecture)
-- Automated Testing & CI/CD (30%, key: testing) — STRICT: if unit test files are under 25% of source files, Testing scales with density up to a hard 50 cap (sparse suites score well below 50). Missing Vitest/Jest/Playwright suites or missing .github/workflows must heavily lower this pillar.
+- Automated Testing & CI/CD (30%, key: testing) — STRICT volume curve: 1–5 suites score 20–35, 6–24 score 35–48, and ≥25 verified suites floor around 50 then scale toward 90+ with route/API/E2E coverage (large apps are not crushed by a low test/source ratio). Missing Vitest/Jest/Playwright suites or missing .github/workflows must heavily lower this pillar.
 - Security & Resilience (25%, key: resilience) — STRICT: web apps missing error.tsx / error boundaries deduct −30 from this pillar. No structure floor.
 - Production Tooling & Linters (15%, key: devops)
 Tiers: "Production-Grade / Core Lead" (>= 80), "Mid/Senior Production-Ready" (70-79), "Needs Refinement" (< 70).

@@ -646,7 +646,7 @@ describe("four-pillar production audit", () => {
     ).toBeLessThan(50);
   });
 
-  it("scales Full-Time testing under a 50 cap when test files are under 25% of source", () => {
+  it("scores Full-Time testing on volume bands instead of raw density", () => {
     const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
       inspected: true,
     });
@@ -658,13 +658,33 @@ describe("four-pillar production audit", () => {
       has_e2e_tools: false,
     };
     expect(scoreTesting(sparse, "contract")).toBeGreaterThan(50);
-    expect(scoreTesting(sparse, "fulltime")).toBeLessThanOrEqual(50);
-    expect(scoreTesting(sparse, "fulltime")).toBe(
-      Math.round((5 / 32 / 0.25) * 50)
-    );
+    // 5 suites → top of the 1–5 band (35), not a density-crushed ~31.
+    expect(scoreTesting(sparse, "fulltime")).toBe(35);
+
+    const midVolume = {
+      ...filesystem,
+      unit_test_file_count: 15,
+      executable_source_count: 200,
+      has_e2e_tools: false,
+    };
+    expect(scoreTesting(midVolume, "fulltime")).toBeGreaterThanOrEqual(35);
+    expect(scoreTesting(midVolume, "fulltime")).toBeLessThanOrEqual(48);
+
+    // 32 / 285 ≈ 11% density used to score ~22; volume floor rewards the suite.
+    const largeApp = {
+      ...filesystem,
+      unit_test_file_count: 32,
+      executable_source_count: 285,
+      has_e2e_tools: false,
+      route_schema_validation: true,
+      has_contract_boundaries: true,
+    };
+    expect(scoreTesting(largeApp, "fulltime")).toBeGreaterThanOrEqual(50);
+    expect(scoreTesting(largeApp, "fulltime")).toBeGreaterThanOrEqual(48);
+    expect(scoreTesting(largeApp, "fulltime")).toBeLessThanOrEqual(90);
   });
 
-  it("scores thin-test web apps ~76 Contract vs ~58-64 Full-Time", () => {
+  it("scores thin-test web apps higher on Contract than Full-Time volume bands", () => {
     const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
       inspected: true,
     });
@@ -689,11 +709,11 @@ describe("four-pillar production audit", () => {
     expect(contract.devops).toBeGreaterThanOrEqual(85);
     expect(contract.resilience).toBeGreaterThanOrEqual(50);
     expect(fulltime.resilience).toBe(54); // 100 − 30 boundaries − 16 async
-    expect(fulltime.testing).toBeLessThanOrEqual(50);
+    expect(fulltime.testing).toBe(35);
     expect(contract.productionScore).toBeGreaterThanOrEqual(74);
     expect(contract.productionScore).toBeLessThanOrEqual(82);
     expect(fulltime.productionScore).toBeGreaterThanOrEqual(58);
-    expect(fulltime.productionScore).toBeLessThanOrEqual(64);
+    expect(fulltime.productionScore).toBeLessThanOrEqual(70);
     expect(fulltime.productionScore).toBeLessThan(contract.productionScore);
   });
 
