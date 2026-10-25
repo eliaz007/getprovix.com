@@ -14,7 +14,7 @@ import {
   preferWorkflowSamplePaths,
   summarizeSampledTests,
 } from "@/lib/audit-content-signals";
-import type { CommitHistoryStat } from "@/lib/commit-history-score";
+import type { CommitHistoryStat } from "@/lib/production-audit-metrics";
 import {
   classifyRepoFilesystem,
   CORE_ARTIFACT_PROBE_DIRS,

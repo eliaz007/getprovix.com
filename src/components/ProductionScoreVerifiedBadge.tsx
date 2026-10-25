@@ -1,5 +1,4 @@
 import { ShieldCheck } from "lucide-react";
-import { DELIVERY_HYGIENE_VERIFIED_THRESHOLD } from "@/lib/audit-readiness";
 import {
   PUBLIC_SCORECARD_THRESHOLD,
   getProductionScoreBadge,
@@ -8,43 +7,30 @@ import { cn } from "@/lib/cn";
 
 type ProductionScoreVerifiedBadgeProps = {
   score: number | null | undefined;
-  /** Optional Delivery Hygiene (0–100) for dual-gate badge labels. */
+  /** @deprecated Ignored — verification is Code Health only. */
   deliveryHygieneScore?: number | null;
   className?: string;
 };
 
 /**
  * Renders only when Code Health / production score is at or above the public
- * verified threshold (75). Dual-gate label when hygiene is supplied.
+ * verified threshold (75).
  */
 export default function ProductionScoreVerifiedBadge({
   score,
-  deliveryHygieneScore,
   className = "",
 }: ProductionScoreVerifiedBadgeProps) {
-  const badge =
-    score == null
-      ? null
-      : getProductionScoreBadge(score, deliveryHygieneScore);
+  const badge = score == null ? null : getProductionScoreBadge(score);
 
   if (!badge) {
     return null;
   }
 
-  const sparse = badge.label.includes("Sparse History");
-
   return (
     <span
-      title={
-        sparse
-          ? `Code health ${PUBLIC_SCORECARD_THRESHOLD}+ with sparse commit history`
-          : `Code health ${PUBLIC_SCORECARD_THRESHOLD}+ and delivery hygiene ${DELIVERY_HYGIENE_VERIFIED_THRESHOLD}+`
-      }
+      title={`Code health ${PUBLIC_SCORECARD_THRESHOLD}+`}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide shadow-[0_0_12px_rgba(16,185,129,0.15)]",
-        sparse
-          ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
-          : "border-emerald-500/25 bg-emerald-500/10 text-emerald-400",
+        "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.15)]",
         className
       )}
     >
@@ -53,4 +39,3 @@ export default function ProductionScoreVerifiedBadge({
     </span>
   );
 }
-

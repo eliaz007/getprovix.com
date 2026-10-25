@@ -413,8 +413,8 @@ function attachModeEvaluation(
     devops: metrics.devops,
     resilience: metrics.resilience,
   });
-  // Prefer the metrics headline (Code Health / productionScore; history is
-  // scored separately as deliveryHygieneScore) over a raw pillar re-blend.
+  // Prefer the metrics headline (Code Health / productionScore) over a raw
+  // pillar re-blend.
   const headlineScore = clampScore0to100(metrics.productionScore);
   const tier = assignAuditTier(mode, headlineScore);
   const summary =

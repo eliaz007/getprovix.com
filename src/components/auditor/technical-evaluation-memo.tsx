@@ -35,9 +35,7 @@ type MemoInput = {
   commitSha: string | null;
   branch?: string;
   score: number;
-  /** Optional dual-score Delivery Hygiene for PDF header. */
-  deliveryHygieneScore?: number;
-  /** Dual-gate verification label when provided. */
+  /** Verification label when provided. */
   verificationBadge?: string;
   benchmark: CodebaseBenchmark | null | undefined;
   metrics: ProductionAuditMetrics;
@@ -181,11 +179,6 @@ export default function TechnicalEvaluationMemo(input: MemoInput) {
             <span className="memo-badge border-zinc-700 bg-zinc-800 px-3 py-1 font-mono text-sm text-zinc-100">
               Code Health {input.score}/100
             </span>
-            {typeof input.deliveryHygieneScore === "number" ? (
-              <span className="memo-badge border-zinc-700 bg-zinc-800 px-3 py-1 font-mono text-sm text-zinc-100">
-                Hygiene {clampScore0to100(input.deliveryHygieneScore)}/100
-              </span>
-            ) : null}
             {input.verificationBadge ? (
               <span className="memo-badge border-zinc-700 bg-zinc-800 px-3 py-1 font-mono text-[11px] text-zinc-100">
                 {input.verificationBadge}

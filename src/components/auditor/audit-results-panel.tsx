@@ -37,23 +37,18 @@ import {
 } from "@/lib/forensic-dossier";
 import {
   buildExecutiveChecklist,
-  classifyCommitCadence,
   CODE_HEALTH_VERIFIED_THRESHOLD,
-  DELIVERY_HYGIENE_VERIFIED_THRESHOLD,
   getReadinessBadge,
   isProductionReadyAudit,
   PRODUCTION_READY_VERIFIED,
   resolveDisplayedReadinessScore,
-  SINGLE_DUMP_CADENCE_LABEL,
   type ChecklistTone,
   type ExecutiveChecklistItem,
 } from "@/lib/audit-readiness";
 import { isEmployerRole } from "@/lib/dashboard-account";
 import {
-  commitHistoryScaleFromEvidence,
   emptyProductionAuditMetrics,
   resolveCodeHealthScore,
-  resolveDeliveryHygieneScore,
   resolveProductionAuditMetrics,
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
@@ -1198,39 +1193,9 @@ function dualScoreTone(score: number, passAt: number): string {
   return "text-rose-400";
 }
 
-/** Compact one-line callout when commit history lowers Delivery Hygiene. */
-function DeliveryHygieneBanner({
-  cadenceStatus,
-}: {
-  cadenceStatus: string;
-}) {
-  return (
-    <div
-      className="flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-snug text-amber-100/90"
-      role="status"
-    >
-      <AlertTriangle
-        className="h-3.5 w-3.5 shrink-0 text-amber-300"
-        aria-hidden
-      />
-      <p className="min-w-0 truncate">
-        <span className="font-semibold text-amber-200">
-          Sparse commit history
-        </span>
-        <span className="text-amber-100/70"> · </span>
-        <span className="text-amber-100/80">
-          {cadenceStatus} — ship incremental commits to clear Delivery Hygiene
-          for Provix Verified.
-        </span>
-      </p>
-    </div>
-  );
-}
-
 function safeDeriveAuditView(result: AuditResult): {
   score: number;
   codeHealthScore: number;
-  deliveryHygieneScore: number;
   badge: ReturnType<typeof getReadinessBadge>;
   checklist: ExecutiveChecklistItem[];
   visibleRedFlags: string[];
@@ -1250,7 +1215,6 @@ function safeDeriveAuditView(result: AuditResult): {
       },
     });
     const codeHealth = resolveCodeHealthScore(metrics);
-    const deliveryHygiene = resolveDeliveryHygieneScore(metrics);
     const score = resolveDisplayedReadinessScore({
       score: result?.score ?? 0,
       productionScore: codeHealth,
@@ -1261,8 +1225,7 @@ function safeDeriveAuditView(result: AuditResult): {
     return {
       score,
       codeHealthScore: codeHealth,
-      deliveryHygieneScore: deliveryHygiene,
-      badge: getReadinessBadge(codeHealth, deliveryHygiene),
+      badge: getReadinessBadge(codeHealth),
       checklist: buildExecutiveChecklist({
         scoreCap: result?.scoreCap,
         filesystem,
@@ -1284,8 +1247,7 @@ function safeDeriveAuditView(result: AuditResult): {
     return {
       score,
       codeHealthScore: score,
-      deliveryHygieneScore: 100,
-      badge: getReadinessBadge(score, 100),
+      badge: getReadinessBadge(score),
       checklist: [],
       visibleRedFlags: [],
       metrics: emptyProductionAuditMetrics(),
@@ -1371,7 +1333,6 @@ function AuditResultsPanelView({
   const {
     score,
     codeHealthScore,
-    deliveryHygieneScore,
     badge,
     checklist,
     visibleRedFlags,
@@ -1383,21 +1344,6 @@ function AuditResultsPanelView({
   const displayRepo = repoName?.trim() || "Audited repository";
   const auditedLabel = formatAuditDateLabel(result?.commitDates);
   const isRestricted = codeHealthScore < PUBLIC_SCORECARD_THRESHOLD;
-  const cadence = classifyCommitCadence(
-    result?.commitDates ?? null,
-    Date.now(),
-    result?.commitStats ?? null,
-    commitHistoryScaleFromEvidence(filesystem)
-  );
-  const historyPenalty = Math.max(
-    metrics.commitHistoryPenalty,
-    cadence.commitHistoryPenalty
-  );
-  const cadenceStatus = cadence.scaleBypassed
-    ? cadence.status
-    : historyPenalty > 0
-      ? SINGLE_DUMP_CADENCE_LABEL
-      : cadence.status;
   const employerView = isEmployerView || isEmployerRole(viewerRole);
   const screenPrompts = useMemo(
     () => (employerView ? buildScreenPrompts(result) : []),
@@ -1440,7 +1386,6 @@ function AuditResultsPanelView({
         commitSha={filesystem?.audited_commit_sha ?? null}
         branch={filesystem?.audited_branch ?? provenance.branch}
         score={codeHealthScore}
-        deliveryHygieneScore={deliveryHygieneScore}
         verificationBadge={badge.label}
         benchmark={result.benchmark}
         metrics={metrics}
@@ -1505,40 +1450,18 @@ function AuditResultsPanelView({
               </div>
             </div>
           </div>
-          <div className="shrink-0 space-y-3 sm:min-w-[16rem] sm:text-right">
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/50 px-3 py-2.5 sm:text-left">
-                <div className={SECTION_LABEL}>Code Health</div>
-                <div className="mt-1 flex items-baseline gap-1">
-                  <span
-                    className={`dossier-score font-mono text-3xl font-black tabular-nums tracking-tight sm:text-4xl ${dualScoreTone(
-                      codeHealthScore,
-                      CODE_HEALTH_VERIFIED_THRESHOLD
-                    )}`}
-                  >
-                    {codeHealthScore}
-                  </span>
-                  <span className="text-sm font-semibold text-zinc-500">
-                    /100
-                  </span>
-                </div>
-              </div>
-              <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/50 px-3 py-2.5 sm:text-left">
-                <div className={SECTION_LABEL}>Delivery Hygiene</div>
-                <div className="mt-1 flex items-baseline gap-1">
-                  <span
-                    className={`font-mono text-3xl font-black tabular-nums tracking-tight sm:text-4xl ${dualScoreTone(
-                      deliveryHygieneScore,
-                      DELIVERY_HYGIENE_VERIFIED_THRESHOLD
-                    )}`}
-                  >
-                    {deliveryHygieneScore}
-                  </span>
-                  <span className="text-sm font-semibold text-zinc-500">
-                    /100
-                  </span>
-                </div>
-              </div>
+          <div className="shrink-0 space-y-2 sm:text-right">
+            <div className={SECTION_LABEL}>Code Health</div>
+            <div className="flex items-baseline gap-1 sm:justify-end">
+              <span
+                className={`dossier-score font-mono text-4xl font-black tabular-nums tracking-tight sm:text-5xl ${dualScoreTone(
+                  codeHealthScore,
+                  CODE_HEALTH_VERIFIED_THRESHOLD
+                )}`}
+              >
+                {codeHealthScore}
+              </span>
+              <span className="text-base font-semibold text-zinc-500">/100</span>
             </div>
           </div>
         </div>
@@ -1565,10 +1488,6 @@ function AuditResultsPanelView({
           className="break-inside-avoid print:break-inside-avoid print:shadow-none print:backdrop-blur-none"
         />
 
-        {!cadence.scaleBypassed && historyPenalty > 0 ? (
-          <DeliveryHygieneBanner cadenceStatus={cadenceStatus} />
-        ) : null}
-
         <div className="pt-1">
           <SubsystemBlastRadiusMatrix rows={blastRows} />
         </div>
@@ -1585,14 +1504,10 @@ function AuditResultsPanelView({
           </summary>
           <div className="mt-3 space-y-3 text-xs leading-relaxed text-zinc-400">
             <p>
-              Dual scores: <span className="font-medium text-zinc-300">Code Health</span>{" "}
-              is the weighted sum of four filesystem pillars (Architecture,
-              Testing, DevOps, Resilience).{" "}
-              <span className="font-medium text-zinc-300">Delivery Hygiene</span>{" "}
-              is <span className="font-mono">max(0, 100 − commitHistoryPenalty)</span>{" "}
-              and never subtracts from Code Health. Provix Verified requires Code
-              Health {CODE_HEALTH_VERIFIED_THRESHOLD}+ and Delivery Hygiene{" "}
-              {DELIVERY_HYGIENE_VERIFIED_THRESHOLD}+.
+              <span className="font-medium text-zinc-300">Code Health</span> is
+              the weighted sum of four filesystem pillars (Architecture,
+              Testing, DevOps, Resilience). Provix Verified requires Code Health{" "}
+              {CODE_HEALTH_VERIFIED_THRESHOLD}+.
             </p>
             <ul className="list-disc space-y-2 pl-4">
               <li>
@@ -1669,7 +1584,7 @@ function AuditResultsPanelView({
                 ? item.id === "commit_cadence"
                   ? item.tone === "pass"
                     ? "active"
-                    : "Single dump / Low cadence"
+                    : "stable"
                   : "Unavailable"
                 : rawStatus;
             return (
@@ -1710,8 +1625,8 @@ function AuditResultsPanelView({
             </ul>
           ) : (
             <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-3 text-sm text-zinc-300">
-              Core production artifacts are present. Commit cadence is reported
-              under Delivery Hygiene above — it no longer flat-dings Code Health.
+              Core production artifacts are present. No CI/CD or test deductions
+              remain on this dossier.
             </div>
           )}
         </section>

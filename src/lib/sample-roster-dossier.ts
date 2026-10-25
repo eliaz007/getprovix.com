@@ -8,7 +8,6 @@ export function buildSampleRosterMemoProps() {
   const metrics = emptyProductionAuditMetrics();
   metrics.productionScore = 79;
   metrics.codeHealthScore = 79;
-  metrics.deliveryHygieneScore = 100;
   metrics.architecture = 86;
   metrics.testing = 78;
   metrics.devops = 80;
@@ -54,7 +53,6 @@ export function buildSampleRosterMemoProps() {
     verifiedOn: "Sep 28, 2026",
     commitSha: filesystem.audited_commit_sha,
     score: 79,
-    deliveryHygieneScore: 100,
     verificationBadge: "Provix Verified",
     benchmark: getCalibratedBenchmark(79),
     metrics,

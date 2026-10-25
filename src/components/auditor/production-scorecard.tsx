@@ -7,7 +7,6 @@ import {
   type ProductionAuditMetrics,
   emptyProductionAuditMetrics,
   resolveCodeHealthScore,
-  resolveDeliveryHygieneScore,
   weightedProductionScore,
 } from "@/lib/production-audit-metrics";
 import { formatCodebaseBenchmark, type CodebaseBenchmark } from "@/lib/codebase-benchmark";
@@ -251,7 +250,6 @@ export default function ProductionScorecard({
   const resolved = metrics ?? emptyProductionAuditMetrics();
   const codeHealthScore = resolveCodeHealthScore(resolved);
   const productionScore = codeHealthScore;
-  const deliveryHygieneScore = resolveDeliveryHygieneScore(resolved);
   const inspected = resolved.evidence.inspected;
   const upstreamPenalty = Math.max(0, resolved.upstreamDerivativePenalty ?? 0);
   const subLogByPillar = new Map(
@@ -281,14 +279,11 @@ export default function ProductionScorecard({
             >
               Code Health: {codeHealthScore}/100
             </p>
-            <ProductionScoreVerifiedBadge
-              score={codeHealthScore}
-              deliveryHygieneScore={deliveryHygieneScore}
-            />
+            <ProductionScoreVerifiedBadge score={codeHealthScore} />
           </div>
           <p className="mt-1 text-sm leading-relaxed text-zinc-400">
             {inspected
-              ? `Pillar index · ${resolved.evidence.fileCount} paths · hygiene scored separately`
+              ? `Pillar index · ${resolved.evidence.fileCount} paths`
               : "Run a GitHub audit to compute architecture, tests, CI, and resilience."}
           </p>
           {upstreamPenalty > 0 ? (
@@ -353,10 +348,7 @@ export default function ProductionScorecard({
             </p>
           ) : null}
         </div>
-        <ProductionScoreVerifiedBadge
-          score={codeHealthScore}
-          deliveryHygieneScore={deliveryHygieneScore}
-        />
+        <ProductionScoreVerifiedBadge score={codeHealthScore} />
       </div>
 
       {executiveBrief ? (
