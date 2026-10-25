@@ -1,10 +1,13 @@
 import {
   applyCommitHistoryPenalty,
+  applyCommitHistoryScaleWeight,
+  classifyCommitHistoryScale,
   CLUSTERED_COMMIT_HISTORY_PENALTY,
   DUMP_CHURN_HISTORY_PENALTY,
   INITIAL_COMMIT_MESSAGE_PENALTY,
   isStubCommitHistory,
   MAX_COMMIT_HISTORY_PENALTY,
+  SCALE_VERIFIED_CADENCE_LABEL,
   SINGLE_COMMIT_HISTORY_PENALTY,
   SINGLE_DUMP_CADENCE_LABEL,
   STALE_COMMIT_HISTORY_PENALTY,
@@ -12,10 +15,15 @@ import {
   SUSPICIOUS_COMMIT_CADENCE_SUMMARY,
   SUSPICIOUS_COMMIT_CADENCE_TITLE,
   scoreCommitHistoryPenalty,
+  type CommitHistoryScale,
+  type CommitHistoryScaleTier,
   type CommitHistoryStat,
 } from "@/lib/commit-history-score";
 import { clampScore0to100 } from "@/lib/score-scale";
-import { scoreTesting } from "@/lib/production-audit-metrics";
+import {
+  commitHistoryScaleFromEvidence,
+  scoreTesting,
+} from "@/lib/production-audit-metrics";
 import {
   isUnitTestFile,
   type RepoFilesystemEvidence,
@@ -24,11 +32,14 @@ import {
 
 export {
   applyCommitHistoryPenalty,
+  applyCommitHistoryScaleWeight,
+  classifyCommitHistoryScale,
   CLUSTERED_COMMIT_HISTORY_PENALTY,
   DUMP_CHURN_HISTORY_PENALTY,
   INITIAL_COMMIT_MESSAGE_PENALTY,
   isStubCommitHistory,
   MAX_COMMIT_HISTORY_PENALTY,
+  SCALE_VERIFIED_CADENCE_LABEL,
   SINGLE_COMMIT_HISTORY_PENALTY,
   SINGLE_DUMP_CADENCE_LABEL,
   STALE_COMMIT_HISTORY_PENALTY,
@@ -36,6 +47,8 @@ export {
   SUSPICIOUS_COMMIT_CADENCE_SUMMARY,
   SUSPICIOUS_COMMIT_CADENCE_TITLE,
   scoreCommitHistoryPenalty,
+  type CommitHistoryScale,
+  type CommitHistoryScaleTier,
   type CommitHistoryStat,
 };
 
@@ -44,6 +57,20 @@ export type ReadinessBadge = {
   className: string;
   meterClassName: string;
 };
+
+/** Dual-gate verification labels (Code Health × Delivery Hygiene). */
+export type VerificationTier =
+  | "Provix Verified"
+  | "Code Verified · Sparse History"
+  | "Needs Refinement";
+
+export const VERIFICATION_TIER_PROVIX = "Provix Verified" as const;
+export const VERIFICATION_TIER_SPARSE_HISTORY =
+  "Code Verified · Sparse History" as const;
+export const VERIFICATION_TIER_NEEDS_REFINEMENT = "Needs Refinement" as const;
+
+export const CODE_HEALTH_VERIFIED_THRESHOLD = 75;
+export const DELIVERY_HYGIENE_VERIFIED_THRESHOLD = 80;
 
 export type ChecklistTone = "pass" | "warn" | "fail";
 
@@ -56,7 +83,76 @@ export type ExecutiveChecklistItem = {
   tone: ChecklistTone;
 };
 
-export function getReadinessBadge(score: number): ReadinessBadge {
+/**
+ * Dual-gate verification badge:
+ * - Provix Verified: codeHealth >= 75 AND deliveryHygiene >= 80
+ * - Code Verified · Sparse History: codeHealth >= 75 AND deliveryHygiene < 80
+ * - Needs Refinement: codeHealth < 75
+ */
+export function assignVerificationTier(
+  codeHealthScore: number,
+  deliveryHygieneScore: number
+): VerificationTier {
+  const health = clampScore0to100(codeHealthScore);
+  const hygiene = clampScore0to100(deliveryHygieneScore);
+
+  if (health < CODE_HEALTH_VERIFIED_THRESHOLD) {
+    return VERIFICATION_TIER_NEEDS_REFINEMENT;
+  }
+  if (hygiene >= DELIVERY_HYGIENE_VERIFIED_THRESHOLD) {
+    return VERIFICATION_TIER_PROVIX;
+  }
+  return VERIFICATION_TIER_SPARSE_HISTORY;
+}
+
+export function getVerificationTierBadge(
+  codeHealthScore: number,
+  deliveryHygieneScore: number
+): ReadinessBadge {
+  const tier = assignVerificationTier(
+    codeHealthScore,
+    deliveryHygieneScore
+  );
+
+  if (tier === VERIFICATION_TIER_PROVIX) {
+    return {
+      label: tier,
+      className: "text-emerald-300 bg-emerald-500/10 border-emerald-500/30",
+      meterClassName: "text-emerald-400",
+    };
+  }
+
+  if (tier === VERIFICATION_TIER_SPARSE_HISTORY) {
+    return {
+      label: tier,
+      className: "text-amber-300 bg-amber-500/10 border-amber-500/30",
+      meterClassName: "text-amber-400",
+    };
+  }
+
+  return {
+    label: tier,
+    className: "text-rose-300 bg-rose-500/10 border-rose-500/30",
+    meterClassName: "text-rose-400",
+  };
+}
+
+/**
+ * Readiness / verification badge. When `deliveryHygieneScore` is provided,
+ * uses the dual-gate model; otherwise falls back to legacy single-score bands
+ * so older call sites keep working.
+ */
+export function getReadinessBadge(
+  score: number,
+  deliveryHygieneScore?: number | null
+): ReadinessBadge {
+  if (
+    typeof deliveryHygieneScore === "number" &&
+    Number.isFinite(deliveryHygieneScore)
+  ) {
+    return getVerificationTierBadge(score, deliveryHygieneScore);
+  }
+
   const clamped = clampScore0to100(score);
 
   if (clamped >= 85) {
@@ -300,7 +396,8 @@ export function classifyTestSuites(
 export function classifyCommitCadence(
   commitDates: string[] | null | undefined,
   now = Date.now(),
-  commitStats?: CommitHistoryStat[] | null
+  commitStats?: CommitHistoryStat[] | null,
+  scale?: CommitHistoryScale | null
 ): {
   /** Checklist pill label — dump repos never read as "active". */
   status: string;
@@ -310,20 +407,45 @@ export function classifyCommitCadence(
   /** Absolute points deducted (mirrors metrics.commitHistoryPenalty). */
   commitHistoryPenalty: number;
   activity: RepoActivityStatus;
+  scaleTier: CommitHistoryScaleTier;
+  /** True when large-repo scale wiped a dump ding. */
+  scaleBypassed: boolean;
 } {
   const activity = classifyRepoActivityStatus(commitDates, now);
-  const penalty = scoreCommitHistoryPenalty(commitDates, now, commitStats);
+  const scaleTier = classifyCommitHistoryScale(scale);
+  const unscaledPenalty = scoreCommitHistoryPenalty(
+    commitDates,
+    now,
+    commitStats,
+    null
+  );
+  const penalty = applyCommitHistoryScaleWeight(unscaledPenalty, scale);
   const commitHistoryPenalty = Math.abs(Math.min(0, penalty));
-  const stubOrDump =
-    commitHistoryPenalty > 0 || isStubCommitHistory(commitDates, commitStats);
+  const rawDump =
+    unscaledPenalty < 0 || isStubCommitHistory(commitDates, commitStats);
+  const scaleBypassed = scaleTier === "large" && rawDump;
 
-  if (stubOrDump) {
+  if (scaleBypassed) {
+    return {
+      status: SCALE_VERIFIED_CADENCE_LABEL,
+      activity,
+      tone: "pass",
+      penalty: 0,
+      commitHistoryPenalty: 0,
+      scaleTier,
+      scaleBypassed: true,
+    };
+  }
+
+  if (commitHistoryPenalty > 0 || rawDump) {
     return {
       status: SINGLE_DUMP_CADENCE_LABEL,
       activity,
       tone: commitHistoryPenalty >= 25 ? "fail" : "warn",
       penalty,
       commitHistoryPenalty,
+      scaleTier,
+      scaleBypassed: false,
     };
   }
 
@@ -333,6 +455,8 @@ export function classifyCommitCadence(
     tone: activity === "active" ? "pass" : "warn",
     penalty,
     commitHistoryPenalty,
+    scaleTier,
+    scaleBypassed: false,
   };
 }
 
@@ -427,20 +551,29 @@ export function buildExecutiveChecklist(input: {
     input.filesystem,
     input.testingScore
   );
+  const scale = commitHistoryScaleFromEvidence(input.filesystem);
   const cadence = classifyCommitCadence(
     input.commitDates,
     Date.now(),
-    input.commitStats
+    input.commitStats,
+    scale
   );
   const storedPenalty =
     typeof input.commitHistoryPenalty === "number" &&
     Number.isFinite(input.commitHistoryPenalty)
       ? Math.max(0, Math.round(input.commitHistoryPenalty))
       : 0;
-  const dumpVisible =
-    cadence.commitHistoryPenalty > 0 ||
-    storedPenalty > 0 ||
-    isStubCommitHistory(input.commitDates, input.commitStats);
+  // Prefer live scale-aware cadence; stored 0 means metrics already bypassed.
+  const effectivePenalty = Math.max(
+    cadence.commitHistoryPenalty,
+    storedPenalty
+  );
+  const scaleBypassed =
+    cadence.scaleBypassed ||
+    (classifyCommitHistoryScale(scale) === "large" &&
+      storedPenalty === 0 &&
+      isStubCommitHistory(input.commitDates, input.commitStats));
+  const dumpVisible = !scaleBypassed && effectivePenalty > 0;
 
   return [
     {
@@ -464,12 +597,18 @@ export function buildExecutiveChecklist(input: {
     {
       id: "commit_cadence",
       label: "Repo Activity",
-      status: dumpVisible ? SINGLE_DUMP_CADENCE_LABEL : cadence.status,
-      tone: dumpVisible
-        ? Math.max(cadence.commitHistoryPenalty, storedPenalty) >= 25
-          ? "fail"
-          : "warn"
-        : cadence.tone,
+      status: scaleBypassed
+        ? SCALE_VERIFIED_CADENCE_LABEL
+        : dumpVisible
+          ? SINGLE_DUMP_CADENCE_LABEL
+          : cadence.status,
+      tone: scaleBypassed
+        ? "pass"
+        : dumpVisible
+          ? effectivePenalty >= 25
+            ? "fail"
+            : "warn"
+          : cadence.tone,
     },
   ];
 }

@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  assignVerificationTier,
   buildExecutiveChecklist,
   classifyCommitCadence,
   classifyRepoActivityStatus,
+  getReadinessBadge,
+  SCALE_VERIFIED_CADENCE_LABEL,
   scoreCommitHistoryPenalty,
   SINGLE_DUMP_CADENCE_LABEL,
+  VERIFICATION_TIER_NEEDS_REFINEMENT,
+  VERIFICATION_TIER_PROVIX,
+  VERIFICATION_TIER_SPARSE_HISTORY,
 } from "./audit-readiness";
 import {
   applyUpstreamDerivativePenalty,
   computeProductionAuditMetrics,
+  parseProductionAuditMetrics,
   scoreArchitecture,
   scoreDevops,
   scoreResilience,
@@ -234,18 +241,58 @@ describe("four-pillar production audit", () => {
     ).toBe(-25);
   });
 
-  it("wires commit history penalty into the headline production score", () => {
+  it("keeps commit history on delivery hygiene without dinging code health", () => {
     const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
       inspected: true,
     });
     const baseline = computeProductionAuditMetrics(filesystem, "fulltime");
-    const penalized = computeProductionAuditMetrics(filesystem, "fulltime", {
+    const sparse = computeProductionAuditMetrics(filesystem, "fulltime", {
       commitDates: ["2026-01-01T00:00:00.000Z"],
     });
-    expect(penalized.commitHistoryPenalty).toBe(25);
-    expect(penalized.productionScore).toBe(
-      Math.max(0, baseline.productionScore - 25)
+    expect(sparse.commitHistoryPenalty).toBe(25);
+    expect(sparse.codeHealthScore).toBe(baseline.codeHealthScore);
+    expect(sparse.productionScore).toBe(baseline.productionScore);
+    expect(sparse.productionScore).toBe(sparse.codeHealthScore);
+    expect(sparse.deliveryHygieneScore).toBe(75);
+    expect(baseline.deliveryHygieneScore).toBe(100);
+  });
+
+  it("assigns dual-gate verification tiers from code health and hygiene", () => {
+    expect(assignVerificationTier(80, 90)).toBe(VERIFICATION_TIER_PROVIX);
+    expect(assignVerificationTier(75, 80)).toBe(VERIFICATION_TIER_PROVIX);
+    // −25 bulk-dump → hygiene 75 fails the 80 gate → Sparse History
+    expect(assignVerificationTier(80, 75)).toBe(
+      VERIFICATION_TIER_SPARSE_HISTORY
     );
+    expect(assignVerificationTier(80, 79)).toBe(
+      VERIFICATION_TIER_SPARSE_HISTORY
+    );
+    expect(assignVerificationTier(74, 100)).toBe(
+      VERIFICATION_TIER_NEEDS_REFINEMENT
+    );
+    expect(getReadinessBadge(80, 75).label).toBe(
+      VERIFICATION_TIER_SPARSE_HISTORY
+    );
+    expect(getReadinessBadge(80, 90).label).toBe(VERIFICATION_TIER_PROVIX);
+    expect(getReadinessBadge(70, 100).label).toBe(
+      VERIFICATION_TIER_NEEDS_REFINEMENT
+    );
+  });
+
+  it("defaults dual scores when parsing legacy metrics blobs", () => {
+    const parsed = parseProductionAuditMetrics({
+      architecture: 80,
+      testing: 80,
+      devops: 80,
+      resilience: 80,
+      productionScore: 70,
+      commitHistoryPenalty: 25,
+      evidence: { inspected: true },
+    });
+    expect(parsed?.productionScore).toBe(70);
+    expect(parsed?.codeHealthScore).toBe(70);
+    expect(parsed?.deliveryHygieneScore).toBe(75);
+    expect(parsed?.commitHistoryPenalty).toBe(25);
   });
 
   it("flags stub repos on the executive checklist instead of active", () => {
@@ -266,6 +313,80 @@ describe("four-pillar production audit", () => {
     const activity = checklist.find((item) => item.id === "commit_cadence");
     expect(activity?.status).toBe(SINGLE_DUMP_CADENCE_LABEL);
     expect(activity?.tone).toBe("warn");
+  });
+
+  it("scale-weights bulk-dump penalties by inspected files / authored LOC", () => {
+    const dumpDates = ["2026-01-01T00:00:00.000Z"];
+    expect(scoreCommitHistoryPenalty(dumpDates)).toBe(-25);
+    expect(
+      scoreCommitHistoryPenalty(dumpDates, undefined, null, {
+        fileCount: 100,
+        authoredLoc: 5_000,
+      })
+    ).toBe(-10);
+    expect(
+      scoreCommitHistoryPenalty(dumpDates, undefined, null, {
+        fileCount: 300,
+        authoredLoc: 5_000,
+      })
+    ).toBe(0);
+    expect(
+      scoreCommitHistoryPenalty(dumpDates, undefined, null, {
+        fileCount: 40,
+        authoredLoc: 30_000,
+      })
+    ).toBe(0);
+
+    const smallFs = classifyRepoFilesystem(WEB_APP_PATHS, { inspected: true });
+    expect(smallFs.file_count).toBeLessThan(75);
+    const smallSparse = computeProductionAuditMetrics(smallFs, "fulltime", {
+      commitDates: dumpDates,
+    });
+    expect(smallSparse.commitHistoryPenalty).toBe(25);
+
+    const midFs = {
+      ...smallFs,
+      file_count: 120,
+      source_file_count: 90,
+      executable_source_count: 90,
+    };
+    const midSparse = computeProductionAuditMetrics(midFs, "fulltime", {
+      commitDates: dumpDates,
+    });
+    expect(midSparse.commitHistoryPenalty).toBe(10);
+    expect(midSparse.deliveryHygieneScore).toBe(90);
+
+    const largeFs = {
+      ...smallFs,
+      file_count: 320,
+      source_file_count: 280,
+      executable_source_count: 280,
+    };
+    const largeSparse = computeProductionAuditMetrics(largeFs, "fulltime", {
+      commitDates: dumpDates,
+    });
+    expect(largeSparse.commitHistoryPenalty).toBe(0);
+    expect(largeSparse.deliveryHygieneScore).toBe(100);
+
+    const largeCadence = classifyCommitCadence(
+      dumpDates,
+      Date.parse("2026-10-22"),
+      null,
+      { fileCount: 320, authoredLoc: 20_000 }
+    );
+    expect(largeCadence.scaleBypassed).toBe(true);
+    expect(largeCadence.status).toBe(SCALE_VERIFIED_CADENCE_LABEL);
+    expect(largeCadence.tone).toBe("pass");
+    expect(largeCadence.commitHistoryPenalty).toBe(0);
+
+    const checklist = buildExecutiveChecklist({
+      filesystem: largeFs,
+      commitDates: dumpDates,
+      commitHistoryPenalty: 0,
+    });
+    const activity = checklist.find((item) => item.id === "commit_cadence");
+    expect(activity?.status).toBe(SCALE_VERIFIED_CADENCE_LABEL);
+    expect(activity?.tone).toBe("pass");
   });
 
   it("caps architecture for abusive TypeScript hygiene and non-strict tsconfig", () => {

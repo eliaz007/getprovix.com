@@ -8,6 +8,7 @@ import type {
   ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import { deriveDualModeScores } from "@/lib/audit-mode";
+import { DELIVERY_HYGIENE_VERIFIED_THRESHOLD } from "@/lib/audit-readiness";
 import { computeProductionAuditMetrics } from "@/lib/production-audit-metrics";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
@@ -243,7 +244,15 @@ export function parseProductionAuditFromProfileRow(
   };
 }
 
-export function getProductionScoreBadge(score: number): {
+/**
+ * Public verified badge for scorecards. Optional `deliveryHygieneScore`
+ * enables dual-gate labels; omitted hygiene defaults to a clean history so
+ * legacy single-arg call sites keep showing a verified chip at 75+.
+ */
+export function getProductionScoreBadge(
+  score: number,
+  deliveryHygieneScore?: number | null
+): {
   label: string;
   className: string;
 } | null {
@@ -251,10 +260,23 @@ export function getProductionScoreBadge(score: number): {
     return null;
   }
 
+  const hygiene =
+    typeof deliveryHygieneScore === "number" &&
+    Number.isFinite(deliveryHygieneScore)
+      ? clampScore0to100(deliveryHygieneScore)
+      : 100;
+
+  if (hygiene >= DELIVERY_HYGIENE_VERIFIED_THRESHOLD) {
+    return {
+      label: "Provix Verified",
+      className:
+        "bg-emerald-500/10 text-emerald-400 border-emerald-500/25",
+    };
+  }
+
   return {
-    label: "Verified",
-    className:
-      "bg-emerald-500/10 text-emerald-400 border-emerald-500/25",
+    label: "Code Verified · Sparse History",
+    className: "bg-amber-500/10 text-amber-300 border-amber-500/25",
   };
 }
 

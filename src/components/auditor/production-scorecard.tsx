@@ -6,6 +6,8 @@ import type { PillarSubLog } from "@/lib/forensic-dossier";
 import {
   type ProductionAuditMetrics,
   emptyProductionAuditMetrics,
+  resolveCodeHealthScore,
+  resolveDeliveryHygieneScore,
   weightedProductionScore,
 } from "@/lib/production-audit-metrics";
 import { formatCodebaseBenchmark, type CodebaseBenchmark } from "@/lib/codebase-benchmark";
@@ -247,7 +249,9 @@ export default function ProductionScorecard({
   pillarSubLogs = null,
 }: ProductionScorecardProps) {
   const resolved = metrics ?? emptyProductionAuditMetrics();
-  const productionScore = clampScore0to100(resolved.productionScore);
+  const codeHealthScore = resolveCodeHealthScore(resolved);
+  const productionScore = codeHealthScore;
+  const deliveryHygieneScore = resolveDeliveryHygieneScore(resolved);
   const inspected = resolved.evidence.inspected;
   const upstreamPenalty = Math.max(0, resolved.upstreamDerivativePenalty ?? 0);
   const subLogByPillar = new Map(
@@ -259,6 +263,7 @@ export default function ProductionScorecard({
     devops: resolved.devops,
     resilience: resolved.resilience,
   });
+
   if (compact) {
     return (
       <div
@@ -274,13 +279,16 @@ export default function ProductionScorecard({
                 productionScore
               )}`}
             >
-              Codebase Quality Index: {productionScore}/100
+              Code Health: {codeHealthScore}/100
             </p>
-            <ProductionScoreVerifiedBadge score={productionScore} />
+            <ProductionScoreVerifiedBadge
+              score={codeHealthScore}
+              deliveryHygieneScore={deliveryHygieneScore}
+            />
           </div>
           <p className="mt-1 text-sm leading-relaxed text-zinc-400">
             {inspected
-              ? `Secondary codebase index · ${resolved.evidence.fileCount} paths`
+              ? `Pillar index · ${resolved.evidence.fileCount} paths · hygiene scored separately`
               : "Run a GitHub audit to compute architecture, tests, CI, and resilience."}
           </p>
           {upstreamPenalty > 0 ? (
@@ -334,7 +342,7 @@ export default function ProductionScorecard({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className={`${SECTION_LABEL} mb-1`}>Codebase Score</div>
+          <div className={`${SECTION_LABEL} mb-1`}>Code Health · Pillars</div>
           <p className="text-sm font-semibold text-zinc-100">
             {formatCodebaseBenchmark(benchmark)}
           </p>
@@ -345,7 +353,10 @@ export default function ProductionScorecard({
             </p>
           ) : null}
         </div>
-        <ProductionScoreVerifiedBadge score={productionScore} />
+        <ProductionScoreVerifiedBadge
+          score={codeHealthScore}
+          deliveryHygieneScore={deliveryHygieneScore}
+        />
       </div>
 
       {executiveBrief ? (
@@ -388,7 +399,7 @@ export default function ProductionScorecard({
       </ul>
       {upstreamPenalty > 0 ? (
         <p className="font-mono text-[11px] tabular-nums text-zinc-500">
-          Upstream fork or generated template −{upstreamPenalty} · Headline{" "}
+          Upstream fork or generated template −{upstreamPenalty} · Code Health{" "}
           {productionScore}/100 (weighted {weightedTotal}/100)
         </p>
       ) : null}

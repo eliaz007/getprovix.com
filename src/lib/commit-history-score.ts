@@ -19,10 +19,76 @@ export const INITIAL_COMMIT_MESSAGE_PENALTY = -15;
 export const MAX_COMMIT_HISTORY_PENALTY = -30;
 
 export const SINGLE_DUMP_CADENCE_LABEL = "Single dump / Low cadence";
+/** Large-repo bypass when sparse history is treated as a squashed snapshot. */
+export const SCALE_VERIFIED_CADENCE_LABEL = "Scale Verified / Snapshot";
 export const SUSPICIOUS_COMMIT_CADENCE_TITLE =
   "Suspicious Commit Cadence (Bulk Dump Detected)";
 export const SUSPICIOUS_COMMIT_CADENCE_SUMMARY =
   "Code was ingested in a single uniterated dump or has fewer than 3 commits. Ship features via incremental branches and atomic PRs to demonstrate iterative development.";
+
+/** Small/medium: keep full dump dings. Mid: half (capped −10). Large: bypass. */
+export const COMMIT_HISTORY_SMALL_FILE_MAX = 75;
+export const COMMIT_HISTORY_SMALL_LOC_MAX = 10_000;
+export const COMMIT_HISTORY_LARGE_FILE_MIN = 250;
+export const COMMIT_HISTORY_LARGE_LOC_MIN = 25_000;
+/** Mid-scale absolute ding ceiling after halving (−25 → −10). */
+export const COMMIT_HISTORY_MID_SCALE_PENALTY_CAP = -10;
+
+export type CommitHistoryScale = {
+  fileCount?: number | null;
+  authoredLoc?: number | null;
+};
+
+export type CommitHistoryScaleTier = "small" | "mid" | "large";
+
+export function classifyCommitHistoryScale(
+  scale?: CommitHistoryScale | null
+): CommitHistoryScaleTier {
+  const files =
+    typeof scale?.fileCount === "number" && Number.isFinite(scale.fileCount)
+      ? Math.max(0, Math.round(scale.fileCount))
+      : 0;
+  const loc =
+    typeof scale?.authoredLoc === "number" && Number.isFinite(scale.authoredLoc)
+      ? Math.max(0, Math.round(scale.authoredLoc))
+      : 0;
+
+  if (
+    files > COMMIT_HISTORY_LARGE_FILE_MIN ||
+    loc > COMMIT_HISTORY_LARGE_LOC_MIN
+  ) {
+    return "large";
+  }
+  if (
+    files >= COMMIT_HISTORY_SMALL_FILE_MAX ||
+    loc >= COMMIT_HISTORY_SMALL_LOC_MAX
+  ) {
+    return "mid";
+  }
+  return "small";
+}
+
+/**
+ * Scale-weight a raw (negative) commit-history ding.
+ * Large production trees bypass dump penalties; mid-scale halves (cap −10).
+ */
+export function applyCommitHistoryScaleWeight(
+  penalty: number,
+  scale?: CommitHistoryScale | null
+): number {
+  if (!(typeof penalty === "number" && Number.isFinite(penalty)) || penalty >= 0) {
+    return 0;
+  }
+  const tier = classifyCommitHistoryScale(scale);
+  if (tier === "large") {
+    return 0;
+  }
+  if (tier === "mid") {
+    const halved = -Math.round(Math.abs(penalty) / 2);
+    return Math.max(COMMIT_HISTORY_MID_SCALE_PENALTY_CAP, halved);
+  }
+  return Math.max(MAX_COMMIT_HISTORY_PENALTY, Math.round(penalty));
+}
 
 const BURST_WINDOW_MS = 4 * 60 * 60 * 1000;
 const BURST_COMMIT_FRACTION = 0.8;
@@ -149,11 +215,15 @@ export function isStubCommitHistory(
  * churn (or ≥70% share) → -25. All "Initial commit"-shaped messages → -15.
  * Penalties take the most severe value, floored at MAX_COMMIT_HISTORY_PENALTY.
  * Age alone does not deduct.
+ * Optional `scale` (inspected files / authored LOC) softens or bypasses dump
+ * dings on mid/large codebases so squashed production imports are not
+ * false-positived like small AI script dumps.
  */
 export function scoreCommitHistoryPenalty(
   commitDates?: string[] | null,
   _now?: number,
-  commitStats?: CommitHistoryStat[] | null
+  commitStats?: CommitHistoryStat[] | null,
+  scale?: CommitHistoryScale | null
 ): number {
   if (commitDates == null && commitStats == null) {
     return 0;
@@ -193,10 +263,15 @@ export function scoreCommitHistoryPenalty(
 
   const churnPenalty = scoreDumpChurnPenalty(commitStats);
   penalty = Math.min(penalty, churnPenalty);
-  return Math.max(MAX_COMMIT_HISTORY_PENALTY, penalty);
+  const raw = Math.max(MAX_COMMIT_HISTORY_PENALTY, penalty);
+  return applyCommitHistoryScaleWeight(raw, scale);
 }
 
-/** Apply a negative history ding to a 0–100 headline score. */
+/**
+ * @deprecated Commit history is scored as Delivery Hygiene
+ * (`Math.max(0, 100 - |penalty|)`) instead of subtracting from Code Health /
+ * `productionScore`. Kept for legacy callers and tests.
+ */
 export function applyCommitHistoryPenalty(
   score: number,
   penalty: number

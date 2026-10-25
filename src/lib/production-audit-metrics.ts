@@ -6,7 +6,6 @@ import {
   type AuditMode,
 } from "@/lib/audit-mode";
 import {
-  applyCommitHistoryPenalty,
   scoreCommitHistoryPenalty,
   type CommitHistoryStat,
 } from "@/lib/commit-history-score";
@@ -47,10 +46,28 @@ export type ProductionAuditMetrics = {
   testing: number;
   devops: number;
   resilience: number;
+  /**
+   * Headline Codebase Quality Index. Mapped to `codeHealthScore` (weighted
+   * pillars only) — commit history is scored separately as delivery hygiene.
+   * Kept for UI, PDF, percentile, and DB consumers.
+   */
   productionScore: number;
+  /**
+   * Weighted AST pillars only (Architecture, Testing, DevOps, Resilience).
+   * Optional on legacy persisted blobs; prefer `resolveCodeHealthScore`.
+   */
+  codeHealthScore?: number;
+  /**
+   * `Math.max(0, 100 - commitHistoryPenalty)`. Optional on legacy blobs;
+   * prefer `resolveDeliveryHygieneScore`.
+   */
+  deliveryHygieneScore?: number;
   /** 30 when the repo is a fork or generated template; otherwise 0. */
   upstreamDerivativePenalty: number;
-  /** Absolute points deducted for synthetic / dump commit history (0–30). */
+  /**
+   * Absolute commit-history ding points (0–30). Informational / hygiene only —
+   * no longer subtracted from `productionScore` / `codeHealthScore`.
+   */
   commitHistoryPenalty: number;
   /** @deprecated Alias of devops — kept for persisted / UI consumers. */
   ciCdHealth: number;
@@ -149,6 +166,44 @@ function withAliases(
   };
 }
 
+/** Delivery Hygiene (0–100) from absolute commit-history penalty points. */
+export function deliveryHygieneScoreFromPenalty(penalty: number): number {
+  const absolute =
+    typeof penalty === "number" && Number.isFinite(penalty)
+      ? Math.max(0, Math.round(penalty))
+      : 0;
+  return Math.max(0, 100 - absolute);
+}
+
+/** Prefer explicit code health; fall back to headline production score. */
+export function resolveCodeHealthScore(
+  metrics: Pick<ProductionAuditMetrics, "productionScore" | "codeHealthScore">
+): number {
+  if (
+    typeof metrics.codeHealthScore === "number" &&
+    Number.isFinite(metrics.codeHealthScore)
+  ) {
+    return clampScore0to100(metrics.codeHealthScore);
+  }
+  return clampScore0to100(metrics.productionScore);
+}
+
+/** Prefer explicit hygiene; derive from commitHistoryPenalty when missing. */
+export function resolveDeliveryHygieneScore(
+  metrics: Pick<
+    ProductionAuditMetrics,
+    "deliveryHygieneScore" | "commitHistoryPenalty"
+  >
+): number {
+  if (
+    typeof metrics.deliveryHygieneScore === "number" &&
+    Number.isFinite(metrics.deliveryHygieneScore)
+  ) {
+    return clampScore0to100(metrics.deliveryHygieneScore);
+  }
+  return deliveryHygieneScoreFromPenalty(metrics.commitHistoryPenalty ?? 0);
+}
+
 export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
   return {
     ...withAliases({
@@ -158,6 +213,8 @@ export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
       resilience: 0,
       productionScore: 0,
     }),
+    codeHealthScore: 0,
+    deliveryHygieneScore: 100,
     upstreamDerivativePenalty: 0,
     commitHistoryPenalty: 0,
     evidence: {
@@ -612,13 +669,26 @@ function routesLackSchemaValidation(evidence: RepoFilesystemEvidence): boolean {
     evidence.route_schema_validation === false;
 }
 
-function estimateAuthoredLoc(evidence: RepoFilesystemEvidence): number {
+/** Authored LOC estimate (same heuristic as forensic provenance). */
+export function estimateAuthoredLoc(evidence: RepoFilesystemEvidence): number {
   const executable =
     typeof evidence.executable_source_count === "number" &&
     evidence.executable_source_count > 0
       ? evidence.executable_source_count
       : evidence.source_file_count;
   return Math.max(0, executable) * LOC_PER_EXECUTABLE_FILE;
+}
+
+export function commitHistoryScaleFromEvidence(
+  evidence: RepoFilesystemEvidence | null | undefined
+): { fileCount: number; authoredLoc: number } {
+  if (!evidence?.inspected) {
+    return { fileCount: 0, authoredLoc: 0 };
+  }
+  return {
+    fileCount: Math.max(0, evidence.file_count),
+    authoredLoc: estimateAuthoredLoc(evidence),
+  };
 }
 
 function isLargeCodebase(evidence: RepoFilesystemEvidence): boolean {
@@ -871,10 +941,15 @@ export function computeProductionAuditMetrics(
   const historyDing = scoreCommitHistoryPenalty(
     history?.commitDates,
     undefined,
-    history?.commitStats
+    history?.commitStats,
+    commitHistoryScaleFromEvidence(normalized)
   );
   const commitHistoryPenalty = Math.abs(Math.min(0, historyDing));
-  const productionScore = applyCommitHistoryPenalty(weighted, historyDing);
+  // Dual-score model: pillars stay on Code Health; history is Delivery Hygiene.
+  const codeHealthScore = weighted;
+  const deliveryHygieneScore =
+    deliveryHygieneScoreFromPenalty(commitHistoryPenalty);
+  const productionScore = codeHealthScore;
 
   return {
     ...withAliases(
@@ -887,6 +962,8 @@ export function computeProductionAuditMetrics(
       },
       mode
     ),
+    codeHealthScore,
+    deliveryHygieneScore,
     upstreamDerivativePenalty: 0,
     commitHistoryPenalty,
     evidence: {
@@ -1003,16 +1080,32 @@ export function parseProductionAuditMetrics(
   const resilience = clampScore0to100(
     record.resilience ?? record.errorBoundaries
   );
+  const commitHistoryPenalty = Math.min(
+    30,
+    asCount(record.commitHistoryPenalty)
+  );
+  const weightedFallback = weightedProductionScore({
+    architecture,
+    testing,
+    devops,
+    resilience,
+  });
   const storedScore =
     typeof record.productionScore === "number" &&
     Number.isFinite(record.productionScore)
       ? clampScore0to100(record.productionScore)
-      : weightedProductionScore({
-          architecture,
-          testing,
-          devops,
-          resilience,
-        });
+      : weightedFallback;
+  // Legacy blobs omit dual scores — default without renaming stored keys.
+  const codeHealthScore =
+    typeof record.codeHealthScore === "number" &&
+    Number.isFinite(record.codeHealthScore)
+      ? clampScore0to100(record.codeHealthScore)
+      : storedScore;
+  const deliveryHygieneScore =
+    typeof record.deliveryHygieneScore === "number" &&
+    Number.isFinite(record.deliveryHygieneScore)
+      ? clampScore0to100(record.deliveryHygieneScore)
+      : deliveryHygieneScoreFromPenalty(commitHistoryPenalty);
 
   const storedKind = evidenceRecord?.repoKind;
   const repoKind: RepoKind =
@@ -1033,13 +1126,16 @@ export function parseProductionAuditMetrics(
       testing,
       devops,
       resilience,
+      // Preserve stored headline when present so legacy consumers stay stable.
       productionScore: storedScore,
     }),
+    codeHealthScore,
+    deliveryHygieneScore,
     upstreamDerivativePenalty:
       asCount(record.upstreamDerivativePenalty) > 0
         ? UPSTREAM_DERIVATIVE_PENALTY
         : 0,
-    commitHistoryPenalty: Math.min(30, asCount(record.commitHistoryPenalty)),
+    commitHistoryPenalty,
     evidence: {
       inspected: evidenceRecord?.inspected === true,
       truncated: evidenceRecord?.truncated === true,

@@ -494,6 +494,8 @@ function metricsFromAuditBreakdown(
     devops,
     resilience,
     productionScore,
+    codeHealthScore: productionScore,
+    deliveryHygieneScore: empty.deliveryHygieneScore ?? 100,
     upstreamDerivativePenalty,
     ciCdHealth: devops,
     testAssertionDensity: testing,
@@ -1163,12 +1165,14 @@ function resolveDeterministicMetricsForPrompt(
   }
 
   if (promptMetrics.evidence.inspected && isUpstreamDerivative) {
+    const penalized = applyUpstreamDerivativePenalty(
+      promptMetrics.productionScore,
+      true
+    );
     promptMetrics = {
       ...promptMetrics,
-      productionScore: applyUpstreamDerivativePenalty(
-        promptMetrics.productionScore,
-        true
-      ),
+      productionScore: penalized,
+      codeHealthScore: penalized,
       upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
     };
   }

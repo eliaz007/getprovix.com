@@ -413,8 +413,8 @@ function attachModeEvaluation(
     devops: metrics.devops,
     resilience: metrics.resilience,
   });
-  // Prefer the metrics headline (already includes commit-history / derivative dings)
-  // over the raw pillar blend so stub-repo penalties stay visible in the UI.
+  // Prefer the metrics headline (Code Health / productionScore; history is
+  // scored separately as deliveryHygieneScore) over a raw pillar re-blend.
   const headlineScore = clampScore0to100(metrics.productionScore);
   const tier = assignAuditTier(mode, headlineScore);
   const summary =
@@ -439,6 +439,7 @@ function attachModeEvaluation(
     metrics: {
       ...metrics,
       productionScore: headlineScore,
+      codeHealthScore: headlineScore,
     },
   };
 }
@@ -1226,12 +1227,14 @@ async function generateGeminiAudit(
     promptMetrics = {
       ...promptMetrics,
       productionScore: penalizedScore,
+      codeHealthScore: penalizedScore,
       upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
     };
   } else {
     promptMetrics = {
       ...promptMetrics,
       productionScore: modeEvaluation.overallScore,
+      codeHealthScore: modeEvaluation.overallScore,
     };
   }
   const deterministicMetrics = deterministicMetricsPayload({
@@ -1314,7 +1317,7 @@ async function generateGeminiAudit(
   let lastError: unknown;
 
   for (const model of MODEL_CANDIDATES) {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const response = await ai.models.generateContent({
           model,
@@ -1342,8 +1345,9 @@ async function generateGeminiAudit(
           }:`,
           error
         );
-        if (attempt === 0 && isGeminiUnavailableError(error)) {
-          await sleep(1000);
+        // 503 / high-demand: backoff before retry so spikes can clear.
+        if (attempt < 2 && isGeminiUnavailableError(error)) {
+          await sleep(1500 * (attempt + 1));
           continue;
         }
         break;
@@ -1827,6 +1831,7 @@ export async function POST(request: Request) {
     metrics = {
       ...metrics,
       productionScore: penalized,
+      codeHealthScore: penalized,
       upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
     };
     result = {
