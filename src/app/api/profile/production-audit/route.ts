@@ -28,6 +28,8 @@ const postProductionAuditBodySchema = z.object({
   production_score: z.unknown().optional(),
   audit_breakdown: z.looseObject({}),
   is_publicly_visible: z.boolean().optional(),
+  delivery_hygiene_score: z.number().optional(),
+  commit_history_fetched: z.boolean().optional(),
 });
 
 const patchProductionAuditBodySchema = z.object({
@@ -179,18 +181,35 @@ async function postProductionAudit(request: Request) {
     }
   }
 
+  const hygiene =
+    typeof record.delivery_hygiene_score === "number"
+      ? record.delivery_hygiene_score
+      : breakdown.delivery_hygiene_score;
+  const historyFetched =
+    typeof record.commit_history_fetched === "boolean"
+      ? record.commit_history_fetched
+      : breakdown.commit_history_fetched;
   const qualifiesForTalentPool =
-    isPublicGitHubClaim && canPublishProductionScore(productionScore);
+    isPublicGitHubClaim &&
+    canPublishProductionScore(productionScore, hygiene, historyFetched);
   const requestedVisible = parseVisibilityFlag(record.is_publicly_visible);
   const isPubliclyVisible = resolvePublicScorecardVisibility(
     productionScore,
-    qualifiesForTalentPool ? true : requestedVisible ?? false
+    qualifiesForTalentPool ? true : requestedVisible ?? false,
+    hygiene,
+    historyFetched
   );
   const claim: ProductionAuditClaim = {
     production_score: productionScore,
-    audit_breakdown: breakdown,
+    audit_breakdown: {
+      ...breakdown,
+      delivery_hygiene_score: hygiene,
+      commit_history_fetched: historyFetched,
+    },
     is_audit_verified: true,
     is_publicly_visible: isPubliclyVisible,
+    delivery_hygiene_score: hygiene,
+    commit_history_fetched: historyFetched,
   };
 
   const { error, profileSlug } = await persistProfileProductionAudit(

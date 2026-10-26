@@ -86,7 +86,11 @@ export default function ScorecardPublicationCallout({
   claim: ProductionAuditClaim;
   onRequireAuth?: (claim: ProductionAuditClaim) => void;
 }) {
-  const canPublish = canPublishProductionScore(claim.production_score);
+  const canPublish = canPublishProductionScore(
+    claim.production_score,
+    claim.delivery_hygiene_score ?? claim.audit_breakdown.delivery_hygiene_score,
+    claim.commit_history_fetched ?? claim.audit_breakdown.commit_history_fetched
+  );
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">(
     "idle"
   );

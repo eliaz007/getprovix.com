@@ -1,4 +1,8 @@
-import { isNoisePath, type CiPipelineDepth } from "@/lib/repo-filesystem";
+import {
+  isNoisePath,
+  isUnitTestFile,
+  type CiPipelineDepth,
+} from "@/lib/repo-filesystem";
 
 const ASYNC_CALL = /\b(?:fetch\s*\(|axios\.|got\s*\(|ky\s*\()/g;
 const TRY_BLOCK = /try\s*\{/g;
@@ -172,7 +176,6 @@ export function analyzeRouteContracts(
   };
 }
 
-const SAMPLED_UNIT_TEST = /\.(?:test|spec)\.[cm]?[jt]sx?$/i;
 const ASSERTION_CALL =
   /\b(?:expect|assert(?:Equal|Equals|StrictEqual|DeepEqual|DeepStrictEqual|NotEqual|NotStrictEqual)?)\s*(?:\.\s*[A-Za-z_]\w*\s*)?\(/g;
 const TAUTOLOGICAL_EXPECT =
@@ -187,13 +190,16 @@ export type TestContentReport = {
   hollow: boolean;
 };
 
-/** `*.test.ts` / `*.spec.ts` (and js/tsx twins), excluding vendor and demo trees. */
+/**
+ * Unit-test paths eligible for hollow-test content sampling: `*.test.ts` /
+ * `*.spec.ts` plus bare modules under test/, tests/, __tests__/.
+ */
 export function isSampledUnitTestPath(path: string): boolean {
   const normalized = path.replace(/\\/g, "/").trim();
   if (!normalized || isNoisePath(normalized)) {
     return false;
   }
-  return SAMPLED_UNIT_TEST.test(normalized);
+  return isUnitTestFile(normalized);
 }
 
 /**

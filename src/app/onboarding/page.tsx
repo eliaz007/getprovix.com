@@ -36,7 +36,15 @@ import {
   DEFAULT_CANDIDATE_TIMEZONE,
   DEFAULT_WORK_PREFERENCE,
 } from "@/lib/work-preference";
+import {
+  CODE_HEALTH_VERIFIED_THRESHOLD,
+  DELIVERY_HYGIENE_VERIFIED_THRESHOLD,
+  HISTORY_BLOCKS_QUALIFY_NOTE,
+  isHistoryGateMet,
+  qualifiesHiringTrack,
+} from "@/lib/audit-readiness";
 import { deriveDualModeScores } from "@/lib/audit-mode";
+import { formatCommitHistoryReason } from "@/lib/commit-history-score";
 import {
   buildProvixVerificationToken,
   canonicalGitHubRepoUrl,
@@ -74,8 +82,8 @@ type AccountRole = "candidate" | "business";
 type CandidateFlowStep = 1 | 2 | 3;
 type OnboardingWorkPreference = "fulltime" | "contract" | "both";
 
-const FULLTIME_TRACK_THRESHOLD = 75;
-const CONTRACT_TRACK_THRESHOLD = 75;
+const FULLTIME_TRACK_THRESHOLD = CODE_HEALTH_VERIFIED_THRESHOLD;
+const CONTRACT_TRACK_THRESHOLD = CODE_HEALTH_VERIFIED_THRESHOLD;
 
 const ONBOARDING_BANDWIDTH_LABELS: Record<ContractHoursPerWeek, string> = {
   "10 hrs/week (Fractional / Nights & Weekends)": "10 hrs/week",
@@ -100,19 +108,37 @@ const ONBOARDING_WORK_PREFERENCE_OPTIONS: Array<{
   { id: "both", label: "Both" },
 ];
 
-function qualifiesFullTimeTrack(score: number): boolean {
-  return score >= FULLTIME_TRACK_THRESHOLD;
+function qualifiesFullTimeTrack(
+  score: number,
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
+): boolean {
+  return qualifiesHiringTrack(score, deliveryHygieneScore, historyAvailable);
 }
 
-function qualifiesContractTrack(score: number): boolean {
-  return score >= CONTRACT_TRACK_THRESHOLD;
+function qualifiesContractTrack(
+  score: number,
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
+): boolean {
+  return qualifiesHiringTrack(score, deliveryHygieneScore, historyAvailable);
 }
 
 function defaultWorkPreferenceForTracks(
-  dual: DualTrackScores
+  dual: DualTrackScores,
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
 ): OnboardingWorkPreference {
-  const fullTimeOk = qualifiesFullTimeTrack(dual.fullTimeScore);
-  const contractOk = qualifiesContractTrack(dual.contractScore);
+  const fullTimeOk = qualifiesFullTimeTrack(
+    dual.fullTimeScore,
+    deliveryHygieneScore,
+    historyAvailable
+  );
+  const contractOk = qualifiesContractTrack(
+    dual.contractScore,
+    deliveryHygieneScore,
+    historyAvailable
+  );
   if (fullTimeOk && contractOk) {
     return "both";
   }
@@ -322,6 +348,9 @@ export default function OnboardingPage() {
   const [telemetryStage, setTelemetryStage] = useState(0);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditScore, setAuditScore] = useState<number | null>(null);
+  const [historyScore, setHistoryScore] = useState<number | null>(null);
+  const [historyAvailable, setHistoryAvailable] = useState(false);
+  const [historyReason, setHistoryReason] = useState("History unavailable");
   const [dualTrackScores, setDualTrackScores] =
     useState<DualTrackScores | null>(null);
 
@@ -554,12 +583,21 @@ export default function OnboardingPage() {
           overallScore?: number;
           error?: string;
           message?: string;
+          commitHistoryFetched?: boolean;
+          commitDates?: string[];
+          commitStats?: Array<{
+            date?: string;
+            message?: string;
+            authorLogin?: string;
+            authorName?: string;
+          }>;
           metrics?: {
             architecture?: number;
             testing?: number;
             devops?: number;
             resilience?: number;
             productionScore?: number;
+            deliveryHygieneScore?: number;
           } | null;
           breakdown?: {
             architecture?: number;
@@ -602,8 +640,35 @@ export default function OnboardingPage() {
           devops: data.metrics?.devops ?? data.breakdown?.tooling,
           resilience: data.metrics?.resilience ?? data.breakdown?.security,
         });
+        const fetched = data.commitHistoryFetched === true;
+        const hygiene =
+          typeof data.metrics?.deliveryHygieneScore === "number" &&
+          Number.isFinite(data.metrics.deliveryHygieneScore)
+            ? Math.round(data.metrics.deliveryHygieneScore)
+            : null;
+        const reason = fetched
+          ? formatCommitHistoryReason(
+              data.commitDates ?? null,
+              (data.commitStats ?? [])
+                .filter(
+                  (entry): entry is { date: string; message?: string; authorLogin?: string; authorName?: string } =>
+                    typeof entry?.date === "string" && entry.date.trim().length > 0
+                )
+                .map((entry) => ({
+                  date: entry.date,
+                  message: entry.message,
+                  authorLogin: entry.authorLogin,
+                  authorName: entry.authorName,
+                }))
+            )
+          : "History unavailable";
+        setHistoryAvailable(fetched);
+        setHistoryScore(fetched ? hygiene : null);
+        setHistoryReason(reason);
         setDualTrackScores(dual);
-        setWorkPreference(defaultWorkPreferenceForTracks(dual));
+        setWorkPreference(
+          defaultWorkPreferenceForTracks(dual, hygiene, fetched)
+        );
 
         const inferred = inferSkillsFromAuditPaths([
           ...(data.filesystem?.sample_paths ?? []),
@@ -659,6 +724,9 @@ export default function OnboardingPage() {
     setError(null);
     setAuditError(null);
     setAuditScore(null);
+    setHistoryScore(null);
+    setHistoryAvailable(false);
+    setHistoryReason("History unavailable");
     setDualTrackScores(null);
     setTelemetryStage(0);
     setInitializingAudit(true);
@@ -690,6 +758,9 @@ export default function OnboardingPage() {
 
     setAuditError(null);
     setAuditScore(null);
+    setHistoryScore(null);
+    setHistoryAvailable(false);
+    setHistoryReason("History unavailable");
     setDualTrackScores(null);
     setTelemetryStage(0);
     setAuditingRepoUrl(repoUrl);
@@ -704,6 +775,9 @@ export default function OnboardingPage() {
     setFlowStep(2);
     setAuditError(null);
     setAuditScore(null);
+    setHistoryScore(null);
+    setHistoryAvailable(false);
+    setHistoryReason("History unavailable");
     setDualTrackScores(null);
     setTelemetryStage(0);
     setInitializingAudit(false);
@@ -739,8 +813,16 @@ export default function OnboardingPage() {
 
     try {
       const supabase = createClient();
-      const fullTimeOk = qualifiesFullTimeTrack(dualTrackScores.fullTimeScore);
-      const contractOk = qualifiesContractTrack(dualTrackScores.contractScore);
+      const fullTimeOk = qualifiesFullTimeTrack(
+        dualTrackScores.fullTimeScore,
+        historyScore,
+        historyAvailable
+      );
+      const contractOk = qualifiesContractTrack(
+        dualTrackScores.contractScore,
+        historyScore,
+        historyAvailable
+      );
       const rawEngagement = joinNetwork
         ? engagementFlagsFromWorkPreference(workPreference)
         : { open_to_fulltime: false, open_to_contract: false };
@@ -1315,12 +1397,46 @@ export default function OnboardingPage() {
                 </div>
 
                 {dualTrackScores != null &&
-                !qualifiesFullTimeTrack(dualTrackScores.fullTimeScore) &&
-                !qualifiesContractTrack(dualTrackScores.contractScore) ? (
+                !qualifiesFullTimeTrack(
+                  dualTrackScores.fullTimeScore,
+                  historyScore,
+                  historyAvailable
+                ) &&
+                !qualifiesContractTrack(
+                  dualTrackScores.contractScore,
+                  historyScore,
+                  historyAvailable
+                ) ? (
                   <div className="space-y-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.07] px-4 py-5">
                     <h3 className="text-xl font-extrabold tracking-tight text-textMain">
                       Needs Improvement
                     </h3>
+                    <div className="rounded-lg border border-border/70 bg-panel/50 px-3 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-textMuted">
+                        History
+                      </p>
+                      <p className="mt-1 font-mono text-2xl font-extrabold tabular-nums text-textMain">
+                        {historyAvailable && historyScore != null
+                          ? historyScore
+                          : "N/A"}
+                        {historyAvailable && historyScore != null ? (
+                          <span className="text-sm font-semibold text-textMuted">
+                            /100
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="mt-1 text-[11px] leading-snug text-textMuted">
+                        {historyReason}
+                      </p>
+                      {!isHistoryGateMet({
+                        deliveryHygieneScore: historyScore,
+                        historyAvailable,
+                      }) ? (
+                        <p className="mt-2 text-xs font-medium text-amber-200/90">
+                          {HISTORY_BLOCKS_QUALIFY_NOTE}
+                        </p>
+                      ) : null}
+                    </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <TrackScoreCard
                         label="Full-Time Track"
@@ -1337,9 +1453,11 @@ export default function OnboardingPage() {
                     </div>
                     <p className="text-sm leading-relaxed text-textMuted">
                       You haven&apos;t hit the track thresholds yet (Full-Time{" "}
-                      {FULLTIME_TRACK_THRESHOLD}+ or Contract{" "}
-                      {CONTRACT_TRACK_THRESHOLD}+), but your repository data is
-                      completely confidential.
+                      {FULLTIME_TRACK_THRESHOLD}+ with History{" "}
+                      {DELIVERY_HYGIENE_VERIFIED_THRESHOLD}+, or Contract{" "}
+                      {CONTRACT_TRACK_THRESHOLD}+ with History{" "}
+                      {DELIVERY_HYGIENE_VERIFIED_THRESHOLD}+), but your repository
+                      data is completely confidential.
                     </p>
                     <p className="text-sm leading-relaxed text-textMuted">
                       Treat this as an automated code health check. Use Provix to
@@ -1365,18 +1483,46 @@ export default function OnboardingPage() {
                 ) : null}
 
                 {dualTrackScores != null &&
-                (qualifiesFullTimeTrack(dualTrackScores.fullTimeScore) ||
-                  qualifiesContractTrack(dualTrackScores.contractScore)) ? (
+                (qualifiesFullTimeTrack(
+                  dualTrackScores.fullTimeScore,
+                  historyScore,
+                  historyAvailable
+                ) ||
+                  qualifiesContractTrack(
+                    dualTrackScores.contractScore,
+                    historyScore,
+                    historyAvailable
+                  )) ? (
                   <div className="space-y-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-5">
                     <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-300">
                       Verified Roster Qualified • Production Grade
                     </p>
+                    <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-200/80">
+                        History
+                      </p>
+                      <p className="mt-1 font-mono text-2xl font-extrabold tabular-nums text-textMain">
+                        {historyAvailable && historyScore != null
+                          ? historyScore
+                          : "N/A"}
+                        {historyAvailable && historyScore != null ? (
+                          <span className="text-sm font-semibold text-emerald-100/70">
+                            /100
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="mt-1 text-[11px] leading-snug text-emerald-100/75">
+                        {historyReason}
+                      </p>
+                    </div>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <TrackScoreCard
                         label="Full-Time Track"
                         score={dualTrackScores.fullTimeScore}
                         qualified={qualifiesFullTimeTrack(
-                          dualTrackScores.fullTimeScore
+                          dualTrackScores.fullTimeScore,
+                          historyScore,
+                          historyAvailable
                         )}
                         requireLabel={`Requires ${FULLTIME_TRACK_THRESHOLD}+`}
                       />
@@ -1384,7 +1530,9 @@ export default function OnboardingPage() {
                         label="Contract Track"
                         score={dualTrackScores.contractScore}
                         qualified={qualifiesContractTrack(
-                          dualTrackScores.contractScore
+                          dualTrackScores.contractScore,
+                          historyScore,
+                          historyAvailable
                         )}
                         requireLabel={`Requires ${CONTRACT_TRACK_THRESHOLD}+`}
                       />
@@ -1449,10 +1597,14 @@ export default function OnboardingPage() {
                       >
                         {ONBOARDING_WORK_PREFERENCE_OPTIONS.map((option) => {
                           const fullTimeOk = qualifiesFullTimeTrack(
-                            dualTrackScores.fullTimeScore
+                            dualTrackScores.fullTimeScore,
+                            historyScore,
+                            historyAvailable
                           );
                           const contractOk = qualifiesContractTrack(
-                            dualTrackScores.contractScore
+                            dualTrackScores.contractScore,
+                            historyScore,
+                            historyAvailable
                           );
                           const locked =
                             (option.id === "fulltime" && !fullTimeOk) ||

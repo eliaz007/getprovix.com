@@ -423,10 +423,24 @@ function readGitHubAuditContext(value: unknown): GitHubAuditContext | null {
                   : undefined,
               message:
                 typeof row.message === "string" ? row.message : undefined,
+              authorLogin:
+                typeof row.authorLogin === "string"
+                  ? row.authorLogin
+                  : undefined,
+              authorName:
+                typeof row.authorName === "string" ? row.authorName : undefined,
+              sha: typeof row.sha === "string" ? row.sha : undefined,
             },
           ];
         })
       : [],
+    commit_history_fetched:
+      record.commit_history_fetched === true ||
+      (record.commit_history_fetched !== false &&
+        ((Array.isArray(record.commit_dates) &&
+          record.commit_dates.length > 0) ||
+          (Array.isArray(record.commit_stats) &&
+            record.commit_stats.length > 0))),
     readme_excerpt:
       typeof record.readme_excerpt === "string" ? record.readme_excerpt : null,
     fetch_warnings: Array.isArray(record.fetch_warnings)

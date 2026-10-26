@@ -1,6 +1,9 @@
 import { selectPrimaryCiWorkflowPath } from "@/lib/audit-content-signals";
 import type { ProductionAuditMetrics } from "@/lib/production-audit-metrics";
-import type { RepoFilesystemEvidence } from "@/lib/repo-filesystem";
+import {
+  resolveUnitTestFileCount,
+  type RepoFilesystemEvidence,
+} from "@/lib/repo-filesystem";
 import { clampScore0to100 } from "@/lib/score-scale";
 
 export const PROVIX_AST_ENGINE = "provix-fs-ast/1.4.0" as const;
@@ -237,8 +240,7 @@ function testingSubLog(
   score: number,
   fs: RepoFilesystemEvidence | null
 ): PillarSubLog {
-  const testCount =
-    fs?.unit_test_file_count ?? fs?.test_paths.length ?? 0;
+  const testCount = fs ? resolveUnitTestFileCount(fs) : 0;
   const testPath = fs?.test_paths[0] ? shortPath(fs.test_paths[0]) : null;
   const files = fs?.file_count ?? 0;
   const strengths: [string, string] = [
@@ -292,10 +294,9 @@ export function buildSubsystemBlastRadius(input: {
   const uiCount = paths.filter(isUiPath).length;
   const apiCount = paths.filter(isApiPath).length;
   const dbCount = paths.filter(isDbPath).length;
-  const testCount =
-    fs?.unit_test_file_count ||
-    fs?.test_paths.length ||
-    paths.filter(isTestPathLocal).length;
+  const testCount = fs
+    ? resolveUnitTestFileCount(fs)
+    : paths.filter(isTestPathLocal).length;
 
   const arch = clampScore0to100(input.metrics.architecture);
   const testing = clampScore0to100(input.metrics.testing);
@@ -384,8 +385,7 @@ export function buildHiringBattlePlanProbes(input: {
   const fs = input.filesystem;
   const testing = clampScore0to100(input.metrics.testing);
   const resilience = clampScore0to100(input.metrics.resilience);
-  const testCount =
-    fs?.unit_test_file_count ?? fs?.test_paths.length ?? 0;
+  const testCount = fs ? resolveUnitTestFileCount(fs) : 0;
   const files = fs?.file_count ?? 0;
   const testPath = fs?.test_paths[0] ? shortPath(fs.test_paths[0]) : null;
   const boundary = fs?.error_handling_paths[0]

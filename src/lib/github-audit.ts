@@ -47,8 +47,13 @@ export type GitHubAuditContext = {
   language: string | null;
   commit_count_sampled: number;
   commit_dates: string[];
-  /** Optional per-commit churn for dump detection. */
+  /** Optional per-commit sample for Delivery Hygiene scoring. */
   commit_stats: CommitHistoryStat[];
+  /**
+   * False when the commits list request failed — callers must pass null history
+   * so Delivery Hygiene applies zero penalty (failed fetch ≠ dump evidence).
+   */
+  commit_history_fetched: boolean;
   readme_excerpt: string | null;
   fetch_warnings: string[];
   filesystem: RepoFilesystemEvidence;
@@ -72,6 +77,7 @@ export function emptyGitHubAuditContext(
     commit_count_sampled: 0,
     commit_dates: [],
     commit_stats: [],
+    commit_history_fetched: false,
     readme_excerpt: null,
     fetch_warnings: [],
     filesystem: emptyRepoFilesystemEvidence(),
@@ -976,8 +982,9 @@ const MAX_SOURCE_SAMPLES = 6;
 const MAX_TEST_SAMPLES = 6;
 const MAX_TSCONFIG_SAMPLES = 2;
 const MAX_SUPABASE_SQL_SAMPLES = 8;
-/** Cap commit-detail fetches so dump detection stays inside rate budgets. */
-const MAX_COMMIT_STAT_SAMPLES = 5;
+/** Cap recent commits listed for Delivery Hygiene (2 pages × 100). */
+const MAX_COMMIT_HISTORY_SAMPLES = 150;
+const COMMIT_LIST_PER_PAGE = 100;
 
 async function fetchGithubFileRaw(
   owner: string,
@@ -1409,111 +1416,84 @@ async function fetchRepoMetadata(
   }
 }
 
-async function fetchCommitStatDetail(
-  base: string,
-  sha: string,
-  fallbackDate: string,
-  fallbackMessage: string
-): Promise<CommitHistoryStat> {
-  try {
-    const response = await githubFetch(`${base}/commits/${encodeURIComponent(sha)}`);
-    if (!response.ok) {
-      return {
-        date: fallbackDate,
-        message: fallbackMessage,
-      };
-    }
-    const detail = (await readJsonResponse(response)) as {
-      commit?: {
-        author?: { date?: string };
-        message?: string;
-      };
-      stats?: { additions?: number; deletions?: number };
-      files?: unknown[];
-    };
-    return {
-      date: detail.commit?.author?.date ?? fallbackDate,
-      message: detail.commit?.message?.split("\n")[0]?.trim() || fallbackMessage,
-      additions:
-        typeof detail.stats?.additions === "number"
-          ? detail.stats.additions
-          : undefined,
-      deletions:
-        typeof detail.stats?.deletions === "number"
-          ? detail.stats.deletions
-          : undefined,
-      filesChanged: Array.isArray(detail.files) ? detail.files.length : undefined,
-    };
-  } catch {
-    return {
-      date: fallbackDate,
-      message: fallbackMessage,
-    };
-  }
-}
-
 async function fetchRepoCommitSummaries(
   base: string,
   owner: string,
   repo: string
 ): Promise<{
-  commits: CommitHistoryStat[];
+  /** Null when the list request failed — do not score as a dump. */
+  commits: CommitHistoryStat[] | null;
   warnings: string[];
 }> {
   try {
-    const commitsResponse = await githubFetch(`${base}/commits?per_page=10`);
+    const commits: CommitHistoryStat[] = [];
+    const maxPages = Math.ceil(MAX_COMMIT_HISTORY_SAMPLES / COMMIT_LIST_PER_PAGE);
 
-    if (!commitsResponse.ok) {
-      return {
-        commits: [],
-        warnings: [
-          `Commit history request failed (${commitsResponse.status}) for ${owner}/${repo}.`,
-        ],
-      };
-    }
-
-    const commitsData = (await readJsonResponse(commitsResponse)) as Array<{
-      sha?: string;
-      commit?: { author?: { date?: string }; message?: string };
-    }>;
-
-    const summaries = commitsData.map((entry) => ({
-      sha: entry.sha?.trim() ?? "",
-      date: entry.commit?.author?.date ?? "unknown",
-      message: entry.commit?.message?.split("\n")[0]?.trim() ?? "",
-    }));
-
-    const detailTargets = summaries
-      .filter((entry) => /^[0-9a-f]{7,40}$/i.test(entry.sha))
-      .slice(0, MAX_COMMIT_STAT_SAMPLES);
-
-    const details = await mapWithConcurrency(
-      detailTargets,
-      GITHUB_FETCH_CONCURRENCY,
-      (entry) =>
-        fetchCommitStatDetail(base, entry.sha, entry.date, entry.message)
-    );
-
-    const detailBySha = new Map(
-      detailTargets.map((entry, index) => [entry.sha, details[index]!])
-    );
-
-    const commits: CommitHistoryStat[] = summaries.map((entry) => {
-      const detail = detailBySha.get(entry.sha);
-      if (detail) {
-        return detail;
+    for (let page = 1; page <= maxPages; page += 1) {
+      const remaining = MAX_COMMIT_HISTORY_SAMPLES - commits.length;
+      if (remaining <= 0) {
+        break;
       }
-      return {
-        date: entry.date,
-        message: entry.message || undefined,
-      };
-    });
+      const perPage = Math.min(COMMIT_LIST_PER_PAGE, remaining);
+      const commitsResponse = await githubFetch(
+        `${base}/commits?per_page=${perPage}&page=${page}`
+      );
+
+      if (!commitsResponse.ok) {
+        if (commits.length > 0) {
+          return {
+            commits,
+            warnings: [
+              `Commit history page ${page} failed (${commitsResponse.status}) for ${owner}/${repo}; scored ${commits.length} commits fetched earlier.`,
+            ],
+          };
+        }
+        return {
+          commits: null,
+          warnings: [
+            `Commit history request failed (${commitsResponse.status}) for ${owner}/${repo}.`,
+          ],
+        };
+      }
+
+      const commitsData = (await readJsonResponse(commitsResponse)) as Array<{
+        sha?: string;
+        commit?: {
+          author?: { date?: string; name?: string };
+          message?: string;
+        };
+        author?: { login?: string } | null;
+      }>;
+
+      if (!Array.isArray(commitsData) || commitsData.length === 0) {
+        break;
+      }
+
+      for (const entry of commitsData) {
+        if (commits.length >= MAX_COMMIT_HISTORY_SAMPLES) {
+          break;
+        }
+        const login = entry.author?.login?.trim();
+        const name = entry.commit?.author?.name?.trim();
+        commits.push({
+          sha: entry.sha?.trim() || undefined,
+          date: entry.commit?.author?.date ?? "unknown",
+          message: entry.commit?.message?.trim() || undefined,
+          authorLogin: login || undefined,
+          authorName: name || undefined,
+        });
+      }
+
+      if (commitsData.length < perPage) {
+        break;
+      }
+    }
 
     return { commits, warnings: [] };
   } catch (error) {
     console.error("[github-audit] GitHub commits fetch failed:", error);
     return {
-      commits: [],
+      commits: null,
       warnings: [
         "Commit history timed out or dropped during the GitHub fetch sequence.",
       ],
@@ -1587,9 +1567,10 @@ async function fetchRepoAudit(
     ),
     created_at: metadata.created_at,
     language: metadata.language,
-    commit_count_sampled: commitSummaries.commits.length,
-    commit_dates: commitSummaries.commits.map((commit) => commit.date),
-    commit_stats: commitSummaries.commits,
+    commit_count_sampled: commitSummaries.commits?.length ?? 0,
+    commit_dates: (commitSummaries.commits ?? []).map((commit) => commit.date),
+    commit_stats: commitSummaries.commits ?? [],
+    commit_history_fetched: commitSummaries.commits != null,
     readme_excerpt: readme.excerpt,
     fetch_warnings: warnings,
     filesystem,

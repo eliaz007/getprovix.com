@@ -1,10 +1,11 @@
+import { formatCommitHistoryReason } from "@/lib/commit-history-score";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   scoreTesting,
   type CommitHistoryStat,
 } from "@/lib/production-audit-metrics";
 import {
-  isUnitTestFile,
+  resolveUnitTestFileCount,
   type RepoFilesystemEvidence,
   type ScoreCapAudit,
 } from "@/lib/repo-filesystem";
@@ -17,53 +18,125 @@ export type ReadinessBadge = {
   meterClassName: string;
 };
 
-/** Verification labels from Code Health only. */
+/**
+ * Verification labels for contract / full-time audits.
+ * No third "Sparse History" tier — fail closed to Needs Refinement.
+ */
 export type VerificationTier = "Provix Verified" | "Needs Refinement";
 
 export const VERIFICATION_TIER_PROVIX = "Provix Verified" as const;
-/** @deprecated Sparse-history dual-gate retired; kept for older string compares. */
+/** @deprecated Third tier removed; kept for older string compares. */
 export const VERIFICATION_TIER_SPARSE_HISTORY =
   "Code Verified · Sparse History" as const;
 export const VERIFICATION_TIER_NEEDS_REFINEMENT = "Needs Refinement" as const;
 
 export const CODE_HEALTH_VERIFIED_THRESHOLD = 75;
-/** @deprecated Delivery Hygiene gate retired; Code Health alone verifies. */
+/** Delivery Hygiene / History floor for Provix Verified (contract + full-time). */
 export const DELIVERY_HYGIENE_VERIFIED_THRESHOLD = 80;
+
+export const HISTORY_BLOCKS_QUALIFY_NOTE =
+  "History needs 80+ to qualify." as const;
 
 export type ChecklistTone = "pass" | "warn" | "fail";
 
 export type RepoActivityStatus = "active" | "stable";
 
 export type ExecutiveChecklistItem = {
-  id: "ci" | "error_handling" | "tests" | "commit_cadence";
+  id: "ci" | "error_handling" | "tests" | "history";
   label: string;
   status: string;
   tone: ChecklistTone;
 };
 
 /**
- * Verification badge from Code Health:
- * - Provix Verified: codeHealth >= 75
- * - Needs Refinement: codeHealth < 75
- *
- * Second arg is ignored (legacy dual-gate callers).
+ * Shared Verified / publish / onboarding-track gate input.
+ * `historyAvailable: false` means the commit list fetch failed — History
+ * cannot pass even if a numeric hygiene placeholder is 100.
+ */
+export type ProvixVerifiedGateInput = {
+  codeHealthScore: number;
+  deliveryHygieneScore?: number | null;
+  historyAvailable?: boolean | null;
+};
+
+/** History ≥ 80 and a successful commit fetch. */
+export function isHistoryGateMet(
+  input: Pick<
+    ProvixVerifiedGateInput,
+    "deliveryHygieneScore" | "historyAvailable"
+  >
+): boolean {
+  if (input.historyAvailable === false) {
+    return false;
+  }
+  if (
+    typeof input.deliveryHygieneScore !== "number" ||
+    !Number.isFinite(input.deliveryHygieneScore)
+  ) {
+    return false;
+  }
+  return (
+    clampScore0to100(input.deliveryHygieneScore) >=
+    DELIVERY_HYGIENE_VERIFIED_THRESHOLD
+  );
+}
+
+/**
+ * Single source of truth for Provix Verified, onboarding track qualification,
+ * and production-score publishing: Code Health ≥ 75 and History ≥ 80 with
+ * fetched commit history.
+ */
+export function meetsProvixVerifiedGates(
+  input: ProvixVerifiedGateInput
+): boolean {
+  return (
+    clampScore0to100(input.codeHealthScore) >= CODE_HEALTH_VERIFIED_THRESHOLD &&
+    isHistoryGateMet(input)
+  );
+}
+
+/** Full-Time / Contract track qualification (same floors as Verified). */
+export function qualifiesHiringTrack(
+  trackScore: number,
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
+): boolean {
+  return meetsProvixVerifiedGates({
+    codeHealthScore: trackScore,
+    deliveryHygieneScore,
+    historyAvailable,
+  });
+}
+
+/**
+ * Dual-threshold verification (contract + full-time share these floors):
+ * - Provix Verified: codeHealth >= 75 AND history gate met
+ * - Needs Refinement: otherwise (no Sparse History tier)
  */
 export function assignVerificationTier(
   codeHealthScore: number,
-  _deliveryHygieneScore?: number
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
 ): VerificationTier {
-  const health = clampScore0to100(codeHealthScore);
-  if (health < CODE_HEALTH_VERIFIED_THRESHOLD) {
-    return VERIFICATION_TIER_NEEDS_REFINEMENT;
-  }
-  return VERIFICATION_TIER_PROVIX;
+  return meetsProvixVerifiedGates({
+    codeHealthScore,
+    deliveryHygieneScore,
+    historyAvailable,
+  })
+    ? VERIFICATION_TIER_PROVIX
+    : VERIFICATION_TIER_NEEDS_REFINEMENT;
 }
 
 export function getVerificationTierBadge(
   codeHealthScore: number,
-  _deliveryHygieneScore?: number
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
 ): ReadinessBadge {
-  const tier = assignVerificationTier(codeHealthScore);
+  const tier = assignVerificationTier(
+    codeHealthScore,
+    deliveryHygieneScore,
+    historyAvailable
+  );
 
   if (tier === VERIFICATION_TIER_PROVIX) {
     return {
@@ -81,14 +154,18 @@ export function getVerificationTierBadge(
 }
 
 /**
- * Readiness / verification badge from Code Health.
- * Optional second arg is ignored (legacy dual-gate callers).
+ * Readiness / verification badge using the shared Provix Verified gates.
  */
 export function getReadinessBadge(
   score: number,
-  _deliveryHygieneScore?: number | null
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
 ): ReadinessBadge {
-  return getVerificationTierBadge(score);
+  return getVerificationTierBadge(
+    score,
+    deliveryHygieneScore,
+    historyAvailable
+  );
 }
 
 const STALE_AFTER_MS = 180 * 24 * 60 * 60 * 1000;
@@ -245,10 +322,7 @@ function testCoverageRatio(
     return null;
   }
 
-  const testFiles =
-    typeof filesystem.unit_test_file_count === "number"
-      ? filesystem.unit_test_file_count
-      : filesystem.test_paths.filter(isUnitTestFile).length;
+  const testFiles = resolveUnitTestFileCount(filesystem);
   if (testFiles === 0) {
     return 0;
   }
@@ -300,7 +374,7 @@ export function classifyTestSuites(
 
 /**
  * Informational repo activity from sampled commit dates only.
- * Commit-history dump penalties are retired — no score impact.
+ * Kept for callers; Executive Checklist uses History instead.
  */
 export function classifyCommitCadence(
   commitDates: string[] | null | undefined,
@@ -309,7 +383,7 @@ export function classifyCommitCadence(
 ): {
   status: string;
   tone: ChecklistTone;
-  /** Always 0 — commit penalties removed. */
+  /** Always 0 — activity is informational. */
   penalty: number;
   /** Always 0 — kept for callers that still read the field. */
   commitHistoryPenalty: number;
@@ -323,6 +397,28 @@ export function classifyCommitCadence(
     penalty: 0,
     commitHistoryPenalty: 0,
   };
+}
+
+/** Executive Checklist History row from Delivery Hygiene + commit signals. */
+export function classifyHistoryChecklist(
+  deliveryHygieneScore: number,
+  commitDates?: string[] | null,
+  commitStats?: CommitHistoryStat[] | null,
+  historyAvailable: boolean | null = true
+): { status: string; tone: ChecklistTone } {
+  if (historyAvailable === false) {
+    return { status: "History unavailable", tone: "fail" };
+  }
+  const hygiene = clampScore0to100(deliveryHygieneScore);
+  const status = formatCommitHistoryReason(commitDates, commitStats);
+  // Verified History floor is 80 — do not treat 60 as a pass band.
+  if (isHistoryGateMet({ deliveryHygieneScore: hygiene, historyAvailable })) {
+    return { status, tone: "pass" };
+  }
+  if (hygiene > 0) {
+    return { status, tone: "warn" };
+  }
+  return { status, tone: "fail" };
 }
 
 export const PRODUCTION_READY_VERIFIED =
@@ -406,8 +502,9 @@ export function buildExecutiveChecklist(input: {
   filesystem?: RepoFilesystemEvidence | null;
   commitDates?: string[] | null;
   commitStats?: CommitHistoryStat[] | null;
-  /** @deprecated Ignored — commit-history penalties retired. */
   commitHistoryPenalty?: number | null;
+  deliveryHygieneScore?: number | null;
+  historyAvailable?: boolean | null;
   testingScore?: number | null;
 }): ExecutiveChecklistItem[] {
   const artifacts = coreArtifactFlags(input.scoreCap, input.filesystem);
@@ -416,10 +513,19 @@ export function buildExecutiveChecklist(input: {
     input.filesystem,
     input.testingScore
   );
-  const cadence = classifyCommitCadence(
+  const hygiene =
+    typeof input.deliveryHygieneScore === "number" &&
+    Number.isFinite(input.deliveryHygieneScore)
+      ? input.deliveryHygieneScore
+      : typeof input.commitHistoryPenalty === "number" &&
+          Number.isFinite(input.commitHistoryPenalty)
+        ? Math.max(0, 100 - Math.max(0, input.commitHistoryPenalty))
+        : 100;
+  const history = classifyHistoryChecklist(
+    hygiene,
     input.commitDates,
-    Date.now(),
-    input.commitStats
+    input.commitStats,
+    input.historyAvailable
   );
 
   return [
@@ -442,10 +548,10 @@ export function buildExecutiveChecklist(input: {
       tone: tests.tone,
     },
     {
-      id: "commit_cadence",
-      label: "Repo Activity",
-      status: cadence.status,
-      tone: cadence.tone,
+      id: "history",
+      label: "History",
+      status: history.status,
+      tone: history.tone,
     },
   ];
 }

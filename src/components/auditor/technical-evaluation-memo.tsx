@@ -5,7 +5,10 @@ import {
   type CodebaseBenchmark,
 } from "@/lib/codebase-benchmark";
 import type { ProductionAuditMetrics } from "@/lib/production-audit-metrics";
-import type { RepoFilesystemEvidence } from "@/lib/repo-filesystem";
+import {
+  resolveUnitTestFileCount,
+  type RepoFilesystemEvidence,
+} from "@/lib/repo-filesystem";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   buildGitProvenance,
@@ -89,8 +92,7 @@ function toScanData(input: MemoInput): AuditScanData {
     testingScore: testing,
     boundaryFile: boundary ? shortPath(boundary) : null,
     ciPath: ciPath ? shortPath(ciPath) : null,
-    testPathsCount:
-      filesystem?.unit_test_file_count ?? filesystem?.test_paths.length ?? 0,
+    testPathsCount: filesystem ? resolveUnitTestFileCount(filesystem) : 0,
     unhandledAsyncCount: filesystem?.resilience_sampled
       ? filesystem.unhandled_async_count
       : null,

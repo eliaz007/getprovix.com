@@ -103,6 +103,8 @@ type ProductionScorecardProps = {
   audience?: "candidate" | "employer";
   /** Terminal-style forensic receipts under each pillar (non-compact dossier). */
   pillarSubLogs?: PillarSubLog[] | null;
+  /** Shown under Founder Hiring Verdict when History blocks Provix Verified. */
+  historyVerifiedNote?: string | null;
 };
 
 /** Split a 2–3 sentence brief into tight executive bullets. */
@@ -169,9 +171,11 @@ function roleBandClass(band: RecommendedRoleBand): string {
 function EngineeringBriefCards({
   brief,
   audience,
+  historyVerifiedNote = null,
 }: {
   brief: ExecutiveBrief;
   audience: "candidate" | "employer";
+  historyVerifiedNote?: string | null;
 }) {
   const staffReview = (
     <section className="rounded-lg border border-zinc-800/80 bg-zinc-950/70 px-3 py-3 print:px-2 print:py-1.5">
@@ -217,6 +221,11 @@ function EngineeringBriefCards({
       <p className="mt-1 text-xs leading-snug text-zinc-500">
         Production risk evaluation for founders and recruiters.
       </p>
+      {historyVerifiedNote ? (
+        <p className="mt-2 rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[12px] leading-snug text-amber-100">
+          {historyVerifiedNote}
+        </p>
+      ) : null}
       <BriefBulletList summary={brief.employerSummary} />
     </section>
   );
@@ -246,6 +255,7 @@ export default function ProductionScorecard({
   executiveBrief = null,
   audience = "candidate",
   pillarSubLogs = null,
+  historyVerifiedNote = null,
 }: ProductionScorecardProps) {
   const resolved = metrics ?? emptyProductionAuditMetrics();
   const codeHealthScore = resolveCodeHealthScore(resolved);
@@ -293,7 +303,11 @@ export default function ProductionScorecard({
             </p>
           ) : null}
           {executiveBrief ? (
-            <EngineeringBriefCards brief={executiveBrief} audience={audience} />
+            <EngineeringBriefCards
+              brief={executiveBrief}
+              audience={audience}
+              historyVerifiedNote={historyVerifiedNote}
+            />
           ) : null}
         </div>
 
@@ -352,7 +366,11 @@ export default function ProductionScorecard({
       </div>
 
       {executiveBrief ? (
-        <EngineeringBriefCards brief={executiveBrief} audience={audience} />
+        <EngineeringBriefCards
+          brief={executiveBrief}
+          audience={audience}
+          historyVerifiedNote={historyVerifiedNote}
+        />
       ) : null}
 
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 print:grid-cols-2 print:gap-2 lg:grid-cols-4">

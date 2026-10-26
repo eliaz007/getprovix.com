@@ -60,6 +60,8 @@ describe("dossier ownership verification", () => {
       audit_breakdown: {
         ...breakdown,
         audited_repo_url: "https://github.com/acme/widgets",
+        delivery_hygiene_score: 90,
+        commit_history_fetched: true,
       },
       is_audit_verified: true,
       is_publicly_visible: true,
@@ -68,5 +70,23 @@ describe("dossier ownership verification", () => {
 
     expect(isVerifiedDossier(record)).toBe(true);
     expect(employerVisibleProductionAudit(record)?.productionScore).toBe(88);
+  });
+
+  it("hides a verified dossier from employers when History gate fails", () => {
+    const record = parseProductionAuditFromProfileRow({
+      production_score: 88,
+      audit_breakdown: {
+        ...breakdown,
+        audited_repo_url: "https://github.com/acme/widgets",
+        delivery_hygiene_score: 40,
+        commit_history_fetched: true,
+      },
+      is_audit_verified: true,
+      is_publicly_visible: true,
+      verification_status: "verified",
+    });
+
+    expect(isVerifiedDossier(record)).toBe(true);
+    expect(employerVisibleProductionAudit(record)).toBeNull();
   });
 });

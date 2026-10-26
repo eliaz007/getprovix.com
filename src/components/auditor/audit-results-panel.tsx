@@ -38,17 +38,22 @@ import {
 import {
   buildExecutiveChecklist,
   CODE_HEALTH_VERIFIED_THRESHOLD,
+  DELIVERY_HYGIENE_VERIFIED_THRESHOLD,
   getReadinessBadge,
+  HISTORY_BLOCKS_QUALIFY_NOTE,
+  isHistoryGateMet,
   isProductionReadyAudit,
   PRODUCTION_READY_VERIFIED,
   resolveDisplayedReadinessScore,
   type ChecklistTone,
   type ExecutiveChecklistItem,
 } from "@/lib/audit-readiness";
+import { formatCommitHistoryReason } from "@/lib/commit-history-score";
 import { isEmployerRole } from "@/lib/dashboard-account";
 import {
   emptyProductionAuditMetrics,
   resolveCodeHealthScore,
+  resolveDeliveryHygieneScore,
   resolveProductionAuditMetrics,
   type ProductionAuditMetrics,
 } from "@/lib/production-audit-metrics";
@@ -219,17 +224,23 @@ function remediationTitle(label: string): string {
   return label.replace(/\s*\(\+\d+\s*pts?\)\s*$/i, "").trim() || label;
 }
 
-function formatAuditDateLabel(commitDates?: string[] | null): string {
-  const parsed = (commitDates ?? [])
-    .map((value) => Date.parse(value))
-    .filter((value) => Number.isFinite(value));
-  const timestamp =
-    parsed.length > 0 ? Math.max(...parsed) : Date.now();
+function formatLocaleDateLabel(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
+}
+
+/** Latest sampled commit day, or Unknown when history was missing. */
+function formatAuditDateLabel(commitDates?: string[] | null): string {
+  const parsed = (commitDates ?? [])
+    .map((value) => Date.parse(value))
+    .filter((value) => Number.isFinite(value));
+  if (parsed.length === 0) {
+    return "Unknown";
+  }
+  return formatLocaleDateLabel(Math.max(...parsed));
 }
 
 function ChecklistIcon({ tone }: { tone: ChecklistTone }) {
@@ -1196,6 +1207,10 @@ function dualScoreTone(score: number, passAt: number): string {
 function safeDeriveAuditView(result: AuditResult): {
   score: number;
   codeHealthScore: number;
+  deliveryHygieneScore: number;
+  historyAvailable: boolean;
+  historyReason: string;
+  historyVerifiedNote: string | null;
   badge: ReturnType<typeof getReadinessBadge>;
   checklist: ExecutiveChecklistItem[];
   visibleRedFlags: string[];
@@ -1215,6 +1230,32 @@ function safeDeriveAuditView(result: AuditResult): {
       },
     });
     const codeHealth = resolveCodeHealthScore(metrics);
+    const deliveryHygiene = resolveDeliveryHygieneScore(metrics);
+    const historyAvailable =
+      result?.commitHistoryFetched === false
+        ? false
+        : result?.commitHistoryFetched === true
+          ? true
+          : Boolean(
+              (result?.commitDates?.length ?? 0) > 0 ||
+                (result?.commitStats?.length ?? 0) > 0
+            );
+    const historyReason =
+      historyAvailable === false
+        ? "History unavailable"
+        : formatCommitHistoryReason(
+            result?.commitDates ?? null,
+            result?.commitStats ?? null
+          );
+    const historyBlocksVerified = !isHistoryGateMet({
+      deliveryHygieneScore: deliveryHygiene,
+      historyAvailable,
+    });
+    const historyVerifiedNote = historyBlocksVerified
+      ? historyAvailable === false
+        ? `${HISTORY_BLOCKS_QUALIFY_NOTE} Commit history could not be fetched.`
+        : `History blocks Provix Verified: ${historyReason} (History ${deliveryHygiene}/100; need ${DELIVERY_HYGIENE_VERIFIED_THRESHOLD}+).`
+      : null;
     const score = resolveDisplayedReadinessScore({
       score: result?.score ?? 0,
       productionScore: codeHealth,
@@ -1225,13 +1266,19 @@ function safeDeriveAuditView(result: AuditResult): {
     return {
       score,
       codeHealthScore: codeHealth,
-      badge: getReadinessBadge(codeHealth),
+      deliveryHygieneScore: deliveryHygiene,
+      historyAvailable,
+      historyReason,
+      historyVerifiedNote,
+      badge: getReadinessBadge(codeHealth, deliveryHygiene, historyAvailable),
       checklist: buildExecutiveChecklist({
         scoreCap: result?.scoreCap,
         filesystem,
         commitDates: result?.commitDates ?? [],
         commitStats: result?.commitStats ?? null,
         commitHistoryPenalty: metrics.commitHistoryPenalty,
+        deliveryHygieneScore: deliveryHygiene,
+        historyAvailable,
         testingScore: metrics.testing,
       }),
       visibleRedFlags: (result?.redFlags ?? []).filter(
@@ -1247,7 +1294,11 @@ function safeDeriveAuditView(result: AuditResult): {
     return {
       score,
       codeHealthScore: score,
-      badge: getReadinessBadge(score),
+      deliveryHygieneScore: 100,
+      historyAvailable: false,
+      historyReason: "History unavailable",
+      historyVerifiedNote: HISTORY_BLOCKS_QUALIFY_NOTE,
+      badge: getReadinessBadge(score, null, false),
       checklist: [],
       visibleRedFlags: [],
       metrics: emptyProductionAuditMetrics(),
@@ -1333,6 +1384,10 @@ function AuditResultsPanelView({
   const {
     score,
     codeHealthScore,
+    deliveryHygieneScore,
+    historyAvailable,
+    historyReason,
+    historyVerifiedNote,
     badge,
     checklist,
     visibleRedFlags,
@@ -1342,7 +1397,13 @@ function AuditResultsPanelView({
   } = derived;
   const filesystem = result?.filesystem ?? null;
   const displayRepo = repoName?.trim() || "Audited repository";
-  const auditedLabel = formatAuditDateLabel(result?.commitDates);
+  const lastCommitLabel = formatAuditDateLabel(result?.commitDates);
+  const auditedAtMs = result?.auditedAt
+    ? Date.parse(result.auditedAt)
+    : Number.NaN;
+  const auditedLabel = Number.isFinite(auditedAtMs)
+    ? formatLocaleDateLabel(auditedAtMs)
+    : "Unknown";
   const isRestricted = codeHealthScore < PUBLIC_SCORECARD_THRESHOLD;
   const employerView = isEmployerView || isEmployerRole(viewerRole);
   const screenPrompts = useMemo(
@@ -1408,7 +1469,9 @@ function AuditResultsPanelView({
               {displayRepo}
             </h2>
             <p className="font-mono text-xs tabular-nums text-zinc-400 sm:text-sm">
-              Audited {auditedLabel} · Target: {PUBLIC_SCORECARD_THRESHOLD}+
+              Last commit {lastCommitLabel} · Audited {auditedLabel} · Target:
+              Code Health {PUBLIC_SCORECARD_THRESHOLD}+ · History{" "}
+              {DELIVERY_HYGIENE_VERIFIED_THRESHOLD}+
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center rounded-md border border-zinc-700/60 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-semibold text-zinc-300">
@@ -1450,32 +1513,77 @@ function AuditResultsPanelView({
               </div>
             </div>
           </div>
-          <div className="shrink-0 space-y-2 sm:text-right">
-            <div className={SECTION_LABEL}>Code Health</div>
-            <div className="flex items-baseline gap-1 sm:justify-end">
-              <span
-                className={`dossier-score font-mono text-4xl font-black tabular-nums tracking-tight sm:text-5xl ${dualScoreTone(
-                  codeHealthScore,
-                  CODE_HEALTH_VERIFIED_THRESHOLD
-                )}`}
-              >
-                {codeHealthScore}
-              </span>
-              <span className="text-base font-semibold text-zinc-500">/100</span>
+          <div className="shrink-0 space-y-3 sm:text-right">
+            <div className="flex flex-wrap items-end gap-6 sm:justify-end">
+              <div>
+                <div className={SECTION_LABEL}>Code Health</div>
+                <div className="flex items-baseline gap-1 sm:justify-end">
+                  <span
+                    className={`dossier-score font-mono text-4xl font-black tabular-nums tracking-tight sm:text-5xl ${dualScoreTone(
+                      codeHealthScore,
+                      CODE_HEALTH_VERIFIED_THRESHOLD
+                    )}`}
+                  >
+                    {codeHealthScore}
+                  </span>
+                  <span className="text-base font-semibold text-zinc-500">
+                    /100
+                  </span>
+                </div>
+              </div>
+              <div>
+                <div className={SECTION_LABEL}>History</div>
+                {historyAvailable ? (
+                  <div className="flex items-baseline gap-1 sm:justify-end">
+                    <span
+                      className={`dossier-score font-mono text-4xl font-black tabular-nums tracking-tight sm:text-5xl ${dualScoreTone(
+                        deliveryHygieneScore,
+                        DELIVERY_HYGIENE_VERIFIED_THRESHOLD
+                      )}`}
+                    >
+                      {deliveryHygieneScore}
+                    </span>
+                    <span className="text-base font-semibold text-zinc-500">
+                      /100
+                    </span>
+                  </div>
+                ) : (
+                  <p className="font-mono text-2xl font-black text-zinc-500 sm:text-3xl">
+                    N/A
+                  </p>
+                )}
+                <p className="mt-1 max-w-[16rem] text-[10px] leading-snug text-zinc-500 sm:ml-auto">
+                  {historyReason}
+                </p>
+              </div>
             </div>
           </div>
         </div>
 
         <GitProvenanceBar provenance={provenance} />
 
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-zinc-500">
-            <span>Code Health</span>
-            <span className="font-mono tabular-nums">
-              {codeHealthScore}/100
-            </span>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-zinc-500">
+              <span>Code Health</span>
+              <span className="font-mono tabular-nums">
+                {codeHealthScore}/100
+              </span>
+            </div>
+            <ScoreMeter score={codeHealthScore} className="mt-0" />
           </div>
-          <ScoreMeter score={codeHealthScore} className="mt-0" />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-zinc-500">
+              <span>History</span>
+              <span className="font-mono tabular-nums">
+                {historyAvailable ? `${deliveryHygieneScore}/100` : "N/A"}
+              </span>
+            </div>
+            <ScoreMeter
+              score={historyAvailable ? deliveryHygieneScore : 0}
+              className="mt-0"
+            />
+          </div>
         </div>
 
         <ProductionScorecard
@@ -1485,6 +1593,7 @@ function AuditResultsPanelView({
           executiveBrief={result.executiveBrief}
           audience={employerView ? "employer" : "candidate"}
           pillarSubLogs={pillarSubLogs}
+          historyVerifiedNote={historyVerifiedNote}
           className="break-inside-avoid print:break-inside-avoid print:shadow-none print:backdrop-blur-none"
         />
 
@@ -1506,8 +1615,11 @@ function AuditResultsPanelView({
             <p>
               <span className="font-medium text-zinc-300">Code Health</span> is
               the weighted sum of four filesystem pillars (Architecture,
-              Testing, DevOps, Resilience). Provix Verified requires Code Health{" "}
-              {CODE_HEALTH_VERIFIED_THRESHOLD}+.
+              Testing, DevOps, Resilience).{" "}
+              <span className="font-medium text-zinc-300">History</span> is
+              Delivery Hygiene from sampled commit iteration. Provix Verified
+              requires Code Health {CODE_HEALTH_VERIFIED_THRESHOLD}+ and History{" "}
+              {DELIVERY_HYGIENE_VERIFIED_THRESHOLD}+.
             </p>
             <ul className="list-disc space-y-2 pl-4">
               <li>
@@ -1581,10 +1693,8 @@ function AuditResultsPanelView({
             const rawStatus = item.status?.trim() ?? "";
             const statusText =
               !rawStatus || /History\s*\(\s*\)/i.test(rawStatus)
-                ? item.id === "commit_cadence"
-                  ? item.tone === "pass"
-                    ? "active"
-                    : "stable"
+                ? item.id === "history"
+                  ? "History unavailable"
                   : "Unavailable"
                 : rawStatus;
             return (
@@ -1675,9 +1785,9 @@ function AuditResultsPanelView({
                   Sampled commit timestamps
                 </div>
                 <ul className="space-y-1">
-                  {(result.commitDates ?? []).map((date) => (
+                  {(result.commitDates ?? []).map((date, index) => (
                     <li
-                      key={date}
+                      key={`${date}-${index}`}
                       className="font-mono text-[11px] text-zinc-500"
                     >
                       {date}

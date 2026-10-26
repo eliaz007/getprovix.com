@@ -571,10 +571,16 @@ function applyScreenFilesystemCap(
     8
   );
 
-  let metrics = computeProductionAuditMetrics(githubAudit?.filesystem, undefined, {
-    commitDates: githubAudit?.commit_dates,
-    commitStats: githubAudit?.commit_stats,
-  });
+  let metrics = computeProductionAuditMetrics(
+    githubAudit?.filesystem,
+    undefined,
+    githubAudit?.commit_history_fetched
+      ? {
+          commitDates: githubAudit.commit_dates,
+          commitStats: githubAudit.commit_stats,
+        }
+      : null
+  );
   let integrity_score = capped.score;
   let timeline_flags = capped.redFlags;
   let scoreCap = capped.scoreCap;
@@ -1135,10 +1141,12 @@ function resolveDeterministicMetricsForPrompt(
   let promptMetrics = computeProductionAuditMetrics(
     githubAudit?.filesystem,
     undefined,
-    {
-      commitDates: githubAudit?.commit_dates,
-      commitStats: githubAudit?.commit_stats,
-    }
+    githubAudit?.commit_history_fetched
+      ? {
+          commitDates: githubAudit.commit_dates,
+          commitStats: githubAudit.commit_stats,
+        }
+      : null
   );
 
   if (!promptMetrics.evidence.inspected && auditBreakdown) {

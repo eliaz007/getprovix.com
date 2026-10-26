@@ -191,6 +191,13 @@ export type AuditResult = {
   commitDates: string[];
   /** Optional per-commit churn samples used for dump / stub detection. */
   commitStats?: CommitHistoryStat[];
+  /**
+   * False when the GitHub commit list request failed. History cannot pass
+   * Verified / publish / onboarding gates until a successful fetch.
+   */
+  commitHistoryFetched?: boolean;
+  /** ISO timestamp when this audit run completed (dossier "Audited" label). */
+  auditedAt?: string;
   inaccessibleRepo?: boolean;
   /** Rank of this production score among completed audits. Null when the count is unavailable. */
   benchmark?: CodebaseBenchmark | null;
@@ -794,15 +801,22 @@ function commitDatesFromArtifacts(
 function commitHistoryFromArtifacts(
   githubArtifacts: GitHubArtifactAudit | null
 ): {
-  commitDates: string[];
+  commitDates: string[] | null;
   commitStats: NonNullable<
     GitHubArtifactAudit["artifacts"][number]["commit_stats"]
-  >;
-} {
+  > | null;
+} | null {
   const primary = primaryArtifactFromAudit(githubArtifacts);
+  if (!primary) {
+    return null;
+  }
+  // Failed GitHub commit list → null history → zero hygiene penalty.
+  if (primary.commit_history_fetched === false) {
+    return null;
+  }
   return {
-    commitDates: normalizeCommitDates(primary?.commit_dates),
-    commitStats: Array.isArray(primary?.commit_stats)
+    commitDates: normalizeCommitDates(primary.commit_dates),
+    commitStats: Array.isArray(primary.commit_stats)
       ? primary.commit_stats
       : [],
   };
@@ -920,6 +934,20 @@ function normalizeAuditResult(raw: unknown): AuditResult {
           ];
         })
       : [],
+    commitHistoryFetched:
+      typeof record.commitHistoryFetched === "boolean"
+        ? record.commitHistoryFetched
+        : record.commit_history_fetched === true
+          ? true
+          : record.commit_history_fetched === false
+            ? false
+            : undefined,
+    auditedAt:
+      typeof record.auditedAt === "string" && record.auditedAt.trim()
+        ? record.auditedAt.trim()
+        : typeof record.audited_at === "string" && record.audited_at.trim()
+          ? record.audited_at.trim()
+          : undefined,
     executiveBrief: parseExecutiveBrief(record.executiveBrief),
   };
 }
@@ -1803,7 +1831,7 @@ export async function POST(request: Request) {
     applyFilesystemScoreCap(result, filesystem),
     filesystem,
     commitDates,
-    commitHistory.commitStats
+    commitHistory?.commitStats ?? undefined
   );
   result = attachModeEvaluation(result, auditMode, metrics);
   metrics = result.metrics;
@@ -1846,8 +1874,11 @@ export async function POST(request: Request) {
     };
   }
 
+  const commitHistoryFetched = commitHistory != null;
   result = {
     ...result,
+    commitHistoryFetched,
+    auditedAt: new Date().toISOString(),
     executiveBrief: finalizeExecutiveBrief({
       draft: result.executiveBrief,
       productionScore: metrics.productionScore,
@@ -1973,6 +2004,9 @@ export async function POST(request: Request) {
         filesystem,
         scoreCap: result.scoreCap,
         isPubliclyVisible: false,
+        deliveryHygieneScore: result.metrics.deliveryHygieneScore,
+        commitHistoryFetched: result.commitHistoryFetched,
+        auditedAt: result.auditedAt,
       });
       await persistProfileProductionAudit(
         access.supabase,
@@ -1999,13 +2033,20 @@ export async function POST(request: Request) {
   if (isAdminAudit && access.user) {
     verificationStatus = "verified";
     const dataClient = benchmarkClient ?? access.supabase;
-    const canPublish = canPublishProductionScore(result.score);
+    const canPublish = canPublishProductionScore(
+      result.score,
+      result.metrics.deliveryHygieneScore,
+      result.commitHistoryFetched
+    );
     const claim = buildProductionAuditClaim({
       score: result.score,
       githubUrl: auditedRepoUrl,
       filesystem,
       scoreCap: result.scoreCap,
       isPubliclyVisible: canPublish,
+      deliveryHygieneScore: result.metrics.deliveryHygieneScore,
+      commitHistoryFetched: result.commitHistoryFetched,
+      auditedAt: result.auditedAt,
     });
 
     try {

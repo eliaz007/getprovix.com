@@ -308,6 +308,8 @@ const SOURCE_FILE_EXT =
   /\.(tsx?|jsx?|mts|cts|mjs|cjs|py|go|rs|java|kt|rb|php|cs|swift|dart)$/i;
 const UNIT_TEST_FILE =
   /\.(tests?|spec)\.[cm]?[jt]sx?$/i;
+/** Ava / Mocha-style suites: bare modules under test/, tests/, __tests__/. */
+const UNIT_TEST_DIR_ROOT = /(^|\/)(__tests?__|tests?)(\/|$)/i;
 
 const EXECUTABLE_CODE_FILE = /\.(tsx|ts|jsx|js|mts|cts|mjs|cjs)$/i;
 
@@ -334,7 +336,7 @@ export function isUnitTestFile(path: string): boolean {
     return false;
   }
 
-  return (
+  if (
     UNIT_TEST_FILE.test(path) ||
     TEST_GO.test(path) ||
     TEST_PY.test(path) ||
@@ -345,7 +347,32 @@ export function isUnitTestFile(path: string): boolean {
     TEST_SWIFT.test(path) ||
     TEST_DART.test(path) ||
     TEST_DOTNET.test(path)
-  );
+  ) {
+    return true;
+  }
+
+  // Directory-convention suites (e.g. got/ava): test/abort.ts with no .test suffix.
+  return UNIT_TEST_DIR_ROOT.test(path) && SOURCE_FILE_EXT.test(path);
+}
+
+/**
+ * Prefer the suffix/dir unit-test count; when that is zero, fall back to
+ * folder-based `test_paths` (configs excluded).
+ */
+export function resolveUnitTestFileCount(
+  evidence: Pick<RepoFilesystemEvidence, "unit_test_file_count" | "test_paths">
+): number {
+  const suffix =
+    typeof evidence.unit_test_file_count === "number" &&
+    Number.isFinite(evidence.unit_test_file_count)
+      ? Math.max(0, Math.round(evidence.unit_test_file_count))
+      : evidence.test_paths.filter(isUnitTestFile).length;
+  if (suffix > 0) {
+    return suffix;
+  }
+  return evidence.test_paths.filter(
+    (path) => isTestPath(path) && !isTestConfigPath(path)
+  ).length;
 }
 
 export function hasE2eTooling(paths: string[]): boolean {

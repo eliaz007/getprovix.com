@@ -8,6 +8,7 @@ import type {
   ScoreCapAudit,
 } from "@/lib/repo-filesystem";
 import { deriveDualModeScores } from "@/lib/audit-mode";
+import { meetsProvixVerifiedGates } from "@/lib/audit-readiness";
 import { computeProductionAuditMetrics } from "@/lib/production-audit-metrics";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
@@ -40,6 +41,10 @@ export type ProductionAuditBreakdown = {
   error_handling: number;
   audited_repo_url: string;
   audited_at: string;
+  /** Delivery Hygiene / History when known. */
+  delivery_hygiene_score?: number;
+  /** False when the GitHub commit list fetch failed. */
+  commit_history_fetched?: boolean;
 };
 
 export type ProductionAuditClaim = {
@@ -47,6 +52,8 @@ export type ProductionAuditClaim = {
   audit_breakdown: ProductionAuditBreakdown;
   is_audit_verified: true;
   is_publicly_visible: boolean;
+  delivery_hygiene_score?: number;
+  commit_history_fetched?: boolean;
 };
 
 export type ProductionAuditRecord = {
@@ -85,15 +92,32 @@ export type ProductionAuditHistoryEntry = {
   createdAt: string;
 };
 
-export function canPublishProductionScore(score: number): boolean {
-  return clampScore0to100(score) >= PUBLIC_SCORECARD_THRESHOLD;
+/**
+ * Public scorecard / talent-pool publish gate — same floors as dossier Verified
+ * and onboarding track qualification (Code Health ≥ 75, History ≥ 80, fetched).
+ */
+export function canPublishProductionScore(
+  score: number,
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
+): boolean {
+  return meetsProvixVerifiedGates({
+    codeHealthScore: score,
+    deliveryHygieneScore,
+    historyAvailable,
+  });
 }
 
 export function resolvePublicScorecardVisibility(
   score: number,
-  requestedVisible: boolean
+  requestedVisible: boolean,
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
 ): boolean {
-  return requestedVisible && canPublishProductionScore(score);
+  return (
+    requestedVisible &&
+    canPublishProductionScore(score, deliveryHygieneScore, historyAvailable)
+  );
 }
 
 export function employerVisibleProductionAudit(
@@ -102,7 +126,16 @@ export function employerVisibleProductionAudit(
   if (!isVerifiedDossier(record) || !record?.isPubliclyVisible) {
     return null;
   }
-  if (!canPublishProductionScore(record.productionScore)) {
+  const hygiene = record.breakdown.delivery_hygiene_score;
+  const historyAvailable =
+    record.breakdown.commit_history_fetched === false
+      ? false
+      : hygiene == null
+        ? false
+        : true;
+  if (
+    !canPublishProductionScore(record.productionScore, hygiene, historyAvailable)
+  ) {
     return null;
   }
   return record;
@@ -113,8 +146,20 @@ export function buildProductionAuditBreakdown(input: {
   filesystem?: RepoFilesystemEvidence | null;
   scoreCap?: ScoreCapAudit | null;
   auditedAt?: string;
+  deliveryHygieneScore?: number | null;
+  commitHistoryFetched?: boolean | null;
 }): ProductionAuditBreakdown {
   const metrics = computeProductionAuditMetrics(input.filesystem);
+
+  const hygiene =
+    typeof input.deliveryHygieneScore === "number" &&
+    Number.isFinite(input.deliveryHygieneScore)
+      ? clampScore0to100(input.deliveryHygieneScore)
+      : undefined;
+  const historyFetched =
+    typeof input.commitHistoryFetched === "boolean"
+      ? input.commitHistoryFetched
+      : undefined;
 
   if (metrics.evidence.inspected) {
     return {
@@ -124,6 +169,8 @@ export function buildProductionAuditBreakdown(input: {
       error_handling: metrics.resilience,
       audited_repo_url: input.githubUrl.trim(),
       audited_at: input.auditedAt ?? new Date().toISOString(),
+      delivery_hygiene_score: hygiene,
+      commit_history_fetched: historyFetched,
     };
   }
 
@@ -139,6 +186,8 @@ export function buildProductionAuditBreakdown(input: {
     error_handling: errorPresent ? 55 : 0,
     audited_repo_url: input.githubUrl.trim(),
     audited_at: input.auditedAt ?? new Date().toISOString(),
+    delivery_hygiene_score: hygiene,
+    commit_history_fetched: historyFetched,
   };
 }
 
@@ -148,16 +197,24 @@ export function buildProductionAuditClaim(input: {
   filesystem?: RepoFilesystemEvidence | null;
   scoreCap?: ScoreCapAudit | null;
   isPubliclyVisible?: boolean;
+  deliveryHygieneScore?: number | null;
+  commitHistoryFetched?: boolean | null;
+  auditedAt?: string;
 }): ProductionAuditClaim {
   const production_score = clampScore0to100(input.score);
+  const breakdown = buildProductionAuditBreakdown(input);
   return {
     production_score,
-    audit_breakdown: buildProductionAuditBreakdown(input),
+    audit_breakdown: breakdown,
     is_audit_verified: true,
     is_publicly_visible: resolvePublicScorecardVisibility(
       production_score,
-      Boolean(input.isPubliclyVisible)
+      Boolean(input.isPubliclyVisible),
+      input.deliveryHygieneScore,
+      input.commitHistoryFetched
     ),
+    delivery_hygiene_score: breakdown.delivery_hygiene_score,
+    commit_history_fetched: breakdown.commit_history_fetched,
   };
 }
 
@@ -180,6 +237,12 @@ export function parseProductionAuditBreakdown(
     return null;
   }
 
+  const hygieneRaw = record.delivery_hygiene_score;
+  const hygiene =
+    typeof hygieneRaw === "number" && Number.isFinite(hygieneRaw)
+      ? clampScore0to100(hygieneRaw)
+      : undefined;
+
   return {
     architecture_score: clampScore0to100(record.architecture_score),
     ci_cd_score: clampScore0to100(record.ci_cd_score),
@@ -187,6 +250,11 @@ export function parseProductionAuditBreakdown(
     error_handling: clampScore0to100(record.error_handling),
     audited_repo_url: repo,
     audited_at: auditedAt || new Date().toISOString(),
+    delivery_hygiene_score: hygiene,
+    commit_history_fetched:
+      typeof record.commit_history_fetched === "boolean"
+        ? record.commit_history_fetched
+        : undefined,
   };
 }
 
@@ -221,40 +289,53 @@ export function parseProductionAuditFromProfileRow(
     row.verification_status
   );
   const isAuditVerified = verificationStatus === "verified";
+  const resolvedBreakdown = breakdown ?? {
+    architecture_score: 0,
+    ci_cd_score: 0,
+    test_density: 0,
+    error_handling: 0,
+    audited_repo_url: "",
+    audited_at: "",
+  };
+  const hygiene = resolvedBreakdown.delivery_hygiene_score;
+  const historyAvailable =
+    resolvedBreakdown.commit_history_fetched === false
+      ? false
+      : hygiene == null
+        ? false
+        : true;
 
   return {
     productionScore,
-    breakdown: breakdown ?? {
-      architecture_score: 0,
-      ci_cd_score: 0,
-      test_density: 0,
-      error_handling: 0,
-      audited_repo_url: "",
-      audited_at: "",
-    },
+    breakdown: resolvedBreakdown,
     isAuditVerified,
     isPubliclyVisible:
       isAuditVerified &&
       resolvePublicScorecardVisibility(
         productionScore,
-        row.is_publicly_visible === true
+        row.is_publicly_visible === true,
+        hygiene,
+        historyAvailable
       ),
     verificationStatus,
   };
 }
 
 /**
- * Public verified badge for scorecards when Code Health / production score
- * is at or above the public threshold (75). Second arg is ignored (legacy).
+ * Public verified badge when shared Provix Verified gates pass
+ * (Code Health ≥ 75, History ≥ 80, commit history fetched).
  */
 export function getProductionScoreBadge(
   score: number,
-  _deliveryHygieneScore?: number | null
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
 ): {
   label: string;
   className: string;
 } | null {
-  if (!canPublishProductionScore(score)) {
+  if (
+    !canPublishProductionScore(score, deliveryHygieneScore, historyAvailable)
+  ) {
     return null;
   }
 
@@ -264,8 +345,12 @@ export function getProductionScoreBadge(
   };
 }
 
-export function productionScoreBadgeClass(score: number): string {
-  return canPublishProductionScore(score)
+export function productionScoreBadgeClass(
+  score: number,
+  deliveryHygieneScore?: number | null,
+  historyAvailable?: boolean | null
+): string {
+  return canPublishProductionScore(score, deliveryHygieneScore, historyAvailable)
     ? "text-emerald-300 bg-emerald-500/10 border-emerald-500/30"
     : "text-zinc-300 bg-white/5 border-white/10";
 }
@@ -470,7 +555,14 @@ export async function persistProfileProductionAudit(
   const hideRequested =
     !isVerified ||
     (options?.isPubliclyVisible === false && !enrollInTalentPool);
-  const canPublish = isVerified && canPublishProductionScore(productionScore);
+  const canPublish =
+    isVerified &&
+    canPublishProductionScore(
+      productionScore,
+      claim.delivery_hygiene_score ?? claim.audit_breakdown.delivery_hygiene_score,
+      claim.commit_history_fetched ??
+        claim.audit_breakdown.commit_history_fetched
+    );
 
   const autoPublishRow: PublishedCandidateProfileRow = {
     ...(roleRow as PublishedCandidateProfileRow),
@@ -799,11 +891,21 @@ export async function claimPendingProductionAuditResult(): Promise<ClaimPendingR
     };
   }
 
+  const pendingHygiene =
+    pending.delivery_hygiene_score ??
+    pending.audit_breakdown.delivery_hygiene_score;
+  const pendingHistoryFetched =
+    pending.commit_history_fetched ??
+    pending.audit_breakdown.commit_history_fetched;
   const nextClaim: ProductionAuditClaim = {
     ...pending,
     is_publicly_visible:
       pending.is_publicly_visible ||
-      canPublishProductionScore(pending.production_score),
+      canPublishProductionScore(
+        pending.production_score,
+        pendingHygiene,
+        pendingHistoryFetched
+      ),
   };
 
   try {

@@ -5,6 +5,10 @@ import {
   weightsForAuditMode,
   type AuditMode,
 } from "@/lib/audit-mode";
+import {
+  scoreCommitHistoryPenalty,
+  type CommitHistoryStat,
+} from "@/lib/commit-history-score";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {
   emptyArchitectureSignals,
@@ -13,13 +17,15 @@ import {
   isErrorHandlingPath,
   isNoisePath,
   isTestPath,
-  isUnitTestFile,
+  resolveUnitTestFileCount,
   parseRepoFilesystemEvidence,
   type ArchitectureSignals,
   type CiPipelineDepth,
   type RepoFilesystemEvidence,
   type RepoKind,
 } from "@/lib/repo-filesystem";
+
+export type { CommitHistoryStat };
 
 /**
  * Default weights (full-time enterprise baseline).
@@ -31,15 +37,6 @@ export const PRODUCTION_METRIC_WEIGHTS = {
   devops: 0.15,
   resilience: 0.25,
 } as const;
-
-/** Optional per-commit sample kept for GitHub fetch payloads (not scored). */
-export type CommitHistoryStat = {
-  date: string;
-  additions?: number;
-  deletions?: number;
-  filesChanged?: number;
-  message?: string;
-};
 
 export type ProductionAuditHistoryInput = {
   commitDates?: string[] | null;
@@ -53,7 +50,8 @@ export type ProductionAuditMetrics = {
   resilience: number;
   /**
    * Headline Codebase Quality Index. Mapped to `codeHealthScore` (weighted
-   * AST pillars). Kept for UI, PDF, percentile, and DB consumers.
+   * pillars only) — commit history is scored separately as delivery hygiene.
+   * Kept for UI, PDF, percentile, and DB consumers.
    */
   productionScore: number;
   /**
@@ -62,14 +60,15 @@ export type ProductionAuditMetrics = {
    */
   codeHealthScore?: number;
   /**
-   * @deprecated Unused in product UI. Kept optional for legacy audit blobs;
-   * live audits still emit 100 for schema compatibility.
+   * Delivery Hygiene: `Math.max(0, 100 - commitHistoryPenalty)`. Optional on
+   * legacy blobs; prefer `resolveDeliveryHygieneScore`.
    */
   deliveryHygieneScore?: number;
   /** 30 when the repo is a fork or generated template; otherwise 0. */
   upstreamDerivativePenalty: number;
   /**
-   * @deprecated Always 0 on new audits. Kept for persisted / UI consumers.
+   * Absolute commit-history ding points (0–30). Informational / hygiene only —
+   * not subtracted from `productionScore` / `codeHealthScore`.
    */
   commitHistoryPenalty: number;
   /** @deprecated Alias of devops — kept for persisted / UI consumers. */
@@ -182,10 +181,16 @@ export function resolveCodeHealthScore(
   return clampScore0to100(metrics.productionScore);
 }
 
-/**
- * Delivery Hygiene without commit-based deductions. Prefer an explicit stored
- * score; otherwise treat hygiene as clean (100).
- */
+/** Delivery Hygiene (0–100) from absolute commit-history penalty points. */
+export function deliveryHygieneScoreFromPenalty(penalty: number): number {
+  const absolute =
+    typeof penalty === "number" && Number.isFinite(penalty)
+      ? Math.max(0, Math.round(penalty))
+      : 0;
+  return Math.max(0, 100 - absolute);
+}
+
+/** Prefer explicit hygiene; derive from commitHistoryPenalty when missing. */
 export function resolveDeliveryHygieneScore(
   metrics: Pick<
     ProductionAuditMetrics,
@@ -198,7 +203,19 @@ export function resolveDeliveryHygieneScore(
   ) {
     return clampScore0to100(metrics.deliveryHygieneScore);
   }
-  return 100;
+  return deliveryHygieneScoreFromPenalty(metrics.commitHistoryPenalty ?? 0);
+}
+
+export function commitHistoryScaleFromEvidence(
+  evidence: RepoFilesystemEvidence | null | undefined
+): { fileCount: number; authoredLoc: number } {
+  if (!evidence?.inspected) {
+    return { fileCount: 0, authoredLoc: 0 };
+  }
+  return {
+    fileCount: Math.max(0, evidence.file_count),
+    authoredLoc: estimateAuthoredLoc(evidence),
+  };
 }
 
 export function emptyProductionAuditMetrics(): ProductionAuditMetrics {
@@ -570,10 +587,7 @@ export function scoreTesting(
   }
 
   const mode = normalizeAuditMode(auditMode);
-  const testFiles =
-    typeof evidence.unit_test_file_count === "number"
-      ? evidence.unit_test_file_count
-      : evidence.test_paths.filter(isUnitTestFile).length;
+  const testFiles = resolveUnitTestFileCount(evidence);
   if (testFiles === 0) {
     return 0;
   }
@@ -923,12 +937,17 @@ export function computeProductionAuditMetrics(
     mode
   );
 
-  // Dual-score model: Code Health from AST pillars; Delivery Hygiene is clean
-  // (commit-history penalties retired).
-  void history;
+  const historyDing = scoreCommitHistoryPenalty(
+    history?.commitDates,
+    undefined,
+    history?.commitStats,
+    commitHistoryScaleFromEvidence(normalized)
+  );
+  const commitHistoryPenalty = Math.abs(Math.min(0, historyDing));
+  // Dual-score model: pillars stay on Code Health; history is Delivery Hygiene.
   const codeHealthScore = weighted;
-  const deliveryHygieneScore = 100;
-  const commitHistoryPenalty = 0;
+  const deliveryHygieneScore =
+    deliveryHygieneScoreFromPenalty(commitHistoryPenalty);
   const productionScore = codeHealthScore;
 
   return {
@@ -1060,8 +1079,10 @@ export function parseProductionAuditMetrics(
   const resilience = clampScore0to100(
     record.resilience ?? record.errorBoundaries
   );
-  // Commit-history penalties are retired; keep the key for schema compatibility.
-  const commitHistoryPenalty = 0;
+  const commitHistoryPenalty = Math.min(
+    60,
+    asCount(record.commitHistoryPenalty)
+  );
   const weightedFallback = weightedProductionScore({
     architecture,
     testing,
@@ -1083,7 +1104,7 @@ export function parseProductionAuditMetrics(
     typeof record.deliveryHygieneScore === "number" &&
     Number.isFinite(record.deliveryHygieneScore)
       ? clampScore0to100(record.deliveryHygieneScore)
-      : 100;
+      : deliveryHygieneScoreFromPenalty(commitHistoryPenalty);
 
   const storedKind = evidenceRecord?.repoKind;
   const repoKind: RepoKind =

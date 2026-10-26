@@ -19,10 +19,12 @@ import {
   unhandledAsyncPenalty,
   weightedProductionScore,
 } from "./production-audit-metrics";
+import { preferTestSamplePaths } from "./audit-content-signals";
 import {
   capScoreForFilesystemEvidence,
   classifyRepoFilesystem,
   filesystemScoreCeiling,
+  resolveUnitTestFileCount,
 } from "./repo-filesystem";
 
 const WEB_APP_PATHS = [
@@ -144,31 +146,46 @@ describe("four-pillar production audit", () => {
     ).toBe("active");
   });
 
-  it("ignores commit history for hygiene and keeps code health on pillars", () => {
+  it("keeps code health on pillars while commit history hits delivery hygiene", () => {
     const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
       inspected: true,
     });
     const baseline = computeProductionAuditMetrics(filesystem, "fulltime");
     const sparse = computeProductionAuditMetrics(filesystem, "fulltime", {
       commitDates: ["2026-01-01T00:00:00.000Z"],
+      commitStats: [
+        {
+          date: "2026-01-01T00:00:00.000Z",
+          message: "Initial commit",
+          authorLogin: "solo",
+        },
+      ],
     });
-    expect(sparse.commitHistoryPenalty).toBe(0);
+    expect(sparse.commitHistoryPenalty).toBeGreaterThan(0);
     expect(sparse.codeHealthScore).toBe(baseline.codeHealthScore);
     expect(sparse.productionScore).toBe(baseline.productionScore);
     expect(sparse.productionScore).toBe(sparse.codeHealthScore);
-    expect(sparse.deliveryHygieneScore).toBe(100);
+    expect(sparse.deliveryHygieneScore).toBeLessThan(100);
     expect(baseline.deliveryHygieneScore).toBe(100);
   });
 
-  it("assigns verification tiers from code health only", () => {
-    expect(assignVerificationTier(80)).toBe(VERIFICATION_TIER_PROVIX);
-    expect(assignVerificationTier(75)).toBe(VERIFICATION_TIER_PROVIX);
-    expect(assignVerificationTier(80, 50)).toBe(VERIFICATION_TIER_PROVIX);
-    expect(assignVerificationTier(74)).toBe(
+  it("assigns verification from shared Code Health + History gates", () => {
+    expect(assignVerificationTier(80, 100, true)).toBe(VERIFICATION_TIER_PROVIX);
+    expect(assignVerificationTier(75, 80, true)).toBe(VERIFICATION_TIER_PROVIX);
+    expect(assignVerificationTier(80, 50, true)).toBe(
       VERIFICATION_TIER_NEEDS_REFINEMENT
     );
-    expect(getReadinessBadge(80).label).toBe(VERIFICATION_TIER_PROVIX);
-    expect(getReadinessBadge(70).label).toBe(
+    expect(assignVerificationTier(74, 100, true)).toBe(
+      VERIFICATION_TIER_NEEDS_REFINEMENT
+    );
+    expect(assignVerificationTier(90, 100, false)).toBe(
+      VERIFICATION_TIER_NEEDS_REFINEMENT
+    );
+    expect(getReadinessBadge(80, 100, true).label).toBe(VERIFICATION_TIER_PROVIX);
+    expect(getReadinessBadge(80, 50, true).label).toBe(
+      VERIFICATION_TIER_NEEDS_REFINEMENT
+    );
+    expect(getReadinessBadge(90, null, false).label).toBe(
       VERIFICATION_TIER_NEEDS_REFINEMENT
     );
   });
@@ -185,11 +202,11 @@ describe("four-pillar production audit", () => {
     });
     expect(parsed?.productionScore).toBe(70);
     expect(parsed?.codeHealthScore).toBe(70);
-    expect(parsed?.deliveryHygieneScore).toBe(100);
-    expect(parsed?.commitHistoryPenalty).toBe(0);
+    expect(parsed?.deliveryHygieneScore).toBe(75);
+    expect(parsed?.commitHistoryPenalty).toBe(25);
   });
 
-  it("reports repo activity without dump/penalty cadence labels", () => {
+  it("reports History on the executive checklist instead of Repo Activity", () => {
     const recentStub = [
       "2026-10-20T12:00:00.000Z",
       "2026-10-20T18:00:00.000Z",
@@ -202,11 +219,18 @@ describe("four-pillar production audit", () => {
 
     const checklist = buildExecutiveChecklist({
       commitDates: recentStub,
+      commitStats: recentStub.map((date) => ({
+        date,
+        message: "Initial commit",
+        authorLogin: "solo",
+      })),
       commitHistoryPenalty: 20,
+      deliveryHygieneScore: 80,
     });
-    const activity = checklist.find((item) => item.id === "commit_cadence");
-    expect(activity?.status).toBe("active");
-    expect(activity?.tone).toBe("pass");
+    const history = checklist.find((item) => item.id === "history");
+    expect(history?.label).toBe("History");
+    expect(history?.status).toMatch(/commit/i);
+    expect(history?.tone).toBe("pass");
   });
 
   it("caps architecture for abusive TypeScript hygiene and non-strict tsconfig", () => {
@@ -263,6 +287,41 @@ describe("four-pillar production audit", () => {
     );
   });
 
+  it("counts got-style bare files under test/ as unit tests", () => {
+    const filesystem = classifyRepoFilesystem(
+      [
+        "package.json",
+        "source/index.ts",
+        "source/create.ts",
+        "source/core/index.ts",
+        "test/abort.ts",
+        "test/agent.ts",
+        "test/cookies.ts",
+        "test/helpers/server.ts",
+        ".github/workflows/ci.yml",
+      ],
+      { inspected: true }
+    );
+
+    expect(filesystem.unit_test_file_count).toBeGreaterThanOrEqual(3);
+    expect(filesystem.test_paths.some((path) => path === "test/abort.ts")).toBe(
+      true
+    );
+    expect(resolveUnitTestFileCount(filesystem)).toBe(
+      filesystem.unit_test_file_count
+    );
+    expect(
+      resolveUnitTestFileCount({
+        unit_test_file_count: 0,
+        test_paths: filesystem.test_paths,
+      })
+    ).toBeGreaterThan(0);
+    expect(scoreTesting(filesystem)).toBeGreaterThan(0);
+    expect(preferTestSamplePaths([...filesystem.test_paths, "source/index.ts"])).toEqual(
+      expect.arrayContaining(["test/abort.ts"])
+    );
+  });
+
   it("grades testing density in proportional bands", () => {
     const filesystem = classifyRepoFilesystem(WEB_APP_PATHS, {
       inspected: true,
@@ -301,7 +360,13 @@ describe("four-pillar production audit", () => {
       has_e2e_tools: false,
     };
 
-    expect(scoreTesting({ ...filesystem, unit_test_file_count: 0 })).toBe(0);
+    expect(
+      scoreTesting({
+        ...filesystem,
+        unit_test_file_count: 0,
+        test_paths: [],
+      })
+    ).toBe(0);
     expect(scoreTesting(token)).toBeLessThan(20);
     expect(scoreTesting(token)).toBeGreaterThan(0);
     expect(scoreTesting(mid)).toBeGreaterThanOrEqual(65);

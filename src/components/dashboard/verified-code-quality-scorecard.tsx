@@ -66,7 +66,15 @@ function useEmployerScoreVisibility(
       (record.breakdown.audited_repo_url || record.productionScore > 0)
   );
   const score = record?.productionScore ?? 0;
-  const canPublish = isVerified && canPublishProductionScore(score);
+  const hygiene = record?.breakdown.delivery_hygiene_score;
+  const historyFetched = record?.breakdown.commit_history_fetched;
+  const canPublish =
+    isVerified &&
+    canPublishProductionScore(
+      score,
+      hygiene,
+      historyFetched === false ? false : hygiene == null ? false : true
+    );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [visibilityOverride, setVisibilityOverride] = useState<boolean | null>(
