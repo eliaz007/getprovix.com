@@ -1,5 +1,6 @@
 import WebSocket from "ws";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- ws polyfill for Supabase realtime in Node tests
 (globalThis as any).WebSocket = WebSocket;
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,8 +33,10 @@ describe("Supabase client helpers", () => {
   const originalService = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   beforeEach(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ws polyfill for Supabase realtime in Node tests
     (globalThis as any).WebSocket = WebSocket;
     vi.resetModules();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ws polyfill for Supabase realtime in Node tests
     (globalThis as any).WebSocket = WebSocket;
     createBrowserClientMock.mockReset();
     createClientMock.mockReset();
