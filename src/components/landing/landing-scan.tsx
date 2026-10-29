@@ -96,10 +96,10 @@ export default function LandingScan() {
     const still = () => runId.current === id;
     setState({ kind: "scanning", repoUrl: normalized, step: 0, opening: false });
 
-    let settled: LoadedScan | null = null;
+    const settlement: { result: LoadedScan | null } = { result: null };
     const pending = loadScan(normalized).then(
       (result) => {
-        settled = result;
+        settlement.result = result;
         return result;
       },
       (error: unknown) => {
@@ -107,7 +107,7 @@ export default function LandingScan() {
           ok: false,
           message: error instanceof Error ? error.message : "The scan could not be completed.",
         };
-        settled = result;
+        settlement.result = result;
         return result;
       }
     );
@@ -117,13 +117,14 @@ export default function LandingScan() {
       setState({ kind: "scanning", repoUrl: normalized, step, opening: false });
       await delay(STEP_MS);
       if (!still()) return;
-      if (settled && !settled.ok) {
-        setState({ kind: "error", message: settled.message });
+      const early = settlement.result;
+      if (early && !early.ok) {
+        setState({ kind: "error", message: early.message });
         return;
       }
     }
 
-    const result = settled ?? (await pending);
+    const result: LoadedScan = settlement.result ?? (await pending);
     if (!still()) return;
     if (!result.ok) {
       setState({ kind: "error", message: result.message });
