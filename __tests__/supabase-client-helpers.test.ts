@@ -1,3 +1,7 @@
+import WebSocket from "ws";
+
+(globalThis as any).WebSocket = WebSocket;
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createBrowserClientMock = vi.fn();
@@ -20,10 +24,6 @@ import {
   isSupabaseSchemaError,
   schemaErrorMentionsColumn,
 } from "@/lib/supabase-schema-errors";
-import {
-  createServiceRoleClient,
-  isAdminUser,
-} from "@/lib/admin-access";
 import { AUTH_SESSION_TIMEOUT_MS } from "@/lib/auth-session-timeout";
 
 describe("Supabase client helpers", () => {
@@ -32,7 +32,9 @@ describe("Supabase client helpers", () => {
   const originalService = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   beforeEach(() => {
+    (globalThis as any).WebSocket = WebSocket;
     vi.resetModules();
+    (globalThis as any).WebSocket = WebSocket;
     createBrowserClientMock.mockReset();
     createClientMock.mockReset();
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
@@ -126,6 +128,7 @@ describe("Supabase client helpers", () => {
   });
 
   it("builds a service-role client only when credentials exist", async () => {
+    const { createServiceRoleClient, isAdminUser } = await import("@/lib/admin-access");
     expect(createServiceRoleClient()).toBeNull();
 
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";

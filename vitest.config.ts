@@ -8,10 +8,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(root, "./src"),
+      ws: path.resolve(root, "node_modules/ws/wrapper.mjs"),
     },
   },
   test: {
     environment: "node",
+    setupFiles: ["./vitest.setup.ts"],
     include: [
       "src/**/*.{test,spec}.{ts,tsx}",
       "__tests__/**/*.{test,spec}.{ts,tsx}",
