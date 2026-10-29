@@ -267,10 +267,15 @@ export async function updateSession(request: NextRequest) {
         );
       }
 
+      const onTeamSettings =
+        pathname === "/dashboard/settings" ||
+        pathname.startsWith("/dashboard/settings/");
+
       if (
         role === "candidate" &&
         !setupComplete &&
         !onCandidateSetup &&
+        !onTeamSettings &&
         !isLogin &&
         (isProtectedRoute || isHome)
       ) {

@@ -15,7 +15,7 @@ export const config = {
     /*
      * Auth/session refresh runs only on protected app paths.
      * Skip:
-     * - `/` and marketing/legal pages (login, pricing, privacy, terms, audit)
+     * - `/` and marketing/legal pages (login, pricing, privacy, terms, audit, firewall)
      * - _next/static, _next/image, favicon, and common static extensions
      * - public /api routes (those handlers authenticate themselves)
      * - /auth/callback (OAuth code exchange owns the session cookies)
@@ -23,7 +23,7 @@ export const config = {
      * /api/intros and other listed APIs still refresh the session.
      * Unsigned app-shell routes redirect to /. Matched /api routes never HTML-redirect.
      */
-    "/((?!_next/static|_next/image|favicon.ico|api|auth/callback|login(?:/|$)|signup(?:/|$)|privacy(?:/|$)|terms(?:/|$)|pricing(?:/|$)|update-password(?:/|$)|verify-email(?:/|$)|audit(?:/|$)|p(?:/|$)|robots\\.txt|sitemap\\.xml|$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api|auth/callback|login(?:/|$)|signup(?:/|$)|privacy(?:/|$)|terms(?:/|$)|pricing(?:/|$)|update-password(?:/|$)|verify-email(?:/|$)|audit(?:/|$)|firewall(?:/|$)|p(?:/|$)|robots\\.txt|sitemap\\.xml|$).*)",
     "/api/intros/:path*",
     "/api/profile/:path*",
     "/api/talent-pool/:path*",

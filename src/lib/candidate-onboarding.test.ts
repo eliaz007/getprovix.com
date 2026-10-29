@@ -28,10 +28,10 @@ describe("candidate onboarding setup gate", () => {
     );
   });
 
-  it("builds the post-setup auditor redirect with featured repo", () => {
+  it("builds the post-setup firewall redirect with featured repo", () => {
     expect(buildAuditorSetupPath("https://github.com/ada/engine")).toBe(
-      "/dashboard/auditor?github=https%3A%2F%2Fgithub.com%2Fada%2Fengine"
+      "/firewall?repo=ada%2Fengine"
     );
-    expect(buildAuditorSetupPath("")).toBe("/dashboard/auditor");
+    expect(buildAuditorSetupPath("")).toBe("/firewall");
   });
 });

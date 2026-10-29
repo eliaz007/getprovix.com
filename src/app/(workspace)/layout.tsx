@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import DashboardShell from "@/components/dashboard/dashboard-shell";
+import { FirewallViewProvider } from "@/components/firewall/firewall-view-context";
 import {
   DashboardContentGate,
   DashboardNavProvider,
@@ -51,9 +52,11 @@ export default function WorkspaceLayout({
 }) {
   return (
     <DashboardNavProvider>
-      <DashboardShell>
-        <DashboardRouteReady>{children}</DashboardRouteReady>
-      </DashboardShell>
+      <FirewallViewProvider>
+        <DashboardShell>
+          <DashboardRouteReady>{children}</DashboardRouteReady>
+        </DashboardShell>
+      </FirewallViewProvider>
     </DashboardNavProvider>
   );
 }

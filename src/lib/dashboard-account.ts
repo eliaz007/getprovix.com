@@ -182,13 +182,34 @@ const PUBLIC_PREFIXES = [
 const STATIC_ASSET_PATH =
   /^\/(?:_next\/(?:static|image)(?:\/|$)|favicon\.ico$)|\/[^/]+\.(?:avif|css|gif|ico|jpeg|jpg|js|map|png|svg|txt|webp|woff2?|xml)$/i;
 
-/** Marketing, legal, auth, and the standalone public audit. Not the app shell. */
+const RETIRED_MARKETPLACE_PATHS = [
+  "/dashboard/auditor",
+  "/dashboard/interview-prep",
+  "/dashboard/interview-simulator",
+  "/dashboard/resume-auditor",
+  "/dashboard/pitch-studio",
+  "/dashboard/jobs",
+  "/opportunities",
+] as const;
+
+/** Old roster, hiring, and interview routes. They redirect into the firewall. */
+export function isRetiredMarketplacePath(pathname: string): boolean {
+  return RETIRED_MARKETPLACE_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+}
+
+/** Marketing, legal, auth, the public audit, and the architecture firewall. */
 export function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_EXACT_PATHS.has(pathname)) {
     return true;
   }
 
-  if (pathname === "/audit") {
+  if (pathname === "/audit" || pathname === "/firewall" || pathname.startsWith("/firewall/")) {
+    return true;
+  }
+
+  if (isRetiredMarketplacePath(pathname) || pathname === "/onboarding") {
     return true;
   }
 
@@ -217,4 +238,8 @@ export function isInterviewPrepPath(pathname: string): boolean {
     pathname === "/dashboard/interview-prep" ||
     pathname === "/dashboard/interview-simulator"
   );
+}
+
+export function isFirewallPath(pathname: string): boolean {
+  return pathname === "/firewall" || pathname.startsWith("/firewall/");
 }

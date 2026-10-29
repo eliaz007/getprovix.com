@@ -1,10 +1,11 @@
+import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import { hasUsableGitHubAuditTarget } from "@/lib/validate-github-url";
 
 /** Candidate profile setup form (post role-pick). */
 export const CANDIDATE_SETUP_PATH = "/onboarding";
 
-/** Landing path after setup — Code & Resume Auditor with featured repo ready. */
-export const CANDIDATE_SETUP_COMPLETE_PATH = "/dashboard/auditor";
+/** Landing path after setup — architecture firewall with the repository ready. */
+export const CANDIDATE_SETUP_COMPLETE_PATH = "/firewall";
 
 export const CANDIDATE_ONBOARDING_DRAFT_KEY = "provix_candidate_onboarding_draft";
 
@@ -68,13 +69,13 @@ export function isCandidateSetupPath(pathname: string): boolean {
   return pathname === CANDIDATE_SETUP_PATH;
 }
 
-/** Post-onboarding destination with featured repo prefilled in the auditor. */
+/** Post-onboarding destination with the repository prefilled in the firewall. */
 export function buildAuditorSetupPath(githubUrl: string): string {
   const trimmed = githubUrl.trim();
   if (!trimmed) {
     return CANDIDATE_SETUP_COMPLETE_PATH;
   }
   const params = new URLSearchParams();
-  params.set("github", trimmed);
+  params.set("repo", toGitHubOwnerRepo(trimmed) ?? trimmed);
   return `${CANDIDATE_SETUP_COMPLETE_PATH}?${params.toString()}`;
 }

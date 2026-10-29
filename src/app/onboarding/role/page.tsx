@@ -88,7 +88,8 @@ export default function RoleOnboardingPage() {
         return;
       }
 
-      window.location.assign(role === "employer" ? "/employer" : "/onboarding");
+      router.push("/firewall");
+      router.refresh();
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not save your account type."
@@ -124,8 +125,7 @@ export default function RoleOnboardingPage() {
             How will you use Provix?
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed sm:text-base">
-            Choose once. This decides whether you join as a hiring team or as a
-            builder.
+            Choose a workspace role. Both open the architecture firewall.
           </p>
         </div>
 
@@ -149,19 +149,17 @@ export default function RoleOnboardingPage() {
               <Building2 className="h-5 w-5" aria-hidden="true" />
             </div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-[#c084fc]">
-              For Founders
+              Team
             </p>
             <h2 className="mt-3 text-2xl font-bold tracking-tight text-textMain">
-              Source pre-vetted builders using static code and repository
-              integrity analysis.
+              Run the architecture firewall across team repositories.
             </h2>
             <p className="mt-4 flex-1 text-sm leading-relaxed text-textMuted">
-              Skip resume theater. Open the employer console to screen talent
-              against verified GitHub artifacts and repository integrity
-              signals.
+              Open health metrics, violation logs, and team settings for the
+              codebase you are shipping.
             </p>
             <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-3 text-sm font-bold tracking-tight text-white transition-colors duration-200 group-hover:from-purple-400 group-hover:to-indigo-500">
-              {saving === "employer" ? "Saving..." : "Enter Employer Console"}
+              {saving === "employer" ? "Saving..." : "Open workspace"}
               {saving === "employer" ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : (
@@ -180,19 +178,17 @@ export default function RoleOnboardingPage() {
               <Code2 className="h-5 w-5" aria-hidden="true" />
             </div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-[#22d3ee]">
-              For Developers
+              Builder
             </p>
             <h2 className="mt-3 text-2xl font-bold tracking-tight text-textMain">
-              Run deep audits on your public repos to prove founder-ready
-              credibility.
+              Scan the repositories you maintain.
             </h2>
             <p className="mt-4 flex-1 text-sm leading-relaxed text-textMuted">
-              Publish proof of work, keep your profile current, and show
-              employers what you have actually shipped — not what a resume
-              claims.
+              Check architectural bloat, circular dependencies, and monoliths,
+              then review the firewall log.
             </p>
             <span className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-full bg-cyan-500 px-4 py-3 text-sm font-semibold tracking-tight text-slate-950 transition-colors duration-200 group-hover:bg-cyan-400">
-              {saving === "candidate" ? "Saving..." : "Open Candidate Dashboard"}
+              {saving === "candidate" ? "Saving..." : "Open workspace"}
               {saving === "candidate" ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : (

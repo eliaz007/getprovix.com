@@ -1,4 +1,4 @@
-import type { AuditResult } from "@/app/api/audit/route";
+import type { AuditResult } from "@/lib/audit-result";
 import {
   REPO_NOT_FOUND_OR_PRIVATE,
   UNVERIFIED_OWNERSHIP,

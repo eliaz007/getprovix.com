@@ -8,10 +8,10 @@ import {
 export type AccountKind = "employer" | "candidate";
 
 /** Employer hiring home: vetted talent pipeline, not the candidate profile. */
-export const EMPLOYER_DASHBOARD_PATH = "/dashboard?tab=talent";
+export const EMPLOYER_DASHBOARD_PATH = "/firewall";
 
 /** Candidate dashboard home. */
-export const CANDIDATE_DASHBOARD_PATH = "/dashboard/profile";
+export const CANDIDATE_DASHBOARD_PATH = "/firewall";
 
 /** Post-auth role picker for GitHub/Google users whose profiles.role is unset. */
 export const ROLE_ONBOARDING_PATH = "/onboarding/role";

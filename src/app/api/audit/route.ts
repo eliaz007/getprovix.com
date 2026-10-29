@@ -118,6 +118,7 @@ import {
   PRIVATE_AUDITED_REPO_LABEL,
   type DossierVerificationStatus,
 } from "@/lib/production-audit";
+import type { AuditResult } from "@/lib/audit-result";
 import { parseJsonWithSchema } from "@/lib/parse-request-json";
 import { buildPublicProfileUrl } from "@/lib/profile-url";
 
@@ -170,39 +171,7 @@ export type { ProductionAuditMetrics };
 
 export type { AuditMode, EvaluationBreakdown };
 
-export type AuditResult = {
-  score: number;
-  /** Alias of score for the dual-mode evaluation schema. */
-  overallScore: number;
-  auditMode: AuditMode;
-  tier: string;
-  breakdown: EvaluationBreakdown;
-  summary: string;
-  strengths: string[];
-  /** Alias of recommendations for the dual-mode evaluation schema. */
-  improvements: string[];
-  redFlags: string[];
-  recommendations: string[];
-  checks: AuditCheck[];
-  scoreCap: ScoreCapAudit;
-  /** File-tree-derived scorecard: architecture, tests, DevOps, resilience. */
-  metrics: ProductionAuditMetrics;
-  filesystem: RepoFilesystemEvidence | null;
-  commitDates: string[];
-  /** Optional per-commit churn samples used for dump / stub detection. */
-  commitStats?: CommitHistoryStat[];
-  /**
-   * False when the GitHub commit list request failed. History cannot pass
-   * Verified / publish / onboarding gates until a successful fetch.
-   */
-  commitHistoryFetched?: boolean;
-  /** ISO timestamp when this audit run completed (dossier "Audited" label). */
-  auditedAt?: string;
-  inaccessibleRepo?: boolean;
-  /** Rank of this production score among completed audits. Null when the count is unavailable. */
-  benchmark?: CodebaseBenchmark | null;
-  executiveBrief: ExecutiveBrief | null;
-};
+export type { AuditResult };
 
 function buildSystemPrompt(auditMode: AuditMode): string {
   return `You are a brutal, cynical Principal Software Engineer and Technical Recruiter. Your job is to rip apart developer portfolios, GitHub repositories, external project write-ups, and resumes to find real flaws. Strict penalties are required — and every hard deduction must come with a concrete repair plan the candidate can implement.

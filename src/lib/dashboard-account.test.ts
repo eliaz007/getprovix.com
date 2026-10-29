@@ -16,6 +16,12 @@ describe("shouldSkipMiddlewareAuth", () => {
     expect(shouldSkipMiddlewareAuth("/privacy")).toBe(true);
     expect(shouldSkipMiddlewareAuth("/terms")).toBe(true);
     expect(shouldSkipMiddlewareAuth("/audit")).toBe(true);
+    expect(shouldSkipMiddlewareAuth("/firewall")).toBe(true);
+    expect(isPublicRoute("/firewall")).toBe(true);
+    expect(isProtectedAppPath("/firewall")).toBe(false);
+    expect(isPublicRoute("/dashboard/auditor")).toBe(true);
+    expect(isPublicRoute("/opportunities")).toBe(true);
+    expect(isProtectedAppPath("/dashboard/settings")).toBe(true);
     expect(isPublicRoute("/")).toBe(true);
   });
 

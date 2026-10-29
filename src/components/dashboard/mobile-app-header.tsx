@@ -2,10 +2,8 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { DashboardIcons } from "@/components/dashboard/dashboard-icons";
-import { isOpportunitiesPath } from "@/lib/dashboard-account";
 
 export default function MobileAppHeader({
   onOpenMenu,
@@ -24,10 +22,7 @@ export default function MobileAppHeader({
   initials?: string;
   trailing?: ReactNode;
 }) {
-  const pathname = usePathname();
-  const signInLabel = isOpportunitiesPath(pathname)
-    ? "Sign in to get matched"
-    : "Sign In";
+  const signInLabel = "Sign in";
 
   return (
     <header className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.08] bg-[#0E0E12] px-4 py-3 print:hidden md:hidden">
@@ -40,7 +35,7 @@ export default function MobileAppHeader({
         >
           <DashboardIcons.Menu />
         </button>
-        <Link href="/" className="min-w-0 transition-opacity hover:opacity-90">
+        <Link href="/firewall" className="min-w-0 transition-opacity hover:opacity-90">
           <ProvixLogo />
         </Link>
       </div>
@@ -56,8 +51,8 @@ export default function MobileAppHeader({
           </button>
         ) : (
           <Link
-            href="/dashboard"
-            aria-label="Open your profile"
+            href="/dashboard/settings"
+            aria-label="Team settings"
             className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/[0.08] bg-[#131316] text-[11px] font-bold text-zinc-100 transition-colors duration-200 ease-out hover:border-indigo-400"
           >
             {avatarUrl ? (

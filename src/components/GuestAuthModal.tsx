@@ -30,7 +30,7 @@ export default function GuestAuthModal({
       ? nextPath
       : pathname && pathname.startsWith("/") && !pathname.startsWith("//")
         ? pathname
-        : "/dashboard";
+        : "/firewall";
   const loginHref =
     loginHrefProp ?? `/login?next=${encodeURIComponent(resolvedNext)}`;
 
@@ -69,7 +69,7 @@ export default function GuestAuthModal({
         </h2>
         <p className="text-sm text-textMuted mt-2 leading-relaxed">
           {description ??
-            "You can browse roles freely. Sign in to express interest, apply, and use career accelerator tools."}
+            "Sign in to open team settings and return to the architecture firewall."}
         </p>
         <div className="mt-6 flex w-full flex-col gap-3">
           <GitHubSignInButton
