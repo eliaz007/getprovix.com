@@ -34,6 +34,7 @@ import type { AdminAuthState } from "./adminauthstate";
 import type { IntroRequestRow } from "./introrequestrow";
 import type { StatusFilter } from "./statusfilter";
 import type { PipelineTab } from "./pipelinetab";
+import type { JobInterestApplicant } from "./jobinterestapplicant";
 import type { JobInterestRow } from "./jobinterestrow";
 import { PIPELINE_TABS } from "./pipeline-tabs";
 import { STATUS_TABS } from "./status-tabs";
