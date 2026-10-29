@@ -1,4 +1,5 @@
 "use client";
+import { secureQuery184 } from "@/app/actions/secure-query";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -181,12 +182,7 @@ export default function GitHubResumeAuditor({
           setProfileGithubVerified(false);
           return;
         }
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("github_verified")
-          .or(`id.eq.${user.id},user_id.eq.${user.id}`)
-          .limit(1)
-          .maybeSingle();
+        const { data: profile } = await secureQuery184();
         if (!cancelled) {
           setProfileGithubVerified(profile?.github_verified === true);
         }
