@@ -1,4 +1,5 @@
 "use client";
+import { secureQuery412 } from "@/app/actions/secure-query";
 
 import {
   createContext,
@@ -409,11 +410,7 @@ function DashboardNavProviderImpl({
       const profileSelect =
         "role, is_verified, availability_status, open_to_fulltime, open_to_contract, full_name, company_name, github_verified, github_username, verification_status, production_score, audit_score, audit_breakdown, is_visible_in_pool";
       console.time("dashboard-layout:profile-fetch");
-      const byId = await supabase
-        .from("profiles")
-        .select(profileSelect)
-        .eq("id", user.id)
-        .maybeSingle();
+      const byId = await secureQuery412(profileSelect);
       console.timeEnd("dashboard-layout:profile-fetch");
 
       profile = byId.data;
