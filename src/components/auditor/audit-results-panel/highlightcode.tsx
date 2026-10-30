@@ -1,0 +1,1491 @@
+"use client";
+import {
+  Component,
+  useEffect,
+  useMemo,
+  useState,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  Copy,
+  FileDown,
+  Lock,
+  RefreshCw,
+  ShieldCheck,
+  X,
+} from "lucide-react";
+import type { AuditResult } from "@/app/api/audit/route";
+import AuditChecksList from "@/components/auditor/audit-checks-list";
+import CopyShareLinkButton from "@/components/auditor/copy-share-link-button";
+import TechnicalEvaluationMemo from "@/components/auditor/technical-evaluation-memo";
+import ProductionScorecard from "@/components/auditor/production-scorecard";
+import GitProvenanceBar from "@/components/auditor/git-provenance-bar";
+import SubsystemBlastRadiusMatrix from "@/components/auditor/subsystem-blast-radius-matrix";
+import HiringInterviewBattlePlan from "@/components/auditor/hiring-interview-battle-plan";
+import ScoreCapBreakdown from "@/components/auditor/score-cap-breakdown";
+import ScoreMeter from "@/components/ScoreMeter";
+import {
+  buildGitProvenance,
+  buildHiringBattlePlanProbes,
+  buildPillarSubLogs,
+  buildSubsystemBlastRadius,
+} from "@/lib/forensic-dossier";
+import {
+  buildExecutiveChecklist,
+  CODE_HEALTH_VERIFIED_THRESHOLD,
+  DELIVERY_HYGIENE_VERIFIED_THRESHOLD,
+  getReadinessBadge,
+  HISTORY_BLOCKS_QUALIFY_NOTE,
+  isHistoryGateMet,
+  isProductionReadyAudit,
+  PRODUCTION_READY_VERIFIED,
+  resolveDisplayedReadinessScore,
+  type ChecklistTone,
+  type ExecutiveChecklistItem,
+} from "@/lib/audit-readiness";
+import { formatCommitHistoryReason } from "@/lib/commit-history-score";
+import { isEmployerRole } from "@/lib/dashboard-account";
+import {
+  emptyProductionAuditMetrics,
+  resolveCodeHealthScore,
+  resolveDeliveryHygieneScore,
+  resolveProductionAuditMetrics,
+  type ProductionAuditMetrics,
+} from "@/lib/production-audit-metrics";
+import { isFilesystemCapRedFlag } from "@/lib/repo-filesystem";
+import { clampScore0to100 } from "@/lib/score-scale";
+import { PUBLIC_SCORECARD_THRESHOLD } from "./public-scorecard-threshold";
+import { ROLE_SPEC_DEFAULT } from "./role-spec-default";
+import { FAIL_BADGE_CLASS } from "./fail-badge-class";
+import { PASS_BADGE_CLASS } from "./pass-badge-class";
+import { getRampUpStatus } from "./getrampupstatus";
+import type { ScreenPrompt } from "./screenprompt";
+import { CI_SCREEN_PROMPT } from "./ci-screen-prompt";
+import { TESTS_SCREEN_PROMPT } from "./tests-screen-prompt";
+import type { RemediationDrawer } from "./remediationdrawer";
+import type { RemediationItem } from "./remediationitem";
+import type { ActionableFix } from "./actionablefix";
+import { SECTION_LABEL } from "./section-label";
+import { TONE_PILL } from "./tone-pill";
+import { TONE_STYLES } from "./tone-styles";
+import { remediationTitle } from "./remediationtitle";
+import { formatLocaleDateLabel } from "./formatlocaledatelabel";
+import { formatAuditDateLabel } from "./formatauditdatelabel";
+import { ChecklistIcon } from "./checklisticon";
+import { ProofPathList } from "./proofpathlist";
+import { buildRemediationItems } from "./buildremediationitems";
+import { buildActionableFixes } from "./buildactionablefixes";
+
+export function highlightCode(
+  content: string,
+  language: "yaml" | "typescript"
+): ReactNode[] {
+  const lines = content.replace(/\n$/, "").split("\n");
+
+  return lines.map((line: (typeof lines)[number], index: number) => {
+    const nodes: ReactNode[] = [];
+    const remaining = line;
+
+    const pushPlain = (text: string) => {
+      if (text) {
+        nodes.push(
+          <span key={`${index}-plain-${nodes.length}`} className="text-zinc-300">
+            {text}
+          </span>
+        );
+      }
+    };
+
+    if (language === "yaml") {
+      const commentMatch = remaining.match(/^(\s*)(#.*)$/);
+      if (commentMatch) {
+        nodes.push(
+          <span key={`${index}-c`} className="text-zinc-500">
+            {commentMatch[1]}
+            {commentMatch[2]}
+          </span>
+        );
+      } else {
+        const keyMatch = remaining.match(/^(\s*)([A-Za-z0-9_-]+)(:)(.*)$/);
+        if (keyMatch) {
+          nodes.push(
+            <span key={`${index}-i`} className="text-zinc-600">
+              {keyMatch[1]}
+            </span>,
+            <span key={`${index}-k`} className="text-sky-300">
+              {keyMatch[2]}
+            </span>,
+            <span key={`${index}-colon`} className="text-zinc-500">
+              {keyMatch[3]}
+            </span>
+          );
+          const value = keyMatch[4];
+          if (/^\s*\d+\s*$/.test(value)) {
+            nodes.push(
+              <span key={`${index}-n`} className="text-violet-300">
+                {value}
+              </span>
+            );
+          } else if (/^\s*\[/.test(value)) {
+            nodes.push(
+              <span key={`${index}-a`} className="text-emerald-300">
+                {value}
+              </span>
+            );
+          } else {
+            nodes.push(
+              <span key={`${index}-v`} className="text-zinc-200">
+                {value}
+              </span>
+            );
+          }
+        } else if (/^\s*-\s/.test(remaining)) {
+          const dashMatch = remaining.match(/^(\s*-\s)(.*)$/);
+          nodes.push(
+            <span key={`${index}-d`} className="text-indigo-300">
+              {dashMatch?.[1]}
+            </span>,
+            <span key={`${index}-dv`} className="text-zinc-200">
+              {dashMatch?.[2]}
+            </span>
+          );
+        } else {
+          pushPlain(remaining);
+        }
+      }
+    } else {
+      const commentMatch = remaining.match(/^(\s*)(\/\/.*)$/);
+      if (commentMatch) {
+        nodes.push(
+          <span key={`${index}-c`} className="text-zinc-500">
+            {commentMatch[1]}
+            {commentMatch[2]}
+          </span>
+        );
+      } else {
+        const parts = remaining.split(
+          /(\b(?:import|from|describe|it|expect|const|let|var|function|return|true|false|null|undefined)\b|'[^']*'|"[^"]*"|`[^`]*`)/g
+        );
+        parts.forEach((part: (typeof parts)[number], partIndex: number) => {
+          if (!part) return;
+          if (
+            /^(import|from|describe|it|expect|const|let|var|function|return)$/.test(
+              part
+            )
+          ) {
+            nodes.push(
+              <span key={`${index}-kw-${partIndex}`} className="text-violet-300">
+                {part}
+              </span>
+            );
+          } else if (/^(true|false|null|undefined)$/.test(part)) {
+            nodes.push(
+              <span key={`${index}-lit-${partIndex}`} className="text-violet-300">
+                {part}
+              </span>
+            );
+          } else if (/^['"`]/.test(part)) {
+            nodes.push(
+              <span key={`${index}-str-${partIndex}`} className="text-emerald-300">
+                {part}
+              </span>
+            );
+          } else {
+            nodes.push(
+              <span key={`${index}-tx-${partIndex}`} className="text-zinc-300">
+                {part}
+              </span>
+            );
+          }
+        });
+      }
+    }
+
+    return (
+      <span key={`line-${index}`} className="block">
+        {nodes.length > 0 ? nodes : "\u00A0"}
+      </span>
+    );
+  });
+}
+
+function CopyCodeButton({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void onCopy()}
+      className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-200 transition-colors hover:bg-zinc-800 cursor-pointer"
+    >
+      {copied ? (
+        <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+      ) : (
+        <Copy className="h-3.5 w-3.5 text-zinc-400" aria-hidden />
+      )}
+      {copied ? "Copied" : "Copy Code"}
+    </button>
+  );
+}
+
+function CodeSnippet({
+  filePath,
+  directions,
+  language,
+  content,
+}: RemediationDrawer) {
+  return (
+    <div className="space-y-3 border-t border-indigo-500/20 px-3 py-3">
+      <div>
+        <p className="font-mono text-[11px] text-indigo-300 truncate">{filePath}</p>
+        <p className="mt-1.5 text-xs text-zinc-400 leading-relaxed">{directions}</p>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-zinc-800 bg-black/70">
+        <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+            {language}
+          </span>
+          <CopyCodeButton content={content} />
+        </div>
+        <pre
+          className="overflow-x-auto p-3 text-[11px] leading-relaxed font-mono"
+          tabIndex={0}
+          aria-label={`${filePath} template`}
+        >
+          <code>{highlightCode(content, language)}</code>
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({
+  pass,
+  children,
+  animateKey,
+}: {
+  pass: boolean;
+  children: ReactNode;
+  animateKey?: string | number;
+}) {
+  const [pulse, setPulse] = useState(false);
+
+  useEffect(() => {
+    if (animateKey === undefined) {
+      return;
+    }
+    setPulse(true);
+    const timer = window.setTimeout(() => setPulse(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [animateKey]);
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 uppercase tracking-wide transition-all duration-300 ease-out ${
+        pass ? PASS_BADGE_CLASS : FAIL_BADGE_CLASS
+      } ${pulse ? "scale-105 shadow-md shadow-current/20" : "scale-100"}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function RemediationSimulator({
+  score,
+  items,
+}: {
+  score: number;
+  items: RemediationItem[];
+}) {
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const projected = useMemo(() => {
+    const bonus = items.reduce(
+      (sum, item) => (checked[item.id] ? sum + item.points : sum),
+      0
+    );
+    return clampScore0to100(score + bonus);
+  }, [checked, items, score]);
+
+  const qualifies = projected >= PUBLIC_SCORECARD_THRESHOLD;
+  const alreadyCleared = score >= PUBLIC_SCORECARD_THRESHOLD;
+
+  if (alreadyCleared || items.length === 0) {
+    return (
+      <section className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
+          <p className="text-sm font-medium text-emerald-300">
+            All Core Production Artifacts Verified
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 sm:p-6 backdrop-blur-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className={`${SECTION_LABEL} mb-1`}>Remediation Simulator</div>
+          <h3 className="text-sm font-bold tracking-tight text-zinc-100">
+            Path to Talent Network Qualification
+          </h3>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+            Simulate targeted fixes to reach the {PUBLIC_SCORECARD_THRESHOLD}+
+            network threshold. Select items below to inspect remediation steps.
+          </p>
+        </div>
+        <div className="shrink-0 space-y-1.5 sm:text-right">
+          <div className={SECTION_LABEL}>Projected Score</div>
+          <div
+            className="flex flex-wrap items-baseline gap-1 sm:justify-end"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            <span
+              className={`font-mono text-4xl font-black tabular-nums tracking-tight transition-colors duration-300 ${
+                qualifies ? "text-emerald-400" : "text-white"
+              }`}
+            >
+              {projected}
+            </span>
+            <span className="text-base font-semibold text-zinc-500">/100</span>
+          </div>
+          {projected !== score ? (
+            <p className="font-mono text-xs tabular-nums text-zinc-500 sm:text-right">
+              from {score}
+            </p>
+          ) : null}
+          <StatusBadge pass={qualifies} animateKey={projected}>
+            {qualifies ? (
+              <>
+                <ShieldCheck className="h-3 w-3" aria-hidden />
+                Qualifies
+              </>
+            ) : (
+              <>
+                <Lock className="h-3 w-3" aria-hidden />
+                Below {PUBLIC_SCORECARD_THRESHOLD}
+              </>
+            )}
+          </StatusBadge>
+        </div>
+      </div>
+
+      <ul className="space-y-2">
+        {items.map((item: (typeof items)[number]) => {
+          const isOn = Boolean(checked[item.id]);
+          const isOpen = Boolean(expanded[item.id]);
+          const hasDrawer = Boolean(item.drawer);
+          const title = remediationTitle(item.label);
+
+          return (
+            <li
+              key={item.id}
+              className="overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-900/60 transition hover:bg-zinc-900/80"
+            >
+              <div className="flex items-center justify-between gap-3 p-3.5">
+                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={isOn}
+                    onChange={(event) =>
+                      setChecked((prev) => ({
+                        ...prev,
+                        [item.id]: event.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 cursor-pointer rounded border-zinc-600 bg-zinc-950 text-emerald-500 focus:ring-0"
+                  />
+                  <span className="min-w-0 flex-1 text-sm font-medium leading-snug text-zinc-200">
+                    {title}
+                  </span>
+                </label>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs font-medium text-emerald-400">
+                    +{item.points} pts
+                  </span>
+                  {hasDrawer ? (
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-label={
+                        isOpen
+                          ? `Collapse ${title} template`
+                          : `Expand ${title} template`
+                      }
+                      onClick={() =>
+                        setExpanded((prev) => ({
+                          ...prev,
+                          [item.id]: !prev[item.id],
+                        }))
+                      }
+                      className="inline-flex cursor-pointer items-center justify-center text-zinc-500 transition-colors hover:text-zinc-200"
+                    >
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform duration-200 ${
+                          isOpen ? "rotate-180" : ""
+                        }`}
+                        aria-hidden
+                      />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {hasDrawer && isOpen && item.drawer ? (
+                <CodeSnippet {...item.drawer} />
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function buildScreenPrompts(result: AuditResult): ScreenPrompt[] {
+  try {
+    const artifacts = result?.scoreCap?.coreArtifacts ?? {
+      ci: (result?.filesystem?.ci_workflow_paths?.length ?? 0) > 0,
+      tests: (result?.filesystem?.test_paths?.length ?? 0) > 0,
+    };
+
+    const prompts: ScreenPrompt[] = [];
+    if (!artifacts.ci) {
+      prompts.push(CI_SCREEN_PROMPT);
+    }
+    if (!artifacts.tests) {
+      prompts.push(TESTS_SCREEN_PROMPT);
+    }
+    return prompts;
+  } catch {
+    return [];
+  }
+}
+
+function formatInterviewBriefMarkdown(input: {
+  repoName: string;
+  score: number;
+  badgeLabel: string;
+  prompts: ScreenPrompt[];
+  redFlags: string[];
+}): string {
+  const rampUp = getRampUpStatus(input.score);
+  const lines = [
+    `# Technical Interview Brief`,
+    ``,
+    `**Repository:** ${input.repoName}`,
+    `**Code Health:** ${input.score}/100`,
+    `**Verification:** ${input.badgeLabel}`,
+    `**Ramp-Up:** ${rampUp.briefLabel}`,
+    ``,
+  ];
+
+  if (input.redFlags.length > 0) {
+    lines.push(`## Detected Flags`, ``);
+    for (const flag of input.redFlags) {
+      lines.push(`- ${flag}`);
+    }
+    lines.push(``);
+  }
+
+  if (input.prompts.length === 0) {
+    lines.push(
+      `## Screen Prompts`,
+      ``,
+      `_No CI/CD or test-suite deficits detected. Use architecture deep-dives instead._`,
+      ``
+    );
+  } else {
+    lines.push(`## Screen Prompts`, ``);
+    for (const prompt of input.prompts) {
+      lines.push(
+        `### ${prompt.label} (${prompt.flagLabel} ${prompt.deduction})`,
+        ``,
+        `**Question:** ${prompt.question}`,
+        ``,
+        `**What to listen for:** ${prompt.listenFor}`,
+        ``
+      );
+    }
+  }
+
+  return lines.join("\n").trim() + "\n";
+}
+
+function CopyPromptButton({
+  question,
+  listenFor,
+}: {
+  question: string;
+  listenFor: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    const payload = `Question: ${question}\n\nWhat to Listen For: ${listenFor}`;
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void onCopy()}
+      className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-200 transition-colors hover:bg-zinc-800 cursor-pointer"
+    >
+      {copied ? (
+        <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
+      ) : (
+        <Copy className="h-3.5 w-3.5 text-zinc-400" aria-hidden />
+      )}
+      {copied ? "Copied" : "Copy Question & Rubric"}
+    </button>
+  );
+}
+
+function TechnicalScreenGenerator({
+  prompts,
+  score,
+}: {
+  prompts: ScreenPrompt[];
+  score: number;
+}) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const rampUp = getRampUpStatus(score);
+
+  return (
+    <section className="rounded-2xl border border-indigo-500/30 bg-zinc-900/80 p-4 sm:p-5 shadow-lg shadow-indigo-500/5 space-y-4">
+      <div className="mb-4 w-full">
+        <div className="flex w-full items-center justify-between gap-4">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+            Technical Screen Generator
+          </h3>
+          <span
+            className={`inline-flex max-w-[min(100%,22rem)] shrink-0 items-center rounded border px-2.5 py-1 text-right text-[11px] font-mono font-medium ${rampUp.className}`}
+          >
+            {rampUp.label}
+          </span>
+        </div>
+        <p className="mt-1.5 text-xs text-zinc-400 leading-relaxed">
+          Targeted technical interview questions and grading rubrics generated
+          directly from repository architectural deficits.
+        </p>
+      </div>
+
+      {prompts.length === 0 ? (
+        <p className="text-sm text-zinc-400 leading-relaxed">
+          No CI/CD or test-suite deficits flagged. Core production artifacts look
+          present — pivot the screen to architecture ownership and production
+          incident stories.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {prompts.map((prompt: (typeof prompts)[number]) => {
+            const isOpen = Boolean(expanded[prompt.id]);
+            return (
+              <li
+                key={prompt.id}
+                className="rounded-xl border border-zinc-800 bg-zinc-950/80 overflow-hidden"
+              >
+                <button
+                  type="button"
+                  aria-expanded={isOpen}
+                  onClick={() =>
+                    setExpanded((prev) => ({
+                      ...prev,
+                      [prompt.id]: !prev[prompt.id],
+                    }))
+                  }
+                  className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-zinc-900/60"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-zinc-100 leading-snug">
+                      {prompt.label}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[11px] text-rose-400">
+                      {prompt.flagLabel} {prompt.deduction}
+                    </p>
+                  </div>
+                  <ChevronDown
+                    className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform duration-200 ${
+                      isOpen ? "rotate-180" : ""
+                    }`}
+                    aria-hidden
+                  />
+                </button>
+                {isOpen ? (
+                  <div className="space-y-3 border-t border-indigo-500/20 px-3 py-3">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 mb-1">
+                        Question
+                      </p>
+                      <p className="text-sm text-zinc-200 leading-relaxed">
+                        {prompt.question}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 mb-1">
+                        What to Listen For
+                      </p>
+                      <p className="text-sm text-zinc-400 leading-relaxed">
+                        {prompt.listenFor}
+                      </p>
+                    </div>
+                    <CopyPromptButton
+                      question={prompt.question}
+                      listenFor={prompt.listenFor}
+                    />
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function CandidateActionToolbar({
+  onRescan,
+  rescanning,
+}: {
+  onRescan?: () => void;
+  rescanning: boolean;
+}) {
+  if (!onRescan) {
+    return null;
+  }
+
+  return (
+    <div className="pt-1">
+      <button
+        type="button"
+        onClick={onRescan}
+        disabled={rescanning}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-brand/30 bg-brand py-3.5 px-6 text-sm font-semibold text-white transition-colors hover:bg-brandHover disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+      >
+        <RefreshCw
+          className={`h-4 w-4 ${rescanning ? "animate-spin" : ""}`}
+          aria-hidden
+        />
+        {rescanning
+          ? "Re-scanning repository…"
+          : "Commit Changes & Re-Scan Repository"}
+      </button>
+    </div>
+  );
+}
+
+function EmployerActionToolbar({
+  briefMarkdown,
+}: {
+  briefMarkdown: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopyBrief = async () => {
+    try {
+      await navigator.clipboard.writeText(briefMarkdown);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="pt-1">
+      <button
+        type="button"
+        onClick={() => void onCopyBrief()}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-600 py-3.5 px-6 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 cursor-pointer"
+      >
+        {copied ? (
+          <Check className="h-4 w-4 text-emerald-200" aria-hidden />
+        ) : (
+          <Copy className="h-4 w-4" aria-hidden />
+        )}
+        {copied ? "Copied to clipboard!" : "Copy Complete Interview Brief"}
+      </button>
+    </div>
+  );
+}
+
+function ActionableFixDrawer({ fix }: { fix: ActionableFix }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <li className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+      <div className="px-3 py-3 sm:px-4 space-y-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-zinc-100 leading-snug">
+              {fix.title}
+            </p>
+            <p className="mt-1 text-xs text-zinc-500 leading-relaxed">
+              {fix.summary}
+            </p>
+          </div>
+          {fix.deductionLabel ? (
+            <span className={FAIL_BADGE_CLASS}>{fix.deductionLabel}</span>
+          ) : null}
+        </div>
+
+        {fix.template ? (
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 overflow-hidden">
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => setOpen((prev) => !prev)}
+              className="flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-2 text-left text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-900"
+            >
+              <span>View Template · {fix.template.filename}</span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform duration-200 ${
+                  open ? "rotate-180" : ""
+                }`}
+                aria-hidden
+              />
+            </button>
+            {open ? (
+              <CodeSnippet
+                filePath={fix.template.filename}
+                directions={
+                  fix.template.directions ??
+                  "Copy this boilerplate into your repository, commit, then re-scan."
+                }
+                language={fix.template.language}
+                content={fix.template.content}
+              />
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+type AuditResultsPanelProps = {
+  result: AuditResult;
+  repoName?: string;
+  repoUrl?: string;
+  roleSpec?: string;
+  /** Account role (`employer` / `business`) or force employer dossier UI. */
+  viewerRole?: string | null;
+  isEmployerView?: boolean;
+  onRescan?: () => void;
+  rescanning?: boolean;
+  /** Public share page: scorecard only, no rescan or remediation inputs. */
+  readOnly?: boolean;
+  /** Saved audit id. The button copies `${window.location.origin}/audit/[id]`. */
+  shareId?: string | null;
+};
+
+function dualScoreTone(score: number, passAt: number): string {
+  if (score >= passAt) {
+    return "text-emerald-400";
+  }
+  if (score >= passAt - 15) {
+    return "text-amber-300";
+  }
+  return "text-rose-400";
+}
+
+function safeDeriveAuditView(result: AuditResult): {
+  score: number;
+  codeHealthScore: number;
+  deliveryHygieneScore: number;
+  historyAvailable: boolean;
+  historyReason: string;
+  historyVerifiedNote: string | null;
+  badge: ReturnType<typeof getReadinessBadge>;
+  checklist: ExecutiveChecklistItem[];
+  visibleRedFlags: string[];
+  metrics: ProductionAuditMetrics;
+  remediationItems: RemediationItem[];
+  actionableFixes: ActionableFix[];
+} {
+  try {
+    const filesystem = result?.filesystem ?? null;
+    const metrics = resolveProductionAuditMetrics({
+      metrics: result?.metrics,
+      filesystem,
+      auditMode: result?.auditMode,
+      history: {
+        commitDates: result?.commitDates ?? null,
+        commitStats: result?.commitStats ?? null,
+      },
+    });
+    const codeHealth = resolveCodeHealthScore(metrics);
+    const deliveryHygiene = resolveDeliveryHygieneScore(metrics);
+    const historyAvailable =
+      result?.commitHistoryFetched === false
+        ? false
+        : result?.commitHistoryFetched === true
+          ? true
+          : Boolean(
+              (result?.commitDates?.length ?? 0) > 0 ||
+                (result?.commitStats?.length ?? 0) > 0
+            );
+    const historyReason =
+      historyAvailable === false
+        ? "History unavailable"
+        : formatCommitHistoryReason(
+            result?.commitDates ?? null,
+            result?.commitStats ?? null
+          );
+    const historyBlocksVerified = !isHistoryGateMet({
+      deliveryHygieneScore: deliveryHygiene,
+      historyAvailable,
+    });
+    const historyVerifiedNote = historyBlocksVerified
+      ? historyAvailable === false
+        ? `${HISTORY_BLOCKS_QUALIFY_NOTE} Commit history could not be fetched.`
+        : `History blocks Provix Verified: ${historyReason} (History ${deliveryHygiene}/100; need ${DELIVERY_HYGIENE_VERIFIED_THRESHOLD}+).`
+      : null;
+    const score = resolveDisplayedReadinessScore({
+      score: result?.score ?? 0,
+      productionScore: codeHealth,
+      filesystem,
+      scoreCap: result?.scoreCap,
+      commitDates: result?.commitDates,
+    });
+    return {
+      score,
+      codeHealthScore: codeHealth,
+      deliveryHygieneScore: deliveryHygiene,
+      historyAvailable,
+      historyReason,
+      historyVerifiedNote,
+      badge: getReadinessBadge(codeHealth, deliveryHygiene, historyAvailable),
+      checklist: buildExecutiveChecklist({
+        scoreCap: result?.scoreCap,
+        filesystem,
+        commitDates: result?.commitDates ?? [],
+        commitStats: result?.commitStats ?? null,
+        commitHistoryPenalty: metrics.commitHistoryPenalty,
+        deliveryHygieneScore: deliveryHygiene,
+        historyAvailable,
+        testingScore: metrics.testing,
+      }),
+      visibleRedFlags: (result?.redFlags ?? []).filter(
+        (item) => !result?.scoreCap?.applied || !isFilesystemCapRedFlag(item)
+      ),
+      metrics,
+      remediationItems: buildRemediationItems(result),
+      actionableFixes: buildActionableFixes(result),
+    };
+  } catch (error) {
+    console.error("Executive dossier derive failed:", error);
+    const score = clampScore0to100(result?.score ?? 0);
+    return {
+      score,
+      codeHealthScore: score,
+      deliveryHygieneScore: 100,
+      historyAvailable: false,
+      historyReason: "History unavailable",
+      historyVerifiedNote: HISTORY_BLOCKS_QUALIFY_NOTE,
+      badge: getReadinessBadge(score, null, false),
+      checklist: [],
+      visibleRedFlags: [],
+      metrics: emptyProductionAuditMetrics(),
+      remediationItems: [],
+      actionableFixes: [],
+    };
+  }
+}
+
+function AuditResultsFallback({
+  score,
+  message,
+}: {
+  score: number;
+  message: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-4 sm:p-5 space-y-3">
+      <div className="text-[10px] uppercase font-bold tracking-wider text-violet-400">
+        Executive Dossier Unavailable
+      </div>
+      <p className="text-sm text-zinc-300 leading-relaxed">{message}</p>
+      <p className="font-mono text-3xl font-black tabular-nums text-zinc-50">
+        {clampScore0to100(score)}
+        <span className="text-sm font-semibold text-zinc-500">/100</span>
+      </p>
+    </div>
+  );
+}
+
+class AuditResultsErrorBoundary extends Component<
+  { children: ReactNode; fallbackScore: number },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Executive dossier render crashed:", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <AuditResultsFallback
+          score={this.props.fallbackScore}
+          message="A parsing or render error blocked the dossier. Navigation to other AI tools remains available — re-run the audit to retry this view."
+        />
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function ExportDossierButton() {
+  return (
+    <button
+      type="button"
+      onClick={() => window.print()}
+      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand/70 bg-brand/20 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:border-brand hover:bg-brand/40 print:hidden"
+    >
+      <FileDown className="h-3.5 w-3.5" aria-hidden />
+      Export Dossier (PDF)
+    </button>
+  );
+}
+
+function AuditResultsPanelView({
+  result,
+  repoName,
+  roleSpec = ROLE_SPEC_DEFAULT,
+  viewerRole = null,
+  isEmployerView = false,
+  onRescan,
+  rescanning = false,
+  readOnly = false,
+  shareId = null,
+}: AuditResultsPanelProps) {
+  const derived = safeDeriveAuditView(result);
+  const {
+    score,
+    codeHealthScore,
+    deliveryHygieneScore,
+    historyAvailable,
+    historyReason,
+    historyVerifiedNote,
+    badge,
+    checklist,
+    visibleRedFlags,
+    metrics,
+    remediationItems,
+    actionableFixes,
+  } = derived;
+  const filesystem = result?.filesystem ?? null;
+  const displayRepo = repoName?.trim() || "Audited repository";
+  const lastCommitLabel = formatAuditDateLabel(result?.commitDates);
+  const auditedAtMs = result?.auditedAt
+    ? Date.parse(result.auditedAt)
+    : Number.NaN;
+  const auditedLabel = Number.isFinite(auditedAtMs)
+    ? formatLocaleDateLabel(auditedAtMs)
+    : "Unknown";
+  const isRestricted = codeHealthScore < PUBLIC_SCORECARD_THRESHOLD;
+  const employerView = isEmployerView || isEmployerRole(viewerRole);
+  const screenPrompts = useMemo(
+    () => (employerView ? buildScreenPrompts(result) : []),
+    [employerView, result]
+  );
+  const briefMarkdown = useMemo(
+    () =>
+      formatInterviewBriefMarkdown({
+        repoName: displayRepo,
+        score,
+        badgeLabel: badge.label,
+        prompts: screenPrompts,
+        redFlags: visibleRedFlags,
+      }),
+    [badge.label, displayRepo, score, screenPrompts, visibleRedFlags]
+  );
+  const provenance = useMemo(
+    () => buildGitProvenance(filesystem),
+    [filesystem]
+  );
+  const pillarSubLogs = useMemo(
+    () => buildPillarSubLogs({ metrics, filesystem }),
+    [metrics, filesystem]
+  );
+  const blastRows = useMemo(
+    () => buildSubsystemBlastRadius({ metrics, filesystem }),
+    [metrics, filesystem]
+  );
+  const battlePlanProbes = useMemo(
+    () => buildHiringBattlePlanProbes({ metrics, filesystem }),
+    [metrics, filesystem]
+  );
+
+  return (
+    <div className="flex w-full max-w-none flex-col gap-6 print:max-w-none print:gap-0">
+      <TechnicalEvaluationMemo
+        handle={displayRepo}
+        targetStack={roleSpec}
+        verifiedOn={auditedLabel}
+        commitSha={filesystem?.audited_commit_sha ?? null}
+        branch={filesystem?.audited_branch ?? provenance.branch}
+        score={codeHealthScore}
+        verificationBadge={badge.label}
+        benchmark={result.benchmark}
+        metrics={metrics}
+        filesystem={filesystem}
+        checks={result.checks ?? []}
+        redFlags={visibleRedFlags}
+        pillarSubLogs={pillarSubLogs}
+        blastRows={blastRows}
+        battlePlanProbes={battlePlanProbes}
+        provenance={provenance}
+      />
+      <section
+        id="verification-dossier-card"
+        className="space-y-4 break-inside-avoid rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 backdrop-blur-sm print:hidden sm:p-6"
+      >
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-3">
+            <div className={SECTION_LABEL}>Engineering Diligence Dossier</div>
+            <h2 className="truncate text-lg font-extrabold tracking-tight text-zinc-50 sm:text-xl">
+              {displayRepo}
+            </h2>
+            <p className="font-mono text-xs tabular-nums text-zinc-400 sm:text-sm">
+              Last commit {lastCommitLabel} · Audited {auditedLabel} · Target:
+              Code Health {PUBLIC_SCORECARD_THRESHOLD}+ · History{" "}
+              {DELIVERY_HYGIENE_VERIFIED_THRESHOLD}+
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center rounded-md border border-zinc-700/60 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-semibold text-zinc-300">
+                {roleSpec}
+              </span>
+              {result.auditMode ? (
+                <span className="inline-flex items-center rounded-md border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 text-[11px] font-semibold text-violet-300">
+                  {result.auditMode === "fulltime"
+                    ? "Full-Time Work"
+                    : "Contract Work"}
+                </span>
+              ) : null}
+              {result.tier ? (
+                <span className="inline-flex items-center rounded-md border border-cyan-500/25 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-300">
+                  {result.tier}
+                </span>
+              ) : null}
+              {isRestricted ? (
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700/60 bg-zinc-900/80 px-2.5 py-1 text-xs font-medium text-zinc-400">
+                  <Lock className="h-3.5 w-3.5 text-zinc-400" aria-hidden />
+                  Private Audit
+                </span>
+              ) : null}
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${badge.className}`}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                {badge.label}
+              </span>
+              <div className="dossier-actions inline-flex flex-wrap items-center gap-2 print:hidden">
+                {!readOnly && shareId ? (
+                  <CopyShareLinkButton
+                    path={`/audit/${shareId}`}
+                    label="Share Audit"
+                    prominent
+                  />
+                ) : null}
+                <ExportDossierButton />
+              </div>
+            </div>
+          </div>
+          <div className="shrink-0 space-y-3 sm:text-right">
+            <div className="flex flex-wrap items-end gap-6 sm:justify-end">
+              <div>
+                <div className={SECTION_LABEL}>Code Health</div>
+                <div className="flex items-baseline gap-1 sm:justify-end">
+                  <span
+                    className={`dossier-score font-mono text-4xl font-black tabular-nums tracking-tight sm:text-5xl ${dualScoreTone(
+                      codeHealthScore,
+                      CODE_HEALTH_VERIFIED_THRESHOLD
+                    )}`}
+                  >
+                    {codeHealthScore}
+                  </span>
+                  <span className="text-base font-semibold text-zinc-500">
+                    /100
+                  </span>
+                </div>
+              </div>
+              <div>
+                <div className={SECTION_LABEL}>History</div>
+                {historyAvailable ? (
+                  <div className="flex items-baseline gap-1 sm:justify-end">
+                    <span
+                      className={`dossier-score font-mono text-4xl font-black tabular-nums tracking-tight sm:text-5xl ${dualScoreTone(
+                        deliveryHygieneScore,
+                        DELIVERY_HYGIENE_VERIFIED_THRESHOLD
+                      )}`}
+                    >
+                      {deliveryHygieneScore}
+                    </span>
+                    <span className="text-base font-semibold text-zinc-500">
+                      /100
+                    </span>
+                  </div>
+                ) : (
+                  <p className="font-mono text-2xl font-black text-zinc-500 sm:text-3xl">
+                    N/A
+                  </p>
+                )}
+                <p className="mt-1 max-w-[16rem] text-[10px] leading-snug text-zinc-500 sm:ml-auto">
+                  {historyReason}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <GitProvenanceBar provenance={provenance} />
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-zinc-500">
+              <span>Code Health</span>
+              <span className="font-mono tabular-nums">
+                {codeHealthScore}/100
+              </span>
+            </div>
+            <ScoreMeter score={codeHealthScore} className="mt-0" />
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-zinc-500">
+              <span>History</span>
+              <span className="font-mono tabular-nums">
+                {historyAvailable ? `${deliveryHygieneScore}/100` : "N/A"}
+              </span>
+            </div>
+            <ScoreMeter
+              score={historyAvailable ? deliveryHygieneScore : 0}
+              className="mt-0"
+            />
+          </div>
+        </div>
+
+        <ProductionScorecard
+          metrics={metrics}
+          compact={false}
+          benchmark={result.benchmark}
+          executiveBrief={result.executiveBrief}
+          audience={employerView ? "employer" : "candidate"}
+          pillarSubLogs={pillarSubLogs}
+          historyVerifiedNote={historyVerifiedNote}
+          className="break-inside-avoid print:break-inside-avoid print:shadow-none print:backdrop-blur-none"
+        />
+
+        <div className="pt-1">
+          <SubsystemBlastRadiusMatrix rows={blastRows} />
+        </div>
+
+        <details className="group rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2 print:hidden!">
+          <summary className="cursor-pointer list-none text-xs font-medium text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
+            <span className="inline-flex items-center gap-1.5">
+              <ChevronDown
+                className="h-3.5 w-3.5 transition-transform group-open:rotate-180"
+                aria-hidden
+              />
+              Scoring Methodology & AST Rules
+            </span>
+          </summary>
+          <div className="mt-3 space-y-3 text-xs leading-relaxed text-zinc-400">
+            <p>
+              <span className="font-medium text-zinc-300">Code Health</span> is
+              the weighted sum of four filesystem pillars (Architecture,
+              Testing, DevOps, Resilience).{" "}
+              <span className="font-medium text-zinc-300">History</span> is
+              Delivery Hygiene from sampled commit iteration. Provix Verified
+              requires Code Health {CODE_HEALTH_VERIFIED_THRESHOLD}+ and History{" "}
+              {DELIVERY_HYGIENE_VERIFIED_THRESHOLD}+.
+            </p>
+            <ul className="list-disc space-y-2 pl-4">
+              <li>
+                <span className="font-medium text-zinc-300">Architecture (35%).</span>{" "}
+                Path signals only: package manifest, tsconfig or typed source,
+                declaration files, src/app or src/lib structure, workspace
+                tooling, framework config, and a linter. Missing structure
+                lowers the pillar; it does not zero the index.
+              </li>
+              <li>
+                <span className="font-medium text-zinc-300">Testing (25%).</span>{" "}
+                0 when no <span className="font-mono">*.test.*</span> or{" "}
+                <span className="font-mono">*.spec.*</span> file exists in core
+                application or library paths. Test files divided by core source
+                files (excluding <span className="font-mono">examples/</span>,{" "}
+                <span className="font-mono">demo/</span>,{" "}
+                <span className="font-mono">samples/</span>,{" "}
+                <span className="font-mono">tutorials/</span>, and{" "}
+                <span className="font-mono">docs/</span>) under 10% stays at or
+                below 35. 10–30% maps to 65–75. Above 30% with Playwright or
+                Cypress reaches 85–100.
+              </li>
+              <li>
+                <span className="font-medium text-zinc-300">DevOps (20%).</span>{" "}
+                0 when no CI workflow exists. Workflow YAML is read for depth:
+                lint or build only scores 50, a test job scores 80, and a
+                deploy or preview stage scores 95–100.
+              </li>
+              <li>
+                <span className="font-medium text-zinc-300">Resilience (20%).</span>{" "}
+                Starts at 100. A web app with no <span className="font-mono">error.tsx</span>{" "}
+                or ErrorBoundary loses 35. Source samples are scanned for{" "}
+                <span className="font-mono">await</span>, <span className="font-mono">fetch</span>,
+                and axios calls outside a <span className="font-mono">try/catch</span>;
+                each unhandled call deducts 15, capped at 50. Libraries are not
+                required to ship React error boundaries.
+              </li>
+            </ul>
+            <p>
+              Rank copy uses completed rows in production audit history: count
+              scores strictly below this index, then{" "}
+              <span className="font-mono">
+                top % = max(1, round((total − lower) / total × 100))
+              </span>
+              . Fewer than 10 completed audits shows Verified Engineering
+              Benchmark instead of a percentile.
+            </p>
+          </div>
+        </details>
+      </section>
+
+      {readOnly ? null : (
+        <div className="print:hidden">
+          {employerView ? (
+            <TechnicalScreenGenerator prompts={screenPrompts} score={score} />
+          ) : (
+            <RemediationSimulator
+              key={`${score}-${remediationItems.map((item: (typeof remediationItems)[number]) => item.id).join("-")}`}
+              score={score}
+              items={remediationItems}
+            />
+          )}
+        </div>
+      )}
+
+      <section className="rounded-xl border border-zinc-800/80 bg-zinc-950 p-5 backdrop-blur-sm print:hidden sm:p-6">
+        <div className={`${SECTION_LABEL} mb-3`}>Executive Checklist</div>
+        <ul className="space-y-2">
+          {checklist.map((item: (typeof checklist)[number]) => {
+            const tone = TONE_STYLES[item.tone];
+            const rawStatus = item.status?.trim() ?? "";
+            const statusText =
+              !rawStatus || /History\s*\(\s*\)/i.test(rawStatus)
+                ? item.id === "history"
+                  ? "History unavailable"
+                  : "Unavailable"
+                : rawStatus;
+            return (
+              <li
+                key={item.id}
+                className="flex items-center gap-3 rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3.5 py-3"
+              >
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${tone.iconWrap}`}
+                  aria-hidden
+                >
+                  <ChecklistIcon tone={item.tone} />
+                </span>
+                <span className="min-w-0 flex-1 text-sm font-semibold leading-snug text-zinc-100">
+                  {item.label}
+                </span>
+                <span
+                  className={`inline-flex max-w-[55%] shrink-0 truncate rounded-md px-2 py-0.5 text-[11px] font-medium sm:text-xs ${TONE_PILL[item.tone]}`}
+                >
+                  {statusText}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      {!employerView ? (
+        <section className="print:hidden">
+          <div className={`${SECTION_LABEL} mb-3 text-violet-400`}>
+            Actionable Fixes
+          </div>
+          {actionableFixes.length > 0 ? (
+            <ul className="space-y-3">
+              {actionableFixes.map((fix: (typeof actionableFixes)[number]) => (
+                <ActionableFixDrawer key={fix.id} fix={fix} />
+              ))}
+            </ul>
+          ) : (
+            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-3 text-sm text-zinc-300">
+              Core production artifacts are present. No CI/CD or test deductions
+              remain on this dossier.
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      <details className="group rounded-xl border border-zinc-800/80 bg-zinc-950 backdrop-blur-sm print:hidden">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-zinc-100 [&::-webkit-details-marker]:hidden">
+          <span>View Raw Inspection Artifacts &amp; AST Logs</span>
+          <ChevronDown
+            className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180"
+            aria-hidden
+          />
+        </summary>
+        <div className="space-y-5 border-t border-zinc-800 px-4 py-4">
+          <ScoreCapBreakdown
+            scoreCap={result?.scoreCap}
+            score={result?.score}
+            filesystem={filesystem}
+          />
+
+          <AuditChecksList checks={result?.checks ?? []} />
+
+          <div className="space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-900/60 p-3">
+            <div className={`${SECTION_LABEL} text-cyan-300`}>
+              Filesystem paths &amp; AST evidence
+            </div>
+            <ProofPathList
+              title="CI/CD workflow paths"
+              paths={filesystem?.ci_workflow_paths ?? []}
+            />
+            <ProofPathList
+              title="Test suite paths"
+              paths={filesystem?.test_paths ?? []}
+            />
+            <ProofPathList
+              title="Error-handling paths"
+              paths={filesystem?.error_handling_paths ?? []}
+            />
+            <ProofPathList
+              title="Inspected sample paths"
+              paths={filesystem?.sample_paths ?? []}
+            />
+            {(result?.commitDates ?? []).length > 0 ? (
+              <div>
+                <div className={`${SECTION_LABEL} mb-2`}>
+                  Sampled commit timestamps
+                </div>
+                <ul className="space-y-1">
+                  {(result.commitDates ?? []).map((date, index) => (
+                    <li
+                      key={`${date}-${index}`}
+                      className="font-mono text-[11px] text-zinc-500"
+                    >
+                      {date}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+
+          {(result?.strengths ?? []).length > 0 ? (
+            <div>
+              <div className={`${SECTION_LABEL} mb-3 text-emerald-400`}>
+                Verified Strengths
+              </div>
+              <ul className="space-y-2">
+                {(result.strengths ?? []).map((item) => (
+                  <li
+                    key={item}
+                    className="flex items-start gap-2 text-sm leading-relaxed text-zinc-400"
+                  >
+                    <Check
+                      className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400"
+                      aria-hidden
+                    />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {visibleRedFlags.length > 0 ? (
+            <div>
+              <div className={`${SECTION_LABEL} mb-3 text-violet-400`}>
+                Detected Red Flags / Missing Proof-of-Work
+              </div>
+              <ul className="space-y-2">
+                {visibleRedFlags.map((item: (typeof visibleRedFlags)[number]) => (
+                  <li
+                    key={item}
+                    className="flex items-start gap-2 text-sm leading-relaxed text-zinc-400"
+                  >
+                    <AlertTriangle
+                      className="mt-0.5 h-4 w-4 shrink-0 text-violet-400"
+                      aria-hidden
+                    />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {employerView && briefMarkdown ? (
+            <div className="space-y-2">
+              <div className={SECTION_LABEL}>Interview brief</div>
+              <pre className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-zinc-400 whitespace-pre-wrap">
+                {briefMarkdown}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+      </details>
+
+      <div className="print:hidden">
+        <HiringInterviewBattlePlan probes={battlePlanProbes} />
+      </div>
+
+      {readOnly ? null : (
+        <div className="print:hidden">
+          {employerView ? (
+            <EmployerActionToolbar briefMarkdown={briefMarkdown} />
+          ) : (
+            <CandidateActionToolbar onRescan={onRescan} rescanning={rescanning} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function AuditResultsPanel(props: AuditResultsPanelProps) {
+  const fallbackScore = clampScore0to100(props.result?.score ?? 0);
+
+  return (
+    <AuditResultsErrorBoundary fallbackScore={fallbackScore}>
+      <AuditResultsPanelView {...props} />
+    </AuditResultsErrorBoundary>
+  );
+}
