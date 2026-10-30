@@ -14,6 +14,7 @@ import {
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 import { parseGitHubUrl } from "@/lib/validate-github-url";
 import { createClient } from "@/utils/supabase/client";
+import { secureQuery284 } from "@/app/actions/secure-query";
 
 type TrendPoint = {
   id: string;
@@ -281,14 +282,7 @@ async function loadVerifiedRepoUrl(
   fallbackUrl: string
 ): Promise<string> {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from("repo_verifications")
-    .select("repo_url")
-    .eq("user_id", userId)
-    .eq("is_verified", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data, error } = await secureQuery284(userId);
 
   if (error && !isSupabaseSchemaError(error)) {
     console.error("[score-trend] verified repo lookup failed:", error.message);
