@@ -1,4 +1,5 @@
 "use client";
+import { secureQuery95 } from "@/app/actions/secure-query";
 
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -92,13 +93,7 @@ async function destinationAfterAuth(
 
   let setupComplete: boolean | null = null;
   if (role === "candidate") {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select(
-        "full_name, name, first_name, last_name, job_title, headline, bio, skills, experience_level, portfolio_url"
-      )
-      .eq("id", user.id)
-      .maybeSingle();
+    const { data: profile } = await secureQuery95(user);
     setupComplete = hasCompletedCandidateSetup(profile);
   }
 

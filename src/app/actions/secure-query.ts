@@ -18,3 +18,21 @@ export async function secureQuery184() {
           .maybeSingle();
   return { data, error };
 }
+
+export async function secureQuery95(user: string | number | boolean | null) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { data: null, error: { message: "Unauthorized" } };
+  }
+  const { data, error } = await supabase
+      .from("profiles")
+      .select(
+        "full_name, name, first_name, last_name, job_title, headline, bio, skills, experience_level, portfolio_url"
+      )
+      .eq("id", user.id)
+      .maybeSingle();
+  return { data, error };
+}
