@@ -473,7 +473,17 @@ function decodeBlob(content: string, encoding: string): string | null {
 }
 
 export async function createGithubGateClient(owner: string, repo: string): Promise<GithubGateClient> {
+  const appConfigured = Boolean(
+    process.env.GITHUB_APP_ID?.trim() && process.env.GITHUB_APP_PRIVATE_KEY?.trim()
+  );
   const appToken = await resolveGithubInstallationTokenForRepo(owner, repo);
+  // Do not fall back to a user PAT when App creds are present but broken — PATs often
+  // lack statuses/comment write and produce a confusing 502 after a successful scan.
+  if (appConfigured && !appToken) {
+    throw new Error(
+      "GitHub App credentials are set but could not mint an installation token. Check GITHUB_APP_PRIVATE_KEY on the host (no wrapping quotes)."
+    );
+  }
   const token = appToken ?? process.env.GITHUB_TOKEN?.trim();
   if (!token) {
     throw new Error(
@@ -629,6 +639,9 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
   if (delivery === "ignore") return json({ ok: true, ignored: true });
   if (delivery === "invalid") return json({ ok: false, message: "Pull request payload is missing owner, repo, number, or sha." }, 400);
 
+  const appConfigured = Boolean(
+    process.env.GITHUB_APP_ID?.trim() && process.env.GITHUB_APP_PRIVATE_KEY?.trim()
+  );
   let gate: GithubGateClient;
   try {
     gate = client ?? (await createGithubGateClient(delivery.owner, delivery.repo));
@@ -639,6 +652,8 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
         : "GitHub App installation token unavailable and GITHUB_TOKEN is not set.";
     return json({ ok: false, message }, 500);
   }
+  // createGithubGateClient refuses PAT fallback when App creds are set, so this is accurate.
+  const authSource = client ? "injected" : appConfigured ? "github_app" : "github_token_fallback";
 
   let files: GatePullFile[];
   try {
@@ -668,6 +683,7 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
   const healUrl = healQueueUrl(delivery.owner, delivery.repo, scan.leaks, scan.violations);
   const payloadStatus = buildGateStatus(scan.leaks, scan.violations, healUrl);
   let statusPosted = false;
+  let statusError: string | null = null;
   try {
     await gate.postStatus({
       owner: delivery.owner,
@@ -678,9 +694,11 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
     statusPosted = true;
   } catch (error) {
     // Missing "Commit statuses" App permission still returns 403; keep the gate alive via PR comment.
-    console.error("[webhooks/github] could not publish the status check", error instanceof Error ? error.message : error);
+    statusError = error instanceof Error ? error.message : "status publish failed";
+    console.error("[webhooks/github] could not publish the status check", statusError);
   }
 
+  let commentError: string | null = null;
   try {
     if (committed) {
       await gate.postComment({
@@ -702,9 +720,25 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
       });
     }
   } catch (error) {
-    console.error("[webhooks/github] could not comment on the pull request", error instanceof Error ? error.message : error);
+    commentError = error instanceof Error ? error.message : "comment publish failed";
+    console.error("[webhooks/github] could not comment on the pull request", commentError);
     if (!statusPosted) {
-      return json({ ok: false, message: "GitHub did not accept the status check or PR comment." }, 502);
+      const keyRaw = process.env.GITHUB_APP_PRIVATE_KEY?.trim() ?? "";
+      return json(
+        {
+          ok: false,
+          message: "GitHub did not accept the status check or PR comment.",
+          authSource,
+          statusError,
+          commentError,
+          // Safe diagnostics only — never echo the key.
+          appIdSet: Boolean(process.env.GITHUB_APP_ID?.trim()),
+          privateKeySet: Boolean(keyRaw),
+          privateKeyStartsWithQuote: keyRaw.startsWith('"') || keyRaw.startsWith("'"),
+          privateKeyLooksLikePem: keyRaw.includes("BEGIN"),
+        },
+        502
+      );
     }
   }
 

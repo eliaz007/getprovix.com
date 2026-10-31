@@ -34,8 +34,15 @@ function base64url(value: string): string {
 }
 
 function appPrivateKey(): string | null {
-  const raw = process.env.GITHUB_APP_PRIVATE_KEY?.trim();
+  let raw = process.env.GITHUB_APP_PRIVATE_KEY?.trim();
   if (!raw) return null;
+  // Vercel / dotenv pastes often keep the surrounding quotes from .env.local.
+  if (
+    (raw.startsWith('"') && raw.endsWith('"')) ||
+    (raw.startsWith("'") && raw.endsWith("'"))
+  ) {
+    raw = raw.slice(1, -1).trim();
+  }
   return raw.replace(/\\n/g, "\n");
 }
 
