@@ -1366,52 +1366,68 @@ async function resolveAuditAccess(): Promise<
       usage: DailyScanUsage;
     }
 > {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  if (!user) {
-    return {
-      ok: true,
-      supabase,
-      user: null,
-      usage: resolveDailyScanUsage(0, null),
-    };
+    if (!user) {
+      return {
+        ok: true,
+        supabase,
+        user: null,
+        usage: resolveDailyScanUsage(0, null),
+      };
+    }
+
+    const { usage, error } = await loadDailyScanUsage(supabase, user.id);
+
+    if (error) {
+      console.error("[audit] failed to load daily scan usage:", error);
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Could not verify daily scan limit." },
+          { status: 500 }
+        ),
+      };
+    }
+
+    return { ok: true, supabase, user, usage };
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { ok: false, message: "The request could not be completed." },
+      { status: 500 }
+    );
   }
-
-  const { usage, error } = await loadDailyScanUsage(supabase, user.id);
-
-  if (error) {
-    console.error("[audit] failed to load daily scan usage:", error);
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "Could not verify daily scan limit." },
-        { status: 500 }
-      ),
-    };
-  }
-
-  return { ok: true, supabase, user, usage };
 }
 
 async function loadStoredExternalProjects(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string
 ): Promise<ExternalProjectRecord[]> {
-  const { data, error } = await supabase
-    .from("external_projects")
-    .select("id, project_title, project_url, description, created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from("external_projects")
+      .select("id, project_title, project_url, description, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("[audit] failed to load external_projects:", error);
-    return [];
+    if (error) {
+      console.error("[audit] failed to load external_projects:", error);
+      return [];
+    }
+
+    return normalizeExternalProjects(data);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { ok: false, message: "The request could not be completed." },
+      { status: 500 }
+    );
   }
-
-  return normalizeExternalProjects(data);
 }
 
 async function persistOwnIntegrityAudit(
@@ -1424,69 +1440,77 @@ async function persistOwnIntegrityAudit(
   scoreCap?: ScoreCapAudit | null,
   metrics?: ProductionAuditMetrics | null
 ): Promise<void> {
-  const primary = artifacts?.artifacts.find((artifact) =>
-    githubAuditHasFetchedArtifacts(artifact)
-  );
-  const hasExternal = hasUsableExternalProjects(externalProjects);
+  try {
+    const primary = artifacts?.artifacts.find((artifact) =>
+      githubAuditHasFetchedArtifacts(artifact)
+    );
+    const hasExternal = hasUsableExternalProjects(externalProjects);
 
-  if (!primary && !(usedExternalFallback && hasExternal)) {
-    return;
-  }
+    if (!primary && !(usedExternalFallback && hasExternal)) {
+      return;
+    }
 
-  const { data: existingRows, error: loadError } = await supabase
-    .from("profiles")
-    .select("id, audit_data")
-    .or(`id.eq.${userId},user_id.eq.${userId}`)
-    .limit(1);
+    const { data: existingRows, error: loadError } = await supabase
+      .from("profiles")
+      .select("id, audit_data")
+      .or(`id.eq.${userId},user_id.eq.${userId}`)
+      .limit(1);
 
-  if (loadError) {
-    console.error("[audit] failed to load profile for integrity persist:", loadError);
-    return;
-  }
+    if (loadError) {
+      console.error("[audit] failed to load profile for integrity persist:", loadError);
+      return;
+    }
 
-  const existing = Array.isArray(existingRows) ? existingRows[0] : existingRows;
+    const existing = Array.isArray(existingRows) ? existingRows[0] : existingRows;
 
-  const existingAudit =
-    existing?.audit_data &&
-    typeof existing.audit_data === "object" &&
-    !Array.isArray(existing.audit_data)
-      ? (existing.audit_data as Record<string, unknown>)
-      : null;
+    const existingAudit =
+      existing?.audit_data &&
+      typeof existing.audit_data === "object" &&
+      !Array.isArray(existing.audit_data)
+        ? (existing.audit_data as Record<string, unknown>)
+        : null;
 
-  if (Array.isArray(existingAudit?.interview_questions)) {
-    return;
-  }
+    if (Array.isArray(existingAudit?.interview_questions)) {
+      return;
+    }
 
-  const source = usedExternalFallback
-    ? primary
-      ? "hybrid_artifact_audit"
-      : "external_projects_audit"
-    : "github_integrity_audit";
+    const source = usedExternalFallback
+      ? primary
+        ? "hybrid_artifact_audit"
+        : "external_projects_audit"
+      : "github_integrity_audit";
 
-  const integrityScore = Math.max(1, clampScore0to100(score));
-  const { error: updateError } = await supabase
-    .from("profiles")
-    .update({
-      integrity_score: integrityScore,
-      audit_data: {
-        integrity_score: clampScore0to100(score),
-        scoreCap: scoreCap ?? emptyScoreCapAudit(score),
-        metrics: metrics ?? emptyProductionAuditMetrics(),
-        github_audit: usedExternalFallback ? primary ?? null : primary,
-        external_projects: hasExternal
-          ? externalProjects.map((project) => ({
-              project_title: project.project_title,
-              project_url: project.project_url,
-              description: project.description,
-            }))
-          : [],
-        source,
-      },
-    })
-    .eq("id", existing?.id ?? userId);
+    const integrityScore = Math.max(1, clampScore0to100(score));
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({
+        integrity_score: integrityScore,
+        audit_data: {
+          integrity_score: clampScore0to100(score),
+          scoreCap: scoreCap ?? emptyScoreCapAudit(score),
+          metrics: metrics ?? emptyProductionAuditMetrics(),
+          github_audit: usedExternalFallback ? primary ?? null : primary,
+          external_projects: hasExternal
+            ? externalProjects.map((project) => ({
+                project_title: project.project_title,
+                project_url: project.project_url,
+                description: project.description,
+              }))
+            : [],
+          source,
+        },
+      })
+      .eq("id", existing?.id ?? userId);
 
-  if (updateError) {
-    console.error("[audit] failed to persist integrity audit:", updateError);
+    if (updateError) {
+      console.error("[audit] failed to persist integrity audit:", updateError);
+    }
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { ok: false, message: "The request could not be completed." },
+      { status: 500 }
+    );
   }
 }
 
@@ -1501,165 +1525,97 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const parsed = await readAuditRequest(request);
-  if (!parsed.ok) {
-    return parsed.response;
-  }
-
-  const payload: AuditRequestBody = { ...parsed.body };
-  const access = await resolveAuditAccess();
-
-  if (!access.ok) {
-    return access.response;
-  }
-
-  const isAdminOperator = isAdminUser(access.user);
-  const isAdminAudit = payload.adminAudit === true && isAdminOperator;
-  const wantsUnrestrictedTeaser =
-    payload.isPublicTeaser === true || payload.playground === true;
-
-  if (payload.adminAudit === true && !isAdminOperator) {
-    return NextResponse.json(
-      { error: "Admin audits require an authenticated platform admin." },
-      { status: 403 }
-    );
-  }
-
-  // Unrestricted ad-hoc scans are admin-only (moved off the public landing page).
-  if (wantsUnrestrictedTeaser && !isAdminOperator) {
-    return NextResponse.json(
-      {
-        error:
-          "Unrestricted repository audits are limited to platform admins. Builders verify their own repos from the dashboard.",
-      },
-      { status: 403 }
-    );
-  }
-
-  if (!access.user) {
-    const guestLimit = consumeRateLimit(
-      `audit-guest:${getRequestIp(request)}`,
-      8,
-      60 * 60 * 1000
-    );
-    if (!guestLimit.ok) {
-      return tooManyRequestsResponse(guestLimit.retryAfterSec);
+  try {
+    const parsed = await readAuditRequest(request);
+    if (!parsed.ok) {
+      return parsed.response;
     }
-  }
 
-  // Admin unlimited audits never consume or block on the daily scan allowance.
-  if (access.user && access.usage.limit_reached && !isAdminAudit) {
-    return NextResponse.json(
-      { error: DAILY_LIMIT_API_MESSAGE, ...access.usage },
-      { status: 429 }
-    );
-  }
+    const payload: AuditRequestBody = { ...parsed.body };
+    const access = await resolveAuditAccess();
 
-  const bumpUsage = async (): Promise<DailyScanUsage> => {
-    if (!access.user || isAdminAudit) {
-      return access.usage;
+    if (!access.ok) {
+      return access.response;
     }
-    return incrementDailyScanUsage(
-      access.supabase,
-      access.user.id,
-      access.usage
-    );
-  };
 
-  let storedProjects: ExternalProjectRecord[] = [];
-  if (access.user) {
-    storedProjects = await loadStoredExternalProjects(
-      access.supabase,
-      access.user.id
-    );
-  }
+    const isAdminOperator = isAdminUser(access.user);
+    const isAdminAudit = payload.adminAudit === true && isAdminOperator;
+    const wantsUnrestrictedTeaser =
+      payload.isPublicTeaser === true || payload.playground === true;
 
-  payload.externalProjects = mergeExternalProjects(
-    storedProjects,
-    payload.externalProjects
-  );
+    if (payload.adminAudit === true && !isAdminOperator) {
+      return NextResponse.json(
+        { error: "Admin audits require an authenticated platform admin." },
+        { status: 403 }
+      );
+    }
 
-  const githubField = payload.githubUrl?.trim() ?? "";
-  const parsedRepoPath = parseGitHubRepoPath(githubField);
-  const githubMissing =
-    !githubField ||
-    isGitHubPlaceholderInput(githubField) ||
-    !parsedRepoPath;
-
-  if (
-    githubField &&
-    !isGitHubPlaceholderInput(githubField) &&
-    !parsedRepoPath
-  ) {
-    return NextResponse.json(
-      {
-        error: INVALID_REPO_FORMAT,
-        message: INVALID_REPO_FORMAT_MESSAGE,
-      },
-      { status: 400 }
-    );
-  }
-
-  if (githubMissing && !hasUsableExternalProjects(payload.externalProjects)) {
-    return NextResponse.json(
-      { error: AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE },
-      { status: 400 }
-    );
-  }
-
-  if (parsed.resumeFile) {
-    try {
-      payload.resumeSummary = await extractResumeTextFromFile(parsed.resumeFile);
-    } catch (error) {
+    // Unrestricted ad-hoc scans are admin-only (moved off the public landing page).
+    if (wantsUnrestrictedTeaser && !isAdminOperator) {
       return NextResponse.json(
         {
           error:
-            error instanceof Error
-              ? error.message
-              : "Could not parse the uploaded resume.",
+            "Unrestricted repository audits are limited to platform admins. Builders verify their own repos from the dashboard.",
         },
-        { status: 422 }
+        { status: 403 }
       );
     }
-  }
 
-  if (access.user && (!payload.resumeSummary?.trim() || !payload.githubUrl?.trim())) {
-    const { data } = await access.supabase
-      .from("profiles")
-      .select("resume_text, portfolio_url")
-      .eq("id", access.user.id)
-      .maybeSingle();
-
-    if (!payload.resumeSummary?.trim() && data?.resume_text?.trim()) {
-      payload.resumeSummary = data.resume_text;
+    if (!access.user) {
+      const guestLimit = consumeRateLimit(
+        `audit-guest:${getRequestIp(request)}`,
+        8,
+        60 * 60 * 1000
+      );
+      if (!guestLimit.ok) {
+        return tooManyRequestsResponse(guestLimit.retryAfterSec);
+      }
     }
+
+    // Admin unlimited audits never consume or block on the daily scan allowance.
+    if (access.user && access.usage.limit_reached && !isAdminAudit) {
+      return NextResponse.json(
+        { error: DAILY_LIMIT_API_MESSAGE, ...access.usage },
+        { status: 429 }
+      );
+    }
+
+    const bumpUsage = async (): Promise<DailyScanUsage> => {
+      if (!access.user || isAdminAudit) {
+        return access.usage;
+      }
+      return incrementDailyScanUsage(
+        access.supabase,
+        access.user.id,
+        access.usage
+      );
+    };
+
+    let storedProjects: ExternalProjectRecord[] = [];
+    if (access.user) {
+      storedProjects = await loadStoredExternalProjects(
+        access.supabase,
+        access.user.id
+      );
+    }
+
+    payload.externalProjects = mergeExternalProjects(
+      storedProjects,
+      payload.externalProjects
+    );
+
+    const githubField = payload.githubUrl?.trim() ?? "";
+    const parsedRepoPath = parseGitHubRepoPath(githubField);
+    const githubMissing =
+      !githubField ||
+      isGitHubPlaceholderInput(githubField) ||
+      !parsedRepoPath;
 
     if (
-      data &&
-      !payload.workIsPrivate &&
-      !hasUsableGitHubAuditTarget(payload.githubUrl) &&
-      hasUsableGitHubAuditTarget(data.portfolio_url)
+      githubField &&
+      !isGitHubPlaceholderInput(githubField) &&
+      !parsedRepoPath
     ) {
-      payload.githubUrl = data.portfolio_url;
-    }
-  }
-
-  if (!isValidRequestBody(payload)) {
-    return NextResponse.json(
-      { error: AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE },
-      { status: 400 }
-    );
-  }
-
-  const workIsPrivate = Boolean(payload.workIsPrivate);
-  const publicGithub = hasPublicGitHubLink(payload.githubUrl, workIsPrivate);
-  const githubFetchUrl = publicGithub
-    ? normalizeGitHubAuditTarget(payload.githubUrl)
-    : "";
-
-  if (githubFetchUrl) {
-    const parsedFetch = parseGitHubRepoPath(githubFetchUrl);
-    if (!parsedFetch?.owner?.trim() || !parsedFetch?.repo?.trim()) {
       return NextResponse.json(
         {
           error: INVALID_REPO_FORMAT,
@@ -1669,440 +1625,516 @@ export async function POST(request: Request) {
       );
     }
 
-    const probe = await probeGitHubRepository(githubFetchUrl);
-    if (probe?.status === "not_found") {
+    if (githubMissing && !hasUsableExternalProjects(payload.externalProjects)) {
+      return NextResponse.json(
+        { error: AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE },
+        { status: 400 }
+      );
+    }
+
+    if (parsed.resumeFile) {
+      try {
+        payload.resumeSummary = await extractResumeTextFromFile(parsed.resumeFile);
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Could not parse the uploaded resume.",
+          },
+          { status: 422 }
+        );
+      }
+    }
+
+    if (access.user && (!payload.resumeSummary?.trim() || !payload.githubUrl?.trim())) {
+      const { data } = await access.supabase
+        .from("profiles")
+        .select("resume_text, portfolio_url")
+        .eq("id", access.user.id)
+        .maybeSingle();
+
+      if (!payload.resumeSummary?.trim() && data?.resume_text?.trim()) {
+        payload.resumeSummary = data.resume_text;
+      }
+
+      if (
+        data &&
+        !payload.workIsPrivate &&
+        !hasUsableGitHubAuditTarget(payload.githubUrl) &&
+        hasUsableGitHubAuditTarget(data.portfolio_url)
+      ) {
+        payload.githubUrl = data.portfolio_url;
+      }
+    }
+
+    if (!isValidRequestBody(payload)) {
+      return NextResponse.json(
+        { error: AUDIT_MISSING_GITHUB_OR_ARTIFACT_MESSAGE },
+        { status: 400 }
+      );
+    }
+
+    const workIsPrivate = Boolean(payload.workIsPrivate);
+    const publicGithub = hasPublicGitHubLink(payload.githubUrl, workIsPrivate);
+    const githubFetchUrl = publicGithub
+      ? normalizeGitHubAuditTarget(payload.githubUrl)
+      : "";
+
+    if (githubFetchUrl) {
+      const parsedFetch = parseGitHubRepoPath(githubFetchUrl);
+      if (!parsedFetch?.owner?.trim() || !parsedFetch?.repo?.trim()) {
+        return NextResponse.json(
+          {
+            error: INVALID_REPO_FORMAT,
+            message: INVALID_REPO_FORMAT_MESSAGE,
+          },
+          { status: 400 }
+        );
+      }
+
+      const probe = await probeGitHubRepository(githubFetchUrl);
+      if (probe?.status === "not_found") {
+        return NextResponse.json(
+          {
+            error: REPO_NOT_FOUND_OR_PRIVATE,
+            message: REPO_NOT_FOUND_OR_PRIVATE_MESSAGE,
+            isPrivateOrNotFound: true,
+            repoUrl: githubFetchUrl,
+            inaccessibleRepo: true,
+            ...(await bumpUsage()),
+          },
+          { status: 404 }
+        );
+      }
+
+      if (
+        probe?.status === "found" &&
+        access.user &&
+        payload.isPublicTeaser !== true &&
+        !isAdminAudit
+      ) {
+        const { data: roleRow } = await access.supabase
+          .from("profiles")
+          .select("role")
+          .or(`id.eq.${access.user.id},user_id.eq.${access.user.id}`)
+          .limit(1)
+          .maybeSingle();
+        const employerViewer = isEmployerRole(
+          typeof roleRow?.role === "string" ? roleRow.role : null
+        );
+
+        if (!employerViewer) {
+          const ownership = await verifyGitHubRepoOwnership({
+            user: access.user,
+            repoUrl: githubFetchUrl,
+          });
+          const tokenVerified = await hasPersistedProvixTokenVerification(
+            access.supabase,
+            access.user.id,
+            githubFetchUrl
+          );
+          if (!ownership.verified && !tokenVerified) {
+            return NextResponse.json(
+              {
+                error: UNVERIFIED_OWNERSHIP,
+                owner: probe.owner,
+                username: ownership.username,
+                message: UNVERIFIED_OWNERSHIP_MESSAGE,
+                ...(await bumpUsage()),
+              },
+              { status: 403 }
+            );
+          }
+        }
+      }
+    }
+
+    let githubArtifacts: GitHubArtifactAudit | null = null;
+    if (githubFetchUrl) {
+      try {
+        githubArtifacts = await fetchGitHubProfileArtifacts(githubFetchUrl);
+      } catch (error) {
+        if (error instanceof GithubContentReadError) {
+          return NextResponse.json(
+            { error: error.message },
+            { status: 503 }
+          );
+        }
+        console.error("[audit] GitHub artifact fetch failed:", error);
+      }
+    }
+
+    const inaccessibleRepo =
+      !workIsPrivate &&
+      Boolean(githubFetchUrl) &&
+      (githubArtifacts === null || githubAuditLooksInaccessible(githubArtifacts));
+
+    if (inaccessibleRepo) {
       return NextResponse.json(
         {
-          error: REPO_NOT_FOUND_OR_PRIVATE,
-          message: REPO_NOT_FOUND_OR_PRIVATE_MESSAGE,
           isPrivateOrNotFound: true,
           repoUrl: githubFetchUrl,
           inaccessibleRepo: true,
+          error: INACCESSIBLE_PUBLIC_REPO_MESSAGE,
           ...(await bumpUsage()),
         },
         { status: 404 }
       );
     }
 
-    if (
-      probe?.status === "found" &&
-      access.user &&
-      payload.isPublicTeaser !== true &&
-      !isAdminAudit
-    ) {
-      const { data: roleRow } = await access.supabase
-        .from("profiles")
-        .select("role")
-        .or(`id.eq.${access.user.id},user_id.eq.${access.user.id}`)
-        .limit(1)
-        .maybeSingle();
-      const employerViewer = isEmployerRole(
-        typeof roleRow?.role === "string" ? roleRow.role : null
-      );
+    const usedExternalFallback = shouldUseExternalProjectFallback({
+      workIsPrivate,
+      githubUrl: publicGithub ? payload.githubUrl?.trim() ?? "" : "",
+      githubAuditSucceeded: githubArtifactAuditSucceeded(githubArtifacts),
+      hasExternalProjects: hasUsableExternalProjects(payload.externalProjects),
+    });
 
-      if (!employerViewer) {
-        const ownership = await verifyGitHubRepoOwnership({
-          user: access.user,
-          repoUrl: githubFetchUrl,
-        });
-        const tokenVerified = await hasPersistedProvixTokenVerification(
-          access.supabase,
-          access.user.id,
-          githubFetchUrl
-        );
-        if (!ownership.verified && !tokenVerified) {
-          return NextResponse.json(
-            {
-              error: UNVERIFIED_OWNERSHIP,
-              owner: probe.owner,
-              username: ownership.username,
-              message: UNVERIFIED_OWNERSHIP_MESSAGE,
-              ...(await bumpUsage()),
-            },
-            { status: 403 }
-          );
-        }
-      }
-    }
-  }
+    let result: AuditResult;
 
-  let githubArtifacts: GitHubArtifactAudit | null = null;
-  if (githubFetchUrl) {
     try {
-      githubArtifacts = await fetchGitHubProfileArtifacts(githubFetchUrl);
+      result = await generateGeminiAudit(
+        payload,
+        githubArtifacts,
+        payload.externalProjects ?? [],
+        usedExternalFallback
+      );
     } catch (error) {
-      if (error instanceof GithubContentReadError) {
-        return NextResponse.json(
-          { error: error.message },
-          { status: 503 }
-        );
-      }
-      console.error("[audit] GitHub artifact fetch failed:", error);
+      console.error("Gemini audit API failed, using fallback:", error);
+      result = buildFallbackAudit(
+        payload,
+        githubArtifacts,
+        payload.externalProjects ?? [],
+        usedExternalFallback
+      );
     }
-  }
 
-  const inaccessibleRepo =
-    !workIsPrivate &&
-    Boolean(githubFetchUrl) &&
-    (githubArtifacts === null || githubAuditLooksInaccessible(githubArtifacts));
-
-  if (inaccessibleRepo) {
-    return NextResponse.json(
-      {
-        isPrivateOrNotFound: true,
-        repoUrl: githubFetchUrl,
-        inaccessibleRepo: true,
-        error: INACCESSIBLE_PUBLIC_REPO_MESSAGE,
-        ...(await bumpUsage()),
-      },
-      { status: 404 }
+    const auditMode = normalizeAuditMode(payload.auditMode);
+    const filesystem = strongestFilesystemEvidence(
+      githubArtifacts?.artifacts ?? []
     );
-  }
-
-  const usedExternalFallback = shouldUseExternalProjectFallback({
-    workIsPrivate,
-    githubUrl: publicGithub ? payload.githubUrl?.trim() ?? "" : "",
-    githubAuditSucceeded: githubArtifactAuditSucceeded(githubArtifacts),
-    hasExternalProjects: hasUsableExternalProjects(payload.externalProjects),
-  });
-
-  let result: AuditResult;
-
-  try {
-    result = await generateGeminiAudit(
-      payload,
-      githubArtifacts,
-      payload.externalProjects ?? [],
-      usedExternalFallback
+    const commitDates = commitDatesFromArtifacts(githubArtifacts);
+    const commitHistory = commitHistoryFromArtifacts(githubArtifacts);
+    let metrics = computeProductionAuditMetrics(
+      usedExternalFallback ? null : filesystem,
+      auditMode,
+      commitHistory
     );
-  } catch (error) {
-    console.error("Gemini audit API failed, using fallback:", error);
-    result = buildFallbackAudit(
-      payload,
-      githubArtifacts,
-      payload.externalProjects ?? [],
-      usedExternalFallback
-    );
-  }
-
-  const auditMode = normalizeAuditMode(payload.auditMode);
-  const filesystem = strongestFilesystemEvidence(
-    githubArtifacts?.artifacts ?? []
-  );
-  const commitDates = commitDatesFromArtifacts(githubArtifacts);
-  const commitHistory = commitHistoryFromArtifacts(githubArtifacts);
-  let metrics = computeProductionAuditMetrics(
-    usedExternalFallback ? null : filesystem,
-    auditMode,
-    commitHistory
-  );
-  result = attachAuditEvidence(
-    applyFilesystemScoreCap(result, filesystem),
-    filesystem,
-    commitDates,
-    commitHistory?.commitStats ?? undefined
-  );
-  result = attachModeEvaluation(result, auditMode, metrics);
-  metrics = result.metrics;
-
-  // Headline grade is the mode-weighted file-tree index only.
-  // Gemini text stays on strengths, red flags, and recommendations.
-  if (metrics.evidence.inspected) {
-    result = applyFilesystemScoreCap(
-      {
-        ...result,
-        score: metrics.productionScore,
-        overallScore: metrics.productionScore,
-      },
-      filesystem
+    result = attachAuditEvidence(
+      applyFilesystemScoreCap(result, filesystem),
+      filesystem,
+      commitDates,
+      commitHistory?.commitStats ?? undefined
     );
     result = attachModeEvaluation(result, auditMode, metrics);
     metrics = result.metrics;
-  }
 
-  const isUpstreamDerivative = Boolean(
-    githubArtifacts?.artifacts.some((artifact) => artifact.is_upstream_derivative)
-  );
-  if (metrics.evidence.inspected && isUpstreamDerivative) {
-    const penalized = applyUpstreamDerivativePenalty(result.overallScore, true);
-    metrics = {
-      ...metrics,
-      productionScore: penalized,
-      codeHealthScore: penalized,
-      upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
-    };
-    result = {
-      ...result,
-      score: penalized,
-      overallScore: penalized,
-      tier: assignAuditTier(auditMode, penalized),
-      metrics,
-      redFlags: result.redFlags.includes(UPSTREAM_DERIVATIVE_WARNING)
-        ? result.redFlags
-        : [...result.redFlags, UPSTREAM_DERIVATIVE_WARNING],
-    };
-  }
-
-  const commitHistoryFetched = commitHistory != null;
-  result = {
-    ...result,
-    commitHistoryFetched,
-    auditedAt: new Date().toISOString(),
-    executiveBrief: finalizeExecutiveBrief({
-      draft: result.executiveBrief,
-      productionScore: metrics.productionScore,
-      architectureScore: metrics.architecture,
-      testScore: metrics.testing,
-      devopsScore: metrics.devops,
-      resilienceScore: metrics.resilience,
-      isUpstreamDerivative: metrics.upstreamDerivativePenalty > 0,
-      auditMode,
-    }),
-  };
-  if (!result.summary.trim() && result.executiveBrief?.employerSummary) {
-    result = {
-      ...result,
-      summary: result.executiveBrief.employerSummary,
-    };
-  }
-
-  const refinedRecommendations = refineActionableFixes(result.recommendations, {
-    productionScore: metrics.productionScore,
-    architecture: metrics.architecture,
-    testingScore: metrics.testing,
-    devopsScore: metrics.devops,
-    resilience: metrics.resilience,
-    testFileCount: filesystem?.unit_test_file_count ?? 0,
-    language: primaryRepoLanguage(githubArtifacts),
-    hasReadme: repoHasReadme(githubArtifacts, filesystem),
-    needsSchemaValidation:
-      filesystem?.route_contracts_sampled === true &&
-      filesystem.route_schema_validation !== true,
-    needsBuildGate:
-      (filesystem?.ci_workflow_paths.length ?? 0) > 0 &&
-      filesystem?.ci_has_build !== true,
-  });
-  result = {
-    ...result,
-    recommendations: refinedRecommendations,
-    improvements: refinedRecommendations,
-  };
-
-  const usage = await bumpUsage();
-
-  const auditedRepoUrl = workIsPrivate
-    ? PRIVATE_AUDITED_REPO_LABEL
-    : payload.githubUrl?.trim() ||
-      githubArtifacts?.source_url ||
-      githubArtifacts?.artifacts[0]?.repo_url ||
-      PRIVATE_AUDITED_REPO_LABEL;
-  const parsedRepo = parseGitHubUrl(auditedRepoUrl);
-  const isPublicGitHubClaim = Boolean(
-    !workIsPrivate &&
-      parsedRepo?.owner &&
-      parsedRepo.repo &&
-      auditedRepoUrl !== PRIVATE_AUDITED_REPO_LABEL
-  );
-
-  let verificationStatus: DossierVerificationStatus = "unverified";
-  let lowContributionWarning = false;
-  if (
-    access.user &&
-    isPublicGitHubClaim &&
-    payload.isPublicTeaser !== true &&
-    !isAdminAudit
-  ) {
-    try {
-      const ownership = await verifyGitHubRepoOwnership({
-        user: access.user,
-        repoUrl: auditedRepoUrl,
-      });
-      verificationStatus = ownership.verified ? "verified" : "unverified";
-      lowContributionWarning = ownership.lowContributionWarning === true;
-      if (
-        lowContributionWarning &&
-        !result.redFlags.includes(LOW_CONTRIBUTION_WARNING)
-      ) {
-        result = {
+    // Headline grade is the mode-weighted file-tree index only.
+    // Gemini text stays on strengths, red flags, and recommendations.
+    if (metrics.evidence.inspected) {
+      result = applyFilesystemScoreCap(
+        {
           ...result,
-          redFlags: [...result.redFlags, LOW_CONTRIBUTION_WARNING],
-        };
-      }
-    } catch (error) {
-      console.error("[audit] ownership verification threw:", error);
-      verificationStatus = "unverified";
-    }
-  }
-
-  if (
-    access.user &&
-    !isAdminAudit &&
-    payload.playground !== true &&
-    payload.isPublicTeaser !== true &&
-    (githubArtifactAuditSucceeded(githubArtifacts) ||
-      (usedExternalFallback &&
-        hasUsableExternalProjects(payload.externalProjects)))
-  ) {
-    if (verificationStatus === "verified" || workIsPrivate) {
-      const primaryArtifact = githubArtifacts?.artifacts.find((artifact) =>
-        githubAuditHasFetchedArtifacts(artifact)
+          score: metrics.productionScore,
+          overallScore: metrics.productionScore,
+        },
+        filesystem
       );
-      if (primaryArtifact && result.executiveBrief) {
-        primaryArtifact.executiveBrief = result.executiveBrief;
-      }
+      result = attachModeEvaluation(result, auditMode, metrics);
+      metrics = result.metrics;
+    }
+
+    const isUpstreamDerivative = Boolean(
+      githubArtifacts?.artifacts.some((artifact) => artifact.is_upstream_derivative)
+    );
+    if (metrics.evidence.inspected && isUpstreamDerivative) {
+      const penalized = applyUpstreamDerivativePenalty(result.overallScore, true);
+      metrics = {
+        ...metrics,
+        productionScore: penalized,
+        codeHealthScore: penalized,
+        upstreamDerivativePenalty: UPSTREAM_DERIVATIVE_PENALTY,
+      };
+      result = {
+        ...result,
+        score: penalized,
+        overallScore: penalized,
+        tier: assignAuditTier(auditMode, penalized),
+        metrics,
+        redFlags: result.redFlags.includes(UPSTREAM_DERIVATIVE_WARNING)
+          ? result.redFlags
+          : [...result.redFlags, UPSTREAM_DERIVATIVE_WARNING],
+      };
+    }
+
+    const commitHistoryFetched = commitHistory != null;
+    result = {
+      ...result,
+      commitHistoryFetched,
+      auditedAt: new Date().toISOString(),
+      executiveBrief: finalizeExecutiveBrief({
+        draft: result.executiveBrief,
+        productionScore: metrics.productionScore,
+        architectureScore: metrics.architecture,
+        testScore: metrics.testing,
+        devopsScore: metrics.devops,
+        resilienceScore: metrics.resilience,
+        isUpstreamDerivative: metrics.upstreamDerivativePenalty > 0,
+        auditMode,
+      }),
+    };
+    if (!result.summary.trim() && result.executiveBrief?.employerSummary) {
+      result = {
+        ...result,
+        summary: result.executiveBrief.employerSummary,
+      };
+    }
+
+    const refinedRecommendations = refineActionableFixes(result.recommendations, {
+      productionScore: metrics.productionScore,
+      architecture: metrics.architecture,
+      testingScore: metrics.testing,
+      devopsScore: metrics.devops,
+      resilience: metrics.resilience,
+      testFileCount: filesystem?.unit_test_file_count ?? 0,
+      language: primaryRepoLanguage(githubArtifacts),
+      hasReadme: repoHasReadme(githubArtifacts, filesystem),
+      needsSchemaValidation:
+        filesystem?.route_contracts_sampled === true &&
+        filesystem.route_schema_validation !== true,
+      needsBuildGate:
+        (filesystem?.ci_workflow_paths.length ?? 0) > 0 &&
+        filesystem?.ci_has_build !== true,
+    });
+    result = {
+      ...result,
+      recommendations: refinedRecommendations,
+      improvements: refinedRecommendations,
+    };
+
+    const usage = await bumpUsage();
+
+    const auditedRepoUrl = workIsPrivate
+      ? PRIVATE_AUDITED_REPO_LABEL
+      : payload.githubUrl?.trim() ||
+        githubArtifacts?.source_url ||
+        githubArtifacts?.artifacts[0]?.repo_url ||
+        PRIVATE_AUDITED_REPO_LABEL;
+    const parsedRepo = parseGitHubUrl(auditedRepoUrl);
+    const isPublicGitHubClaim = Boolean(
+      !workIsPrivate &&
+        parsedRepo?.owner &&
+        parsedRepo.repo &&
+        auditedRepoUrl !== PRIVATE_AUDITED_REPO_LABEL
+    );
+
+    let verificationStatus: DossierVerificationStatus = "unverified";
+    let lowContributionWarning = false;
+    if (
+      access.user &&
+      isPublicGitHubClaim &&
+      payload.isPublicTeaser !== true &&
+      !isAdminAudit
+    ) {
       try {
-        await persistOwnIntegrityAudit(
+        const ownership = await verifyGitHubRepoOwnership({
+          user: access.user,
+          repoUrl: auditedRepoUrl,
+        });
+        verificationStatus = ownership.verified ? "verified" : "unverified";
+        lowContributionWarning = ownership.lowContributionWarning === true;
+        if (
+          lowContributionWarning &&
+          !result.redFlags.includes(LOW_CONTRIBUTION_WARNING)
+        ) {
+          result = {
+            ...result,
+            redFlags: [...result.redFlags, LOW_CONTRIBUTION_WARNING],
+          };
+        }
+      } catch (error) {
+        console.error("[audit] ownership verification threw:", error);
+        verificationStatus = "unverified";
+      }
+    }
+
+    if (
+      access.user &&
+      !isAdminAudit &&
+      payload.playground !== true &&
+      payload.isPublicTeaser !== true &&
+      (githubArtifactAuditSucceeded(githubArtifacts) ||
+        (usedExternalFallback &&
+          hasUsableExternalProjects(payload.externalProjects)))
+    ) {
+      if (verificationStatus === "verified" || workIsPrivate) {
+        const primaryArtifact = githubArtifacts?.artifacts.find((artifact) =>
+          githubAuditHasFetchedArtifacts(artifact)
+        );
+        if (primaryArtifact && result.executiveBrief) {
+          primaryArtifact.executiveBrief = result.executiveBrief;
+        }
+        try {
+          await persistOwnIntegrityAudit(
+            access.supabase,
+            access.user.id,
+            result.score,
+            githubArtifacts,
+            payload.externalProjects ?? [],
+            usedExternalFallback,
+            result.scoreCap,
+            result.metrics
+          );
+        } catch (error) {
+          console.error("[audit] persist integrity audit threw:", error);
+        }
+      }
+
+      try {
+        const claim = buildProductionAuditClaim({
+          score: result.score,
+          githubUrl: auditedRepoUrl,
+          filesystem,
+          scoreCap: result.scoreCap,
+          isPubliclyVisible: false,
+          deliveryHygieneScore: result.metrics.deliveryHygieneScore,
+          commitHistoryFetched: result.commitHistoryFetched,
+          auditedAt: result.auditedAt,
+        });
+        await persistProfileProductionAudit(
           access.supabase,
           access.user.id,
-          result.score,
-          githubArtifacts,
-          payload.externalProjects ?? [],
-          usedExternalFallback,
-          result.scoreCap,
-          result.metrics
+          claim,
+          {
+            isPubliclyVisible: false,
+            verificationStatus,
+          }
         );
       } catch (error) {
-        console.error("[audit] persist integrity audit threw:", error);
+        console.error("[audit] persist production audit threw:", error);
       }
     }
 
-    try {
+    const benchmark: CodebaseBenchmark = getCalibratedBenchmark(
+      result.metrics.productionScore
+    );
+    const benchmarkClient = createServiceRoleClient();
+
+    let profileSlug: string | null = null;
+    let profileUrl: string | null = null;
+
+    if (isAdminAudit && access.user) {
+      verificationStatus = "verified";
+      const dataClient = benchmarkClient ?? access.supabase;
+      const canPublish = canPublishProductionScore(
+        result.score,
+        result.metrics.deliveryHygieneScore,
+        result.commitHistoryFetched
+      );
       const claim = buildProductionAuditClaim({
         score: result.score,
         githubUrl: auditedRepoUrl,
         filesystem,
         scoreCap: result.scoreCap,
-        isPubliclyVisible: false,
+        isPubliclyVisible: canPublish,
         deliveryHygieneScore: result.metrics.deliveryHygieneScore,
         commitHistoryFetched: result.commitHistoryFetched,
         auditedAt: result.auditedAt,
       });
-      await persistProfileProductionAudit(
-        access.supabase,
-        access.user.id,
-        claim,
-        {
-          isPubliclyVisible: false,
-          verificationStatus,
+
+      try {
+        const target = await resolveAdminAuditTargetProfile(dataClient, {
+          candidateHandle: payload.candidateHandle,
+          githubOwner: parsedRepo?.owner ?? null,
+        });
+
+        if (target) {
+          const persisted = await persistProfileProductionAudit(
+            dataClient,
+            target.id,
+            claim,
+            {
+              isPubliclyVisible: canPublish,
+              enrollInTalentPool: canPublish,
+              verificationStatus: "verified",
+            }
+          );
+          await applyAdminAuditCandidateLabel(
+            dataClient,
+            target.id,
+            payload.candidateName
+          );
+          profileSlug = persisted.profileSlug ?? target.profileSlug;
         }
-      );
-    } catch (error) {
-      console.error("[audit] persist production audit threw:", error);
-    }
-  }
-
-  const benchmark: CodebaseBenchmark = getCalibratedBenchmark(
-    result.metrics.productionScore
-  );
-  const benchmarkClient = createServiceRoleClient();
-
-  let profileSlug: string | null = null;
-  let profileUrl: string | null = null;
-
-  if (isAdminAudit && access.user) {
-    verificationStatus = "verified";
-    const dataClient = benchmarkClient ?? access.supabase;
-    const canPublish = canPublishProductionScore(
-      result.score,
-      result.metrics.deliveryHygieneScore,
-      result.commitHistoryFetched
-    );
-    const claim = buildProductionAuditClaim({
-      score: result.score,
-      githubUrl: auditedRepoUrl,
-      filesystem,
-      scoreCap: result.scoreCap,
-      isPubliclyVisible: canPublish,
-      deliveryHygieneScore: result.metrics.deliveryHygieneScore,
-      commitHistoryFetched: result.commitHistoryFetched,
-      auditedAt: result.auditedAt,
-    });
-
-    try {
-      const target = await resolveAdminAuditTargetProfile(dataClient, {
-        candidateHandle: payload.candidateHandle,
-        githubOwner: parsedRepo?.owner ?? null,
-      });
-
-      if (target) {
-        const persisted = await persistProfileProductionAudit(
-          dataClient,
-          target.id,
-          claim,
-          {
-            isPubliclyVisible: canPublish,
-            enrollInTalentPool: canPublish,
-            verificationStatus: "verified",
-          }
-        );
-        await applyAdminAuditCandidateLabel(
-          dataClient,
-          target.id,
-          payload.candidateName
-        );
-        profileSlug = persisted.profileSlug ?? target.profileSlug;
+      } catch (error) {
+        console.error("[audit] admin target profile persist threw:", error);
       }
-    } catch (error) {
-      console.error("[audit] admin target profile persist threw:", error);
+
+      if (profileSlug) {
+        profileUrl = buildPublicProfileUrl(profileSlug);
+      }
     }
 
-    if (profileSlug) {
-      profileUrl = buildPublicProfileUrl(profileSlug);
+    let shareId: string | null = null;
+    if (
+      access.user &&
+      (isAdminAudit ||
+        (payload.playground !== true && payload.isPublicTeaser !== true))
+    ) {
+      const repoName =
+        parsedRepo?.owner && parsedRepo.repo
+          ? `${parsedRepo.owner}/${parsedRepo.repo}`
+          : null;
+      const shareClient = isAdminAudit
+        ? (benchmarkClient ?? access.supabase)
+        : access.supabase;
+      const { data: shared, error: shareError } = await shareClient
+        .from("shared_audits")
+        .insert({
+          user_id: access.user.id,
+          payload: {
+            result: { ...result, benchmark },
+            repoName,
+            repoUrl: auditedRepoUrl,
+            candidateName: payload.candidateName ?? null,
+            candidateHandle: payload.candidateHandle ?? null,
+            profileSlug,
+            adminAudit: isAdminAudit,
+          },
+        })
+        .select("id")
+        .maybeSingle();
+
+      if (shareError) {
+        console.error("[audit] shared audit insert failed:", shareError);
+      } else if (shared && typeof shared.id === "string") {
+        shareId = shared.id;
+      }
     }
+
+    const reportUrl = shareId ? `/audit/${shareId}` : null;
+    const pdfUrl = shareId ? `/audit/${shareId}?print=1` : null;
+
+    return NextResponse.json({
+      ...result,
+      benchmark,
+      shareId,
+      reportUrl,
+      pdfUrl,
+      profileUrl,
+      profileSlug,
+      ...usage,
+      verification_status: verificationStatus,
+      ownership_verified: verificationStatus === "verified",
+      lowContributionWarning,
+      adminAudit: isAdminAudit,
+    });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      { ok: false, message: "The request could not be completed." },
+      { status: 500 }
+    );
   }
-
-  let shareId: string | null = null;
-  if (
-    access.user &&
-    (isAdminAudit ||
-      (payload.playground !== true && payload.isPublicTeaser !== true))
-  ) {
-    const repoName =
-      parsedRepo?.owner && parsedRepo.repo
-        ? `${parsedRepo.owner}/${parsedRepo.repo}`
-        : null;
-    const shareClient = isAdminAudit
-      ? (benchmarkClient ?? access.supabase)
-      : access.supabase;
-    const { data: shared, error: shareError } = await shareClient
-      .from("shared_audits")
-      .insert({
-        user_id: access.user.id,
-        payload: {
-          result: { ...result, benchmark },
-          repoName,
-          repoUrl: auditedRepoUrl,
-          candidateName: payload.candidateName ?? null,
-          candidateHandle: payload.candidateHandle ?? null,
-          profileSlug,
-          adminAudit: isAdminAudit,
-        },
-      })
-      .select("id")
-      .maybeSingle();
-
-    if (shareError) {
-      console.error("[audit] shared audit insert failed:", shareError);
-    } else if (shared && typeof shared.id === "string") {
-      shareId = shared.id;
-    }
-  }
-
-  const reportUrl = shareId ? `/audit/${shareId}` : null;
-  const pdfUrl = shareId ? `/audit/${shareId}?print=1` : null;
-
-  return NextResponse.json({
-    ...result,
-    benchmark,
-    shareId,
-    reportUrl,
-    pdfUrl,
-    profileUrl,
-    profileSlug,
-    ...usage,
-    verification_status: verificationStatus,
-    ownership_verified: verificationStatus === "verified",
-    lowContributionWarning,
-    adminAudit: isAdminAudit,
-  });
 }
