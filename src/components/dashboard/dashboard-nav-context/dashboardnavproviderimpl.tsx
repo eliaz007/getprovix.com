@@ -49,6 +49,7 @@ import { DashboardNavContext } from "./dashboardnavcontext";
 import { initialsFromDisplayName } from "./initialsfromdisplayname";
 import { resolveUserDisplayName } from "./resolveuserdisplayname";
 import { getUserHeaderIdentity } from "./getuserheaderidentity";
+import { secureQuery292 } from "@/app/actions/secure-query";
 
 export function DashboardNavProviderImpl({
   children,
@@ -289,11 +290,7 @@ export function DashboardNavProviderImpl({
 
       if (!profile) {
         console.time("dashboard-layout:profile-fetch-by-user-id");
-        const byUserId = await supabase
-          .from("profiles")
-          .select(profileSelect)
-          .eq("user_id", user.id)
-          .maybeSingle();
+        const byUserId = await secureQuery292(profileSelect);
         console.timeEnd("dashboard-layout:profile-fetch-by-user-id");
         profile = byUserId.data;
 
