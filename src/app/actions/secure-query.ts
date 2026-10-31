@@ -36,3 +36,24 @@ export async function secureQuery95() {
       .maybeSingle();
   return { data, error };
 }
+
+export async function secureQuery281(profileSelect: string | undefined) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } };
+    }
+    const { data, error } = await supabase
+        .from("profiles")
+        .select(profileSelect)
+        .eq("id", user.id)
+        .maybeSingle();
+    return { data, error };
+  } catch (error) {
+    console.error(error);
+    return { ok: false, message: "The request could not be completed." };
+  }
+}
