@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import {
   findGithubAppInstallationIdForAccount,
-  findSoloGithubAppInstallationId,
   resolveGithubAppSlug,
 } from "@/lib/github-app-client";
 import { persistGithubAppInstallation } from "@/lib/github-app-persist";
@@ -30,11 +29,10 @@ export async function GET(request: Request) {
   } = await supabase.auth.getUser();
 
   const login = githubUsernameFromUser(user);
-  if (user) {
+  // Only sync when we can prove the installation belongs to this GitHub login.
+  if (user && login) {
     try {
-      const installationId =
-        (login ? await findGithubAppInstallationIdForAccount(login) : null) ??
-        (await findSoloGithubAppInstallationId());
+      const installationId = await findGithubAppInstallationIdForAccount(login);
       if (installationId) {
         const saved = await persistGithubAppInstallation({
           supabase,

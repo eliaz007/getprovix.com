@@ -49,8 +49,54 @@ export function buildAutofix(filePath: string, content: string): AutofixResult {
   };
 }
 
+/** Vitest/Jest specs share closures across helpers — module splits break them. */
+export function isTestSourcePath(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const base = normalized.split("/").pop() ?? normalized;
+  if (/\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(base)) return true;
+  return normalized.split("/").some((part) => part === "__tests__" || part === "__mocks__" || part === "tests");
+}
+
+/**
+ * Violations is actionable-only: Architectural Bloat on real app modules can
+ * Open Fix (gated by tsc preflight). Tests / orphans / cycles stay hidden.
+ */
+export function isActionableArchitectureViolation(violation: {
+  filePath: string;
+  rule: string;
+}): boolean {
+  if (violation.rule !== "Architectural Bloat") return false;
+  if (isTestSourcePath(violation.filePath)) return false;
+  return true;
+}
+
+/** Suite-style source (even without a .test.ts name) must not be auto-split. */
+export function isTestSuiteSource(content: string): boolean {
+  if (/\bfrom\s+["'](?:vitest|@jest\/globals|jest)["']/.test(content)) return true;
+  if (/\b(?:describe|it|test)\s*\(/.test(content) && /\b(?:expect)\s*\(/.test(content)) return true;
+  return false;
+}
+
+function refusedPlan(filePath: string, summary: string): AutofixPlan {
+  return {
+    ok: true,
+    filePath,
+    summary,
+    diff: emptyDiff(filePath),
+    modules: [],
+    canOpenPullRequest: false,
+    writes: [],
+  };
+}
+
 export function planAutofix(filePath: string, content: string): AutofixPlan {
   const normalized = filePath.replace(/\\/g, "/");
+  if (isTestSourcePath(normalized) || isTestSuiteSource(content)) {
+    return refusedPlan(
+      normalized,
+      "Test files are not split into modules. Shared helpers and closures would break typecheck and CI."
+    );
+  }
   const handled = applyErrorHandling(normalized, content);
   if (handled) {
     const next = handled.endsWith("\n") ? handled : `${handled}\n`;
@@ -67,15 +113,7 @@ export function planAutofix(filePath: string, content: string): AutofixPlan {
   const lines = content.split(/\r?\n/);
   const blocks = topLevelBlocks(lines, lineStartDepths(content));
   if (blocks.length < 2) {
-    return {
-      ok: true,
-      filePath: normalized,
-      summary: "No safe top-level split. The file stays one unit, so the diff is empty.",
-      diff: emptyDiff(normalized),
-      modules: [],
-      canOpenPullRequest: false,
-      writes: [],
-    };
+    return refusedPlan(normalized, "No safe top-level split. The file stays one unit, so the diff is empty.");
   }
 
   const directive = lines.find((line) => /^\s*['"]use (?:client|server)['"];?\s*$/.test(line)) ?? "";
@@ -83,6 +121,14 @@ export function planAutofix(filePath: string, content: string): AutofixPlan {
   const modules = blocks.map((block, index) =>
     renderModule(normalized, lines, block, index, directive, preamble, blocks)
   );
+
+  if (moduleSplitLeavesUnresolvedRefs(modules, blocks)) {
+    return refusedPlan(
+      normalized,
+      "No safe module split: helpers share bindings across closures. Leave the file as one unit."
+    );
+  }
+
   const barrel = renderBarrel(normalized, directive, modules);
   const diff = capDiff(
     [
@@ -109,6 +155,47 @@ export function planAutofix(filePath: string, content: string): AutofixPlan {
     canOpenPullRequest: writes.length > 1,
     writes,
   };
+}
+
+/**
+ * After a mechanical split, every sibling binding referenced in a module body
+ * must be imported. Missing imports are exactly the TS2552 failures Open Fix
+ * shipped in broken architecture PRs.
+ */
+function moduleSplitLeavesUnresolvedRefs(
+  modules: Array<{ content: string }>,
+  blocks: Block[]
+): boolean {
+  const siblingNames = blocks
+    .map((block) => block.name)
+    .filter((name) => name !== "default" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name));
+
+  for (const mod of modules) {
+    const defines = new Set(
+      collectModuleExports(mod.content)
+        .map((binding) => binding.name)
+        .filter((name) => name !== "default")
+    );
+    const code = stripImportLines(mod.content);
+    for (const name of siblingNames) {
+      if (defines.has(name)) continue;
+      if (!new RegExp(`\\b${name}\\b`).test(code)) continue;
+      const imported =
+        new RegExp(
+          `import\\s+(?:type\\s+)?(?:\\{[^;]*\\b${name}\\b[^;]*\\}|${name})\\s+from\\s+["'][^"']+["']`
+        ).test(mod.content) ||
+        new RegExp(`import\\s+(?:type\\s+)?\\*\\s+as\\s+\\w+\\s+from\\s+["'][^"']+["']`).test(mod.content);
+      if (!imported) return true;
+    }
+  }
+  return false;
+}
+
+function stripImportLines(content: string): string {
+  return content
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*import\b/.test(line))
+    .join("\n");
 }
 
 function safeWritePath(filePath: string): boolean {

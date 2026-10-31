@@ -10,7 +10,6 @@ import {
 } from "@/components/firewall/firewall-view-context";
 
 const VIEWS = [
-  { key: "firewall" as const, label: "Architecture Firewall" },
   { key: "health" as const, label: "Integrity" },
   { key: "violations" as const, label: "Violations" },
   { key: "leaks" as const, label: "Leaks" },

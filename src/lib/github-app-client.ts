@@ -267,15 +267,6 @@ export async function findGithubAppInstallationIdForAccount(
   return match?.id ?? null;
 }
 
-/**
- * When the App has exactly one installation (solo/dev), return it.
- * Avoids matching failures when the Provix session is Google-only.
- */
-export async function findSoloGithubAppInstallationId(): Promise<number | null> {
-  const rows = await listGithubAppInstallationsViaJwt();
-  return rows.length === 1 ? rows[0].id : null;
-}
-
 /** List App installations visible to a user-to-server OAuth token. */
 export async function listGithubAppInstallationsForUserToken(
   accessToken: string

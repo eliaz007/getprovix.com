@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import type { AutofixWriteFile } from "@/lib/autofix-write-validation";
 
 type HostTsconfigPaths = {
@@ -10,7 +12,9 @@ type HostTsconfigPaths = {
   aliasRoot: "src" | "root";
 };
 
-export type TscPreflightResult = { success: true };
+export type TscPreflightResult =
+  | { success: true }
+  | { success: false; message: string; diagnostics: string };
 
 export class AutofixTscPreflightError extends Error {
   readonly code = "tsc-preflight" as const;
@@ -188,12 +192,29 @@ export function collectExternalPackageSpecifiers(
   return found.sort();
 }
 
+/**
+ * Only real import specifiers become ambient stubs. Source files often contain
+ * template placeholders (`${spec}`) and prose `@/…` that the collector can
+ * misread — those must not enter `declare module "…"`.
+ */
+export function isValidAmbientModuleName(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > 200) return false;
+  if (/[\r\n"'`]/.test(trimmed)) return false;
+  if (/\$\{/.test(trimmed)) return false;
+  if (trimmed.includes("…")) return false;
+  if (trimmed === "@/*" || trimmed.endsWith("/*")) return false;
+  // @/alias, @scope/pkg, bare package, or node:builtin
+  return /^(?:node:[\w./+-]+|@\/[\w./+-]+|@[\w-]+\/[\w.-]+|[\w.-]+)$/.test(trimmed);
+}
+
 /** Ambient `declare module` stubs for missing npm packages or unresolved `@/` aliases. */
 export function buildAmbientModuleStubs(moduleNames: readonly string[]): string {
-  if (moduleNames.length === 0) return "";
+  const valid = [...new Set(moduleNames.map((name) => name.trim()).filter(isValidAmbientModuleName))].sort();
+  if (valid.length === 0) return "";
   // Empty ambient modules typecheck as `any` for default *and* named imports.
   // (`export = any` alone still fails named imports with TS2305.)
-  return `${moduleNames.map((name) => `declare module "${name}";\n`).join("")}`;
+  return `${valid.map((name) => `declare module "${name}";\n`).join("")}`;
 }
 
 export type InternalAliasBundle = {
@@ -450,24 +471,161 @@ export async function bundleInternalAliasWrites(
   return graph.writes;
 }
 
-/**
- * Preflight gate (no-op): accepts the patch writes and always succeeds.
- * Temp-dir / tsconfig / `tsc --noEmit` execution has been removed.
- */
-export async function runAutofixTscPreflight(
-  writes: readonly AutofixWriteFile[],
-  _options?: { workDir?: string }
-): Promise<TscPreflightResult> {
-  void writes;
-  return { success: true };
+const TSC_PREFLIGHT_TIMEOUT_MS = 90_000;
+
+async function linkHostNodeModules(tempRoot: string, projectRoot: string): Promise<void> {
+  const hostModules = path.join(projectRoot, "node_modules");
+  if (!existsSync(hostModules)) return;
+  const target = path.join(tempRoot, "node_modules");
+  try {
+    await symlink(hostModules, target, "junction");
+  } catch {
+    // Best-effort: tsc can still resolve some types via ambient stubs.
+  }
+}
+
+function buildPreflightTsconfig(host: HostTsconfigPaths): string {
+  return `${JSON.stringify(
+    {
+      compilerOptions: {
+        target: "ES2022",
+        lib: ["dom", "dom.iterable", "es2022"],
+        module: "esnext",
+        moduleResolution: "bundler",
+        jsx: "preserve",
+        strict: true,
+        noEmit: true,
+        skipLibCheck: true,
+        esModuleInterop: true,
+        resolveJsonModule: true,
+        isolatedModules: true,
+        baseUrl: host.baseUrl || ".",
+        paths: host.paths,
+      },
+      include: ["**/*.ts", "**/*.tsx", "**/*.d.ts", "__provix_stubs__/**/*.d.ts"],
+      exclude: ["node_modules"],
+    },
+    null,
+    2
+  )}\n`;
+}
+
+function runTscNoEmit(tempRoot: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const tscJs = path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc");
+    const child = spawn(process.execPath, [tscJs, "--noEmit", "-p", "."], {
+      cwd: tempRoot,
+      env: process.env,
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ code: 1, stdout, stderr: `${stderr}\npreflight timed out after ${TSC_PREFLIGHT_TIMEOUT_MS}ms` });
+    }, TSC_PREFLIGHT_TIMEOUT_MS);
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout += String(chunk);
+    });
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolve({ code: 1, stdout, stderr: error.message });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ code, stdout, stderr });
+    });
+  });
 }
 
 /**
- * Hard gate for PR publishers: awaits preflight (currently a no-op success).
+ * Materialize the patch + reachable `@/` modules in a temp tree, stub missing
+ * internals/packages, link the host `node_modules`, and run `npx tsc --noEmit`.
+ * Broken module splits (unbound helpers) fail here instead of as red CI.
+ */
+export async function runAutofixTscPreflight(
+  writes: readonly AutofixWriteFile[],
+  options?: { workDir?: string; projectRoot?: string }
+): Promise<TscPreflightResult> {
+  if (writes.length === 0) return { success: true };
+
+  const projectRoot = options?.projectRoot ?? process.cwd();
+  const host = await loadHostTsconfigPaths(projectRoot);
+  const graph = await bundleInternalAliasGraph(writes, {
+    projectRoot,
+    aliasRoot: host.aliasRoot,
+    hostPaths: host.paths,
+  });
+  const unresolvedAt = collectUnresolvedAtAliasSpecifiers(graph.writes, {
+    projectRoot,
+    aliasRoot: host.aliasRoot,
+    hostPaths: host.paths,
+    collectionMisses: graph.missingAtAliases,
+  });
+  const externalPkgs = collectExternalPackageSpecifiers(graph.writes, { projectRoot });
+  const stubModules = [
+    ...new Set([
+      ...unresolvedAt,
+      ...externalPkgs,
+      ...PATH_MAPPED_STUB_PREFIXES.map((prefix) => prefix.replace(/\/$/, "")),
+    ]),
+  ].filter(isValidAmbientModuleName);
+
+  const tempRoot =
+    options?.workDir ??
+    (await mkdtemp(path.join(tmpdir(), "provix-autofix-tsc-")));
+  const ownsTemp = !options?.workDir;
+
+  try {
+    for (const write of graph.writes) {
+      const abs = path.join(tempRoot, ...normalizedWritePath(write.filePath).split("/"));
+      await mkdir(path.dirname(abs), { recursive: true });
+      await writeFile(abs, write.content.endsWith("\n") ? write.content : `${write.content}\n`, "utf8");
+    }
+    await writeAmbientInternalImportStubs(tempRoot, stubModules);
+    // Re-scan after materializing seeds in case relative imports still miss.
+    const stillMissing = collectMissingAtAliasesInTempRoot(tempRoot, graph.writes, {
+      aliasRoot: host.aliasRoot,
+      hostPaths: host.paths,
+    });
+    if (stillMissing.length > 0) {
+      await writeAmbientInternalImportStubs(tempRoot, [...stubModules, ...stillMissing]);
+    }
+    await writeFile(path.join(tempRoot, "tsconfig.json"), buildPreflightTsconfig(host), "utf8");
+    await linkHostNodeModules(tempRoot, projectRoot);
+
+    const { code, stdout, stderr } = await runTscNoEmit(tempRoot);
+    if (code === 0) return { success: true };
+
+    const diagnostics = [stdout, stderr].filter(Boolean).join("\n").trim() || "tsc failed with no output";
+    const firstLine =
+      diagnostics
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => /error TS\d+/.test(line)) ?? diagnostics.slice(0, 280);
+    return {
+      success: false,
+      message: `Pre-flight \`npx tsc --noEmit\` failed (${firstLine}). The pull request was not opened.`,
+      diagnostics,
+    };
+  } finally {
+    if (ownsTemp) {
+      await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+}
+
+/**
+ * Hard gate for PR publishers: refuses when the patch does not typecheck.
  */
 export async function assertAutofixTscPreflightPasses(
   writes: readonly AutofixWriteFile[],
-  options?: { workDir?: string }
+  options?: { workDir?: string; projectRoot?: string }
 ): Promise<void> {
-  await runAutofixTscPreflight(writes, options);
+  const result = await runAutofixTscPreflight(writes, options);
+  if (result.success) return;
+  throw new AutofixTscPreflightError(result.message);
 }

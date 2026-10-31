@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import {
   exchangeGithubAppOAuthCode,
-  findSoloGithubAppInstallationId,
   listGithubAppInstallationsForUserToken,
   resolveGithubAppSlug,
 } from "@/lib/github-app-client";
@@ -72,10 +71,11 @@ export async function GET(request: Request) {
     return response;
   }
 
-  // If the App is already installed, GitHub skips /installations/new and never
-  // hits our install callback — sync the existing installation into Provix now.
+  // If the App is already installed for this GitHub user, sync it into Provix.
+  // Never fall back to "the only App installation on the planet" — that can
+  // attach someone else's repos to a different Provix account.
   const existing = await listGithubAppInstallationsForUserToken(token.accessToken);
-  const installationId = existing[0]?.id ?? (await findSoloGithubAppInstallationId());
+  const installationId = existing[0]?.id ?? null;
   if (installationId) {
     const saved = await persistGithubAppInstallation({
       supabase,

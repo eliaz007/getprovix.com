@@ -1,9 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-
-const primaryButton =
-  "inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-950 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-70";
+import { rowPrimaryActionClass } from "@/components/firewall/firewall-ui";
 
 type OpenFixPrButtonProps = {
   opening: boolean;
@@ -17,7 +15,7 @@ type OpenFixPrButtonProps = {
 export function OpenFixPrButton({
   opening,
   onClick,
-  className = primaryButton,
+  className = rowPrimaryActionClass,
   idleLabel = "Open Fix PR",
   openingLabel = "Opening…",
 }: OpenFixPrButtonProps) {

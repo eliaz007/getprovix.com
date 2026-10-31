@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeSourceTexts } from "../../scripts/ingest-engine";
-import { planAutofix } from "@/lib/firewall-autofix";
+import { isActionableArchitectureViolation, isTestSourcePath, planAutofix } from "@/lib/firewall-autofix";
 import { applyErrorHandling, missingErrorHandlingViolations } from "@/lib/firewall-error-handling";
 
 const route = `import { NextResponse } from "next/server";
@@ -107,5 +107,67 @@ export async function load() {
     expect(plan.writes).toHaveLength(1);
     expect(plan.writes[0]?.content).toContain("catch (error)");
     expect(plan.summary).toContain("try/catch");
+  });
+
+  it("refuses to module-split Vitest files that share helper closures", () => {
+    expect(isTestSourcePath("src/app/api/webhooks/github/github-webhook-gate.test.ts")).toBe(true);
+    const plan = planAutofix(
+      "src/app/api/webhooks/github/github-webhook-gate.test.ts",
+      [
+        "import { describe, expect, it } from \"vitest\";",
+        "const files = [{ path: \"a.ts\" }];",
+        "function recordingClient() { return files; }",
+        "describe(\"suite\", () => { it(\"works\", () => { expect(recordingClient()).toEqual(files); }); });",
+        "",
+      ].join("\n")
+    );
+    expect(plan.canOpenPullRequest).toBe(false);
+    expect(plan.writes).toEqual([]);
+    expect(plan.summary).toMatch(/test files are not split/i);
+  });
+
+  it("refuses suite-style sources even without a .test.ts path", () => {
+    const plan = planAutofix(
+      "src/lib/helpers.ts",
+      [
+        "import { describe, expect, it } from \"vitest\";",
+        "const secret = \"x\";",
+        "function signature() { return secret; }",
+        "describe(\"sig\", () => { it(\"ok\", () => { expect(signature()).toBe(secret); }); });",
+        "",
+      ].join("\n")
+    );
+    expect(plan.canOpenPullRequest).toBe(false);
+    expect(plan.writes).toEqual([]);
+  });
+
+  it("does not flag Architectural Bloat on Vitest modules", () => {
+    const long = `${"export const x = 1;\n".repeat(400)}import { describe, it, expect } from "vitest";\ndescribe("t", () => { it("ok", () => expect(1).toBe(1)); });\n`;
+    const report = analyzeSourceTexts(
+      [{ filePath: "src/lib/github-webhook-gate.test.ts", content: long }],
+      { includeOrphans: false }
+    );
+    expect(report.violations.some((violation) => violation.rule === "Architectural Bloat")).toBe(false);
+  });
+
+  it("only treats non-test Architectural Bloat as actionable in Violations", () => {
+    expect(
+      isActionableArchitectureViolation({
+        filePath: "src/lib/big-module.ts",
+        rule: "Architectural Bloat",
+      })
+    ).toBe(true);
+    expect(
+      isActionableArchitectureViolation({
+        filePath: "src/lib/big-module.test.ts",
+        rule: "Architectural Bloat",
+      })
+    ).toBe(false);
+    expect(
+      isActionableArchitectureViolation({
+        filePath: "src/lib/orphan.ts",
+        rule: "Dead Weight / Orphaned Code",
+      })
+    ).toBe(false);
   });
 });

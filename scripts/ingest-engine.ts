@@ -507,6 +507,10 @@ function statementText(statement: ImportStatement): string {
 }
 
 function bloatViolations(file: IngestedFile, statements: ImportStatement[]): Violation[] {
+  // Test suites are intentionally long and share helpers — auto-splitting them
+  // breaks closures and CI (see PR #70). Do not flag Architectural Bloat here.
+  if (isTestModule(file.filePath)) return [];
+
   const distinct: ImportStatement[] = [];
   const seen = new Set<string>();
   for (const statement of statements) {
@@ -719,13 +723,10 @@ function cycleViolations(graph: Map<string, ModuleEdge[]>): Violation[] {
 }
 
 function isTestModule(filePath: string): boolean {
-  const base = filePath.split("/").pop() ?? filePath;
-  return (
-    filePath.split("/").includes("__tests__") ||
-    base.endsWith(".test.ts") ||
-    base.endsWith(".test.tsx") ||
-    base.endsWith(".spec.ts")
-  );
+  const normalized = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const base = normalized.split("/").pop() ?? normalized;
+  if (/\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(base)) return true;
+  return normalized.split("/").some((part) => part === "__tests__" || part === "__mocks__" || part === "tests");
 }
 
 function isOrphanExcluded(filePath: string): boolean {

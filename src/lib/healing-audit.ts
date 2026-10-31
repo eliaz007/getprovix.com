@@ -11,6 +11,8 @@ export type HealingAuditEntry = {
   outcome: HealingAuditOutcome;
   /** Pull request number (`#41`) or the head branch when no number was stored. */
   ref: string | null;
+  /** Recorded pull-request title or commit subject, when the audit log has one. */
+  note?: string | null;
 };
 
 export type HealingAuditResponse = {

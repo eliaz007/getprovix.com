@@ -41,29 +41,48 @@ export async function load() {
 `;
 
 describe("runAutofixTscPreflight", () => {
-  it("immediately returns success without running tsc", async () => {
+  it("passes a coherent security patch through real tsc", async () => {
     const result = await runAutofixTscPreflight([
       { filePath: "src/components/jobs.tsx", content: validClient },
       { filePath: "src/app/actions/secure-query.ts", content: validAction },
       helper,
     ]);
     expect(result).toEqual({ success: true });
-  });
+  }, 90_000);
 
-  it("assertAutofixTscPreflightPasses resolves for any writes", async () => {
+  it("rejects a module split that leaves an unbound helper (PR #71 class)", async () => {
+    const result = await runAutofixTscPreflight([
+      {
+        filePath: "src/lib/demo-split.ts",
+        content: `export { openAutofixPullRequest } from "./demo-split/openautofixpullrequest";\n`,
+      },
+      {
+        filePath: "src/lib/demo-split/openautofixpullrequest.ts",
+        content: [
+          "export async function openAutofixPullRequest() {",
+          "  return writes.map((write) => write.filePath);",
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ]);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.message).toMatch(/tsc --noEmit/i);
+    expect(result.diagnostics).toMatch(/writes/i);
+  }, 90_000);
+
+  it("assertAutofixTscPreflightPasses resolves for a valid security patch", async () => {
     await expect(
       assertAutofixTscPreflightPasses([
         { filePath: "src/components/jobs.tsx", content: validClient },
         { filePath: "src/app/actions/secure-query.ts", content: validAction },
-        {
-          filePath: "src/utils/supabase/server.ts",
-          content: `export async function createClient() {\n  return null;\n}\n`,
-        },
+        helper,
       ])
     ).resolves.toBeUndefined();
-  });
+  }, 90_000);
 
-  it("finalizeAutofixWrites opens the path when heal passes (preflight is a no-op)", async () => {
+  it("finalizeAutofixWrites opens the path when heal and preflight pass", async () => {
     const finalized = await finalizeAutofixWrites([
       { filePath: "src/components/jobs.tsx", content: validClient },
       { filePath: "src/app/actions/secure-query.ts", content: validAction },
@@ -72,7 +91,7 @@ describe("runAutofixTscPreflight", () => {
     expect(finalized.ok).toBe(true);
     if (!finalized.ok) return;
     expect(finalized.writes.some((write) => write.filePath.endsWith("utils/supabase/server.ts"))).toBe(true);
-  });
+  }, 90_000);
 
   it("records missing @/ modules during alias collection", async () => {
     const client = [

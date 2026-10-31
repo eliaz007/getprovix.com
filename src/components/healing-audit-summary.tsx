@@ -61,40 +61,34 @@ export default function HealingAuditSummaryPanel() {
   const view = summary ?? EMPTY;
   const preview = [...view.critical, ...view.warnings].slice(0, 4);
 
+  const stats = [
+    { label: "Critical", value: view.criticalCount },
+    { label: "Warnings", value: view.warningCount },
+    { label: "Healed", value: view.healedCount },
+  ];
+
   return (
     <section className={panelClass}>
-      <div className="grid gap-6 px-5 py-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:items-start lg:gap-10">
-        <div className="min-w-0 space-y-2">
-          <div className="flex items-center gap-2">
-            <StatusDot tone={verdictTone(view.verdict)} />
-            <p className={mutedLabelClass}>Health</p>
-            <span className="text-xs text-zinc-400">{verdictLabel(view.verdict)}</span>
-          </div>
-          <h2 className={sectionLabelClass}>{view.headline}</h2>
-          <p className="max-w-2xl text-sm leading-relaxed text-zinc-500">{view.detail}</p>
+      <div className="px-5 py-5">
+        <div className="flex items-center gap-2">
+          <StatusDot tone={verdictTone(view.verdict)} />
+          <p className={mutedLabelClass}>Health</p>
+          <span className="text-xs text-zinc-400">{verdictLabel(view.verdict)}</span>
         </div>
-
-        <dl className="grid grid-cols-3 gap-4 border-t border-white/[0.06] pt-4 lg:border-t-0 lg:border-l lg:pl-8 lg:pt-0">
-          <div>
-            <dt className={mutedLabelClass}>Critical</dt>
-            <dd className="mt-1 text-2xl font-medium tabular-nums tracking-tight text-zinc-100">
-              {view.criticalCount}
-            </dd>
-          </div>
-          <div>
-            <dt className={mutedLabelClass}>Warnings</dt>
-            <dd className="mt-1 text-2xl font-medium tabular-nums tracking-tight text-zinc-100">
-              {view.warningCount}
-            </dd>
-          </div>
-          <div>
-            <dt className={mutedLabelClass}>Healed</dt>
-            <dd className="mt-1 text-2xl font-medium tabular-nums tracking-tight text-zinc-100">
-              {view.healedCount}
-            </dd>
-          </div>
-        </dl>
+        <h2 className={`mt-2 ${sectionLabelClass}`}>{view.headline}</h2>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-zinc-500">{view.detail}</p>
       </div>
+      <dl className="grid grid-cols-3 border-t border-white/[0.06]">
+        {stats.map((stat, index) => (
+          <div
+            key={stat.label}
+            className={`px-5 py-4 ${index < stats.length - 1 ? "border-r border-white/[0.06]" : ""}`}
+          >
+            <dt className={mutedLabelClass}>{stat.label}</dt>
+            <dd className="mt-1 text-2xl font-medium tabular-nums tracking-tight text-zinc-100">{stat.value}</dd>
+          </div>
+        ))}
+      </dl>
 
       {preview.length > 0 ? (
         <div className="border-t border-white/[0.06]">

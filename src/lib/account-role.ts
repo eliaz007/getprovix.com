@@ -13,7 +13,7 @@ export const EMPLOYER_DASHBOARD_PATH = "/firewall";
 /** Candidate dashboard home. */
 export const CANDIDATE_DASHBOARD_PATH = "/firewall";
 
-/** Post-auth role picker for GitHub/Google users whose profiles.role is unset. */
+/** Retired role-picker URL. Middleware sends it to the GitHub onboarding flow. */
 export const ROLE_ONBOARDING_PATH = "/onboarding/role";
 
 /** Candidate setup form after choosing For Developers. */
@@ -222,7 +222,19 @@ export function resolvePostAuthDestination(input: {
 
   const kind = normalizeAccountKind(input.role);
   if (!kind) {
-    return ROLE_ONBOARDING_PATH;
+    const requested = sanitizeInternalPath(input.requestedNext);
+    if (requested) {
+      const requestedUrl = new URL(requested, "https://getprovix.com");
+      const path = requestedUrl.pathname;
+      if (
+        path === "/onboarding" ||
+        path === "/firewall" ||
+        path.startsWith("/firewall/")
+      ) {
+        return `${path}${requestedUrl.search}`;
+      }
+    }
+    return CANDIDATE_SETUP_PATH;
   }
 
   const employer = kind === "employer";

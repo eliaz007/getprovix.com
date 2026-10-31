@@ -17,7 +17,6 @@ import type { FirewallReport } from "@/lib/firewall-contract";
 import {
   buildExecutionEvents,
   formatStreamStamp,
-  leaksAutoHealed,
   type ExecutionEvent,
   type StreamBadge,
 } from "@/lib/execution-stream";
@@ -50,12 +49,15 @@ function StreamRow({ event }: { event: ExecutionEvent }) {
     event.filePath !== "—"
       ? `${event.filePath}${event.line ? `:${event.line}` : ""}`
       : "—";
+  const stamp = formatStreamStamp(event.timestamp);
 
   return (
     <>
       <tr className={`border-t border-white/[0.04] ${rowHoverClass}`}>
-        <td className={`${tableCellClass} w-24 whitespace-nowrap text-xs text-zinc-500`}>
-          {formatStreamStamp(event.timestamp)}
+        <td className={`${tableCellClass} w-28 whitespace-nowrap text-xs text-zinc-500`}>
+          <time dateTime={event.timestamp || undefined} title={stamp.title || undefined}>
+            {stamp.label}
+          </time>
         </td>
         <td className={`${tableCellClass} w-28`}>
           <span className="inline-flex items-center gap-2 text-xs text-zinc-400">
@@ -115,19 +117,29 @@ export default function ExecutionStream({
   history: readonly HealingAuditEntry[];
 }) {
   const events = buildExecutionEvents(report, history);
-  const healed = leaksAutoHealed(history);
+  const stats = [
+    { label: "Events", value: events.length },
+    { label: "Flagged", value: events.filter((event) => event.badge === "FLAGGED").length },
+    { label: "Healed", value: events.filter((event) => event.badge === "HEALED").length },
+  ];
 
   return (
     <section className={panelClass}>
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-4">
-        <div className="min-w-0">
-          <p className={mutedLabelClass}>Execution stream</p>
-          <h2 className={`mt-1 truncate ${sectionLabelClass}`}>{repo ?? "local"}</h2>
-        </div>
-        <p className="text-xs text-zinc-500">
-          <span className="tabular-nums text-zinc-300">{healed}</span> leaks auto-healed
-        </p>
+      <header className="border-b border-white/[0.06] px-5 py-4">
+        <p className={mutedLabelClass}>Execution stream</p>
+        <h2 className={`mt-1 truncate ${sectionLabelClass}`}>{repo ?? "local"}</h2>
       </header>
+      <dl className="grid grid-cols-3 border-b border-white/[0.06]">
+        {stats.map((stat, index) => (
+          <div
+            key={stat.label}
+            className={`px-5 py-4 ${index < stats.length - 1 ? "border-r border-white/[0.06]" : ""}`}
+          >
+            <dt className={mutedLabelClass}>{stat.label}</dt>
+            <dd className="mt-1 text-2xl font-medium tabular-nums tracking-tight text-zinc-50">{stat.value}</dd>
+          </div>
+        ))}
+      </dl>
 
       {events.length === 0 ? (
         <p className="px-5 py-8 text-sm text-zinc-500">No execution events yet.</p>

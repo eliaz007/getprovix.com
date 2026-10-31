@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import {
+  FilePathPill,
+  StatusPill,
+  formatAuditTimestamp,
+  mutedLabelClass,
+  panelClass,
+  rowHoverClass,
+  sectionLabelClass,
+} from "@/components/firewall/firewall-ui";
 import { healingAuditLabel, type HealingAuditEntry, type HealingAuditResponse } from "@/lib/healing-audit";
 import { readJsonResponse } from "@/lib/read-json-response";
 
@@ -9,12 +18,6 @@ type LogState =
   | { kind: "loading" }
   | { kind: "ready"; entries: HealingAuditEntry[] }
   | { kind: "error"; message: string };
-
-function formatStamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "Z");
-}
 
 export default function HealingAuditLog({ repo }: { repo: string | null }): ReactNode {
   const [state, setState] = useState<LogState>({ kind: "idle" });
@@ -51,58 +54,53 @@ export default function HealingAuditLog({ repo }: { repo: string | null }): Reac
 
   const line =
     state.kind === "idle"
-      ? "no repository selected"
+      ? "No repository selected"
       : state.kind === "loading"
-        ? "reading log"
+        ? "Reading log…"
         : state.kind === "error"
           ? state.message
           : state.entries.length === 0
-            ? "no interventions recorded"
+            ? "No interventions recorded"
             : null;
 
   return (
-    <section aria-labelledby="healing-log-heading" className="overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 font-mono">
-      <header className="border-b border-zinc-800 px-4 py-3">
-        <p id="healing-log-heading" className="text-[11px] tracking-[0.16em] text-zinc-500 uppercase">
-          history
+    <section aria-labelledby="healing-log-heading" className={panelClass}>
+      <header className="border-b border-white/[0.06] px-5 py-4">
+        <p id="healing-log-heading" className={sectionLabelClass}>
+          History
         </p>
-        <p className="mt-1 text-sm text-zinc-100">{repo ?? "—"}</p>
+        <p className={`mt-1 font-mono text-xs text-zinc-400`}>{repo ?? "—"}</p>
       </header>
       {line ? (
-        <p className="px-4 py-4 text-[12px] text-zinc-500" role="status">
+        <p className="px-5 py-6 text-sm text-zinc-500" role="status">
           {line}
         </p>
       ) : null}
       {state.kind === "ready" && state.entries.length > 0 ? (
-        <ol>
-          <li className="grid grid-cols-1 gap-1 border-b border-zinc-800 px-4 py-2 text-[10px] tracking-[0.14em] text-zinc-500 uppercase sm:grid-cols-[12rem_minmax(0,1fr)_6.5rem_auto] sm:items-center sm:gap-4">
-            <span>timestamp</span>
-            <span>path</span>
-            <span>category</span>
-            <span>outcome</span>
-          </li>
-          {state.entries.map((entry) => (
-            <li
-              key={`${entry.timestamp}:${entry.filePath}:${entry.category}`}
-              className="grid grid-cols-1 gap-1 border-b border-zinc-800 px-4 py-3 text-[12px] last:border-b-0 sm:grid-cols-[12rem_minmax(0,1fr)_6.5rem_auto] sm:items-center sm:gap-4"
-            >
-              <time dateTime={entry.timestamp} className="text-zinc-500">
-                {formatStamp(entry.timestamp)}
-              </time>
-              <span className="truncate text-zinc-100">{entry.filePath}</span>
-              <span className="text-zinc-400">{entry.category}</span>
-              <span
-                className={
-                  entry.outcome === "healed"
-                    ? "w-fit rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-950"
-                    : "w-fit rounded-full border border-zinc-600 px-2 py-0.5 text-[11px] text-zinc-300"
-                }
+        <ul>
+          {state.entries.map((entry) => {
+            const stamp = formatAuditTimestamp(entry.timestamp);
+            const healed = entry.outcome === "healed";
+            return (
+              <li
+                key={`${entry.timestamp}:${entry.filePath}:${entry.category}`}
+                className={`flex flex-col gap-2 border-t border-white/[0.04] px-5 py-3 sm:flex-row sm:items-center sm:justify-between ${rowHoverClass}`}
               >
-                {healingAuditLabel(entry.outcome)}
-              </span>
-            </li>
-          ))}
-        </ol>
+                <div className="min-w-0 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill label={healed ? "Passed" : "Needs review"} tone={healed ? "ok" : "warn"} />
+                    <span className={mutedLabelClass}>{entry.category}</span>
+                    <FilePathPill path={entry.filePath} />
+                  </div>
+                  <p className="text-xs text-zinc-500">{healingAuditLabel(entry.outcome)}</p>
+                </div>
+                <time dateTime={entry.timestamp} title={stamp.title} className="shrink-0 text-xs tabular-nums text-zinc-500">
+                  {stamp.label}
+                </time>
+              </li>
+            );
+          })}
+        </ul>
       ) : null}
     </section>
   );

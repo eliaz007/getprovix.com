@@ -1,5 +1,13 @@
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import {
+  FilePathPill,
+  StatusPill,
+  formatAuditTimestamp,
+  mutedLabelClass,
+  panelClass,
+  rowHoverClass,
+} from "@/components/firewall/firewall-ui";
 import { listHealingAuditRows, type HealingAuditRow } from "@/lib/firewall-open-prs";
 import { createClient } from "@/utils/supabase/server";
 
@@ -52,72 +60,73 @@ export default async function HistoryPage() {
   const logs = await loadHealingLogs();
 
   return (
-    <div className="min-h-screen bg-zinc-950 p-8 font-mono text-zinc-100">
+    <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100 sm:p-8">
       <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+        <div className="flex flex-col gap-3 border-b border-white/[0.06] pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <Link
               href="/firewall"
-              aria-label="Back to Architecture Firewall"
-              className="inline-flex items-center gap-1.5 text-zinc-500 transition-colors hover:text-zinc-200"
+              aria-label="Back to Integrity"
+              className="inline-flex items-center gap-1.5 text-xs text-zinc-500 transition-colors hover:text-zinc-200"
             >
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-              <span className="text-[11px] tracking-wider uppercase">Back</span>
+              Back
             </Link>
-            <h1 className="text-sm font-semibold tracking-wider text-zinc-200 uppercase">Patch History</h1>
+            <div>
+              <p className="text-xs text-zinc-500">Audit log</p>
+              <h1 className="text-xl font-medium tracking-tight text-zinc-50">Patch history</h1>
+            </div>
           </div>
-          <span className="text-xs text-zinc-500">{logs.length} interventions recorded</span>
+          <span className={mutedLabelClass}>
+            <span className="tabular-nums text-zinc-300">{logs.length}</span> interventions recorded
+          </span>
         </div>
 
-        <div className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-900/50">
+        <div className={panelClass}>
           {logs.length === 0 ? (
-            <div className="p-8 text-center text-xs text-zinc-500">
+            <div className="px-5 py-10 text-center text-sm text-zinc-500">
               No autonomous interventions recorded yet. Engine is watching.
             </div>
           ) : (
-            logs.map((log) => {
-              const isLeak = log.branch_name?.includes("secrets") || log.category === "leaks";
-              const isSuccess = log.status === "merged" || log.status === "open";
-              const recordedAt = new Date(log.created_at);
-              const clock = Number.isNaN(recordedAt.getTime())
-                ? log.created_at
-                : recordedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-              return (
-                <div
-                  key={log.id}
-                  className="flex items-center justify-between p-4 text-xs transition-colors hover:bg-zinc-800/40"
-                >
-                  <div className="flex min-w-0 items-center gap-4">
-                    {isSuccess ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                    ) : (
-                      <XCircle className="h-4 w-4 shrink-0 text-rose-500" />
-                    )}
-                    <div className="min-w-0">
-                      <span className="font-medium text-zinc-200">{log.file_path}</span>
-                      <div className="mt-0.5 text-[10px] text-zinc-500">
-                        {isLeak ? "leaks" : "violations"} — {log.commit_message || "Autonomous fix applied"}
+            <ul>
+              {logs.map((log) => {
+                const isLeak = log.branch_name?.includes("secrets") || log.category === "leaks";
+                const isSuccess = log.status === "merged" || log.status === "open";
+                const stamp = formatAuditTimestamp(log.created_at);
+                return (
+                  <li
+                    key={log.id}
+                    className={`flex flex-col gap-3 border-t border-white/[0.04] px-5 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between ${rowHoverClass}`}
+                  >
+                    <div className="min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusPill
+                          label={isSuccess ? "Passed" : "Blocked"}
+                          tone={isSuccess ? "ok" : "danger"}
+                        />
+                        <StatusPill label={isLeak ? "Leaks" : "Violations"} tone="neutral" />
+                        <FilePathPill path={log.file_path} />
                       </div>
+                      <p className="text-sm text-zinc-400">
+                        {log.commit_message || "Autonomous fix applied"}
+                      </p>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-4">
-                    <span className="flex items-center gap-1 text-zinc-500">
-                      <Clock className="h-3 w-3" />
-                      {clock}
-                    </span>
-                    <span
-                      className={`rounded px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                        isSuccess
-                          ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                          : "border border-rose-500/20 bg-rose-500/10 text-rose-400"
-                      }`}
-                    >
-                      {isSuccess ? "Patch Applied" : "patch reverted"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })
+                    <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-1.5">
+                      <time
+                        dateTime={log.created_at}
+                        title={stamp.title}
+                        className="text-xs tabular-nums text-zinc-500"
+                      >
+                        {stamp.label}
+                      </time>
+                      <span className="text-xs text-zinc-600">
+                        {isSuccess ? "Patch applied" : "Reverted"}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       </div>

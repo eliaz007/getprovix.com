@@ -94,6 +94,34 @@ describe("validateAutofixWrites", () => {
     }
   });
 
+  it("ignores secure-query mentions inside test string literals", () => {
+    const result = validateAutofixWrites([
+      {
+        filePath: "src/app/api/webhooks/github/github-webhook-gate.test.ts",
+        content: `import { describe, expect, it } from "vitest";\nfunction recordingClient() { return { commits: [] }; }\nexport function recordingclient() {\n  expect(client).toContain('from "@/app/actions/secure-query"');\n  return recordingClient();\n}\n`,
+      },
+      {
+        filePath: "src/app/api/webhooks/github/github-webhook-gate.test/recordingclient.ts",
+        content: `export function recordingClient() {\n  expect("x").toContain('from "@/app/actions/secure-query"');\n  return {};\n}\n`,
+      },
+    ]);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("allows architecture splits that keep an existing secure-query import without re-committing the action", () => {
+    const result = validateAutofixWrites([
+      {
+        filePath: "src/app/login/page.tsx",
+        content: `export { LoginForm as default } from "./page/loginform";\n`,
+      },
+      {
+        filePath: "src/app/login/page/loginform.tsx",
+        content: `"use client";\nimport { secureQuery95 } from "@/app/actions/secure-query";\nexport async function LoginForm() {\n  return await secureQuery95();\n}\n`,
+      },
+    ]);
+    expect(result).toEqual({ ok: true });
+  });
+
   it("rejects invalid package.json writes", () => {
     const result = validateAutofixWrites([{ filePath: "package.json", content: "{ broken" }]);
     expect(result.ok).toBe(false);

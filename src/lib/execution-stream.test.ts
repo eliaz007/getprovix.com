@@ -50,6 +50,35 @@ describe("buildExecutionEvents", () => {
     expect(leaksAutoHealed([healed])).toBe(1);
   });
 
+  it("describes an architecture heal by the recorded fix instead of a generic commit line", () => {
+    const architecture: HealingAuditEntry = {
+      timestamp: "2026-10-29T18:05:00.000Z",
+      filePath: "src/lib/billing.ts",
+      category: "violations",
+      outcome: "healed",
+      ref: "provix/split-billing",
+      note: "refactor: split src/lib/billing.ts into modules",
+    };
+    const events = buildExecutionEvents(
+      {
+        ...report,
+        violations: [
+          {
+            filePath: "src/lib/billing.ts",
+            severity: "HIGH",
+            rule: "Architectural Bloat",
+            message: "File exceeds the module size budget.",
+            line: 1,
+          },
+        ],
+      },
+      [architecture]
+    );
+    const healedRow = events.find((event) => event.badge === "HEALED");
+    expect(healedRow?.summary).toBe("Split the file into modules and replaced it with a barrel re-export");
+    expect(healedRow?.summary).not.toContain("Architecture patch auto-committed");
+  });
+
   it("emits a single clean row when the scan has nothing to intercept", () => {
     const events = buildExecutionEvents({ ...report, violations: [] }, []);
     expect(events).toEqual([

@@ -5,7 +5,7 @@ import {
   assertAutofixTscPreflightPasses,
 } from "@/lib/autofix-tsc-preflight";
 import { healAutofixWrites } from "@/lib/autofix-write-validation";
-import { planAutofix } from "@/lib/firewall-autofix";
+import { isTestSourcePath, isTestSuiteSource, planAutofix } from "@/lib/firewall-autofix";
 import { recordOpenAutofixPullRequest } from "@/lib/firewall-open-prs";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import { isFirewallSourcePath, isRepositoryTextPath, readGitHubSourceFile, readGitHubTextFile } from "@/lib/github-source-file";
@@ -143,11 +143,25 @@ export async function openAutofixPullRequest(repoInput: string, filePath: string
     return { status: 413, body: { ok: false, message: "File is too large to refactor in one pass." } };
   }
 
+  if (isTestSourcePath(filePath) || isTestSuiteSource(remote.content)) {
+    return {
+      status: 422,
+      body: {
+        ok: false,
+        message:
+          "Test files cannot be auto-split into modules. Shared helpers break across files and CI fails typecheck. Close any open split PR for this test and leave the suite as one file.",
+      },
+    };
+  }
+
   const plan = planAutofix(filePath, remote.content);
   if (!plan.canOpenPullRequest || plan.writes.length === 0) {
     return {
       status: 422,
-      body: { ok: false, message: "This file has no safe autofix, so no pull request was opened." },
+      body: {
+        ok: false,
+        message: plan.summary || "This file has no safe autofix, so no pull request was opened.",
+      },
     };
   }
 

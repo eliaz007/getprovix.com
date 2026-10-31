@@ -18,9 +18,7 @@ import {
   EMPLOYER_DASHBOARD_PATH,
   isEmployerAllowedDashboardRequest,
   normalizeAccountKind,
-  ROLE_ONBOARDING_PATH,
 } from "@/lib/account-role";
-import { isAdminUser } from "@/lib/admin-access";
 import {
   canAccessTalentPool,
   dashboardTabFromSearchParam,
@@ -362,13 +360,7 @@ export function DashboardNavProviderImpl({
       setUserDisplayNameState(namedIdentity.displayName);
       setUserInitials(namedIdentity.initials);
 
-      const assignedRole = normalizeAccountKind(profile?.role);
-      if (!assignedRole && !isAdminUser(user)) {
-        router.replace(ROLE_ONBOARDING_PATH);
-        return;
-      }
-
-      setAccountRole(assignedRole);
+      setAccountRole(normalizeAccountKind(profile?.role));
     };
 
     const readSession = async () => {

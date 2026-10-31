@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { AUTH_SESSION_TIMEOUT_MS } from "@/lib/auth-session-timeout";
 import {
   EMPLOYER_DASHBOARD_PATH,
-  ROLE_ONBOARDING_PATH,
   isCandidateShellPath,
   isEmployerAllowedDashboardRequest,
   isEmployerAuthIntent,
@@ -53,7 +52,7 @@ describe("authentication and session validation", () => {
 
     expect(
       resolvePostAuthDestination({ role: null, requestedNext: "/dashboard" })
-    ).toBe(ROLE_ONBOARDING_PATH);
+    ).toBe("/onboarding");
     expect(
       resolvePostAuthDestination({
         role: "employer",

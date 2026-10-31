@@ -88,6 +88,26 @@ export async function listOpenAutofixPulls(repoInput: string): Promise<ListedAut
   });
 }
 
+async function healNotesByPath(
+  admin: NonNullable<ReturnType<typeof createServiceRoleClient>>
+): Promise<Map<string, string>> {
+  const notes = new Map<string, string>();
+  const { data, error } = await admin
+    .from("healing_audits")
+    .select("file_path, branch_name, commit_message")
+    .order("created_at", { ascending: false });
+  if (error || !data) return notes;
+  for (const row of data) {
+    const filePath = typeof row.file_path === "string" ? normalizeFilePath(row.file_path) : "";
+    const message = typeof row.commit_message === "string" ? row.commit_message.trim() : "";
+    if (!filePath || !message) continue;
+    const branch = typeof row.branch_name === "string" ? row.branch_name : "";
+    if (branch && !notes.has(`${filePath}|${branch}`)) notes.set(`${filePath}|${branch}`, message);
+    if (!notes.has(filePath)) notes.set(filePath, message);
+  }
+  return notes;
+}
+
 export async function listAutofixHistory(repoInput: string): Promise<HealingAuditEntry[]> {
   const ownerRepo = toGitHubOwnerRepo(repoInput);
   const [owner, repo] = ownerRepo?.split("/") ?? [];
@@ -101,9 +121,13 @@ export async function listAutofixHistory(repoInput: string): Promise<HealingAudi
     .eq("repo", repo)
     .order("updated_at", { ascending: false });
   if (error || !data) return [];
+  const notes = await healNotesByPath(admin);
   return data.flatMap((row) => {
     const entry = toHealingAuditEntry(row);
-    return entry ? [entry] : [];
+    if (!entry) return [];
+    const branch = typeof row.branch === "string" ? row.branch : "";
+    const note = (branch ? notes.get(`${entry.filePath}|${branch}`) : undefined) ?? notes.get(entry.filePath) ?? null;
+    return [note ? { ...entry, note } : entry];
   });
 }
 

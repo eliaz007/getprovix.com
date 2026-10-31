@@ -44,7 +44,9 @@ function invalid(code: AutofixValidationCode, message: string, filePath?: string
   return filePath ? { ok: false, code, message, filePath } : { ok: false, code, message };
 }
 
-const SECURE_QUERY_IMPORT_RE = /from\s+["'](@\/app\/actions\/secure-query)["']/;
+/** Real ESM/TS import only — not string literals inside tests or messages. */
+const SECURE_QUERY_IMPORT_RE =
+  /(?:^|[\n;])\s*import\s+(?:type\s+)?(?:\{[^}]*\}|\*\s+as\s+[A-Za-z_$][\w$]*|[A-Za-z_$][\w$]*)\s+from\s+["']@\/app\/actions\/secure-query["']/;
 const SECURE_QUERY_CALL_CHAIN_RE = /\bsecureQuery\d*\s*\([^)]*\)\s*\./;
 const SERVER_ACTION_EXPORT_RE = /export\s+async\s+function\s+(secureQuery\d*)\s*\(/g;
 
@@ -389,15 +391,22 @@ function validateCrossFile(writes: readonly AutofixWriteFile[]): AutofixWriteVal
     }
   }
 
+  const sourceWrites = writes.filter((write) => /\.(?:ts|tsx|js|jsx)$/i.test(write.filePath));
+  // Incomplete security patches are usually a single client write that imports
+  // secure-query without shipping the action. Architecture module splits keep an
+  // existing import across several files and must not require re-committing the action.
+  const requireActionInCommit = actionPaths.length === 0 && sourceWrites.length === 1;
+
   for (const write of writes) {
     if (!SECURE_QUERY_IMPORT_RE.test(write.content)) continue;
-    if (actionPaths.length === 0) {
+    if (requireActionInCommit) {
       return invalid(
         "missing-server-action-file",
         `Generated ${write.filePath} imports "@/app/actions/secure-query", but the server action file was not included in the commit. The pull request was not opened.`,
         write.filePath
       );
     }
+    if (actionPaths.length === 0) continue;
     for (const match of write.content.matchAll(/\b(secureQuery\d*)\s*\(/g)) {
       const name = match[1];
       if (!name) continue;

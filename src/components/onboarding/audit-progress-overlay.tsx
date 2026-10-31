@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Shield } from "lucide-react";
 
@@ -15,23 +15,34 @@ const PILLARS = [
 export default function AuditProgressOverlay({
   open,
   repo,
+  onComplete,
 }: {
   open: boolean;
   repo: string | null;
+  onComplete?: () => void;
 }) {
   const [step, setStep] = useState(0);
+  const completed = useRef(false);
 
   useEffect(() => {
+    completed.current = false;
     if (!open) {
       setStep(0);
       return;
     }
     setStep(0);
     const timers = PILLARS.map((_, index) =>
-      setTimeout(() => setStep(index + 1), 700 + index * 780)
+      setTimeout(() => {
+        const next = index + 1;
+        setStep(next);
+        if (next >= PILLARS.length && !completed.current) {
+          completed.current = true;
+          onComplete?.();
+        }
+      }, 700 + index * 780)
     );
     return () => timers.forEach(clearTimeout);
-  }, [open]);
+  }, [open, onComplete]);
 
   const progress = Math.min(100, Math.round((step / PILLARS.length) * 100));
 

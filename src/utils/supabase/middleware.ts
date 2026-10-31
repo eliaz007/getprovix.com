@@ -16,7 +16,6 @@ import {
   isRoleOnboardingPath,
   normalizeAccountKind,
   resolvePostAuthDestination,
-  ROLE_ONBOARDING_PATH,
 } from "@/lib/account-role";
 import {
   hasCompletedCandidateSetup,
@@ -126,6 +125,10 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
+  if (isRoleOnboardingPath(pathname)) {
+    return redirectWithSessionCookies(request, supabaseResponse, "/onboarding");
+  }
+
   const isLogin =
     pathname === "/login" || pathname.startsWith("/login/");
   const isHome = pathname === "/";
@@ -134,7 +137,6 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/update-password/");
   const isEmployer =
     pathname === "/employer" || pathname.startsWith("/employer/");
-  const onRoleOnboarding = isRoleOnboardingPath(pathname);
   const onCandidateSetup = isCandidateSetupPath(pathname);
   const isProtectedRoute = isProtectedAppPath(pathname);
 
@@ -186,7 +188,6 @@ export async function updateSession(request: NextRequest) {
       isEmployer ||
       employerRequest ||
       isAuditorPath(pathname) ||
-      onRoleOnboarding ||
       onCandidateSetup ||
       (isProtectedRoute && !isLogin);
 
@@ -231,12 +232,10 @@ export async function updateSession(request: NextRequest) {
         console.error("Account role check failed:", err);
       }
 
-      // Keep `/onboarding` reachable without a role so the GitHub App + AST
-      // handshake can run; role pick stays at `/onboarding/role` only.
+      // No role yet: open the GitHub onboarding flow, not the retired role picker.
       if (
         !role &&
         !isAdminUser(user) &&
-        !onRoleOnboarding &&
         !isLogin &&
         !onCandidateSetup &&
         (isProtectedRoute || isHome)
@@ -244,24 +243,7 @@ export async function updateSession(request: NextRequest) {
         return redirectWithSessionCookies(
           request,
           supabaseResponse,
-          ROLE_ONBOARDING_PATH
-        );
-      }
-
-      if (role && onRoleOnboarding) {
-        const destination = new URL(
-          role === "employer"
-            ? EMPLOYER_DASHBOARD_PATH
-            : setupComplete
-              ? CANDIDATE_DASHBOARD_PATH
-              : CANDIDATE_SETUP_PATH,
-          request.url
-        );
-        return redirectWithSessionCookies(
-          request,
-          supabaseResponse,
-          destination.pathname,
-          destination.search
+          CANDIDATE_SETUP_PATH
         );
       }
 

@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight,
@@ -26,7 +25,11 @@ import type { GithubInstallationRepo } from "@/lib/github-app-client";
 import type { OnboardingRepositoriesResponse } from "@/lib/onboarding-repos";
 import { readJsonResponse } from "@/lib/read-json-response";
 import type { FirewallResponse } from "@/lib/firewall-contract";
-import { saveFirewallScanHandoff } from "@/lib/firewall-scan-handoff";
+import {
+  markOnboardingAuditComplete,
+  readOnboardingAuditComplete,
+  saveFirewallScanHandoff,
+} from "@/lib/firewall-scan-handoff";
 import { createClient } from "@/utils/supabase/client";
 
 type WorkspaceKind = "solo" | "team";
@@ -63,7 +66,6 @@ function errorMessageFromSearch(): string | null {
 }
 
 export default function OnboardingFlow() {
-  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("boot");
   const [error, setError] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceKind>("solo");
@@ -73,6 +75,10 @@ export default function OnboardingFlow() {
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [installPending, setInstallPending] = useState(false);
   const [auditing, setAuditing] = useState(false);
+  const [pillarsComplete, setPillarsComplete] = useState(false);
+  const destinationRef = useRef<string | null>(null);
+  const scanRef = useRef<Promise<void> | null>(null);
+  const leavingRef = useRef(false);
 
   const displayRepos = useMemo(() => {
     const pool = preferred.length > 0 ? preferred : repos;
@@ -90,6 +96,13 @@ export default function OnboardingFlow() {
     const supabase = createClient();
 
     async function boot() {
+      const params = new URLSearchParams(window.location.search);
+      const completed = params.get("error") ? null : readOnboardingAuditComplete();
+      if (completed?.repo) {
+        hardNavigate(integrityDashboardPath(completed.repo));
+        return;
+      }
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -158,47 +171,62 @@ export default function OnboardingFlow() {
     hardNavigate(GITHUB_APP_CONNECT_PATH);
   }
 
+  const handlePillarsComplete = useCallback(() => {
+    setPillarsComplete(true);
+  }, []);
+
+  useEffect(() => {
+    if (!pillarsComplete || leavingRef.current || !destinationRef.current || !scanRef.current) return;
+    const destination = destinationRef.current;
+    const scan = scanRef.current;
+    void scan.then(() => {
+      if (leavingRef.current) return;
+      leavingRef.current = true;
+      hardNavigate(destination);
+    });
+  }, [pillarsComplete]);
+
   async function runInitialAudit() {
     if (!selectedRepo || auditing) return;
+    const repo = selectedRepo;
+    const destination = integrityDashboardPath(repo);
+    destinationRef.current = destination;
     setAuditing(true);
+    setPillarsComplete(false);
     setPhase("auditing");
     setError(null);
+    leavingRef.current = false;
 
-    const destination = integrityDashboardPath(selectedRepo);
-    const started = Date.now();
-
-    try {
-      const response = await fetch("/api/firewall", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: "github", repoUrl: selectedRepo }),
-      });
-      const payload = await readJsonResponse<FirewallResponse>(response);
-      if (response.ok && payload.status === "ready" && payload.report && payload.source === "github") {
-        saveFirewallScanHandoff({
-          repoUrl: selectedRepo,
-          report: payload.report,
-          note: payload.message ?? `Initial AST audit for ${selectedRepo}.`,
-          source: "github",
+    scanRef.current = (async () => {
+      try {
+        const response = await fetch("/api/firewall", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: "github", repoUrl: repo }),
         });
+        const payload = await readJsonResponse<FirewallResponse>(response);
+        if (response.ok && payload.status === "ready" && payload.report && payload.source === "github") {
+          saveFirewallScanHandoff({
+            repoUrl: repo,
+            report: payload.report,
+            note: payload.message ?? `Initial AST audit for ${repo}.`,
+            source: "github",
+          });
+        }
+      } catch {
+        // Still enter the dashboard; firewall page can retry the scan.
       }
-    } catch {
-      // Still enter the dashboard; firewall page can retry the scan.
-    }
-
-    const elapsed = Date.now() - started;
-    const minShow = 4200;
-    if (elapsed < minShow) {
-      await new Promise((resolve) => setTimeout(resolve, minShow - elapsed));
-    }
-
-    router.refresh();
-    hardNavigate(destination);
+      markOnboardingAuditComplete(repo);
+    })();
   }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-zinc-950 text-zinc-100">
-      <AuditProgressOverlay open={auditing || phase === "auditing"} repo={selectedRepo} />
+      <AuditProgressOverlay
+        open={auditing || phase === "auditing"}
+        repo={selectedRepo}
+        onComplete={handlePillarsComplete}
+      />
 
       <AnimatePresence mode="wait">
         {phase === "boot" || (phase === "setup" && loadingRepos) ? (

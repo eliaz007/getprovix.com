@@ -37,6 +37,8 @@ function isFirewallView(value: string | null | undefined): value is FirewallView
 function normalizeView(value: string): FirewallView | null {
   const view = value.trim().toLowerCase();
   if (view === "security") return "leaks";
+  // The old Architecture Firewall screen now lives on Integrity.
+  if (view === "firewall") return "health";
   return isFirewallView(view) ? view : null;
 }
 
@@ -47,7 +49,7 @@ function readViewFromLocation(): FirewallView {
 
   // Migrate legacy hash fragments once.
   const hash = window.location.hash.replace(/^#/, "");
-  return normalizeView(hash) ?? "firewall";
+  return normalizeView(hash) ?? "health";
 }
 
 function readRepoFromLocation(): string | null {
@@ -69,9 +71,10 @@ function readIntegrityPane(): IntegrityPane {
 function buildFirewallHref(repoSlug: string | null, view: FirewallView, pane: IntegrityPane = "stream"): string {
   const params = new URLSearchParams();
   const clean = repoSlug ? toGitHubOwnerRepo(repoSlug) : null;
+  const canonical = view === "firewall" ? "health" : view;
   if (clean) params.set("repo", clean);
-  if (view !== "firewall") params.set("view", view);
-  if (view === "health" && pane === "integrity") params.set("pane", "integrity");
+  if (canonical !== "health") params.set("view", canonical);
+  if (canonical === "health" && pane === "integrity") params.set("pane", "integrity");
   const query = params.toString();
   return `/firewall${query ? `?${query}` : ""}`;
 }
@@ -87,7 +90,7 @@ function replaceFirewallUrl(repoSlug: string | null, view: FirewallView, pane: I
 }
 
 export function FirewallViewProvider({ children }: { children: ReactNode }) {
-  const [activeView, setView] = useState<FirewallView>("firewall");
+  const [activeView, setView] = useState<FirewallView>("health");
   const [repoSlug, setRepoSlugState] = useState<string | null>(null);
   const [integrityPane, setIntegrityPaneState] = useState<IntegrityPane>("stream");
   const [securityCount, setSecurityCountState] = useState<number | null>(null);
@@ -109,7 +112,7 @@ export function FirewallViewProvider({ children }: { children: ReactNode }) {
 
   const setActiveView = useCallback((view: FirewallView) => {
     if (!VIEW_VALUES.has(view)) return;
-    setView(view);
+    setView(view === "firewall" ? "health" : view);
   }, []);
 
   const setRepoSlug = useCallback((repo: string | null) => {
@@ -149,6 +152,6 @@ export function useFirewallView() {
   return value;
 }
 
-export function firewallHref(repoSlug: string | null, view: FirewallView = "firewall", pane: IntegrityPane = "stream"): string {
+export function firewallHref(repoSlug: string | null, view: FirewallView = "health", pane: IntegrityPane = "stream"): string {
   return buildFirewallHref(repoSlug, view, pane);
 }

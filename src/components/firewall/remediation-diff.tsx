@@ -12,6 +12,7 @@ import {
   type FirewallRemediation,
 } from "@/lib/firewall-contract";
 import { readJsonResponse } from "@/lib/read-json-response";
+import { rowGhostActionClass, rowPrimaryActionClass } from "@/components/firewall/firewall-ui";
 
 function lineClass(line: string): string {
   if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) {
@@ -43,10 +44,6 @@ function lacksWriteAccess(status: number, message: string): boolean {
   if (status === 401 || status === 403) return true;
   return /GITHUB_TOKEN|cannot create a branch|permission/i.test(message);
 }
-
-const ghostButton =
-  "inline-flex items-center rounded-md border border-white/[0.12] bg-transparent px-2.5 py-1 font-mono text-[11px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.04]";
-const textToggle = "inline-flex items-center rounded-md px-2 py-1 font-mono text-[11px] text-zinc-500 transition-colors hover:text-zinc-200";
 
 export function RemediationDiff({
   remediation,
@@ -140,31 +137,39 @@ export function RemediationDiff({
   }
 
   const toolbar = (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <button type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)} className={textToggle}>
-        {open ? "Hide Diff" : "View Diff"}
-      </button>
-      <button
-        type="button"
-        onClick={() => void copyPatch()}
-        className={`${ghostButton} ${copied ? "border-emerald-500/30 text-emerald-300" : ""}`}
-      >
-        {copied ? "✓ Copied Patch" : "Copy Patch"}
-      </button>
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      <div className="inline-flex items-center overflow-hidden rounded-md border border-white/[0.08] bg-black/30">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+          className={`${rowGhostActionClass} rounded-none border-r border-white/[0.08]`}
+        >
+          {open ? "Hide" : "Inspect"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void copyPatch()}
+          className={`${rowGhostActionClass} rounded-none ${copied ? "text-emerald-300" : ""}`}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
       {canOpenPr ? (
         pull.status === "opened" ? (
           <a
             href={pull.url}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center rounded-md border border-emerald-400/40 bg-emerald-400/10 px-2.5 py-1 font-mono text-[11px] font-semibold text-emerald-300 transition-colors hover:bg-emerald-400/20"
+            className="inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/15"
           >
-            PR #{pull.number} Opened ↗
+            PR #{pull.number}
           </a>
         ) : (
           <OpenFixPrButton
             opening={pull.status === "opening"}
             onClick={() => void openFixPr()}
+            className={rowPrimaryActionClass}
           />
         )
       ) : null}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, History, ScrollText, Settings, Shield, ShieldAlert } from "lucide-react";
+import { Activity, History, ScrollText, Settings, Shield } from "lucide-react";
 import { isFirewallPath } from "@/lib/dashboard-account";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
@@ -68,7 +68,6 @@ export default function DashboardSidebar() {
   }
 
   const workspaceLinks = [
-    { key: "firewall" as const, label: "Architecture Firewall", icon: ShieldAlert },
     { key: "health" as const, label: "Integrity", icon: Activity },
     { key: "violations" as const, label: "Violations", icon: ScrollText },
     { key: "leaks" as const, label: "Leaks", icon: Shield },

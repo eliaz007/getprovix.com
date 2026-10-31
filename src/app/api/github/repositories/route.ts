@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import {
   findGithubAppInstallationIdForAccount,
-  findSoloGithubAppInstallationId,
   lookupGithubInstallation,
   type GithubInstallationRepo,
 } from "@/lib/github-app-client";
@@ -62,9 +61,8 @@ export async function GET() {
   if (installationIds.length === 0) {
     const login = githubUsernameFromUser(user);
     try {
-      const installationId =
-        (login ? await findGithubAppInstallationIdForAccount(login) : null) ??
-        (await findSoloGithubAppInstallationId());
+      // Match by GitHub login only — never adopt a random solo App installation.
+      const installationId = login ? await findGithubAppInstallationIdForAccount(login) : null;
       if (installationId) {
         const saved = await persistGithubAppInstallation({
           supabase,

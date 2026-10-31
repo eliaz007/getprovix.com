@@ -5,7 +5,8 @@ import type { FirewallReport, FirewallViolation } from "@/lib/firewall-contract"
 import { violationCategory } from "@/lib/firewall-contract";
 import { RemediationDiff } from "@/components/firewall/remediation-diff";
 import {
-  StatusDot,
+  FilePathPill,
+  StatusPill,
   filterChipClass,
   formatBoundaryId,
   mutedLabelClass,
@@ -14,6 +15,7 @@ import {
   sectionLabelClass,
   severityLabel,
   severityTone,
+  statusPillClass,
 } from "@/components/firewall/firewall-ui";
 
 const METRICS = [
@@ -36,6 +38,56 @@ function findingKey(finding: FirewallViolation): string {
 
 function findingsFor(report: FirewallReport, category: (typeof METRICS)[number]["id"]): FirewallViolation[] {
   return report.violations.filter((violation) => violation.category === category);
+}
+
+function summaryLines(message: string): string {
+  const trimmed = message.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= 160) return trimmed;
+  return `${trimmed.slice(0, 157).trimEnd()}…`;
+}
+
+function FindingSnippet({ snippet }: { snippet: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="text-xs text-zinc-500 transition-colors hover:text-zinc-300"
+      >
+        {open ? "Hide code" : "Inspect code"}
+      </button>
+      {open ? (
+        <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-white/[0.06] bg-black/50 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">
+          <code>{snippet}</code>
+        </pre>
+      ) : null}
+    </div>
+  );
+}
+
+function FindingMeta({
+  finding,
+  prOpen,
+}: {
+  finding: FirewallViolation;
+  prOpen?: boolean;
+}) {
+  const tone = prOpen ? "ok" : severityTone(finding.severity);
+  const statusLabel = prOpen ? "Fixed" : severityLabel(finding.severity);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <StatusPill
+        label={statusLabel}
+        tone={tone === "ok" ? "ok" : tone === "danger" ? "danger" : tone === "warn" ? "warn" : "neutral"}
+      />
+      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] ${statusPillClass("neutral")}`}>
+        {finding.category ? formatBoundaryId(finding.category) : finding.rule || "Security"}
+      </span>
+      <FilePathPill path={finding.filePath} line={finding.line} />
+    </div>
+  );
 }
 
 export default function SecurityGuardPanel({ report }: { report: FirewallReport }) {
@@ -87,10 +139,10 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
                 <dt className={mutedLabelClass}>{metric.label}</dt>
                 <dd className="mt-2 flex items-baseline gap-2">
                   <span className="text-2xl font-medium tabular-nums tracking-tight text-zinc-50">{active}</span>
-                  <span className="inline-flex items-center gap-1.5 text-xs text-zinc-500">
-                    <StatusDot tone={tone} />
-                    {active === 0 ? "Secure" : "Open"}
-                  </span>
+                  <StatusPill
+                    label={active === 0 ? "Passed" : "Needs review"}
+                    tone={tone === "ok" ? "ok" : tone === "danger" ? "danger" : "warn"}
+                  />
                 </dd>
                 {opened > 0 ? (
                   <p className="mt-1 text-xs text-zinc-600">{opened} PR opened</p>
@@ -136,7 +188,7 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
 
         {security.length === 0 ? (
           <p className="flex items-center gap-2 px-5 py-10 text-sm text-zinc-500">
-            <StatusDot tone="ok" />
+            <StatusPill label="Passed" tone="ok" />
             No active security findings
           </p>
         ) : visible.length === 0 ? (
@@ -166,31 +218,17 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
                   {({ toolbar, notice, diff, prOpen }) => (
                     <li className={`border-t border-white/[0.04] px-5 py-4 ${rowHoverClass}`}>
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="min-w-0 space-y-2">
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <span className="inline-flex items-center gap-2 text-xs text-zinc-400">
-                              <StatusDot tone={prOpen ? "ok" : severityTone(finding.severity)} />
-                              {prOpen ? "PR open" : severityLabel(finding.severity)}
-                            </span>
-                            <span className="text-xs text-zinc-600">
-                              {finding.category ? formatBoundaryId(finding.category) : "Security"}
-                            </span>
-                          </div>
-                          <p className="font-mono text-xs text-zinc-200">
-                            {finding.filePath}
-                            <span className="text-zinc-600">:{finding.line}</span>
-                          </p>
-                          {prOpen ? null : (
-                            <p className="text-sm leading-relaxed text-zinc-500">{finding.message}</p>
+                        <div className="min-w-0 space-y-2.5">
+                          <FindingMeta finding={finding} prOpen={prOpen} />
+                          {prOpen ? (
+                            <p className="text-sm text-zinc-500">Fix pull request opened for this finding.</p>
+                          ) : (
+                            <p className="text-sm leading-relaxed text-zinc-400">{summaryLines(finding.message)}</p>
                           )}
+                          {!prOpen && finding.snippet ? <FindingSnippet snippet={finding.snippet} /> : null}
                         </div>
                         <div className="flex shrink-0 lg:justify-end">{toolbar}</div>
                       </div>
-                      {prOpen ? null : finding.snippet ? (
-                        <pre className="mt-3 overflow-x-auto rounded-lg border border-white/[0.06] bg-black/40 px-3 py-2 font-mono text-xs text-zinc-400">
-                          {finding.snippet}
-                        </pre>
-                      ) : null}
                       {notice ? <div className="mt-3">{notice}</div> : null}
                       {diff ? <div className="mt-3">{diff}</div> : null}
                     </li>
@@ -198,20 +236,11 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
                 </RemediationDiff>
               ) : (
                 <li key={key} className={`border-t border-white/[0.04] px-5 py-4 ${rowHoverClass}`}>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="inline-flex items-center gap-2 text-xs text-zinc-400">
-                      <StatusDot tone={severityTone(finding.severity)} />
-                      {severityLabel(finding.severity)}
-                    </span>
-                    <span className="text-xs text-zinc-600">
-                      {finding.category ? formatBoundaryId(finding.category) : "Security"}
-                    </span>
+                  <div className="space-y-2.5">
+                    <FindingMeta finding={finding} />
+                    <p className="text-sm leading-relaxed text-zinc-400">{summaryLines(finding.message)}</p>
+                    {finding.snippet ? <FindingSnippet snippet={finding.snippet} /> : null}
                   </div>
-                  <p className="mt-2 font-mono text-xs text-zinc-200">
-                    {finding.filePath}
-                    <span className="text-zinc-600">:{finding.line}</span>
-                  </p>
-                  <p className="mt-2 text-sm leading-relaxed text-zinc-500">{finding.message}</p>
                 </li>
               );
             })}

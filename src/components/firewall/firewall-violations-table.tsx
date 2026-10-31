@@ -1,16 +1,21 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
 import {
-  StatusDot,
+  FilePathPill,
+  StatusPill,
   filterChipClass,
+  formatBoundaryId,
   mutedLabelClass,
   panelClass,
+  rowGhostActionClass,
   rowHoverClass,
+  rowPrimaryActionClass,
   sectionLabelClass,
   severityLabel,
   severityTone,
+  statusPillClass,
   tableCellClass,
   tableHeadClass,
 } from "@/components/firewall/firewall-ui";
@@ -28,6 +33,7 @@ import {
   type FirewallSeverity,
   type FirewallViolation,
 } from "@/lib/firewall-contract";
+import { isActionableArchitectureViolation, isTestSourcePath } from "@/lib/firewall-autofix";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import { readJsonResponse } from "@/lib/read-json-response";
 
@@ -51,14 +57,67 @@ const LIST_FILTERS: { id: ListFilter; label: string }[] = [
   { id: "opened", label: "PR opened" },
 ];
 
-const textToggle =
-  "inline-flex items-center rounded-md px-2.5 py-1 text-xs text-zinc-500 transition-colors hover:bg-white/[0.04] hover:text-zinc-200 disabled:cursor-wait disabled:opacity-70";
-const openedLink =
-  "inline-flex items-center rounded-md px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:bg-white/[0.04] hover:text-white";
+function summaryLines(message: string): string {
+  const trimmed = message.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= 140) return trimmed;
+  return `${trimmed.slice(0, 137).trimEnd()}…`;
+}
 
-function countFor(violations: FirewallViolation[], filter: SeverityFilter): number {
-  if (filter === "ALL") return violations.length;
-  return violations.filter((violation) => violation.severity === filter).length;
+/** Lower weight sorts first: Critical → High → Medium → Low. */
+function severityWeight(severity: FirewallSeverity | string): number {
+  switch (severity) {
+    case "CRITICAL":
+      return 0;
+    case "HIGH":
+      return 1;
+    case "MEDIUM":
+      return 2;
+    case "LOW":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function matchesListFilter(
+  opened: boolean,
+  listFilter: ListFilter
+): boolean {
+  if (listFilter === "opened") return opened;
+  if (listFilter === "action") return !opened;
+  return true;
+}
+
+function countFor(
+  violations: FirewallViolation[],
+  filter: SeverityFilter,
+  isOpen: (filePath: string) => boolean,
+  listFilter: ListFilter
+): number {
+  let count = 0;
+  for (const violation of violations) {
+    if (!matchesListFilter(isOpen(violation.filePath), listFilter)) continue;
+    if (filter !== "ALL" && violation.severity !== filter) continue;
+    count += 1;
+  }
+  return count;
+}
+
+function compareArchitectureViolations(
+  left: FirewallViolation,
+  right: FirewallViolation,
+  isOpen: (filePath: string) => boolean
+): number {
+  const leftResolved = isOpen(left.filePath) ? 1 : 0;
+  const rightResolved = isOpen(right.filePath) ? 1 : 0;
+  if (leftResolved !== rightResolved) return leftResolved - rightResolved;
+
+  const bySeverity = severityWeight(left.severity) - severityWeight(right.severity);
+  if (bySeverity !== 0) return bySeverity;
+
+  const byPath = left.filePath.localeCompare(right.filePath);
+  if (byPath !== 0) return byPath;
+  return left.line - right.line;
 }
 
 function violationKey(violation: FirewallViolation): string {
@@ -94,10 +153,51 @@ export default function FirewallViolationsTable({
   const [sessionPulls, setSessionPulls] = useState<Record<string, SessionPull>>({});
   const repoSlug = repoUrl ? toGitHubOwnerRepo(repoUrl) : null;
   const architecture = useMemo(
-    () => report.violations.filter((violation) => violationCategory(violation) === "ARCHITECTURE"),
+    () =>
+      report.violations.filter(
+        (violation) =>
+          violationCategory(violation) === "ARCHITECTURE" && isActionableArchitectureViolation(violation)
+      ),
     [report.violations]
   );
-  const securityCount = report.violations.length - architecture.length;
+  const securityCount = report.violations.filter(
+    (violation) => violationCategory(violation) !== "ARCHITECTURE"
+  ).length;
+
+  function violationHasOpenPr(filePath: string): boolean {
+    const session = sessionPulls[filePath];
+    if (session?.status === "opened") return true;
+    return Boolean(recorded[filePath]);
+  }
+
+  const sortedArchitecture = useMemo(
+    () =>
+      [...architecture].sort((left, right) =>
+        compareArchitectureViolations(left, right, violationHasOpenPr)
+      ),
+    // sessionPulls / recorded change which rows count as resolved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [architecture, recorded, sessionPulls]
+  );
+  const severityRows = useMemo(
+    () =>
+      filter === "ALL"
+        ? sortedArchitecture
+        : sortedArchitecture.filter((violation) => violation.severity === filter),
+    [sortedArchitecture, filter]
+  );
+  const rows = useMemo(
+    () =>
+      severityRows.filter((violation) =>
+        matchesListFilter(violationHasOpenPr(violation.filePath), listFilter)
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [severityRows, listFilter, recorded, sessionPulls]
+  );
+  const openedCount = sortedArchitecture.filter((violation) =>
+    violationHasOpenPr(violation.filePath)
+  ).length;
+  const activeCount = sortedArchitecture.length - openedCount;
 
   useEffect(() => {
     setDiffs({});
@@ -185,6 +285,17 @@ export default function FirewallViolationsTable({
   async function openFixPr(filePath: string) {
     const current = sessionPulls[filePath];
     if (current?.status === "opening" || current?.status === "opened" || recorded[filePath]) return;
+    if (isTestSourcePath(filePath)) {
+      setSessionPulls((prev) => ({
+        ...prev,
+        [filePath]: {
+          status: "error",
+          message:
+            "Test files cannot be auto-split. Shared helpers break across modules and CI fails typecheck (see PR #70).",
+        },
+      }));
+      return;
+    }
     if (!repoSlug) {
       setSessionPulls((prev) => ({
         ...prev,
@@ -243,25 +354,6 @@ export default function FirewallViolationsTable({
     }
   }
 
-  function violationHasOpenPr(filePath: string): boolean {
-    const session = sessionPulls[filePath];
-    if (session?.status === "opened") return true;
-    return Boolean(recorded[filePath]);
-  }
-
-  const severityRows = useMemo(
-    () => (filter === "ALL" ? architecture : architecture.filter((violation) => violation.severity === filter)),
-    [architecture, filter]
-  );
-  const openedCount = architecture.filter((violation) => violationHasOpenPr(violation.filePath)).length;
-  const activeCount = architecture.length - openedCount;
-  const rows = severityRows.filter((violation) => {
-    const opened = violationHasOpenPr(violation.filePath);
-    if (listFilter === "opened") return opened;
-    if (listFilter === "action") return !opened;
-    return true;
-  });
-
   return (
     <section className="space-y-4">
       <div className={panelClass}>
@@ -282,7 +374,7 @@ export default function FirewallViolationsTable({
           <div className="flex flex-wrap gap-1" role="group" aria-label="Filter violations by severity">
             {FILTERS.map((item) => {
               const active = item === filter;
-              const shown = countFor(architecture, item);
+              const shown = countFor(sortedArchitecture, item, violationHasOpenPr, listFilter);
               return (
                 <button
                   key={item}
@@ -315,15 +407,10 @@ export default function FirewallViolationsTable({
           </div>
         ) : null}
 
-        {architecture.length > 0 ? (
+        {sortedArchitecture.length > 0 ? (
           <div className="flex flex-wrap gap-1 border-b border-white/[0.06] px-5 py-3" role="group" aria-label="Filter architecture violations">
             {LIST_FILTERS.map((item) => {
-              const count = severityRows.filter((violation) => {
-                const opened = violationHasOpenPr(violation.filePath);
-                if (item.id === "opened") return opened;
-                if (item.id === "action") return !opened;
-                return true;
-              }).length;
+              const count = countFor(sortedArchitecture, filter, violationHasOpenPr, item.id);
               const selected = listFilter === item.id;
               return (
                 <button
@@ -346,116 +433,115 @@ export default function FirewallViolationsTable({
             {listFilter === "opened"
               ? "No pull requests opened in this scan."
               : listFilter === "action"
-                ? "No architecture violations need action."
-                : "No architecture violations in this filter."}
+                ? "No autofixable architecture issues need action."
+                : "No autofixable architecture issues in this filter."}
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px]">
-              <thead>
-                <tr className={tableHeadClass}>
-                  <th className="px-5 py-2.5 font-medium">Severity</th>
-                  <th className="px-4 py-2.5 font-medium">File</th>
-                  <th className="px-4 py-2.5 font-medium">Issue</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((violation) => {
-                  const key = violationKey(violation);
-                  const diff = diffs[violation.filePath];
-                  const diffOpen = openDiffs.has(key) && diff?.status === "ready";
-                  const session = sessionPulls[violation.filePath];
-                  const saved = recorded[violation.filePath];
-                  const opened =
-                    session?.status === "opened"
-                      ? session
-                      : saved && typeof saved.number === "number" && saved.url
-                        ? { url: saved.url, number: saved.number }
-                        : null;
-                  const opening = session?.status === "opening";
-                  const prError = session?.status === "error" ? session.message : null;
-                  const knownOpen = Boolean(saved);
-                  const resolved = Boolean(opened || knownOpen);
-                  return (
-                    <Fragment key={key}>
-                      <tr className={`border-t border-white/[0.04] ${rowHoverClass}`}>
-                        <td className={`${tableCellClass} px-5`}>
-                          <span className="inline-flex items-center gap-2 text-xs text-zinc-400">
-                            <StatusDot tone={resolved ? "ok" : severityTone(violation.severity)} />
-                            {resolved ? "PR open" : severityLabel(violation.severity)}
-                          </span>
-                        </td>
-                        <td className={`${tableCellClass} max-w-[16rem]`}>
-                          <span className="block truncate font-mono text-xs text-zinc-200">
-                            {violation.filePath}
-                            {!resolved ? <span className="text-zinc-600">:{violation.line}</span> : null}
-                          </span>
-                        </td>
-                        <td className={`${tableCellClass} max-w-[22rem] truncate text-zinc-500`}>
-                          {resolved ? "Fix pull request opened" : violation.message}
-                        </td>
-                        <td className={`${tableCellClass} px-5`}>
-                          <div className="flex flex-wrap items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              aria-expanded={diffOpen}
-                              disabled={diff?.status === "loading"}
-                              onClick={() => void toggleDiff(key, violation.filePath)}
-                              className={textToggle}
-                            >
-                              {diff?.status === "loading" ? "Loading…" : diffOpen ? "Hide diff" : "Diff"}
-                            </button>
-                            {opened ? (
-                              <a href={opened.url} target="_blank" rel="noreferrer" className={openedLink}>
-                                PR #{opened.number}
-                              </a>
-                            ) : knownOpen ? (
-                              <span className="inline-flex items-center gap-2 px-2.5 py-1 text-xs text-zinc-400">
-                                <StatusDot tone="ok" />
-                                Opened
-                              </span>
-                            ) : (
-                              <OpenFixPrButton
-                                opening={opening}
-                                onClick={() => void openFixPr(violation.filePath)}
-                              />
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      {prError || diff?.status === "error" || (diffOpen && diff?.status === "ready") ? (
-                        <tr className="border-t border-white/[0.04] bg-white/[0.015]">
-                          <td colSpan={4} className="px-5 py-4">
-                            {prError ? (
-                              <p className="mb-2 text-sm text-red-300" role="alert">
-                                {prError}
-                              </p>
-                            ) : null}
-                            {diff?.status === "error" ? (
-                              <p className="mb-2 text-sm text-red-300" role="alert">
-                                {diff.message}
-                              </p>
-                            ) : null}
-                            {diffOpen && diff?.status === "ready" ? (
-                              <div className="overflow-hidden rounded-lg border border-white/[0.06] bg-black/40">
-                                <p className="border-b border-white/[0.06] px-3 py-2 text-xs text-zinc-500">
-                                  {diff.summary}
-                                </p>
-                                <pre className="max-h-48 overflow-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-400">
-                                  {diff.diff || "(empty diff)"}
-                                </pre>
-                              </div>
-                            ) : null}
-                          </td>
-                        </tr>
+          <ul>
+            {rows.map((violation) => {
+              const key = violationKey(violation);
+              const diff = diffs[violation.filePath];
+              const diffOpen = openDiffs.has(key) && diff?.status === "ready";
+              const session = sessionPulls[violation.filePath];
+              const saved = recorded[violation.filePath];
+              const opened =
+                session?.status === "opened"
+                  ? session
+                  : saved && typeof saved.number === "number" && saved.url
+                    ? { url: saved.url, number: saved.number }
+                    : null;
+              const opening = session?.status === "opening";
+              const prError = session?.status === "error" ? session.message : null;
+              const knownOpen = Boolean(saved);
+              const resolved = Boolean(opened || knownOpen);
+              const tone = resolved ? "ok" : severityTone(violation.severity);
+              const ruleLabel = violation.rule ? formatBoundaryId(violation.rule) : "Architecture";
+              return (
+                <li key={key} className={`border-t border-white/[0.04] px-5 py-4 ${rowHoverClass}`}>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 space-y-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusPill
+                          label={resolved ? "Fixed" : severityLabel(violation.severity)}
+                          tone={tone === "ok" ? "ok" : tone === "danger" ? "danger" : tone === "warn" ? "warn" : "neutral"}
+                        />
+                        <span
+                          className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] ${statusPillClass("neutral")}`}
+                        >
+                          {ruleLabel}
+                        </span>
+                        <FilePathPill path={violation.filePath} line={resolved ? undefined : violation.line} />
+                      </div>
+                      <p className="text-sm leading-relaxed text-zinc-400">
+                        {resolved ? "Fix pull request opened for this finding." : summaryLines(violation.message)}
+                      </p>
+                      {!resolved && violation.snippet ? (
+                        <details className="group/snippet">
+                          <summary className="cursor-pointer list-none text-xs text-zinc-500 transition-colors hover:text-zinc-300 [&::-webkit-details-marker]:hidden">
+                            Inspect code
+                          </summary>
+                          <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-white/[0.06] bg-black/50 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">
+                            <code>{violation.snippet}</code>
+                          </pre>
+                        </details>
                       ) : null}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        aria-expanded={diffOpen}
+                        disabled={diff?.status === "loading"}
+                        onClick={() => void toggleDiff(key, violation.filePath)}
+                        className={rowGhostActionClass}
+                      >
+                        {diff?.status === "loading" ? "Loading…" : diffOpen ? "Hide" : "View Diff"}
+                      </button>
+                      {opened ? (
+                        <a
+                          href={opened.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/15"
+                        >
+                          PR #{opened.number}
+                        </a>
+                      ) : knownOpen ? (
+                        <StatusPill label="Opened" tone="ok" />
+                      ) : (
+                        <OpenFixPrButton
+                          opening={opening}
+                          onClick={() => void openFixPr(violation.filePath)}
+                          className={rowPrimaryActionClass}
+                        />
+                      )}
+                    </div>
+                  </div>
+                  {prError || diff?.status === "error" || (diffOpen && diff?.status === "ready") ? (
+                    <div className="mt-3 space-y-2">
+                      {prError ? (
+                        <p className="text-sm text-red-300" role="alert">
+                          {prError}
+                        </p>
+                      ) : null}
+                      {diff?.status === "error" ? (
+                        <p className="text-sm text-red-300" role="alert">
+                          {diff.message}
+                        </p>
+                      ) : null}
+                      {diffOpen && diff?.status === "ready" ? (
+                        <div className="overflow-hidden rounded-lg border border-white/[0.06] bg-black/40">
+                          <p className="border-b border-white/[0.06] px-3 py-2 text-xs text-zinc-500">{diff.summary}</p>
+                          <pre className="max-h-48 overflow-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-400">
+                            <code>{diff.diff || "(empty diff)"}</code>
+                          </pre>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
 

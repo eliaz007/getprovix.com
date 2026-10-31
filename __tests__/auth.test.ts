@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   EMPLOYER_DASHBOARD_PATH,
-  ROLE_ONBOARDING_PATH,
   isEmployerAuthIntent,
   normalizeAccountKind,
   resolveAccountRole,
@@ -43,7 +42,7 @@ describe("authentication and session validation", () => {
     ).toBe("employer");
     expect(
       resolvePostAuthDestination({ role: null, requestedNext: "/dashboard" })
-    ).toBe(ROLE_ONBOARDING_PATH);
+    ).toBe("/onboarding");
     expect(
       resolvePostAuthDestination({
         role: "employer",
