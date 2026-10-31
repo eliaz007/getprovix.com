@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeStringArray } from "@/lib/match-heuristic";
 import {
+  asPostgrestErrorLike,
   isSupabaseSchemaError,
   schemaErrorMentionsColumn,
 } from "@/lib/supabase-schema-errors";
@@ -163,9 +164,35 @@ export function toJobMatchJobPayload(job: JobRow) {
   };
 }
 
-function shouldFallBackWithoutContractFields(
-  error: JobFeedError | null
-): boolean {
+function asJobFeedError(error: unknown): JobFeedError | null {
+  const normalized = asPostgrestErrorLike(error);
+  if (!normalized) {
+    return error == null ? null : { message: String(error) };
+  }
+  return {
+    message: normalized.message ?? "Unknown Supabase error",
+    details: normalized.details ?? null,
+    hint: normalized.hint ?? null,
+  };
+}
+
+type JobFeedQueryResult = {
+  data: unknown;
+  error: JobFeedError | null;
+};
+
+function asJobFeedQueryResult(value: unknown): JobFeedQueryResult {
+  if (!value || typeof value !== "object") {
+    return { data: null, error: { message: "Invalid job feed response" } };
+  }
+  const record = value as { data?: unknown; error?: unknown };
+  return {
+    data: record.data ?? null,
+    error: asJobFeedError(record.error ?? null),
+  };
+}
+
+function shouldFallBackWithoutContractFields(error: unknown): boolean {
   return (
     isSupabaseSchemaError(error) &&
     (schemaErrorMentionsColumn(error, "contract_hours_per_week") ||
@@ -173,16 +200,14 @@ function shouldFallBackWithoutContractFields(
   );
 }
 
-function shouldFallBackWithoutEmploymentType(
-  error: JobFeedError | null
-): boolean {
+function shouldFallBackWithoutEmploymentType(error: unknown): boolean {
   return (
     isSupabaseSchemaError(error) &&
     schemaErrorMentionsColumn(error, "employment_type")
   );
 }
 
-function shouldFallBackToLegacyColumns(error: JobFeedError | null): boolean {
+function shouldFallBackToLegacyColumns(error: unknown): boolean {
   return (
     isSupabaseSchemaError(error) &&
     (schemaErrorMentionsColumn(error, "tech_stack") ||
@@ -225,11 +250,12 @@ function logJobFeed(
       startedAt
   );
   if (error) {
+    const normalized = asJobFeedError(error) ?? { message: error.message };
     console.warn(`[jobs] ${label} failed`, {
       ms,
-      message: error.message,
-      details: "details" in error ? error.details : undefined,
-      hint: "hint" in error ? error.hint : undefined,
+      message: normalized.message,
+      details: normalized.details,
+      hint: normalized.hint,
     });
     return;
   }
@@ -244,51 +270,59 @@ export async function fetchPublicJobFeed(supabase: SupabaseClient): Promise<{
     typeof performance !== "undefined" ? performance.now() : Date.now();
 
   try {
-    const first = await withJobFeedTimeout(
-      supabase
-        .from("jobs")
-        .select(JOB_FEED_COLUMNS)
-        .eq("status", "active")
-        .order("created_at", { ascending: false })
-        .limit(JOB_FEED_LIMIT),
-      "public job feed"
+    const first = asJobFeedQueryResult(
+      await withJobFeedTimeout(
+        supabase
+          .from("jobs")
+          .select(JOB_FEED_COLUMNS)
+          .eq("status", "active")
+          .order("created_at", { ascending: false })
+          .limit(JOB_FEED_LIMIT),
+        "public job feed"
+      )
     );
 
     const withoutContract = shouldFallBackWithoutContractFields(first.error)
-      ? await withJobFeedTimeout(
-          supabase
-            .from("jobs")
-            .select(JOB_FEED_COLUMNS_WITH_EMPLOYMENT)
-            .eq("status", "active")
-            .order("created_at", { ascending: false })
-            .limit(JOB_FEED_LIMIT),
-          "public job feed (without contract fields)"
+      ? asJobFeedQueryResult(
+          await withJobFeedTimeout(
+            supabase
+              .from("jobs")
+              .select(JOB_FEED_COLUMNS_WITH_EMPLOYMENT)
+              .eq("status", "active")
+              .order("created_at", { ascending: false })
+              .limit(JOB_FEED_LIMIT),
+            "public job feed (without contract fields)"
+          )
         )
       : first;
 
     const withoutEmployment = shouldFallBackWithoutEmploymentType(
       withoutContract.error
     )
-      ? await withJobFeedTimeout(
-          supabase
-            .from("jobs")
-            .select(JOB_FEED_COLUMNS_WITHOUT_EMPLOYMENT)
-            .eq("status", "active")
-            .order("created_at", { ascending: false })
-            .limit(JOB_FEED_LIMIT),
-          "public job feed (without employment_type)"
+      ? asJobFeedQueryResult(
+          await withJobFeedTimeout(
+            supabase
+              .from("jobs")
+              .select(JOB_FEED_COLUMNS_WITHOUT_EMPLOYMENT)
+              .eq("status", "active")
+              .order("created_at", { ascending: false })
+              .limit(JOB_FEED_LIMIT),
+            "public job feed (without employment_type)"
+          )
         )
       : withoutContract;
 
     const result = shouldFallBackToLegacyColumns(withoutEmployment.error)
-      ? await withJobFeedTimeout(
-          supabase
-            .from("jobs")
-            .select(JOB_FEED_COLUMNS_LEGACY)
-            .eq("status", "active")
-            .order("created_at", { ascending: false })
-            .limit(JOB_FEED_LIMIT),
-          "public job feed (legacy columns)"
+      ? asJobFeedQueryResult(
+          await withJobFeedTimeout(
+            supabase
+              .from("jobs")
+              .select(JOB_FEED_COLUMNS_LEGACY)
+              .eq("status", "active")
+              .order("created_at", { ascending: false })
+              .limit(JOB_FEED_LIMIT),
+            "public job feed (legacy columns)"
+          )
         )
       : withoutEmployment;
 
@@ -311,32 +345,40 @@ export async function fetchDashboardJobs(supabase: SupabaseClient): Promise<{
   data: JobRow[];
   error: { message: string } | null;
 }> {
-  const first = await supabase
-    .from("jobs")
-    .select(JOB_FEED_COLUMNS)
-    .order("created_at", { ascending: false });
+  const first = asJobFeedQueryResult(
+    await supabase
+      .from("jobs")
+      .select(JOB_FEED_COLUMNS)
+      .order("created_at", { ascending: false })
+  );
 
   const withoutContract = shouldFallBackWithoutContractFields(first.error)
-    ? await supabase
-        .from("jobs")
-        .select(JOB_FEED_COLUMNS_WITH_EMPLOYMENT)
-        .order("created_at", { ascending: false })
+    ? asJobFeedQueryResult(
+        await supabase
+          .from("jobs")
+          .select(JOB_FEED_COLUMNS_WITH_EMPLOYMENT)
+          .order("created_at", { ascending: false })
+      )
     : first;
 
   const withoutEmployment = shouldFallBackWithoutEmploymentType(
     withoutContract.error
   )
-    ? await supabase
-        .from("jobs")
-        .select(JOB_FEED_COLUMNS_WITHOUT_EMPLOYMENT)
-        .order("created_at", { ascending: false })
+    ? asJobFeedQueryResult(
+        await supabase
+          .from("jobs")
+          .select(JOB_FEED_COLUMNS_WITHOUT_EMPLOYMENT)
+          .order("created_at", { ascending: false })
+      )
     : withoutContract;
 
   const result = shouldFallBackToLegacyColumns(withoutEmployment.error)
-    ? await supabase
-        .from("jobs")
-        .select(JOB_FEED_COLUMNS_LEGACY)
-        .order("created_at", { ascending: false })
+    ? asJobFeedQueryResult(
+        await supabase
+          .from("jobs")
+          .select(JOB_FEED_COLUMNS_LEGACY)
+          .order("created_at", { ascending: false })
+      )
     : withoutEmployment;
 
   if (result.error) {
@@ -359,12 +401,17 @@ export async function deleteOwnedJob(
     .select("id")
     .maybeSingle();
 
-  if (error) {
-    return { deletedId: null, error };
+  const normalizedError = asJobFeedError(error);
+  if (normalizedError) {
+    return { deletedId: null, error: normalizedError };
   }
 
+  const row =
+    data && typeof data === "object"
+      ? (data as { id?: unknown })
+      : null;
   const deletedId =
-    data && typeof data.id === "string" && data.id.trim() ? data.id : null;
+    row && typeof row.id === "string" && row.id.trim() ? row.id : null;
 
   return { deletedId, error: null };
 }

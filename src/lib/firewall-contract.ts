@@ -2,13 +2,41 @@ export const FIREWALL_SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as cons
 
 export type FirewallSeverity = (typeof FIREWALL_SEVERITIES)[number];
 
+export const FIREWALL_CATEGORIES = [
+  "SECRET_LEAK",
+  "CLIENT_DB_EXPOSURE",
+  "VULNERABLE_DEPENDENCY",
+  "ARCHITECTURE",
+] as const;
+
+export type FirewallCategory = (typeof FIREWALL_CATEGORIES)[number];
+
+export type FirewallRemediation = {
+  diff: string;
+  command?: string;
+  envExample?: string;
+};
+
 export type FirewallViolation = {
   filePath: string;
   severity: FirewallSeverity;
   rule: string;
   message: string;
   line: number;
+  category?: FirewallCategory;
+  snippet?: string;
+  remediation?: FirewallRemediation;
 };
+
+export function isSecurityCategory(
+  value: string | undefined
+): value is Exclude<FirewallCategory, "ARCHITECTURE"> {
+  return value === "SECRET_LEAK" || value === "CLIENT_DB_EXPOSURE" || value === "VULNERABLE_DEPENDENCY";
+}
+
+export function violationCategory(violation: { category?: FirewallCategory }): FirewallCategory {
+  return isSecurityCategory(violation.category) ? violation.category : "ARCHITECTURE";
+}
 
 export type FirewallSummary = {
   totalFiles: number;
@@ -80,4 +108,17 @@ export type FirewallAutofixPullRequestResponse = {
   title?: string;
   branch?: string;
   base?: string;
+};
+
+export type FirewallResolvedPull = {
+  filePath: string;
+  number: number | null;
+  url: string | null;
+};
+
+export type FirewallResolvedFilesResponse = {
+  ok: boolean;
+  filePaths: string[];
+  pulls?: FirewallResolvedPull[];
+  message?: string;
 };

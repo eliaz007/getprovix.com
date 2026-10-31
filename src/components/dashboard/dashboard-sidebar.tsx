@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, ScrollText, Settings, ShieldAlert } from "lucide-react";
+import { Activity, History, ScrollText, Settings, Shield, ShieldAlert } from "lucide-react";
 import { isFirewallPath } from "@/lib/dashboard-account";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
@@ -50,10 +50,11 @@ function NavSection({ title, children }: { title: string; children: ReactNode })
 export default function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { activeView, repoSlug, setActiveView } = useFirewallView();
+  const { activeView, repoSlug, securityCount, setActiveView } = useFirewallView();
   const { authLoading, isGuest, requireAuth, setMobileNavOpen, userDisplayName, userInitials } =
     useDashboardNav();
   const onFirewall = isFirewallPath(pathname);
+  const onHistory = pathname === "/history" || pathname.startsWith("/history/");
   const onSettings = pathname === "/dashboard/settings" || pathname.startsWith("/dashboard/settings/");
   const active = onSettings ? "settings" : onFirewall ? activeView : "";
 
@@ -68,8 +69,9 @@ export default function DashboardSidebar() {
 
   const workspaceLinks = [
     { key: "firewall" as const, label: "Architecture Firewall", icon: ShieldAlert },
-    { key: "health" as const, label: "Health metrics", icon: Activity },
-    { key: "violations" as const, label: "Violation log", icon: ScrollText },
+    { key: "health" as const, label: "Integrity", icon: Activity },
+    { key: "violations" as const, label: "Violations", icon: ScrollText },
+    { key: "leaks" as const, label: "Leaks", icon: Shield },
   ];
 
   return (
@@ -94,10 +96,35 @@ export default function DashboardSidebar() {
                     aria-hidden="true"
                   />
                   <span className="truncate">{item.label}</span>
+                  {item.key === "leaks" && securityCount !== null ? (
+                    <span
+                      className={`ml-auto rounded px-1.5 py-0.5 font-mono text-[10px] tabular-nums ${
+                        securityCount > 0
+                          ? "border border-red-500/30 bg-red-500/10 text-red-300"
+                          : "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                      }`}
+                    >
+                      {securityCount}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             );
           })}
+            <li>
+              <Link
+                href="/history"
+                className={navItemClass(onHistory)}
+                aria-current={onHistory ? "page" : undefined}
+              >
+                <History
+                  className={`h-4 w-4 shrink-0 ${onHistory ? "text-violet-300" : "text-zinc-400"}`}
+                  strokeWidth={1.5}
+                  aria-hidden="true"
+                />
+                <span className="truncate">History</span>
+              </Link>
+            </li>
         </NavSection>
 
         <div className="mt-5">

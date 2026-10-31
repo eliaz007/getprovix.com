@@ -18,6 +18,8 @@ describe("shouldSkipMiddlewareAuth", () => {
     expect(shouldSkipMiddlewareAuth("/audit")).toBe(true);
     expect(shouldSkipMiddlewareAuth("/firewall")).toBe(true);
     expect(isPublicRoute("/firewall")).toBe(true);
+    expect(isPublicRoute("/api/webhooks/github")).toBe(true);
+    expect(shouldSkipMiddlewareAuth("/api/webhooks/github")).toBe(true);
     expect(isProtectedAppPath("/firewall")).toBe(false);
     expect(isPublicRoute("/dashboard/auditor")).toBe(true);
     expect(isPublicRoute("/opportunities")).toBe(true);

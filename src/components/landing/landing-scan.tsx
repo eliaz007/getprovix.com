@@ -146,8 +146,11 @@ export default function LandingScan() {
   const progress = !scanning ? 0 : state.opening ? 100 : Math.round(((state.step + 0.4) / STEPS.length) * 100);
 
   return (
-    <div className="mx-auto mt-8 w-full max-w-2xl text-left">
-      <form onSubmit={(event) => void scanRepository(event)} className="flex flex-col gap-3 sm:flex-row">
+    <div className="w-full text-left">
+      <form
+        onSubmit={(event) => void scanRepository(event)}
+        className="flex flex-col gap-2 rounded-xl border border-white/[0.08] bg-black/40 p-1.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_40px_-16px_rgba(59,130,246,0.55)] transition-shadow focus-within:border-[#3b82f6]/40 focus-within:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_36px_-10px_rgba(59,130,246,0.75)] sm:flex-row"
+      >
         <label htmlFor="landing-repo-url" className="sr-only">
           Public GitHub URL
         </label>
@@ -157,34 +160,34 @@ export default function LandingScan() {
           inputMode="url"
           value={repoUrl}
           onChange={(event) => setRepoUrl(event.target.value)}
-          placeholder="Paste public GitHub URL (e.g., https://github.com/owner/repo)..."
+          placeholder="https://github.com/owner/repo"
           disabled={scanning}
-          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[#101218] px-4 py-3 text-sm text-white outline-none ring-violet-500/40 placeholder:text-zinc-500 focus:ring-2"
+          className="min-w-0 flex-1 bg-transparent px-3 py-2.5 font-mono text-[13px] text-[#f9fafb] outline-none placeholder:text-[#f9fafb]/35"
         />
         <button
           type="submit"
           disabled={scanning || repoUrl.trim().length === 0}
-          className="rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-900/30 transition-colors hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg bg-[#3b82f6] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_0_24px_-8px_rgba(59,130,246,0.95)] transition-colors hover:bg-[#2563eb] disabled:cursor-not-allowed disabled:opacity-45"
         >
-          Scan Repository
+          Run scan
         </button>
       </form>
 
       {state.kind === "error" ? (
-        <p className="mt-4 text-center text-sm font-medium text-rose-300" role="alert">
+        <p className="mt-3 font-mono text-xs text-rose-300" role="alert">
           {state.message}
         </p>
       ) : null}
 
       {scanning ? (
         <div
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-[#090A0F]/85 px-4 backdrop-blur-md transition-opacity duration-500 motion-reduce:transition-none ${
+          className={`fixed inset-0 z-50 flex items-center justify-center bg-[#0e1117]/85 px-4 backdrop-blur-md transition-opacity duration-500 motion-reduce:transition-none ${
             revealed ? "opacity-100" : "opacity-0"
           }`}
         >
-          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#101218] p-6 shadow-2xl shadow-black/40 sm:p-8">
-            <p className="text-xs font-semibold tracking-[0.18em] text-violet-300 uppercase">Architecture firewall</p>
-            <h2 className="mt-3 text-2xl font-bold text-white">
+          <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#0e1117] p-6 shadow-2xl shadow-black/40 sm:p-8">
+            <p className="text-xs font-semibold tracking-[0.18em] text-[#3b82f6] uppercase">Architecture firewall</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[#f9fafb]">
               {state.opening ? "Opening your workspace" : "Analyzing repository"}
             </h2>
             <p className="mt-2 truncate font-mono text-xs text-zinc-400">{state.repoUrl}</p>
@@ -195,19 +198,19 @@ export default function LandingScan() {
                 return (
                   <li key={label} className="flex items-start gap-3" aria-current={current ? "step" : undefined}>
                     <StepMark complete={complete} current={current} />
-                    <span className={`text-sm ${complete || current ? "text-white" : "text-zinc-500"}`}>{label}</span>
+                    <span className={`text-sm ${complete || current ? "text-[#f9fafb]" : "text-[#f9fafb]/40"}`}>{label}</span>
                   </li>
                 );
               })}
             </ol>
             <div className="mt-6 h-1 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
               <div
-                className="h-full rounded-full bg-violet-500 transition-all duration-500 motion-reduce:transition-none"
+                className="h-full rounded-full bg-[#3b82f6] transition-all duration-500 motion-reduce:transition-none"
                 style={{ width: `${progress}%` }}
               />
             </div>
             {state.opening ? (
-              <p className="mt-4 text-sm text-violet-200" role="status">
+              <p className="mt-4 text-sm text-[#3b82f6]" role="status">
                 Opening your workspace...
               </p>
             ) : null}
@@ -221,14 +224,14 @@ export default function LandingScan() {
 function StepMark({ complete, current }: { complete: boolean; current: boolean }) {
   if (complete) {
     return (
-      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/15 text-[11px] font-bold text-emerald-300">
+      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#34d399]/15 text-[11px] font-bold text-[#34d399]">
         ✓
       </span>
     );
   }
   if (current) {
     return (
-      <span className="mt-0.5 h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-violet-300/30 border-t-violet-200 motion-reduce:animate-none" />
+      <span className="mt-0.5 h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[#3b82f6]/25 border-t-[#3b82f6] motion-reduce:animate-none" />
     );
   }
   return <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full border border-white/15" />;

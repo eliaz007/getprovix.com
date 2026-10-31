@@ -3,6 +3,7 @@
 import { type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import GuestAuthModal from "@/components/GuestAuthModal";
+import ConnectRepositoryBanner from "@/components/onboarding/connect-repository-banner";
 import DashboardSidebar from "@/components/dashboard/dashboard-sidebar";
 import MobileAppHeader from "@/components/dashboard/mobile-app-header";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
@@ -66,8 +67,9 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         />
 
         <main className="print-flow relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto bg-[#090A0F] text-zinc-100 print:h-auto print:overflow-hidden">
-          <div className="print-flow min-h-screen w-full max-w-none px-6 py-6 md:px-8 md:py-7 print:min-h-0 print:p-0">
-            <div key={pathname} className="w-full">
+          <div className="print-flow mx-auto min-h-screen w-full max-w-[1600px] px-4 py-4 sm:px-5 md:px-6 md:py-5 lg:px-8 print:min-h-0 print:max-w-none print:p-0">
+            <div key={pathname} className="w-full min-w-0">
+              <ConnectRepositoryBanner />
               {children}
             </div>
           </div>

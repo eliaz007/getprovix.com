@@ -1,11 +1,30 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { useFirewallView } from "@/components/firewall/firewall-view-context";
+import {
+  StatusDot,
+  filterChipClass,
+  mutedLabelClass,
+  panelClass,
+  rowHoverClass,
+  sectionLabelClass,
+  severityLabel,
+  severityTone,
+  tableCellClass,
+  tableHeadClass,
+} from "@/components/firewall/firewall-ui";
+import { OpenFixPrButton } from "@/components/firewall/open-fix-pr-button";
+import Toast from "@/components/Toast";
+import { prOpenedToast, useToast } from "@/components/use-toast";
 import {
   FIREWALL_SEVERITIES,
+  violationCategory,
   type FirewallAutofixPullRequestResponse,
   type FirewallAutofixResponse,
   type FirewallReport,
+  type FirewallResolvedFilesResponse,
+  type FirewallResolvedPull,
   type FirewallSeverity,
   type FirewallViolation,
 } from "@/lib/firewall-contract";
@@ -13,42 +32,49 @@ import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type SeverityFilter = "ALL" | FirewallSeverity;
-type RowFix =
-  | { status: "idle" }
-  | { status: "refactoring" }
-  | { status: "done"; summary: string; diff: string; canPullRequest: boolean; prError?: string }
-  | { status: "opening"; summary: string; diff: string }
-  | { status: "pr"; summary: string; diff: string; url: string; number: number }
+type ListFilter = "all" | "action" | "opened";
+
+type DiffCache =
+  | { status: "loading" }
+  | { status: "ready"; summary: string; diff: string }
+  | { status: "error"; message: string };
+
+type SessionPull =
+  | { status: "opening" }
+  | { status: "opened"; url: string; number: number }
   | { status: "error"; message: string };
 
 const FILTERS: SeverityFilter[] = ["ALL", ...FIREWALL_SEVERITIES];
+const LIST_FILTERS: { id: ListFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "action", label: "Needs action" },
+  { id: "opened", label: "PR opened" },
+];
 
-const BADGE: Record<FirewallSeverity, string> = {
-  CRITICAL: "bg-rose-500/15 text-rose-200 ring-rose-400/35",
-  HIGH: "bg-orange-500/15 text-orange-200 ring-orange-400/35",
-  MEDIUM: "bg-amber-400/15 text-amber-100 ring-amber-300/35",
-  LOW: "bg-zinc-500/20 text-zinc-300 ring-white/10",
-};
+const textToggle =
+  "inline-flex items-center rounded-md px-2.5 py-1 text-xs text-zinc-500 transition-colors hover:bg-white/[0.04] hover:text-zinc-200 disabled:cursor-wait disabled:opacity-70";
+const openedLink =
+  "inline-flex items-center rounded-md px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:bg-white/[0.04] hover:text-white";
 
-function countFor(report: FirewallReport, filter: SeverityFilter): number {
-  if (filter === "ALL") return report.violations.length;
-  return report.violations.filter((violation) => violation.severity === filter).length;
+function countFor(violations: FirewallViolation[], filter: SeverityFilter): number {
+  if (filter === "ALL") return violations.length;
+  return violations.filter((violation) => violation.severity === filter).length;
 }
 
 function violationKey(violation: FirewallViolation): string {
   return `${violation.filePath}:${violation.line}:${violation.severity}:${violation.message}`;
 }
 
-function actionLabel(fix: RowFix | undefined): string {
-  if (fix?.status === "refactoring") return "Working...";
-  if (fix?.status === "done" || fix?.status === "opening" || fix?.status === "pr") return "Diff ready";
-  if (fix?.status === "error") return "Retry";
-  return "Auto-Fix";
+function lacksWriteAccess(status: number, message: string): boolean {
+  if (status === 401 || status === 403) return true;
+  return /GITHUB_TOKEN|cannot create a branch|permission/i.test(message);
 }
 
-function previewOf(fix: RowFix | undefined): { summary: string; diff: string } | null {
-  if (fix?.status === "done" || fix?.status === "opening" || fix?.status === "pr") return fix;
-  return null;
+function recordedPulls(payload: FirewallResolvedFilesResponse): Record<string, FirewallResolvedPull> {
+  const pulls = payload.pulls ?? payload.filePaths.map((filePath) => ({ filePath, number: null, url: null }));
+  const next: Record<string, FirewallResolvedPull> = {};
+  for (const pull of pulls) next[pull.filePath] = pull;
+  return next;
 }
 
 export default function FirewallViolationsTable({
@@ -58,15 +84,67 @@ export default function FirewallViolationsTable({
   report: FirewallReport;
   repoUrl?: string | null;
 }) {
+  const { setActiveView } = useFirewallView();
+  const { showToast, toast } = useToast();
   const [filter, setFilter] = useState<SeverityFilter>("ALL");
-  const [fixes, setFixes] = useState<Record<string, RowFix>>({});
+  const [listFilter, setListFilter] = useState<ListFilter>("all");
+  const [recorded, setRecorded] = useState<Record<string, FirewallResolvedPull>>({});
+  const [diffs, setDiffs] = useState<Record<string, DiffCache>>({});
+  const [openDiffs, setOpenDiffs] = useState<ReadonlySet<string>>(() => new Set());
+  const [sessionPulls, setSessionPulls] = useState<Record<string, SessionPull>>({});
   const repoSlug = repoUrl ? toGitHubOwnerRepo(repoUrl) : null;
+  const architecture = useMemo(
+    () => report.violations.filter((violation) => violationCategory(violation) === "ARCHITECTURE"),
+    [report.violations]
+  );
+  const securityCount = report.violations.length - architecture.length;
 
-  async function refactorFile(key: string, filePath: string) {
-    const current = fixes[key];
-    if (current?.status === "refactoring" || current?.status === "done") return;
+  useEffect(() => {
+    setDiffs({});
+    setOpenDiffs(new Set());
+    setSessionPulls({});
+    setListFilter("all");
+  }, [report.timestamp]);
 
-    setFixes((prev) => ({ ...prev, [key]: { status: "refactoring" } }));
+  useEffect(() => {
+    if (!repoSlug) {
+      setRecorded({});
+      return;
+    }
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/firewall/autofix/pr?repo=${encodeURIComponent(repoSlug)}`);
+        const payload = await readJsonResponse<FirewallResolvedFilesResponse>(response);
+        if (!active || !response.ok || !payload.ok) return;
+        setRecorded(recordedPulls(payload));
+      } catch {
+        // Keep pull requests already shown in this session.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [repoSlug]);
+
+  async function toggleDiff(key: string, filePath: string) {
+    if (openDiffs.has(key)) {
+      setOpenDiffs((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+      return;
+    }
+
+    const cached = diffs[filePath];
+    if (cached?.status === "ready") {
+      setOpenDiffs((current) => new Set(current).add(key));
+      return;
+    }
+    if (cached?.status === "loading") return;
+
+    setDiffs((prev) => ({ ...prev, [filePath]: { status: "loading" } }));
     try {
       const response = await fetch("/api/firewall/autofix", {
         method: "POST",
@@ -78,40 +156,44 @@ export default function FirewallViolationsTable({
       });
       const payload = await readJsonResponse<FirewallAutofixResponse>(response);
       if (!response.ok || !payload.ok) {
-        setFixes((prev) => ({
+        setDiffs((prev) => ({
           ...prev,
-          [key]: { status: "error", message: payload.message ?? "Auto-Fix failed." },
+          [filePath]: { status: "error", message: payload.message ?? "The diff could not be prepared." },
         }));
         return;
       }
-
-      const summary = payload.summary?.trim() || "Auto-Fix completed.";
-      const diff = payload.diff ?? "";
-      setFixes((prev) => ({
+      setDiffs((prev) => ({
         ...prev,
-        [key]: {
-          status: "done",
-          summary,
-          diff,
-          canPullRequest: Boolean(payload.canOpenPullRequest && repoSlug),
+        [filePath]: {
+          status: "ready",
+          summary: payload.summary?.trim() || "Diff ready.",
+          diff: payload.diff ?? "",
         },
       }));
+      setOpenDiffs((current) => new Set(current).add(key));
     } catch (error) {
-      setFixes((prev) => ({
+      setDiffs((prev) => ({
         ...prev,
-        [key]: {
+        [filePath]: {
           status: "error",
-          message: error instanceof Error ? error.message : "Auto-Fix failed.",
+          message: error instanceof Error ? error.message : "The diff could not be prepared.",
         },
       }));
     }
   }
 
-  async function openPullRequest(key: string, filePath: string) {
-    const current = fixes[key];
-    if (!repoSlug || current?.status !== "done" || !current.canPullRequest) return;
-    const { summary, diff } = current;
-    setFixes((prev) => ({ ...prev, [key]: { status: "opening", summary, diff } }));
+  async function openFixPr(filePath: string) {
+    const current = sessionPulls[filePath];
+    if (current?.status === "opening" || current?.status === "opened" || recorded[filePath]) return;
+    if (!repoSlug) {
+      setSessionPulls((prev) => ({
+        ...prev,
+        [filePath]: { status: "error", message: "Scan a GitHub repository before opening a pull request." },
+      }));
+      return;
+    }
+
+    setSessionPulls((prev) => ({ ...prev, [filePath]: { status: "opening" } }));
     try {
       const response = await fetch("/api/firewall/autofix/pr", {
         method: "POST",
@@ -119,233 +201,298 @@ export default function FirewallViolationsTable({
         body: JSON.stringify({ filePath, repoUrl: repoSlug }),
       });
       const payload = await readJsonResponse<FirewallAutofixPullRequestResponse>(response);
-      const pullUrl = payload.url;
-      const pullNumber = payload.number;
-      if (!response.ok || !payload.ok || !pullUrl || typeof pullNumber !== "number") {
-        setFixes((prev) => ({
+      const message = payload.message ?? "The pull request could not be opened.";
+      if (lacksWriteAccess(response.status, message)) {
+        const ready = diffs[filePath];
+        let copied = false;
+        if (ready?.status === "ready") {
+          try {
+            await navigator.clipboard.writeText(ready.diff);
+            copied = true;
+          } catch {
+            copied = false;
+          }
+        }
+        setSessionPulls((prev) => ({
           ...prev,
-          [key]: {
-            status: "done",
-            summary,
-            diff,
-            canPullRequest: true,
-            prError: payload.message ?? "The pull request could not be opened.",
+          [filePath]: {
+            status: "error",
+            message: copied
+              ? `${message} The patch was copied to your clipboard.`
+              : `${message} View Diff is still available.`,
           },
         }));
         return;
       }
-      setFixes((prev) => ({
-        ...prev,
-        [key]: { status: "pr", summary, diff, url: pullUrl, number: pullNumber },
-      }));
+      if (!response.ok || !payload.ok || !payload.url || typeof payload.number !== "number") {
+        setSessionPulls((prev) => ({ ...prev, [filePath]: { status: "error", message } }));
+        return;
+      }
+      const opened = { url: payload.url, number: payload.number };
+      setSessionPulls((prev) => ({ ...prev, [filePath]: { status: "opened", ...opened } }));
+      setRecorded((prev) => ({ ...prev, [filePath]: { filePath, ...opened } }));
+      showToast(prOpenedToast(opened));
     } catch (error) {
-      setFixes((prev) => ({
+      setSessionPulls((prev) => ({
         ...prev,
-        [key]: {
-          status: "done",
-          summary,
-          diff,
-          canPullRequest: true,
-          prError: error instanceof Error ? error.message : "The pull request could not be opened.",
+        [filePath]: {
+          status: "error",
+          message: error instanceof Error ? error.message : "The pull request could not be opened.",
         },
       }));
     }
   }
 
-  const rows = useMemo(
-    () =>
-      filter === "ALL"
-        ? report.violations
-        : report.violations.filter((violation) => violation.severity === filter),
-    [filter, report.violations]
+  function violationHasOpenPr(filePath: string): boolean {
+    const session = sessionPulls[filePath];
+    if (session?.status === "opened") return true;
+    return Boolean(recorded[filePath]);
+  }
+
+  const severityRows = useMemo(
+    () => (filter === "ALL" ? architecture : architecture.filter((violation) => violation.severity === filter)),
+    [architecture, filter]
   );
+  const openedCount = architecture.filter((violation) => violationHasOpenPr(violation.filePath)).length;
+  const activeCount = architecture.length - openedCount;
+  const rows = severityRows.filter((violation) => {
+    const opened = violationHasOpenPr(violation.filePath);
+    if (listFilter === "opened") return opened;
+    if (listFilter === "action") return !opened;
+    return true;
+  });
 
   return (
-    <section className="space-y-5">
-      <div>
-        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <section className="space-y-4">
+      <div className={panelClass}>
+        <div className="flex flex-col gap-4 border-b border-white/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold tracking-tight text-white">Violations</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">
-              <span className="tabular-nums text-zinc-300">{rows.length.toLocaleString("en-US")}</span> shown
+            <h2 className={sectionLabelClass}>Architecture violations</h2>
+            <p className={`mt-1 ${mutedLabelClass}`}>
+              <span className="tabular-nums text-zinc-300">{activeCount.toLocaleString("en-US")}</span>
+              {activeCount === 1 ? " needs action" : " need action"}
+              {openedCount > 0 ? (
+                <>
+                  <span className="text-zinc-700"> · </span>
+                  <span className="tabular-nums text-zinc-300">{openedCount.toLocaleString("en-US")}</span> PR open
+                </>
+              ) : null}
             </p>
           </div>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter violations by severity">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Filter violations by severity">
             {FILTERS.map((item) => {
               const active = item === filter;
-              const count = countFor(report, item);
+              const shown = countFor(architecture, item);
               return (
                 <button
                   key={item}
                   type="button"
                   aria-pressed={active}
                   onClick={() => setFilter(item)}
-                  className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold tracking-wide transition-colors ${
-                    active
-                      ? "bg-white text-black"
-                      : "bg-neutral-900 text-zinc-400 ring-1 ring-neutral-700 hover:bg-neutral-800 hover:text-zinc-200"
-                  }`}
+                  className={filterChipClass(active)}
                 >
-                  <span>{item}</span>
-                  <span className={`tabular-nums ${active ? "text-black/70" : "text-zinc-500"}`}>{count}</span>
+                  <span>{item === "ALL" ? "All" : severityLabel(item)}</span>
+                  <span className={`tabular-nums ${active ? "text-zinc-950/60" : "text-zinc-600"}`}>{shown}</span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {rows.length === 0 ? (
-          <p className="rounded-lg border border-neutral-800 bg-neutral-900/50 px-4 py-10 text-sm text-zinc-500">
-            No violations in this filter.
-          </p>
-        ) : (
-          <ul className="space-y-2.5">
-            {rows.map((violation) => {
-              const key = violationKey(violation);
-                  const fix = fixes[key];
-                  const busy = fix?.status === "refactoring" || fix?.status === "opening";
-                  const settled = fix?.status === "done" || fix?.status === "opening" || fix?.status === "pr";
-                  const preview = previewOf(fix);
-                  return (
-                <li
-                  key={key}
-                  aria-busy={busy}
-                  className="rounded-lg border border-neutral-800 bg-[#12141A] p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]"
+        {securityCount > 0 ? (
+          <div className="flex flex-col gap-2 border-b border-white/[0.06] px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-zinc-500">
+              <span className="tabular-nums text-zinc-300">{securityCount.toLocaleString("en-US")}</span>
+              {securityCount === 1 ? " security finding" : " security findings"} live in Leaks
+            </p>
+            <button
+              type="button"
+              onClick={() => setActiveView("leaks")}
+              className="inline-flex w-fit items-center rounded-md px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+            >
+              Open Leaks
+            </button>
+          </div>
+        ) : null}
+
+        {architecture.length > 0 ? (
+          <div className="flex flex-wrap gap-1 border-b border-white/[0.06] px-5 py-3" role="group" aria-label="Filter architecture violations">
+            {LIST_FILTERS.map((item) => {
+              const count = severityRows.filter((violation) => {
+                const opened = violationHasOpenPr(violation.filePath);
+                if (item.id === "opened") return opened;
+                if (item.id === "action") return !opened;
+                return true;
+              }).length;
+              const selected = listFilter === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setListFilter(item.id)}
+                  className={filterChipClass(selected)}
                 >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ${BADGE[violation.severity]}`}
-                        >
-                          {violation.severity}
-                        </span>
-                        <span className="font-mono text-[11px] tabular-nums text-zinc-500">
-                          L{violation.line}
-                        </span>
-                        <span className="text-[11px] font-medium text-zinc-400">{violation.rule}</span>
-                      </div>
-                      <p className="break-all font-mono text-[13px] leading-snug text-zinc-50 sm:truncate sm:break-normal">
-                        {violation.filePath}
-                      </p>
-                      <p className="text-sm leading-relaxed text-zinc-400">{violation.message}</p>
-                      {fix?.status === "refactoring" ? (
-                        <p className="text-xs font-medium text-violet-300" role="status">
-                          Refactoring file...
-                        </p>
-                      ) : null}
-                      {fix?.status === "opening" ? (
-                        <p className="text-xs font-medium text-violet-300" role="status">
-                          Opening pull request...
-                        </p>
-                      ) : null}
-                      {preview ? (
-                        <div className="space-y-2 pt-1" role="status">
-                          <p className="text-xs font-medium text-emerald-300">{preview.summary}</p>
-                          <pre className="max-h-48 overflow-auto rounded-md border border-neutral-800 bg-black/50 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
-                            {preview.diff || "(empty diff)"}
-                          </pre>
-                          {fix?.status === "done" && fix.prError ? (
-                            <p className="text-xs font-medium text-rose-300" role="alert">
-                              {fix.prError}
-                            </p>
-                          ) : null}
-                          {fix?.status === "pr" ? (
-                            <p className="text-xs font-medium text-emerald-300">
-                              Pull request #{fix.number} is open.
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {fix?.status === "error" ? (
-                        <p className="text-xs font-medium text-rose-300" role="alert">
-                          {fix.message}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="flex shrink-0 flex-col gap-2 lg:pt-0.5">
-                      <button
-                        type="button"
-                        onClick={() => void refactorFile(key, violation.filePath)}
-                        disabled={busy || settled}
-                        aria-label={
-                          settled
-                            ? `Diff ready for ${violation.filePath}`
-                            : fix?.status === "refactoring"
-                              ? `Refactoring ${violation.filePath}`
-                              : `Auto-Fix ${violation.filePath}`
-                        }
-                        className="min-w-[6.75rem] rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-semibold text-zinc-100 ring-1 ring-neutral-700 transition-colors hover:bg-violet-600 hover:ring-violet-500 disabled:cursor-default disabled:opacity-70"
-                      >
-                        {actionLabel(fix)}
-                      </button>
-                      {fix?.status === "done" && fix.canPullRequest ? (
-                        <button
-                          type="button"
-                          onClick={() => void openPullRequest(key, violation.filePath)}
-                          className="min-w-[6.75rem] rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500"
-                        >
-                          Open pull request
-                        </button>
-                      ) : null}
-                      {fix?.status === "opening" ? (
-                        <button
-                          type="button"
-                          disabled
-                          className="min-w-[6.75rem] rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white opacity-70"
-                        >
-                          Opening pull request...
-                        </button>
-                      ) : null}
-                      {fix?.status === "pr" ? (
-                        <a
-                          href={fix.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex min-w-[6.75rem] items-center justify-center rounded-md bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 ring-1 ring-emerald-400/30"
-                        >
-                          View PR #{fix.number}
-                        </a>
-                      ) : null}
-                    </div>
-                  </div>
-                </li>
+                  <span>{item.label}</span>
+                  <span className={`tabular-nums ${selected ? "text-zinc-950/60" : "text-zinc-600"}`}>{count}</span>
+                </button>
               );
             })}
-          </ul>
+          </div>
+        ) : null}
+
+        {rows.length === 0 ? (
+          <p className="px-5 py-10 text-sm text-zinc-500">
+            {listFilter === "opened"
+              ? "No pull requests opened in this scan."
+              : listFilter === "action"
+                ? "No architecture violations need action."
+                : "No architecture violations in this filter."}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px]">
+              <thead>
+                <tr className={tableHeadClass}>
+                  <th className="px-5 py-2.5 font-medium">Severity</th>
+                  <th className="px-4 py-2.5 font-medium">File</th>
+                  <th className="px-4 py-2.5 font-medium">Issue</th>
+                  <th className="px-5 py-2.5 text-right font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((violation) => {
+                  const key = violationKey(violation);
+                  const diff = diffs[violation.filePath];
+                  const diffOpen = openDiffs.has(key) && diff?.status === "ready";
+                  const session = sessionPulls[violation.filePath];
+                  const saved = recorded[violation.filePath];
+                  const opened =
+                    session?.status === "opened"
+                      ? session
+                      : saved && typeof saved.number === "number" && saved.url
+                        ? { url: saved.url, number: saved.number }
+                        : null;
+                  const opening = session?.status === "opening";
+                  const prError = session?.status === "error" ? session.message : null;
+                  const knownOpen = Boolean(saved);
+                  const resolved = Boolean(opened || knownOpen);
+                  return (
+                    <Fragment key={key}>
+                      <tr className={`border-t border-white/[0.04] ${rowHoverClass}`}>
+                        <td className={`${tableCellClass} px-5`}>
+                          <span className="inline-flex items-center gap-2 text-xs text-zinc-400">
+                            <StatusDot tone={resolved ? "ok" : severityTone(violation.severity)} />
+                            {resolved ? "PR open" : severityLabel(violation.severity)}
+                          </span>
+                        </td>
+                        <td className={`${tableCellClass} max-w-[16rem]`}>
+                          <span className="block truncate font-mono text-xs text-zinc-200">
+                            {violation.filePath}
+                            {!resolved ? <span className="text-zinc-600">:{violation.line}</span> : null}
+                          </span>
+                        </td>
+                        <td className={`${tableCellClass} max-w-[22rem] truncate text-zinc-500`}>
+                          {resolved ? "Fix pull request opened" : violation.message}
+                        </td>
+                        <td className={`${tableCellClass} px-5`}>
+                          <div className="flex flex-wrap items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              aria-expanded={diffOpen}
+                              disabled={diff?.status === "loading"}
+                              onClick={() => void toggleDiff(key, violation.filePath)}
+                              className={textToggle}
+                            >
+                              {diff?.status === "loading" ? "Loading…" : diffOpen ? "Hide diff" : "Diff"}
+                            </button>
+                            {opened ? (
+                              <a href={opened.url} target="_blank" rel="noreferrer" className={openedLink}>
+                                PR #{opened.number}
+                              </a>
+                            ) : knownOpen ? (
+                              <span className="inline-flex items-center gap-2 px-2.5 py-1 text-xs text-zinc-400">
+                                <StatusDot tone="ok" />
+                                Opened
+                              </span>
+                            ) : (
+                              <OpenFixPrButton
+                                opening={opening}
+                                onClick={() => void openFixPr(violation.filePath)}
+                              />
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {prError || diff?.status === "error" || (diffOpen && diff?.status === "ready") ? (
+                        <tr className="border-t border-white/[0.04] bg-white/[0.015]">
+                          <td colSpan={4} className="px-5 py-4">
+                            {prError ? (
+                              <p className="mb-2 text-sm text-red-300" role="alert">
+                                {prError}
+                              </p>
+                            ) : null}
+                            {diff?.status === "error" ? (
+                              <p className="mb-2 text-sm text-red-300" role="alert">
+                                {diff.message}
+                              </p>
+                            ) : null}
+                            {diffOpen && diff?.status === "ready" ? (
+                              <div className="overflow-hidden rounded-lg border border-white/[0.06] bg-black/40">
+                                <p className="border-b border-white/[0.06] px-3 py-2 text-xs text-zinc-500">
+                                  {diff.summary}
+                                </p>
+                                <pre className="max-h-48 overflow-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-400">
+                                  {diff.diff || "(empty diff)"}
+                                </pre>
+                              </div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      <div>
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold tracking-tight text-white">Top 5 largest monoliths</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">Files with the most lines in this snapshot.</p>
-          </div>
+      <div className={panelClass}>
+        <div className="border-b border-white/[0.06] px-5 py-4">
+          <h2 className={sectionLabelClass}>Largest files</h2>
+          <p className={`mt-1 ${mutedLabelClass}`}>Top files by line count in this snapshot</p>
         </div>
         {report.largestFiles.length === 0 ? (
-          <p className="rounded-lg border border-neutral-800 bg-neutral-900/50 px-4 py-6 text-sm text-zinc-500">
-            No file sizes were recorded.
-          </p>
+          <p className="px-5 py-8 text-sm text-zinc-500">No file sizes were recorded.</p>
         ) : (
-          <ol className="space-y-1.5">
-            {report.largestFiles.map((file, index) => (
-              <li
-                key={file.filePath}
-                className="flex items-center justify-between gap-4 rounded-lg border border-neutral-800 bg-[#12141A] px-3.5 py-2.5"
-              >
-                <span className="min-w-0 truncate font-mono text-[12px] text-zinc-100">
-                  <span className="mr-2.5 tabular-nums text-zinc-500">{index + 1}</span>
-                  {file.filePath}
-                </span>
-                <span className="shrink-0 text-xs font-semibold tabular-nums text-amber-200">
-                  {file.lineCount.toLocaleString("en-US")} lines
-                </span>
-              </li>
-            ))}
-          </ol>
+          <table className="w-full">
+            <thead>
+              <tr className={tableHeadClass}>
+                <th className="w-12 px-5 py-2.5 font-medium">#</th>
+                <th className="px-4 py-2.5 font-medium">File</th>
+                <th className="px-5 py-2.5 text-right font-medium">Lines</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.largestFiles.map((file, index) => (
+                <tr key={file.filePath} className={`border-t border-white/[0.04] ${rowHoverClass}`}>
+                  <td className={`${tableCellClass} px-5 tabular-nums text-zinc-600`}>{index + 1}</td>
+                  <td className={`${tableCellClass} max-w-[28rem] truncate font-mono text-xs text-zinc-200`}>
+                    {file.filePath}
+                  </td>
+                  <td className={`${tableCellClass} px-5 text-right tabular-nums text-zinc-400`}>
+                    {file.lineCount.toLocaleString("en-US")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
+
+      <Toast {...toast} />
     </section>
   );
 }

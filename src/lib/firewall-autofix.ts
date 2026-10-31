@@ -1,12 +1,19 @@
 import path from "node:path";
 import type { FirewallAutofixModule } from "@/lib/firewall-contract";
+import { applyErrorHandling } from "@/lib/firewall-error-handling";
 
 type Block = {
   name: string;
   exported: boolean;
   isDefault: boolean;
+  isType: boolean;
   start: number;
   end: number;
+};
+
+type ExportBinding = {
+  name: string;
+  kind: "value" | "type" | "default";
 };
 
 export type AutofixWrite = {
@@ -28,7 +35,7 @@ export type AutofixPlan = AutofixResult & {
 };
 
 const DECL =
-  /^(export\s+default\s+(?:async\s+)?function(?:\s+([A-Za-z0-9_]+))?|export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)|export\s+(?:const|let|var|class|type|interface|enum)\s+([A-Za-z0-9_]+)|(?:async\s+)?function\s+([A-Za-z0-9_]+)|class\s+([A-Za-z0-9_]+)|(?:const|let|var)\s+([A-Za-z0-9_]+))/;
+  /^(export\s+default\s+(?:async\s+)?function(?:\s+([A-Za-z0-9_]+))?|export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)|export\s+(?:const|let|var|class|type|interface|enum)\s+([A-Za-z0-9_]+)|(?:async\s+)?function\s+([A-Za-z0-9_]+)|class\s+([A-Za-z0-9_]+)|(?:const|let|var)\s+([A-Za-z0-9_]+)|(?:export\s+)?interface\s+([A-Za-z0-9_]+)|(?:export\s+)?type\s+([A-Za-z0-9_]+))/;
 
 export function buildAutofix(filePath: string, content: string): AutofixResult {
   const plan = planAutofix(filePath, content);
@@ -44,6 +51,19 @@ export function buildAutofix(filePath: string, content: string): AutofixResult {
 
 export function planAutofix(filePath: string, content: string): AutofixPlan {
   const normalized = filePath.replace(/\\/g, "/");
+  const handled = applyErrorHandling(normalized, content);
+  if (handled) {
+    const next = handled.endsWith("\n") ? handled : `${handled}\n`;
+    return {
+      ok: true,
+      filePath: normalized,
+      summary: "Wrapped unhandled async database and fetch calls in try/catch with an error response.",
+      diff: capDiff(fileDiff(normalized, content.split(/\r?\n/), next.split(/\r?\n/))),
+      modules: [],
+      canOpenPullRequest: true,
+      writes: [{ filePath: normalized, content: next }],
+    };
+  }
   const lines = content.split(/\r?\n/);
   const blocks = topLevelBlocks(lines, lineStartDepths(content));
   if (blocks.length < 2) {
@@ -175,15 +195,30 @@ function topLevelBlocks(lines: string[], depths: number[]): Block[] {
     if (DECL.test(lines[index]?.trim() ?? "")) starts.push(index);
   }
 
-  return starts.map((start, index) => {
-    const end = (starts[index + 1] ?? lines.length) - 1;
-    const match = DECL.exec(lines[start]?.trim() ?? "");
+  const startsWithDocs = starts.map((start, index) => {
+    const previous = index === 0 ? -1 : starts[index - 1] ?? -1;
+    let cursor = start - 1;
+    while (cursor > previous && (lines[cursor]?.trim() ?? "") === "") cursor -= 1;
+    const commentLine = lines[cursor] ?? "";
+    if (/^\s*\/\*\*[\s\S]*\*\/\s*$/.test(commentLine)) return cursor;
+    if (!/^\s*\*\/\s*$/.test(commentLine)) return start;
+    const commentEnd = cursor;
+    while (cursor > previous && !/^\s*\/\*\*/.test(lines[cursor] ?? "")) cursor -= 1;
+    if (cursor <= previous || !/^\s*\/\*\*/.test(lines[cursor] ?? "")) return start;
+    return commentEnd > cursor ? cursor : start;
+  });
+
+  return startsWithDocs.map((start, index) => {
+    const next = startsWithDocs[index + 1] ?? lines.length;
+    const end = next - 1;
+    const match = DECL.exec(lines[starts[index] ?? start]?.trim() ?? "");
     const name = match?.slice(2).find((part) => part) ?? (match?.[1]?.startsWith("export default") ? "default" : `part${index + 1}`);
-    const raw = lines[start] ?? "";
+    const raw = (lines[starts[index] ?? start] ?? "").trim();
     return {
       name,
-      exported: /^\s*export\b/.test(raw),
-      isDefault: /^\s*export\s+default\b/.test(raw),
+      exported: /^export\b/.test(raw),
+      isDefault: /^export\s+default\b/.test(raw),
+      isType: /^(?:export\s+)?(?:type|interface)\b/.test(raw),
       start,
       end,
     };
@@ -198,34 +233,135 @@ function renderModule(
   directive: string,
   preamble: string[],
   blocks: Block[]
-): { filePath: string; exportName: string; lineCount: number; content: string; slug: string; isDefault: boolean } {
+): { filePath: string; exportName: string; lineCount: number; content: string; slug: string } {
   const slug = uniqueSlug(block.name, index, blocks);
   const modulePath = siblingModulePath(sourcePath, slug);
   const body = lines.slice(block.start, block.end + 1).join("\n");
   const localImports = blocks
-    .filter((other) => other !== block && new RegExp(`\\b${other.name}\\b`).test(body))
+    .filter((other) => other !== block && other.name !== "default" && new RegExp(`\\b${other.name}\\b`).test(body))
     .map((other) => {
       const otherSlug = uniqueSlug(other.name, blocks.indexOf(other), blocks);
       const spec = `./${otherSlug}`;
-      return other.isDefault
-        ? `import ${other.name === "default" ? "importedDefault" : other.name} from "${spec}";`
-        : `import { ${other.name} } from "${spec}";`;
+      if (other.isType) return `import type { ${other.name} } from "${spec}";`;
+      if (other.isDefault) {
+        const local = other.name === "default" ? "importedDefault" : other.name;
+        return `import ${local} from "${spec}";`;
+      }
+      return `import { ${other.name} } from "${spec}";`;
     });
   const header = [directive, ...preamble, ...localImports].filter((line) => line.trim().length > 0);
-  const content = [...header, header.length > 0 ? "" : "", ensureExported(body, block)].filter((line, lineIndex, all) => !(line === "" && all[lineIndex - 1] === "")).join("\n").trim() + "\n";
+  const typedBody = annotateUntypedCallbacks(ensureExported(body, block), arrayElementTypes(blocks, lines));
+  const content = [...header, header.length > 0 ? "" : "", typedBody].filter((line, lineIndex, all) => !(line === "" && all[lineIndex - 1] === "")).join("\n").trim() + "\n";
+  const exported = collectModuleExports(content);
+  const exportName = exported.find((binding) => binding.kind !== "default")?.name ?? exported[0]?.name ?? block.name;
   return {
     filePath: modulePath,
-    exportName: block.name,
+    exportName,
     lineCount: content.split(/\r?\n/).length,
     content,
     slug,
-    isDefault: block.isDefault,
   };
 }
 
 function ensureExported(body: string, block: Block): string {
   if (block.exported) return body;
   return `export ${body}`;
+}
+
+function arrayElementTypes(blocks: Block[], lines: string[]): Map<string, string> {
+  const types = new Map<string, string>();
+  for (const block of blocks) {
+    const text = lines.slice(block.start, block.end + 1).join("\n");
+    if (block.isType) {
+      for (const [property, propertyType] of objectProperties(text)) {
+        const element = arrayElement(propertyType);
+        if (element) types.set(property, element);
+      }
+      continue;
+    }
+    const declared = constTypeAnnotation(text);
+    const element = declared ? arrayElement(declared) : null;
+    if (element) types.set(block.name, element);
+  }
+  return types;
+}
+
+function objectProperties(typeText: string): Array<[string, string]> {
+  const body = objectBody(typeText);
+  const properties: Array<[string, string]> = [];
+  let depth = 0;
+  let current = "";
+  for (const char of body) {
+    if (char === "{" || char === "(" || char === "<") depth += 1;
+    if ((char === "}" || char === ")" || char === ">") && depth > 0) depth -= 1;
+    if ((char === ";" || char === "\n") && depth === 0) {
+      const property = propertyDeclaration(current);
+      if (property) properties.push(property);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  const tail = propertyDeclaration(current);
+  if (tail) properties.push(tail);
+  return properties;
+}
+
+function objectBody(typeText: string): string {
+  const start = typeText.indexOf("{");
+  if (start < 0) return "";
+  let depth = 0;
+  for (let index = start; index < typeText.length; index += 1) {
+    const char = typeText[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return typeText.slice(start + 1, index);
+    }
+  }
+  return "";
+}
+
+function propertyDeclaration(fragment: string): [string, string] | null {
+  const match = fragment.trim().match(/^(?:readonly\s+)?([A-Za-z_][A-Za-z0-9_]*)\??\s*:\s*([\s\S]+)$/);
+  if (!match?.[1] || !match[2]) return null;
+  return [match[1], match[2].trim().replace(/;$/, "")];
+}
+
+function constTypeAnnotation(text: string): string | null {
+  const match = text.match(/^(?:export\s+)?(?:const|let|var)\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*([\s\S]*?)\s*=/);
+  return match?.[1]?.trim() ?? null;
+}
+
+function arrayElement(typeText: string): string | null {
+  let text = typeText.trim().replace(/;$/, "");
+  text = text.replace(/\s*\|\s*(?:null|undefined)\b/g, "").trim();
+  const generic = text.match(/^(?:Readonly)?Array\s*<([\s\S]+)>$/);
+  if (generic?.[1]) return generic[1].trim();
+  if (text.endsWith("[]")) return text.slice(0, -2).trim();
+  return null;
+}
+
+function annotateUntypedCallbacks(body: string, elementTypes: Map<string, string>): string {
+  return body.replace(
+    /(?:(\([A-Za-z_][A-Za-z0-9_]*\s*\?\?\s*\[[^\]]*\]\))|([A-Za-z_][A-Za-z0-9_]*))\.(map|forEach|filter|flatMap|find|some|every)\(\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?!:)(\s*,\s*([A-Za-z_][A-Za-z0-9_]*))?\s*\)\s*=>/g,
+    (full, parenthesized: string | undefined, identifier: string | undefined, method: string, param: string, indexPart: string | undefined, indexName: string | undefined) => {
+      const sourceName = identifier ?? parenthesized?.match(/\(([A-Za-z_][A-Za-z0-9_]*)/)?.[1] ?? "";
+      const known = sourceName ? elementTypes.get(sourceName) : undefined;
+      const element = explicitElementType(known, sourceName, Boolean(parenthesized));
+      if (!element) return full;
+      const indexTyped = indexName ? `, ${indexName}: number` : indexPart ?? "";
+      const receiver = parenthesized ?? identifier;
+      return `${receiver}.${method}((${param}: ${element}${indexTyped}) =>`;
+    }
+  );
+}
+
+function explicitElementType(known: string | undefined, sourceName: string, nullableArray: boolean): string {
+  if (known && known.length <= 160 && !known.includes("\n")) return known;
+  if (!sourceName) return "";
+  if (nullableArray) return `NonNullable<typeof ${sourceName}>[number]`;
+  return `(typeof ${sourceName})[number]`;
 }
 
 function uniqueSlug(name: string, index: number, blocks: Block[]): string {
@@ -253,19 +389,98 @@ function siblingModulePath(sourcePath: string, slug: string): string {
 function renderBarrel(
   sourcePath: string,
   directive: string,
-  modules: Array<{ slug: string; exportName: string; isDefault: boolean }>
+  modules: Array<{ slug: string; content: string }>
 ): string {
   const lines = [directive.trim()].filter(Boolean);
+  const folder = path.posix.basename(sourcePath).replace(/\.(tsx|ts|jsx|js)$/, "");
+  const seen = new Set<string>();
   for (const mod of modules) {
-    const folder = path.posix.basename(sourcePath).replace(/\.(tsx|ts|jsx|js)$/, "");
     const spec = `./${folder}/${mod.slug}`;
-    lines.push(
-      mod.isDefault
-        ? `export { default } from "${spec}";`
-        : `export { ${mod.exportName} } from "${spec}";`
-    );
+    for (const binding of collectModuleExports(mod.content)) {
+      const key = binding.kind === "default" ? "default" : binding.name;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (binding.kind === "default") {
+        lines.push(`export { default } from "${spec}";`);
+      } else if (binding.kind === "type") {
+        lines.push(`export type { ${binding.name} } from "${spec}";`);
+      } else {
+        lines.push(`export { ${binding.name} } from "${spec}";`);
+      }
+    }
   }
   return `${lines.join("\n")}\n`;
+}
+
+function collectModuleExports(content: string): ExportBinding[] {
+  const lines = content.split(/\r?\n/);
+  const depths = lineStartDepths(content);
+  const found: ExportBinding[] = [];
+  const seen = new Set<string>();
+  const add = (name: string, kind: ExportBinding["kind"]) => {
+    if (!/^[A-Za-z0-9_]+$/.test(name)) return;
+    const key = `${kind}:${name}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    found.push({ name, kind });
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if ((depths[index] ?? 0) !== 0) continue;
+    const statement = exportStatement(lines, index);
+    if (!statement) continue;
+    if (/^export\s+default\b/.test(statement)) {
+      add("default", "default");
+      continue;
+    }
+    if (/^export\s+type\s*\{/.test(statement)) {
+      for (const binding of namedExportList(statement, true)) add(binding.name, "type");
+      continue;
+    }
+    const typeDecl = statement.match(/^export\s+(?:type|interface)\s+([A-Za-z0-9_]+)/);
+    if (typeDecl?.[1]) {
+      add(typeDecl[1], "type");
+      continue;
+    }
+    if (/^export\s*\{/.test(statement)) {
+      for (const binding of namedExportList(statement, false)) add(binding.name, binding.kind);
+      continue;
+    }
+    const valueDecl = statement.match(
+      /^export\s+(?:declare\s+)?(?:async\s+)?(?:function|class|enum|const|let|var|abstract\s+class)\s+([A-Za-z0-9_]+)/
+    );
+    if (valueDecl?.[1]) add(valueDecl[1], "value");
+  }
+
+  return found;
+}
+
+function exportStatement(lines: string[], start: number): string | null {
+  const first = lines[start]?.trim() ?? "";
+  if (!/^export\b/.test(first)) return null;
+  let text = first;
+  let index = start;
+  while (text.includes("{") && !text.includes("}") && index + 1 < lines.length) {
+    index += 1;
+    text += ` ${lines[index]?.trim() ?? ""}`;
+  }
+  return text;
+}
+
+function namedExportList(statement: string, forceType: boolean): ExportBinding[] {
+  const inner = statement.match(/\{([\s\S]*)\}/)?.[1] ?? "";
+  return inner
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .flatMap((part): ExportBinding[] => {
+      const typeOnly = forceType || /^type\s+/.test(part);
+      const body = part.replace(/^type\s+/, "");
+      const exported = body.match(/^[A-Za-z0-9_]+\s+as\s+([A-Za-z0-9_]+)$/)?.[1] ?? body.match(/^([A-Za-z0-9_]+)$/)?.[1];
+      if (!exported) return [];
+      if (exported === "default") return [{ name: "default", kind: "default" as const }];
+      return [{ name: exported, kind: typeOnly ? ("type" as const) : ("value" as const) }];
+    });
 }
 
 function fileDiff(filePath: string, before: string[], after: string[]): string {

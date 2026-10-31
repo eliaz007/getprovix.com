@@ -147,14 +147,9 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  if (!user && onCandidateSetup) {
-    return redirectWithSessionCookies(
-      request,
-      supabaseResponse,
-      "/login",
-      `?next=${encodeURIComponent(CANDIDATE_SETUP_PATH)}`
-    );
-  }
+  // `/onboarding` is the Architecture Firewall connect flow (split-screen GitHub
+  // login + App install + first AST audit). Guests must be able to stay here —
+  // do not bounce them to classic /login.
 
   // Unsigned visitors never enter the app shell. Send them to the marketing page.
   if (!user && isProtectedRoute && !isPublicRoute(pathname)) {
@@ -236,12 +231,15 @@ export async function updateSession(request: NextRequest) {
         console.error("Account role check failed:", err);
       }
 
+      // Keep `/onboarding` reachable without a role so the GitHub App + AST
+      // handshake can run; role pick stays at `/onboarding/role` only.
       if (
         !role &&
         !isAdminUser(user) &&
         !onRoleOnboarding &&
         !isLogin &&
-        (isProtectedRoute || isHome || onCandidateSetup)
+        !onCandidateSetup &&
+        (isProtectedRoute || isHome)
       ) {
         return redirectWithSessionCookies(
           request,
@@ -286,21 +284,8 @@ export async function updateSession(request: NextRequest) {
         );
       }
 
-      if (role === "candidate" && setupComplete && onCandidateSetup) {
-        return redirectWithSessionCookies(
-          request,
-          supabaseResponse,
-          CANDIDATE_DASHBOARD_PATH
-        );
-      }
-
-      if (role === "employer" && onCandidateSetup) {
-        return redirectWithSessionCookies(
-          request,
-          supabaseResponse,
-          EMPLOYER_DASHBOARD_PATH
-        );
-      }
+      // Allow signed-in users to reopen /onboarding for GitHub App install +
+      // first AST audit (do not force them back to /firewall).
 
       if (isLogin) {
         const destination = new URL(

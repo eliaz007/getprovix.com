@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import VercelAnalytics from "@/components/vercel-analytics";
+import DevClosedStreamGuard from "@/components/dev-closed-stream-guard";
 import {
   SITE_DESCRIPTION,
   SITE_EMAIL,
@@ -188,6 +189,7 @@ export default function RootLayout({
               "html,body{background:#090A0F;color:#ededed}body{margin:0}",
           }}
         />
+        <DevClosedStreamGuard />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{

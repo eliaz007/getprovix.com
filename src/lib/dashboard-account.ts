@@ -205,7 +205,14 @@ export function isPublicRoute(pathname: string): boolean {
     return true;
   }
 
-  if (pathname === "/audit" || pathname === "/firewall" || pathname.startsWith("/firewall/")) {
+  if (
+    pathname === "/audit" ||
+    pathname === "/firewall" ||
+    pathname.startsWith("/firewall/") ||
+    pathname === "/history" ||
+    pathname.startsWith("/history/") ||
+    pathname === "/api/webhooks/github"
+  ) {
     return true;
   }
 

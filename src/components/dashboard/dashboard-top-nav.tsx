@@ -11,8 +11,9 @@ import {
 
 const VIEWS = [
   { key: "firewall" as const, label: "Architecture Firewall" },
-  { key: "health" as const, label: "Health metrics" },
-  { key: "violations" as const, label: "Violation log" },
+  { key: "health" as const, label: "Integrity" },
+  { key: "violations" as const, label: "Violations" },
+  { key: "leaks" as const, label: "Leaks" },
 ];
 
 export default function DashboardTopNav() {
@@ -20,6 +21,7 @@ export default function DashboardTopNav() {
   const router = useRouter();
   const { activeView, repoSlug, setActiveView } = useFirewallView();
   const onFirewall = isFirewallPath(pathname);
+  const onHistory = pathname === "/history" || pathname.startsWith("/history/");
   const onSettings = pathname.startsWith("/dashboard/settings");
 
   function openView(view: FirewallView) {
@@ -46,6 +48,13 @@ export default function DashboardTopNav() {
           </button>
         );
       })}
+      <Link
+        href="/history"
+        className={`shrink-0 text-sm font-medium ${onHistory ? "text-white" : "text-zinc-400 hover:text-zinc-200"}`}
+        aria-current={onHistory ? "page" : undefined}
+      >
+        History
+      </Link>
       <Link
         href="/dashboard/settings"
         className={`shrink-0 text-sm font-medium ${onSettings ? "text-white" : "text-zinc-400 hover:text-zinc-200"}`}

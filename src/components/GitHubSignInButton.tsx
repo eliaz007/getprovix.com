@@ -29,11 +29,13 @@ export function GitHubSignInButton({
   onError,
   nextPath,
   accountKind,
+  label = "Continue with GitHub",
 }: {
   className?: string;
   onError?: (message: string) => void;
   nextPath?: string;
   accountKind?: "employer" | "candidate";
+  label?: string;
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -42,13 +44,21 @@ export function GitHubSignInButton({
     onError?.("");
 
     try {
-      const { error } = await handleGitHubSignIn(nextPath, accountKind);
+      const { data, error } = await handleGitHubSignIn(nextPath, accountKind);
       if (error) {
         onError?.(error.message);
+        setLoading(false);
+        return;
       }
+      // Hard navigate so Next's RSC debug channel is not left half-open.
+      if (data?.url) {
+        window.location.assign(data.url);
+        return;
+      }
+      onError?.("GitHub did not return a sign-in URL.");
+      setLoading(false);
     } catch (err) {
       onError?.(err instanceof Error ? err.message : "GitHub sign-in failed.");
-    } finally {
       setLoading(false);
     }
   };
@@ -61,7 +71,7 @@ export function GitHubSignInButton({
       className={className ?? DEFAULT_CLASSES}
     >
       <GitHubLogo />
-      {loading ? "Redirecting..." : "Continue with GitHub"}
+      {loading ? "Redirecting..." : label}
     </button>
   );
 }

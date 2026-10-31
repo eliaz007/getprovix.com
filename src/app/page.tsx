@@ -1,6 +1,10 @@
 import Link from "next/link";
-import AmbientLighting from "@/components/AmbientLighting";
-import LandingScan from "@/components/landing/landing-scan";
+import FirewallEngine from "@/components/firewall/firewall-engine";
+import AstCompare from "@/components/landing/ast-compare";
+import LandingConnect from "@/components/landing/landing-connect";
+import { AmbientBackdrop, Reveal } from "@/components/landing/landing-motion";
+import PipelineFlow from "@/components/landing/pipeline-flow";
+import ScrollFeatures from "@/components/landing/scroll-features";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import MarketingAuthLink from "@/components/marketing-auth-link";
 import { buildPageMetadata } from "@/lib/site";
@@ -10,104 +14,87 @@ export const revalidate = false;
 
 export const metadata = buildPageMetadata(
   "The Architecture Firewall for AI Codebases",
-  "Scan a repository for architectural bloat, monolithic files, and circular dependencies. Auto-fix the worst offenders before they hit production.",
+  "Automatically validate boundaries, secrets, and dependencies before the commit lands on main.",
   "/"
 );
 
-const PILLARS = [
-  {
-    kicker: "01",
-    title: "Instant Architectural Audits",
-    body: "Catch architectural bloat, oversized files, and circular dependencies before they compound into a rewrite.",
-  },
-  {
-    kicker: "02",
-    title: "One-Click AI Auto-Refactoring",
-    body: "Break a monolith into cleaner modules and review the generated diff without leaving the report.",
-  },
-  {
-    kicker: "03",
-    title: "CI/CD & Team Guardrails",
-    body: "Block structural rot from hitting main. The same rules run in the dashboard and in the pipeline.",
-  },
-] as const;
-
 export default function Home() {
   return (
-    <AmbientLighting>
-      <header className="border-b border-border print:hidden">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
-          <Link href="/" className="transition-opacity hover:opacity-90">
+    <div className="relative min-h-screen overflow-hidden bg-[#0e1117] font-sans text-[#f9fafb]">
+      <AmbientBackdrop />
+
+      <Reveal as="header" className="relative border-b border-white/10 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <Link href="/" className="transition-opacity hover:opacity-80">
             <ProvixLogo />
           </Link>
-          <nav className="flex items-center gap-3">
+          <nav className="flex items-center gap-2">
+            <Link
+              href="/firewall"
+              className="hidden rounded-md px-3 py-1.5 text-sm text-[#f9fafb]/60 transition-colors hover:text-[#f9fafb] sm:inline-flex"
+            >
+              Firewall
+            </Link>
             <MarketingAuthLink />
           </nav>
         </div>
-      </header>
+      </Reveal>
 
-      <main className="relative mx-auto flex w-full max-w-6xl flex-col px-6 pb-20 pt-14 sm:pt-20">
-        <section className="relative mx-auto w-full max-w-3xl text-center">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute top-0 left-1/2 -z-10 h-[350px] w-[600px] -translate-x-1/2 rounded-full bg-purple-600/15 blur-[120px]"
-          />
-          <p className="text-xs font-semibold tracking-[0.18em] text-violet-300 uppercase">
-            Architecture Firewall
-          </p>
-          <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-[3.25rem] lg:leading-[1.12]">
-            Stop AI Spaghetti Code Before It Hits Production
+      <main className="relative mx-auto w-full max-w-6xl px-6 pt-20 pb-32 sm:pt-28">
+        <Reveal as="section" className="max-w-3xl">
+          <p className="font-mono text-[11px] tracking-[0.22em] text-purple-400 uppercase">Provix</p>
+          <h1 className="mt-5 text-4xl leading-[1.08] font-semibold tracking-[-0.04em] text-[#f9fafb] sm:text-5xl lg:text-[3.4rem]">
+            Automated Code Integrity & Safety.
+            <span className="mt-2 block text-[#f9fafb]/90">Prevent bad code from ever reaching production.</span>
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-center text-base text-neutral-400 sm:text-lg">
-            The architecture firewall for the vibe coding era. Provix scans for
-            architectural bloat, monolithic files, and circular dependencies,
-            then auto-fixes them in one click.
+          <p className="mt-6 max-w-xl text-base leading-relaxed text-[#f9fafb]/75 sm:text-lg">
+            Automatically validate boundaries, secrets, and dependencies before the commit lands on main.
           </p>
-          <LandingScan />
-        </section>
+        </Reveal>
 
-        <section className="mx-auto mt-16 w-full max-w-5xl">
-          <h2 className="text-center text-2xl font-bold tracking-tight text-white">
-            Built to keep AI-written codebases shippable
-          </h2>
-          <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
-            {PILLARS.map((pillar) => (
-              <article
-                key={pillar.kicker}
-                className="rounded-2xl border border-white/10 bg-[#101218] p-6 text-left"
-              >
-                <p className="font-mono text-[11px] tracking-widest text-violet-300">{pillar.kicker}</p>
-                <h3 className="mt-3 text-lg font-semibold text-white">{pillar.title}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-neutral-400">{pillar.body}</p>
-              </article>
-            ))}
+        <Reveal className="mt-10" delay={0.12}>
+          <LandingConnect />
+        </Reveal>
+
+        <AstCompare />
+        <PipelineFlow />
+        <ScrollFeatures />
+
+        <Reveal as="section" aria-labelledby="interface-heading" className="mt-28">
+          <div className="max-w-2xl">
+            <p className="font-mono text-[11px] tracking-[0.2em] text-purple-400 uppercase">Interface</p>
+            <h2 id="interface-heading" className="mt-3 text-3xl font-semibold tracking-[-0.035em] text-[#f9fafb] sm:text-4xl">
+              The checks, in the product.
+            </h2>
+            <p className="mt-4 text-[15px] leading-relaxed text-[#f9fafb]/70">
+              A pull request comment, the secret and env rules, and a live CLI stream. Each line is OK or FAILED.
+            </p>
           </div>
-        </section>
+          <div className="relative mt-10">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -inset-8 rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(168,85,247,0.14),transparent_70%)] blur-2xl"
+            />
+            <div className="relative">
+              <FirewallEngine />
+            </div>
+          </div>
+        </Reveal>
       </main>
 
-      <footer className="border-t border-border print:hidden">
-        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-6 py-8 sm:flex-row sm:items-center">
-          <p className="text-xs text-textMuted">
-            © {new Date().getFullYear()} Provix. The architecture firewall for AI codebases.
-          </p>
-          <div className="flex items-center gap-5 text-xs font-medium">
-            <Link
-              href="/privacy"
-              prefetch={false}
-              className="text-textMuted transition-colors duration-200 hover:text-textMain"
-            >
+      <Reveal as="footer" className="relative border-t border-white/10">
+        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-6 py-10 sm:flex-row sm:items-center">
+          <p className="text-sm text-[#f9fafb]/45">© {new Date().getFullYear()} Provix · Architecture firewall</p>
+          <div className="flex items-center gap-6 text-sm">
+            <Link href="/privacy" prefetch={false} className="text-[#f9fafb]/45 transition-colors hover:text-[#f9fafb]">
               Privacy
             </Link>
-            <Link
-              href="/terms"
-              prefetch={false}
-              className="text-textMuted transition-colors duration-200 hover:text-textMain"
-            >
+            <Link href="/terms" prefetch={false} className="text-[#f9fafb]/45 transition-colors hover:text-[#f9fafb]">
               Terms
             </Link>
           </div>
         </div>
-      </footer>
-    </AmbientLighting>
+      </Reveal>
+    </div>
   );
 }

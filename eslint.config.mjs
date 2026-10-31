@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
   // without a full dashboard rewrite.
   {
     rules: {
+      // Generated autofix patches must stay pristine — never allow explicit `any`.
+      "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {

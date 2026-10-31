@@ -50,7 +50,6 @@ import {
   deterministicMetricsPayload,
   finalizeExecutiveBrief,
   parseExecutiveBrief,
-  type ExecutiveBrief,
 } from "@/lib/executive-brief";
 import { clampScore0to100 } from "@/lib/score-scale";
 import {

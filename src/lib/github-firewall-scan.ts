@@ -6,8 +6,11 @@ import { parseGitHubRepository } from "@/lib/github-repo-ref";
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
 const IGNORED_SEGMENTS = new Set(["node_modules", ".next", "dist", "build"]);
+const LOCKFILES = new Set(["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml"]);
 const FILE_CAP = 50;
+const COMPANION_CAP = 40;
 const MAX_FILE_BYTES = 1_500_000;
+const MAX_COMPANION_BYTES = 200_000;
 const FETCH_CONCURRENCY = 6;
 
 type ScanResult = {
@@ -40,11 +43,32 @@ function messageFor(error: unknown): string {
   return "The GitHub repository could not be scanned.";
 }
 
-function isRelevantSource(filePath: string): boolean {
+function isIgnored(filePath: string): boolean {
   const parts = filePath.split("/");
-  if (parts.some((part) => IGNORED_SEGMENTS.has(part) || part === "..")) return false;
-  const extension = path.posix.extname(filePath);
-  return SOURCE_EXTENSIONS.has(extension);
+  return parts.some((part) => IGNORED_SEGMENTS.has(part) || part === "..");
+}
+
+function isRelevantSource(filePath: string): boolean {
+  if (isIgnored(filePath)) return false;
+  return SOURCE_EXTENSIONS.has(path.posix.extname(filePath));
+}
+
+function companionRank(filePath: string): number {
+  const name = filePath.split("/").pop() ?? filePath;
+  if (name === "package.json") return 0;
+  if (name === ".env" || name.startsWith(".env.")) return 1;
+  if (/(?:secret|credential|service-role|apikey|api-key)/i.test(filePath)) return 2;
+  return 3;
+}
+
+function isSecurityCompanion(filePath: string): boolean {
+  if (isIgnored(filePath)) return false;
+  const name = filePath.split("/").pop() ?? filePath;
+  if (LOCKFILES.has(name)) return false;
+  if (name === "package.json" || name === ".env" || name.startsWith(".env.")) return true;
+  if (name.endsWith(".json")) return true;
+  if (SOURCE_EXTENSIONS.has(path.posix.extname(filePath)) && companionRank(filePath) === 2) return true;
+  return false;
 }
 
 function toFirewallReport(report: ReturnType<typeof analyzeSourceTexts>): FirewallReport {
@@ -113,43 +137,67 @@ export async function scanPublicGitHubRepo(input: string): Promise<ScanResult> {
       recursive: "true",
     });
 
-    const candidates = (tree.data.tree ?? [])
-      .filter((item): item is typeof item & { path: string; sha: string } => {
-        return item.type === "blob" && typeof item.path === "string" && typeof item.sha === "string" && isRelevantSource(item.path);
-      })
+    const blobs = (tree.data.tree ?? []).filter(
+      (item): item is typeof item & { path: string; sha: string } =>
+        item.type === "blob" && typeof item.path === "string" && typeof item.sha === "string"
+    );
+    const candidates = blobs
+      .filter((item) => isRelevantSource(item.path))
       .map((item) => ({ path: item.path, sha: item.sha, size: item.size ?? 0 }))
       .filter((item) => item.size <= MAX_FILE_BYTES)
       .sort((left, right) => right.size - left.size || left.path.localeCompare(right.path));
+    const selected = candidates.slice(0, FILE_CAP);
+    const selectedPaths = new Set(selected.map((item) => item.path));
+    const companions = blobs
+      .filter((item) => isSecurityCompanion(item.path) && !selectedPaths.has(item.path))
+      .map((item) => ({ path: item.path, sha: item.sha, size: item.size ?? 0 }))
+      .filter((item) => item.size <= MAX_COMPANION_BYTES)
+      .sort(
+        (left, right) =>
+          companionRank(left.path) - companionRank(right.path) || left.path.localeCompare(right.path)
+      )
+      .slice(0, COMPANION_CAP);
 
-    if (candidates.length === 0) {
+    if (selected.length === 0 && companions.length === 0) {
       return {
         status: 200,
         body: errorBody(parsed.repoUrl, "No TypeScript or JavaScript source files were found in that repository.", "empty"),
       };
     }
 
-    const selected = candidates.slice(0, FILE_CAP);
     const scannedAll = candidates.length <= FILE_CAP && !tree.data.truncated;
-    const sources = (
-      await mapPool(selected, FETCH_CONCURRENCY, async (file) => {
-        const blob = await octokit.rest.git.getBlob({
-          owner: parsed.owner,
-          repo: parsed.repo,
-          file_sha: file.sha,
-        });
-        const content = decodeBlob(blob.data.content, blob.data.encoding);
-        return content === null ? null : { filePath: file.path, content };
-      })
-    ).filter((file): file is { filePath: string; content: string } => file !== null);
+    const owner = parsed.owner;
+    const repo = parsed.repo;
+    async function readBlob(file: { path: string; sha: string }) {
+      const blob = await octokit.rest.git.getBlob({
+        owner,
+        repo,
+        file_sha: file.sha,
+      });
+      const content = decodeBlob(blob.data.content, blob.data.encoding);
+      return content === null ? null : { filePath: file.path, content };
+    }
+    const sources = (await mapPool(selected, FETCH_CONCURRENCY, readBlob)).filter(
+      (file): file is { filePath: string; content: string } => file !== null
+    );
+    const companionSources = (await mapPool(companions, FETCH_CONCURRENCY, readBlob)).filter(
+      (file): file is { filePath: string; content: string } => file !== null
+    );
 
-    if (sources.length === 0) {
+    if (sources.length === 0 && companionSources.length === 0) {
       return { status: 502, body: errorBody(parsed.repoUrl, "GitHub returned no readable source files.") };
     }
 
-    const report = toFirewallReport(analyzeSourceTexts(sources, { includeOrphans: scannedAll }));
+    const report = toFirewallReport(
+      analyzeSourceTexts(sources, {
+        includeOrphans: scannedAll && sources.length > 0,
+        companionFiles: companionSources,
+      })
+    );
     const coverage = scannedAll
       ? `all ${sources.length} source files`
       : `the ${sources.length} largest source files`;
+    const companionNote = companionSources.length > 0 ? ` and ${companionSources.length} config files` : "";
     const truncated = tree.data.truncated ? " GitHub truncated the file tree." : "";
 
     return {
@@ -158,7 +206,7 @@ export async function scanPublicGitHubRepo(input: string): Promise<ScanResult> {
         ok: true,
         source: "github",
         status: "ready",
-        message: `Scanned ${parsed.repoUrl}. Architecture firewall reviewed ${coverage}.${truncated}`,
+        message: `Scanned ${parsed.repoUrl}. Architecture firewall and security guard reviewed ${coverage}${companionNote}.${truncated}`,
         target: { kind: "github", repoUrl: parsed.repoUrl },
         report,
       },

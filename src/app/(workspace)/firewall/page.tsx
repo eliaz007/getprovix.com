@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import FirewallScoreHeader from "@/components/firewall/firewall-score-header";
+import { useEffect, useRef, useState } from "react";
+import IntegrityPanel from "@/components/integrity-panel";
 import FirewallViolationsTable from "@/components/firewall/firewall-violations-table";
+import SecurityGuardPanel from "@/components/firewall/security-guard-panel";
+import { useGithubAppInstallation } from "@/components/onboarding/use-github-app-installation";
 import type { FirewallResponse } from "@/lib/firewall-contract";
+import { isSecurityCategory } from "@/lib/firewall-contract";
 import { parseGitHubRepository, toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import {
   readFirewallScanHandoff,
@@ -29,13 +32,74 @@ function sanitizeRepoParam(raw: string): string {
 }
 
 export default function FirewallPage() {
-  const { activeView, repoSlug, setActiveView, setRepoSlug } = useFirewallView();
+  const { activeView, repoSlug, setActiveView, setRepoSlug, setIntegrityPane, setSecurityCount } = useFirewallView();
+  const installation = useGithubAppInstallation();
   const [repoUrl, setRepoUrl] = useState("");
   const [entryNote, setEntryNote] = useState<string | null>(null);
   const [state, setState] = useState<PageState>({ kind: "idle" });
   const [isScanning, setIsScanning] = useState(false);
+  const installationBootstrapped = useRef(false);
   const trimmedRepoUrl = repoUrl.trim();
   const showScanning = isScanning || state.kind === "scanning";
+
+  async function loadGithubAudit(ownerRepo: string, openIntegrity = true, signal?: AbortSignal) {
+    const clean = sanitizeRepoParam(ownerRepo);
+    if (!clean) return;
+    setRepoUrl(`https://github.com/${clean}`);
+    setEntryNote(null);
+    setIsScanning(true);
+    setRepoSlug(clean);
+    if (openIntegrity) {
+      setActiveView("health");
+      setIntegrityPane("integrity");
+    }
+    try {
+      const response = await fetch("/api/firewall", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: "github", repoUrl: clean }),
+        signal,
+      });
+      if (signal?.aborted) return;
+      const payload = await readJsonResponse<FirewallResponse>(response);
+      if (signal?.aborted) return;
+      if (!response.ok || payload.status === "error" || !payload.report || payload.source !== "github") {
+        setState({
+          kind: "error",
+          message: payload.message ?? "The GitHub repository could not be scanned.",
+        });
+        return;
+      }
+      const note = payload.message ?? `Scanned https://github.com/${clean}.`;
+      const readyPayload: FirewallResponse = {
+        ...payload,
+        target: { kind: "github", repoUrl: clean },
+      };
+      saveFirewallScanHandoff({
+        repoUrl: clean,
+        report: payload.report,
+        note,
+        source: "github",
+      });
+      setRepoSlug(clean);
+      setEntryNote(note);
+      setState({ kind: "ready", payload: readyPayload });
+      if (openIntegrity) {
+        setActiveView("health");
+        setIntegrityPane("integrity");
+      }
+    } catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+        return;
+      }
+      setState({
+        kind: "error",
+        message: error instanceof Error ? error.message : "The GitHub repository could not be scanned.",
+      });
+    } finally {
+      if (!signal?.aborted) setIsScanning(false);
+    }
+  }
 
   useEffect(() => {
     const repo = repoSlug ?? sanitizeRepoParam(new URLSearchParams(window.location.search).get("repo") ?? "");
@@ -60,7 +124,7 @@ export default function FirewallPage() {
       return;
     }
 
-    let active = true;
+    const controller = new AbortController();
     if (repo) {
       setRepoSlug(repo);
       setRepoUrl(`https://github.com/${repo}`);
@@ -68,9 +132,13 @@ export default function FirewallPage() {
     setState({ kind: "scanning" });
     void (async () => {
       try {
-        const response = await fetch("/api/firewall", { cache: "no-store" });
+        const response = await fetch("/api/firewall", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
         const payload = await readJsonResponse<FirewallResponse>(response);
-        if (!active) return;
+        if (controller.signal.aborted) return;
         if (!response.ok || payload.status === "error" || !payload.report) {
           setState({
             kind: "error",
@@ -81,7 +149,9 @@ export default function FirewallPage() {
         setEntryNote(LOCAL_SNAPSHOT_NOTE);
         setState({ kind: "ready", payload });
       } catch (error) {
-        if (!active) return;
+        if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+          return;
+        }
         setState({
           kind: "error",
           message: error instanceof Error ? error.message : "The architecture report could not be loaded.",
@@ -90,11 +160,58 @@ export default function FirewallPage() {
     })();
 
     return () => {
-      active = false;
+      controller.abort();
     };
     // Intentionally once on mount; repoSlug is seeded by FirewallViewProvider first.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // When an App installation already exists, skip Connect and open the audit view.
+  useEffect(() => {
+    if (installationBootstrapped.current || installation.loading || !installation.installed) return;
+    const params = new URLSearchParams(window.location.search);
+    const urlRepo = sanitizeRepoParam(params.get("repo") ?? "");
+    const urlView = params.get("view");
+    const primary = installation.primaryRepo ? sanitizeRepoParam(installation.primaryRepo) : "";
+    const repo = urlRepo || primary;
+    installationBootstrapped.current = true;
+    if (!repo) return;
+
+    setRepoSlug(repo);
+    setRepoUrl(`https://github.com/${repo}`);
+    if (!urlView || urlView === "firewall") {
+      setActiveView("health");
+      setIntegrityPane("integrity");
+    }
+
+    const handoff = readFirewallScanHandoff(repo);
+    if (handoff && sanitizeRepoParam(handoff.repoUrl) === repo) {
+      setEntryNote(handoff.note);
+      setState({
+        kind: "ready",
+        payload: {
+          ok: true,
+          source: handoff.source === "github" ? "github" : "local",
+          status: "ready",
+          message: handoff.note,
+          target: { kind: "github", repoUrl: repo },
+          report: handoff.report,
+        },
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    void loadGithubAudit(
+      repo,
+      !urlView || urlView === "firewall" || urlView === "health",
+      controller.signal
+    );
+    return () => {
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [installation.loading, installation.installed, installation.primaryRepo]);
 
   async function runAudit() {
     if (!trimmedRepoUrl || isScanning) return;
@@ -107,49 +224,7 @@ export default function FirewallPage() {
       });
       return;
     }
-
-    const ownerRepo = `${parsed.owner}/${parsed.repo}`;
-    setRepoUrl(parsed.repoUrl);
-    setEntryNote(null);
-    setIsScanning(true);
-    setRepoSlug(ownerRepo);
-    try {
-      const response = await fetch("/api/firewall", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: "github", repoUrl: ownerRepo }),
-      });
-      const payload = await readJsonResponse<FirewallResponse>(response);
-      if (!response.ok || payload.status === "error" || !payload.report || payload.source !== "github") {
-        setState({
-          kind: "error",
-          message: payload.message ?? "The GitHub repository could not be scanned.",
-        });
-        return;
-      }
-      const note = payload.message ?? `Scanned ${parsed.repoUrl}.`;
-      const readyPayload: FirewallResponse = {
-        ...payload,
-        target: { kind: "github", repoUrl: ownerRepo },
-      };
-      saveFirewallScanHandoff({
-        repoUrl: ownerRepo,
-        report: payload.report,
-        note,
-        source: "github",
-      });
-      setRepoSlug(ownerRepo);
-      setEntryNote(note);
-      setState({ kind: "ready", payload: readyPayload });
-      setActiveView("health");
-    } catch (error) {
-      setState({
-        kind: "error",
-        message: error instanceof Error ? error.message : "The GitHub repository could not be scanned.",
-      });
-    } finally {
-      setIsScanning(false);
-    }
+    await loadGithubAudit(`${parsed.owner}/${parsed.repo}`, true);
   }
 
   const report = state.kind === "ready" ? state.payload.report : null;
@@ -160,98 +235,109 @@ export default function FirewallPage() {
       : sanitizeRepoParam(trimmedRepoUrl)) ||
     null;
 
+  useEffect(() => {
+    if (!report) {
+      setSecurityCount(null);
+      return;
+    }
+    setSecurityCount(report.violations.filter((violation) => isSecurityCategory(violation.category)).length);
+  }, [report, setSecurityCount]);
+
   return (
-    <div className="space-y-5 text-zinc-100">
+    <div className="space-y-4 text-zinc-100">
       {activeView === "firewall" ? (
         <>
-          <header className="border-b border-neutral-800 pb-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-300">Architecture Firewall</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-3xl">Standalone code firewall</h1>
-            <p className="mt-2 max-w-3xl text-sm text-zinc-400">
-              {trimmedRepoUrl || "Boundary leaks, import cycles, bloat, and orphaned modules from the latest local snapshot."}
+          <header className="space-y-1 pb-1">
+            <p className="text-xs text-zinc-500">Architecture Firewall</p>
+            <h1 className="text-2xl font-medium tracking-tight text-zinc-50">Code firewall</h1>
+            <p className="max-w-3xl text-sm leading-relaxed text-zinc-500">
+              {trimmedRepoUrl ||
+                "Boundary leaks, import cycles, bloat, and orphaned modules from the latest local snapshot."}
             </p>
-            {entryNote ? <p className="mt-1.5 max-w-3xl text-sm text-zinc-500">{entryNote}</p> : null}
+            {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
           </header>
 
           <form
-            className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4"
+            className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-4 py-4 sm:px-5"
             onSubmit={(event) => {
               event.preventDefault();
               void runAudit();
             }}
           >
-            <label htmlFor="firewall-repo-url" className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+            <label htmlFor="firewall-repo-url" className="text-xs text-zinc-500">
               Public repository
             </label>
-            <div className="mt-2.5 flex flex-col gap-2.5 sm:flex-row">
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
               <input
                 id="firewall-repo-url"
                 type="text"
                 inputMode="url"
                 value={repoUrl}
                 onChange={(event) => setRepoUrl(event.target.value)}
-                placeholder="Paste public GitHub URL (e.g., https://github.com/owner/repo)..."
+                placeholder="https://github.com/owner/repo"
                 disabled={showScanning}
-                className="min-w-0 flex-1 rounded-lg border border-neutral-800 bg-neutral-950 px-3.5 py-2.5 font-mono text-sm text-white outline-none ring-violet-400/30 placeholder:text-zinc-600 focus:ring-2 disabled:opacity-60"
+                className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-black/40 px-3 py-2 font-mono text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-white/20 disabled:opacity-60"
               />
               <button
                 type="submit"
                 disabled={!trimmedRepoUrl || showScanning}
-                className="shrink-0 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="shrink-0 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {showScanning ? "Scanning..." : "Run Audit"}
+                {showScanning ? "Scanning…" : "Run audit"}
               </button>
             </div>
           </form>
         </>
       ) : null}
 
-      {activeView === "health" ? (
-        <header className="border-b border-neutral-800 pb-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-300">Repository health</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-3xl">Health metrics</h1>
-          {entryNote ? <p className="mt-2 max-w-3xl text-sm text-zinc-500">{entryNote}</p> : null}
+      {activeView === "violations" ? (
+        <header className="space-y-1 pb-1">
+          <p className="text-xs text-zinc-500">Architecture</p>
+          <h1 className="text-2xl font-medium tracking-tight text-zinc-50">Violations</h1>
+          {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
         </header>
       ) : null}
 
-      {activeView === "violations" ? (
-        <header className="border-b border-neutral-800 pb-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-violet-300">Architecture log</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-3xl">Violation log</h1>
-          {entryNote ? <p className="mt-2 max-w-3xl text-sm text-zinc-500">{entryNote}</p> : null}
+      {activeView === "leaks" ? (
+        <header className="space-y-1 pb-1">
+          <p className="text-xs text-zinc-500">Security</p>
+          <h1 className="text-2xl font-medium tracking-tight text-zinc-50">Leaks</h1>
+          {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
         </header>
       ) : null}
 
       {showScanning ? (
-        <p className="rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-6 text-sm text-zinc-400" role="status">
-          Scanning repository...
+        <p
+          className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-5 py-6 text-sm text-zinc-500"
+          role="status"
+        >
+          Scanning repository…
         </p>
       ) : null}
 
       {state.kind === "error" ? (
-        <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-6 text-sm text-rose-100" role="alert">
+        <p
+          className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-5 py-6 text-sm text-zinc-300"
+          role="alert"
+        >
           {state.message}
         </p>
       ) : null}
 
       {state.kind === "ready" && state.payload.status === "empty" ? (
-        <p className="rounded-xl border border-amber-300/30 bg-amber-400/10 px-4 py-6 text-sm text-amber-50">
+        <p className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-5 py-6 text-sm text-zinc-500">
           {state.payload.message ?? "No architecture report is available yet."}
         </p>
       ) : null}
 
-      {activeView === "health" && report ? (
-        <FirewallScoreHeader
-          report={report}
-          title={state.kind === "ready" && state.payload.source === "github" ? "GitHub repository" : "Local codebase firewall"}
-        />
-      ) : null}
+      {activeView === "health" ? <IntegrityPanel repo={scannedRepoUrl} report={report} /> : null}
       {activeView === "violations" && report ? (
         <FirewallViolationsTable report={report} repoUrl={scannedRepoUrl} />
       ) : null}
+      {activeView === "leaks" && report ? <SecurityGuardPanel report={report} /> : null}
 
-      {activeView !== "firewall" && !report && !showScanning && state.kind !== "error" ? (
-        <p className="rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-6 text-sm text-zinc-400">
+      {activeView !== "firewall" && activeView !== "health" && !report && !showScanning && state.kind !== "error" ? (
+        <p className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-5 py-6 text-sm text-zinc-500">
           Run an audit from Architecture Firewall to load this section.
         </p>
       ) : null}

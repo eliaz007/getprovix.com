@@ -15,9 +15,34 @@ export function isFirewallSourcePath(filePath: string): boolean {
   return SOURCE_EXTENSIONS.has(normalized.slice(dot));
 }
 
+/** Source, package.json, and env files a security fix is allowed to read or write. */
+export function isRepositoryTextPath(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!normalized || normalized.includes("\0")) return false;
+  const parts = normalized.split("/");
+  if (parts.some((part) => !part || part === "." || part === ".." || part === "node_modules" || part === ".git")) {
+    return false;
+  }
+  const name = parts[parts.length - 1] ?? "";
+  if (name === "package.json" || name === ".env.example") return true;
+  if (name === ".env" || /^\.env\.[A-Za-z0-9._-]+$/.test(name)) return true;
+  return /\.(?:ts|tsx|js|jsx|json)$/.test(name);
+}
+
 export async function readGitHubSourceFile(
   repoInput: string,
   filePath: string
+): Promise<{ ok: true; content: string } | { ok: false; message: string; status: number }> {
+  return readGitHubTextFile(repoInput, filePath, {
+    allow: isFirewallSourcePath,
+    invalidMessage: "filePath must be a TypeScript or JavaScript source file inside the repository.",
+  });
+}
+
+export async function readGitHubTextFile(
+  repoInput: string,
+  filePath: string,
+  options?: { allow?: (filePath: string) => boolean; invalidMessage?: string }
 ): Promise<{ ok: true; content: string } | { ok: false; message: string; status: number }> {
   const parsed = parseGitHubRepository(repoInput);
   if (!parsed) {
@@ -25,11 +50,12 @@ export async function readGitHubSourceFile(
   }
 
   const normalized = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
-  if (!isFirewallSourcePath(normalized)) {
+  const allow = options?.allow ?? isRepositoryTextPath;
+  if (!allow(normalized)) {
     return {
       ok: false,
       status: 400,
-      message: "filePath must be a TypeScript or JavaScript source file inside the repository.",
+      message: options?.invalidMessage ?? "filePath must be a text file inside the repository.",
     };
   }
 

@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { missingErrorHandlingViolations } from "../src/lib/firewall-error-handling";
+import { runSecuritySuiteScan } from "../src/lib/scanner/security-suite";
 
 type IngestedFile = {
   filePath: string;
@@ -20,6 +22,13 @@ type Violation = {
   rule: string;
   message: string;
   line: number;
+  category?: "SECRET_LEAK" | "CLIENT_DB_EXPOSURE" | "VULNERABLE_DEPENDENCY";
+  snippet?: string;
+  remediation?: {
+    diff: string;
+    command?: string;
+    envExample?: string;
+  };
 };
 
 type ImportStatement = {
@@ -814,6 +823,7 @@ function audit(files: IngestedFile[], includeOrphans = true): Violation[] {
   const violations = files.flatMap((file) => [
     ...boundaryViolations(file),
     ...bloatViolations(file, statementsByFile.get(file.filePath) ?? []),
+    ...missingErrorHandlingViolations(file.filePath, file.rawContent),
   ]);
 
   violations.push(...cycleViolations(graph));
@@ -841,12 +851,32 @@ function ingestSourceText(source: SourceTextFile): IngestedFile {
 /** Run the firewall rules on source text that was not read from the local disk. */
 export function analyzeSourceTexts(
   sources: SourceTextFile[],
-  options?: { includeOrphans?: boolean }
+  options?: { includeOrphans?: boolean; companionFiles?: SourceTextFile[] }
 ): AuditReport {
   const files = sources
     .map(ingestSourceText)
     .sort((left, right) => left.filePath.localeCompare(right.filePath));
-  return buildReport(files, audit(files, options?.includeOrphans !== false));
+  const violations = audit(files, options?.includeOrphans !== false);
+  const security = runSecuritySuiteScan([
+    ...sources.map((source) => ({ filePath: source.filePath, content: source.content })),
+    ...(options?.companionFiles ?? []).map((source) => ({
+      filePath: source.filePath,
+      content: source.content,
+    })),
+  ]);
+  violations.push(
+    ...security.map((finding) => ({
+      filePath: finding.filePath,
+      severity: finding.severity,
+      rule: finding.rule,
+      message: finding.message,
+      line: finding.line,
+      category: finding.category,
+      snippet: finding.snippet,
+      remediation: finding.remediation,
+    }))
+  );
+  return buildReport(files, dedupeAndSort(violations));
 }
 
 function printDashboard(files: IngestedFile[], report: AuditReport): void {

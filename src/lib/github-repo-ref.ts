@@ -30,6 +30,8 @@ const TRAILING_PAGE_SEGMENTS = new Set([
   "graphs",
   "network",
   "security",
+  "leaks",
+  "history",
   "insights",
   "about",
 ]);
@@ -41,7 +43,7 @@ export function toGitHubOwnerRepo(input: string): string | null {
 
   let slug = trimmed
     .replace(/[?#].*$/, "")
-    .replace(/\/+(?:violations|health|firewall|settings)\/?$/i, "")
+    .replace(/\/+(?:violations|health|firewall|settings|leaks|history)\/?$/i, "")
     .replace(/\/+$/, "");
   const hosted = slug.match(/^(?:[a-z][a-z0-9+.-]*:\/\/)?(?:www\.)?github\.com\/(.+)$/i);
   if (hosted) {

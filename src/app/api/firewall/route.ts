@@ -2,8 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import {
+  FIREWALL_CATEGORIES,
   isFirewallSeverity,
+  type FirewallCategory,
   type FirewallLargestFile,
+  type FirewallRemediation,
   type FirewallReport,
   type FirewallResponse,
   type FirewallScanRequest,
@@ -55,6 +58,23 @@ function summaryFrom(value: unknown): FirewallSummary | null {
   return { totalFiles, totalLines, criticalCount, highCount, mediumCount, lowCount };
 }
 
+function categoryFrom(value: unknown): FirewallCategory | undefined {
+  return typeof value === "string" && (FIREWALL_CATEGORIES as readonly string[]).includes(value)
+    ? (value as FirewallCategory)
+    : undefined;
+}
+
+function remediationFrom(value: unknown): FirewallRemediation | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (typeof record.diff !== "string") return undefined;
+  return {
+    diff: record.diff,
+    ...(typeof record.command === "string" ? { command: record.command } : {}),
+    ...(typeof record.envExample === "string" ? { envExample: record.envExample } : {}),
+  };
+}
+
 function violationsFrom(value: unknown): FirewallViolation[] {
   if (!Array.isArray(value)) return [];
   const violations: FirewallViolation[] = [];
@@ -72,12 +92,17 @@ function violationsFrom(value: unknown): FirewallViolation[] {
     ) {
       continue;
     }
+    const category = categoryFrom(record.category);
+    const remediation = remediationFrom(record.remediation);
     violations.push({
       filePath: record.filePath,
       severity: record.severity,
       rule: record.rule,
       message: record.message,
       line,
+      ...(category ? { category } : {}),
+      ...(typeof record.snippet === "string" ? { snippet: record.snippet } : {}),
+      ...(remediation ? { remediation } : {}),
     });
   }
   return violations;
