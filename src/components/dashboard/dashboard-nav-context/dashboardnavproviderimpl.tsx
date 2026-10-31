@@ -49,6 +49,7 @@ import { DashboardNavContext } from "./dashboardnavcontext";
 import { initialsFromDisplayName } from "./initialsfromdisplayname";
 import { resolveUserDisplayName } from "./resolveuserdisplayname";
 import { getUserHeaderIdentity } from "./getuserheaderidentity";
+import { secureQuery302 } from "@/app/actions/secure-query";
 
 export function DashboardNavProviderImpl({
   children,
@@ -299,11 +300,7 @@ export function DashboardNavProviderImpl({
 
         if (!profile && (byId.error || byUserId.error)) {
           console.time("dashboard-layout:profile-fetch-fallback");
-          const fallbackById = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", user.id)
-            .maybeSingle();
+          const fallbackById = await secureQuery302();
           profile = fallbackById.data;
           if (!profile) {
             const fallbackByUserId = await supabase

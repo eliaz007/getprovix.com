@@ -36,3 +36,19 @@ export async function secureQuery95() {
       .maybeSingle();
   return { data, error };
 }
+
+export async function secureQuery302(): Promise<{ data: any; error: any }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } };
+  }
+  const { data, error } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .maybeSingle();
+  return { data, error };
+}
