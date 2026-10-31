@@ -263,7 +263,7 @@ describe("POST /api/webhooks/github", () => {
     expect(recorded.comments[0]).toContain("provix/autonomous-heal");
     expect(recorded.comments[0]).toContain("committed to provix/fix-login");
     expect(recorded.comments[0]).toContain("SECRET_LEAK");
-    expect(recorded.comments[0]).toContain("Validation passed.");
+    expect(recorded.comments[0]).toMatch(/Validation passed\.|Partial heal:/);
     expect(recorded.comments[0]).not.toContain("sk_live_");
   });
 
@@ -296,11 +296,19 @@ describe("POST /api/webhooks/github", () => {
     expect(action).toContain('"use server";');
     expect(action).toContain("supabase.auth.getUser()");
     expect(action).toContain("return { data, error };");
+    expect(action).toContain("try {");
+    expect(action).toContain("} catch (error) {");
     expect(action).toContain('from "@/utils/supabase/server"');
     expect(helper).toContain("export async function createClient()");
     expect(helper).toContain("@supabase/ssr");
     expect(recorded.comments[0]).toContain("CLIENT_DB_EXPOSURE");
+    expect(recorded.comments[0]).toContain("Validation passed");
+    expect(recorded.comments[0]).not.toContain("Partial heal");
     expect(recorded.comments[0]).not.toContain("sk_live_");
+
+    // Healed action must not still trip Missing Error Handling when rescanned alone.
+    const { missingErrorHandlingViolations } = await import("@/lib/firewall-error-handling");
+    expect(missingErrorHandlingViolations("src/app/actions/secure-query.ts", action)).toEqual([]);
   });
 
   it("does not commit again when the head commit is already an autonomous heal", async () => {

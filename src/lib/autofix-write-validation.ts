@@ -135,6 +135,15 @@ function validateServerAction(filePath: string, content: string): AutofixWriteVa
     }
   }
 
+  // `{ ok: false, message }` breaks callers that assign `result.data` (TS2322 / CI red).
+  if (/return\s+\{\s*ok\s*:\s*false\b/.test(content)) {
+    return invalid(
+      "missing-data-error",
+      `Generated ${filePath} returns { ok: false } instead of { data, error }. The pull request was not opened.`,
+      filePath
+    );
+  }
+
   return { ok: true };
 }
 
@@ -766,11 +775,19 @@ function repairUnauthorizedErrorShape(content: string): string {
   );
 }
 
+function repairOkFalseCatchReturn(content: string): string {
+  return content.replace(
+    /return\s+\{\s*ok\s*:\s*false\s*,\s*message\s*:\s*("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')\s*\}\s*;/g,
+    'return { data: null, error: { message: $1, details: "", hint: "", code: "500" } };'
+  );
+}
+
 function repairActionFile(content: string): string {
   const stripped = stripConflictingUserParams(content).content;
   const typed = repairActionParamTypesAndFilters(stripped);
   const shaped = repairUnauthorizedErrorShape(typed);
-  return rewriteSupabaseReturn(ensureGetUser(ensureCreateClientImport(ensureUseServer(shaped))));
+  const consistent = repairOkFalseCatchReturn(shaped);
+  return rewriteSupabaseReturn(ensureGetUser(ensureCreateClientImport(ensureUseServer(consistent))));
 }
 
 function repairClientFile(content: string, removedUserParams: readonly string[] = []): string {

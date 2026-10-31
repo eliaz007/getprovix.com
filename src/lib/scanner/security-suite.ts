@@ -919,6 +919,47 @@ function extractQueryParams(expression: string): string[] {
   return params;
 }
 
+/**
+ * Resolve `const name = "..."` / `let` / `var` string bindings in `source`.
+ * Template literals with `${...}` are rejected (not safe to inline).
+ */
+function resolveStringLiteralBinding(source: string, name: string): string | null {
+  if (!/^[A-Za-z_$][\w$]*$/.test(name)) return null;
+  const assign = new RegExp(`(?:const|let|var)\\s+${name}\\s*=\\s*`);
+  const match = assign.exec(source);
+  if (!match || match.index == null) return null;
+  const start = match.index + match[0].length;
+  const quote = source[start];
+  if (quote !== '"' && quote !== "'" && quote !== "`") return null;
+  const end = skipStringLiteral(source, start);
+  if (end <= start + 1) return null;
+  const raw = source.slice(start + 1, end - 1);
+  if (quote === "`" && /\$\{/.test(raw)) return null;
+  return raw
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'")
+    .replace(/\\\\/g, "\\");
+}
+
+/**
+ * Rewrite `.select(varName)` to `.select("literal")` when `varName` is a string
+ * const in `source`. Keeps Supabase row typing (avoids GenericStringError from
+ * dynamic `.select(string)`).
+ */
+export function inlineSelectStringLiterals(expression: string, source: string): string {
+  return expression.replace(
+    /\.\s*select\s*\(\s*([A-Za-z_$][\w$]*)\s*\)/g,
+    (full, name: string) => {
+      const literal = resolveStringLiteralBinding(source, name);
+      if (literal == null) return full;
+      return `.select(${JSON.stringify(literal)})`;
+    }
+  );
+}
+
 function looksBooleanParamName(name: string): boolean {
   return (
     /^(?:is|has|can|should)[A-Z_][\w$]*$/.test(name) ||
@@ -1135,8 +1176,8 @@ function serverAction(
   const queryExpression = coerceSupabaseFilterArgs(body, analyzed);
   const queryBlock =
     kind === "supabase"
-      ? [`  const { data, error } = await ${queryExpression};`, "  return { data, error };"]
-      : [`  return await ${queryExpression};`];
+      ? [`    const { data, error } = await ${queryExpression};`, "    return { data, error };"]
+      : [`    return await ${queryExpression};`];
   return sanitizeGeneratedTypeScript(
     [
       '"use server";',
@@ -1144,14 +1185,20 @@ function serverAction(
       ...imports,
       "",
       `${signature} {`,
-      "  const supabase = await createClient();",
-      "  const {",
-      "    data: { user },",
-      "  } = await supabase.auth.getUser();",
-      "  if (!user) {",
-      '    return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } };',
-      "  }",
+      "  try {",
+      "    const supabase = await createClient();",
+      "    const {",
+      "      data: { user },",
+      "    } = await supabase.auth.getUser();",
+      "    if (!user) {",
+      '      return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } };',
+      "    }",
       ...queryBlock,
+      "  } catch (error) {",
+      "    console.error(error);",
+      // Same `{ data, error }` shape as success / unauthorized — keeps client assigns typecheck-safe.
+      '    return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } };',
+      "  }",
       "}",
       "",
     ].join("\n"),
@@ -1179,13 +1226,14 @@ function scanClientQueries(file: SecurityScanFile): SecurityFinding[] {
       if (end <= index) continue;
       seen.add(index);
       const original = file.content.slice(index, end);
+      const expression = inlineSelectStringLiterals(original, file.content);
       const line = lineAt(file.content, index);
       const name = actionName(line);
-      const params = extractQueryParams(original);
+      const params = extractQueryParams(expression);
       const importLine = secureQueryImport(name);
       const actionPath = serverActionFilePath(filePath);
       const call = clientActionCall(name, params, file.content, index);
-      const action = serverAction(rule.kind, original, name, params);
+      const action = serverAction(rule.kind, expression, name, params);
       const actionLines = action.split("\n").map((entry) => `+${entry}`).join("\n");
       const removed = original.split("\n").map((entry) => `-${entry}`).join("\n");
       const diff = [
@@ -1712,8 +1760,9 @@ function clientPlan(
       const span = clientQuerySpanCoversLine(file.content, index, index + seed.length, line);
       if (!span) continue;
       const original = file.content.slice(index, span.end);
+      const expression = inlineSelectStringLiterals(original, file.content);
       const name = actionName(span.startLine);
-      const params = extractQueryParams(original);
+      const params = extractQueryParams(expression);
       const actionPath = resolved.serverActionPath;
       const call = clientActionCall(name, params, file.content, index);
       const replaced = `${file.content.slice(0, index)}${call}${file.content.slice(span.end)}`;
@@ -1725,7 +1774,7 @@ function clientPlan(
         branchSlug: "client-query",
         writes: [
           { filePath, content: patched },
-          { filePath: actionPath, content: serverAction(rule.kind, original, name, params) },
+          { filePath: actionPath, content: serverAction(rule.kind, expression, name, params) },
           ...supportingHelperWritesForLayout(resolved),
         ],
       };

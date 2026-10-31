@@ -27,6 +27,8 @@ import {
 
 export const GATE_CONTEXT = "provix/autonomous-gate";
 export const HEAL_COMMIT_PREFIX = "fix: provix autonomous heal";
+/** In-memory scan → heal → rescan rounds before a single commit. */
+export const HEAL_MAX_ROUNDS = 3;
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
 const IGNORED_SEGMENTS = new Set(["node_modules", ".next", "dist", "build"]);
 const LOCKFILES = new Set(["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml"]);
@@ -217,16 +219,128 @@ export function isAutonomousHealCommit(message: string, parentSha?: string): boo
   return message.startsWith(HEAL_COMMIT_PREFIX);
 }
 
-export function healComment(input: { branch: string; notes: readonly string[] }): string {
-  return [
+export function healComment(input: {
+  branch: string;
+  notes: readonly string[];
+  residual?: {
+    leaks: number;
+    violations: number;
+    findings: GateFinding[];
+    healUrl: string;
+  };
+}): string {
+  const header = [
     "```",
     "provix/autonomous-heal",
     `committed to ${input.branch}`,
     ...input.notes,
     "```",
     "",
-    "Validation passed. The patch is on the pull request branch.",
-  ].join("\n");
+  ];
+  const residual = input.residual;
+  if (residual && (residual.leaks > 0 || residual.violations > 0 || residual.findings.length > 0)) {
+    return [
+      ...header,
+      "Partial heal: some findings remain after autonomous rounds.",
+      "",
+      gateComment(residual),
+    ].join("\n");
+  }
+  return [...header, "Validation passed. The patch is on the pull request branch."].join("\n");
+}
+
+export type HealRoundsResult = {
+  files: HealCommitFile[];
+  notes: string[];
+  findings: GateFinding[];
+  leaks: number;
+  violations: number;
+  improved: boolean;
+  rounds: number;
+};
+
+/**
+ * Apply prepareAutonomousHeal up to `maxRounds` times in memory, re-scanning after each
+ * round, then return one merged write set for a single commit.
+ */
+export async function runAutonomousHealRounds(input: {
+  files: ReadonlyArray<{ filePath: string; content: string; patch?: string | null }>;
+  findings: readonly GateFinding[];
+  tsconfigText?: string | null;
+  readText?: (filePath: string) => Promise<string | null>;
+  maxRounds?: number;
+}): Promise<HealRoundsResult | null> {
+  const maxRounds = input.maxRounds ?? HEAL_MAX_ROUNDS;
+  const working = new Map<string, { filePath: string; content: string; patch?: string | null }>();
+  const originalPaths = new Set<string>();
+  for (const file of input.files) {
+    const filePath = normalizedPath(file.filePath);
+    originalPaths.add(filePath);
+    working.set(filePath, { filePath, content: file.content, patch: file.patch });
+  }
+
+  let findings = input.findings.slice();
+  let leaks = findings.filter((finding) => finding.kind === "leak").length;
+  let violations = findings.filter((finding) => finding.kind === "violation").length;
+  const allNotes: string[] = [];
+  const writeMap = new Map<string, string>();
+  let rounds = 0;
+  let improved = false;
+
+  for (let round = 1; round <= maxRounds; round += 1) {
+    if (findings.length === 0) break;
+    const beforeCount = findings.length;
+    const snapshot = [...working.values()];
+    let heal: AutonomousHeal | null = null;
+    try {
+      heal = await prepareAutonomousHeal({
+        files: snapshot,
+        findings,
+        tsconfigText: input.tsconfigText,
+        readText: input.readText,
+      });
+    } catch (error) {
+      console.error(
+        "[webhooks/github] heal round failed",
+        round,
+        error instanceof Error ? error.message : error
+      );
+      break;
+    }
+    if (!heal || heal.files.length === 0) break;
+
+    rounds = round;
+    improved = true;
+    allNotes.push(`round ${round}`);
+    for (const note of heal.notes) allNotes.push(note);
+    for (const file of heal.files) {
+      const filePath = normalizedPath(file.path);
+      writeMap.set(filePath, file.content);
+      const previous = working.get(filePath);
+      // New files (e.g. secure-query.ts): full-file scan. Existing PR files: keep the
+      // original patch filter so residuals stay scoped to the pull request diff.
+      const patch = originalPaths.has(filePath) ? previous?.patch ?? null : null;
+      working.set(filePath, { filePath, content: file.content, patch });
+    }
+
+    const scan = scanChangedFiles([...working.values()]);
+    findings = scan.findings;
+    leaks = scan.leaks;
+    violations = scan.violations;
+    if (findings.length === 0) break;
+    if (findings.length >= beforeCount) break;
+  }
+
+  if (!improved || writeMap.size === 0) return null;
+  return {
+    files: [...writeMap.entries()].map(([path, content]) => ({ path, content })),
+    notes: allNotes,
+    findings,
+    leaks,
+    violations,
+    improved,
+    rounds,
+  };
 }
 
 /** Build a validated patch for fixable client-boundary leaks and security findings. */
@@ -680,7 +794,15 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
 
   const scan = scanChangedFiles(readable);
   const committed = await commitAutonomousHeal(gate, delivery, readable, scan.findings);
-  const healUrl = healQueueUrl(delivery.owner, delivery.repo, scan.leaks, scan.violations);
+  // Status on this delivery sha reflects the tree GitHub sent. Residual after in-memory
+  // rounds is reported on the heal comment; the follow-up synchronize posts the head status.
+  const reportFindings = committed?.residual ?? scan;
+  const healUrl = healQueueUrl(
+    delivery.owner,
+    delivery.repo,
+    reportFindings.leaks,
+    reportFindings.violations
+  );
   const payloadStatus = buildGateStatus(scan.leaks, scan.violations, healUrl);
   let statusPosted = false;
   let statusError: string | null = null;
@@ -701,11 +823,26 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
   let commentError: string | null = null;
   try {
     if (committed) {
+      const residualLeftover =
+        committed.residual.leaks > 0 ||
+        committed.residual.violations > 0 ||
+        committed.residual.findings.length > 0;
       await gate.postComment({
         owner: delivery.owner,
         repo: delivery.repo,
         number: delivery.number,
-        body: healComment({ branch: delivery.branch, notes: committed.notes }),
+        body: healComment({
+          branch: delivery.branch,
+          notes: committed.notes,
+          residual: residualLeftover
+            ? {
+                leaks: committed.residual.leaks,
+                violations: committed.residual.violations,
+                findings: committed.residual.findings,
+                healUrl,
+              }
+            : undefined,
+        }),
       });
     } else if (payloadStatus.state === "failure" || !statusPosted) {
       const fallback =
@@ -747,6 +884,9 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
     state: payloadStatus.state,
     leaks: scan.leaks,
     violations: scan.violations,
+    residualLeaks: committed?.residual.leaks ?? scan.leaks,
+    residualViolations: committed?.residual.violations ?? scan.violations,
+    healRounds: committed?.rounds ?? 0,
     context: payloadStatus.context,
     description: payloadStatus.description,
     healed: Boolean(committed),
@@ -760,7 +900,12 @@ async function commitAutonomousHeal(
   delivery: PullRequestDelivery,
   readable: Array<{ filePath: string; content: string; patch?: string | null }>,
   findings: readonly GateFinding[]
-): Promise<{ sha: string; notes: string[] } | null> {
+): Promise<{
+  sha: string;
+  notes: string[];
+  rounds: number;
+  residual: { leaks: number; violations: number; findings: GateFinding[] };
+} | null> {
   if (!gate.commitToBranch) return null;
   try {
     if (gate.commitMessage) {
@@ -790,9 +935,9 @@ async function commitAutonomousHeal(
     }
   }
 
-  let heal: AutonomousHeal | null = null;
+  let roundsResult: HealRoundsResult | null = null;
   try {
-    heal = await prepareAutonomousHeal({
+    roundsResult = await runAutonomousHealRounds({
       files: readable,
       findings,
       tsconfigText,
@@ -802,7 +947,7 @@ async function commitAutonomousHeal(
     console.error("[webhooks/github] autonomous heal did not finish", error instanceof Error ? error.message : error);
     return null;
   }
-  if (!heal) return null;
+  if (!roundsResult) return null;
 
   try {
     const commit = await gate.commitToBranch({
@@ -810,10 +955,19 @@ async function commitAutonomousHeal(
       repo: delivery.repo,
       branch: delivery.branch,
       parentSha: delivery.sha,
-      message: healCommitMessage(delivery.sha, heal.notes),
-      files: heal.files,
+      message: healCommitMessage(delivery.sha, roundsResult.notes),
+      files: roundsResult.files,
     });
-    return { sha: commit.sha, notes: heal.notes };
+    return {
+      sha: commit.sha,
+      notes: roundsResult.notes,
+      rounds: roundsResult.rounds,
+      residual: {
+        leaks: roundsResult.leaks,
+        violations: roundsResult.violations,
+        findings: roundsResult.findings,
+      },
+    };
   } catch (error) {
     console.error("[webhooks/github] could not commit the autonomous heal", error instanceof Error ? error.message : error);
     return null;

@@ -10,6 +10,7 @@ import {
   detectAtAliasRoot,
   ensureSecureQueryNamedImport,
   fingerprintSecurityQuery,
+  inlineSelectStringLiterals,
   isServerActionFilePath,
   mergeEnvExample,
   mergeServerAction,
@@ -21,8 +22,6 @@ import {
   sanitizeGeneratedTypeScript,
   sortFindingsForBatchApply,
 } from "@/lib/scanner/security-suite";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import ts from "typescript";
 
 const stripe = `sk_live_${"b".repeat(24)}`;
@@ -172,11 +171,40 @@ describe("runSecuritySuiteScan", () => {
     expect(clientPlan?.writes[1]?.content).toContain("supabase.auth.getUser()");
     expect(clientPlan?.writes[1]?.content).toContain('const { data, error } = await supabase.from("jobs").select("*");');
     expect(clientPlan?.writes[1]?.content).toContain("return { data, error };");
+    expect(clientPlan?.writes[1]?.content).toContain("try {");
+    expect(clientPlan?.writes[1]?.content).toContain("} catch (error) {");
+    expect(clientPlan?.writes[1]?.content).toContain("data: null");
+    expect(clientPlan?.writes[1]?.content).not.toContain('ok: false');
     expect(clientPlan?.writes[1]?.content).not.toMatch(/Promise<\s*\{\s*data:\s*unknown/);
     expect(clientPlan?.writes[1]?.content).not.toMatch(/\bany\b/);
     expect(clientPlan?.writes[1]?.content).toContain('from "@/utils/supabase/server"');
     expect(clientPlan?.writes[2]?.content).toContain("export async function createClient()");
     expect(clientPlan?.writes[2]?.content).toContain("@supabase/ssr");
+
+    const selectVar = `"use client";
+export async function load(userId: string) {
+  const profileSelect = "role, is_verified, full_name";
+  const { data, error } = await supabase.from("profiles").select(profileSelect).eq("id", userId).maybeSingle();
+  return { data, error };
+}
+`;
+    expect(
+      inlineSelectStringLiterals(
+        'supabase.from("profiles").select(profileSelect).eq("id", userId)',
+        selectVar
+      )
+    ).toContain('.select("role, is_verified, full_name")');
+    const selectVarPlan = planSecurityFix(
+      { filePath: "src/components/profile.tsx", content: selectVar },
+      "CLIENT_DB_EXPOSURE",
+      4
+    );
+    const action = selectVarPlan?.writes.find((write) => write.filePath.endsWith("secure-query.ts"))?.content ?? "";
+    expect(action).toContain('.select("role, is_verified, full_name")');
+    expect(action).not.toContain("profileSelect");
+    expect(action).not.toMatch(/secureQuery\d+\(\s*profileSelect/);
+    expect(selectVarPlan?.writes[0]?.content).toMatch(/secureQuery\d+\(/);
+    expect(selectVarPlan?.writes[0]?.content).not.toContain("select(profileSelect)");
 
     const withSwr = `"use client";\nimport useSWR from "swr";\nexport function Box() {\n  return useSWR("jobs", async () => supabase.from("jobs").select("*"));\n}\n`;
     const swrPlan = planSecurityFix(
@@ -394,10 +422,30 @@ export async function load(userId: string) {
     ]);
 
     const filePath = "src/components/dashboard/dashboard-nav-context.tsx";
-    const content = readFileSync(join(process.cwd(), filePath), "utf8");
+    // Fixture (repo file is now a barrel re-export without client DB queries).
+    const pad = Array.from({ length: 416 }, () => "// pad").join("\n");
+    const content = `"use client";
+${pad}
+export async function loadA(userId: string) {
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", userId);
+  return { data, error };
+}
+export async function loadB(userId: string) {
+  const { data, error } = await supabase.from("profiles").select("role").eq("id", userId);
+  return { data, error };
+}
+export async function loadC(userId: string) {
+  const { data, error } = await supabase.from("jobs").select("*").eq("owner", userId);
+  return { data, error };
+}
+export async function loadD(userId: string) {
+  const { data, error } = await supabase.from("jobs").select("id").eq("owner", userId);
+  return { data, error };
+}
+`;
     const next = pickNextSecurityFindingForBatch({ filePath, content });
     expect(next?.category).toBe("CLIENT_DB_EXPOSURE");
-    expect(next?.line).toBeGreaterThanOrEqual(447);
+    expect(next?.line).toBeGreaterThanOrEqual(419);
   });
 
   it("accepts any line inside a multiline supabase query span", () => {
@@ -436,7 +484,16 @@ export async function load(userId: string) {
 
   it("plans dashboard-nav-context.tsx findings including every line in each query span", () => {
     const filePath = "src/components/dashboard/dashboard-nav-context.tsx";
-    const content = readFileSync(join(process.cwd(), filePath), "utf8");
+    const content = `"use client";
+export async function load(userId: string) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+  return { data, error };
+}
+`;
     const findings = runSecuritySuiteScan([{ filePath, content }]).filter(
       (item) => item.category === "CLIENT_DB_EXPOSURE"
     );
