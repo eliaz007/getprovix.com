@@ -42,10 +42,11 @@ export async function load() {
 `;
 
 describe("actionablePreflightDiagnostics", () => {
-  it("ignores TS2318 missing global types (Vercel lib sandbox gaps)", () => {
+  it("ignores TS2318/TS6053 missing typescript lib files (Vercel /var/task gaps)", () => {
     const noise = [
       "error TS2318: Cannot find global type 'Array'.",
       "error TS2318: Cannot find global type 'Promise'.",
+      "error TS6053: File '/var/task/node_modules/typescript/lib/lib.dom.d.ts' not found.",
       "__provix_stubs__/ambient-modules.d.ts(1,1): error TS2584: Do you need to change your target library?",
     ].join("\n");
     expect(actionablePreflightDiagnostics(noise)).toEqual([]);

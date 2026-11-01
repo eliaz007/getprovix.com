@@ -51,6 +51,8 @@ function isSpuriousAutofixNoise(message: string): boolean {
     /in-memory TypeScript check/i.test(message) ||
     /Cannot find global type/i.test(message) ||
     /error TS2318/i.test(message) ||
+    /error TS6053/i.test(message) ||
+    /lib\.dom\.d\.ts' not found/i.test(message) ||
     /Cannot find name 'console'/i.test(message) ||
     /Cannot find name 'Promise'/i.test(message) ||
     /Do you need to change your target library/i.test(message) ||

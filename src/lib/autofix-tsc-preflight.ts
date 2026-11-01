@@ -509,9 +509,35 @@ function resolveTypescriptTscJs(projectRoot: string): string | null {
   }
 }
 
+/** `typescript/lib/lib.*.d.ts` — often stripped from the Vercel serverless bundle. */
+export function typescriptLibDirectory(projectRoot: string): string | null {
+  const tscJs = resolveTypescriptTscJs(projectRoot);
+  if (tscJs) {
+    const fromBin = path.join(path.dirname(tscJs), "..", "lib");
+    if (existsSync(path.join(fromBin, "lib.es2022.d.ts")) || existsSync(path.join(fromBin, "lib.d.ts"))) {
+      return fromBin;
+    }
+  }
+  const fallbacks = [
+    path.join(projectRoot, "node_modules", "typescript", "lib"),
+    path.join(process.cwd(), "node_modules", "typescript", "lib"),
+  ];
+  for (const dir of fallbacks) {
+    if (existsSync(path.join(dir, "lib.es2022.d.ts")) || existsSync(path.join(dir, "lib.d.ts"))) {
+      return dir;
+    }
+  }
+  try {
+    const resolved = requireFromHere.resolve("typescript/lib/lib.es2022.d.ts");
+    return path.dirname(resolved);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * TS2318 / lib-option hints mean the temp sandbox could not load lib.es*.d.ts
- * (common on Vercel). Those are not patch bugs. Real breaks are TS2304 etc.
+ * TS2318 / TS6053 / lib-option hints mean the runtime could not load lib.*.d.ts
+ * (common on Vercel `/var/task`). Those are not patch bugs. Real breaks are TS2304.
  */
 export function actionablePreflightDiagnostics(diagnostics: string): string[] {
   return diagnostics
@@ -520,6 +546,9 @@ export function actionablePreflightDiagnostics(diagnostics: string): string[] {
     .filter((line) => /error TS\d+/.test(line))
     .filter((line) => {
       if (/error TS2318:\s*Cannot find global type/i.test(line)) return false;
+      if (/error TS6053:.*typescript[/\\]lib[/\\]lib\./i.test(line)) return false;
+      if (/error TS6053:.*lib\.(dom|es\d+|scripthost)/i.test(line)) return false;
+      if (/File '.*lib\.dom\.d\.ts' not found/i.test(line)) return false;
       if (/error TS2583:/i.test(line) || /error TS2584:/i.test(line)) return false;
       if (/Do you need to change your target library/i.test(line)) return false;
       if (/Try changing the 'lib' compiler option/i.test(line)) return false;
@@ -528,24 +557,31 @@ export function actionablePreflightDiagnostics(diagnostics: string): string[] {
     });
 }
 
-function buildPreflightTsconfig(host: HostTsconfigPaths): string {
+function buildPreflightTsconfig(host: HostTsconfigPaths, libDir: string | null): string {
+  // Prefer es2022-only when libs exist. Never request dom libs we cannot ship on Vercel.
+  const compilerOptions: Record<string, unknown> = {
+    target: "ES2022",
+    module: "esnext",
+    moduleResolution: "bundler",
+    jsx: "preserve",
+    strict: true,
+    noEmit: true,
+    skipLibCheck: true,
+    esModuleInterop: true,
+    resolveJsonModule: true,
+    isolatedModules: true,
+    baseUrl: host.baseUrl || ".",
+    paths: host.paths,
+  };
+  if (libDir) {
+    compilerOptions.lib = ["es2022"];
+  } else {
+    // No lib.*.d.ts in this runtime — avoid TS6053 entirely.
+    compilerOptions.noLib = true;
+  }
   return `${JSON.stringify(
     {
-      compilerOptions: {
-        target: "ES2022",
-        lib: ["dom", "dom.iterable", "es2022"],
-        module: "esnext",
-        moduleResolution: "bundler",
-        jsx: "preserve",
-        strict: true,
-        noEmit: true,
-        skipLibCheck: true,
-        esModuleInterop: true,
-        resolveJsonModule: true,
-        isolatedModules: true,
-        baseUrl: host.baseUrl || ".",
-        paths: host.paths,
-      },
+      compilerOptions,
       include: ["**/*.ts", "**/*.tsx", "**/*.d.ts", "__provix_stubs__/**/*.d.ts"],
       exclude: ["node_modules"],
     },
@@ -635,6 +671,13 @@ export async function runAutofixTscPreflight(
   const ownsTemp = !options?.workDir;
 
   try {
+    const libDir = typescriptLibDirectory(projectRoot);
+    // Vercel /var/task often ships `tsc` without `typescript/lib/*.d.ts` → TS6053.
+    // Skip CLI preflight there; heal + structural validation already ran.
+    if (!libDir) {
+      return { success: true };
+    }
+
     for (const write of graph.writes) {
       const abs = path.join(tempRoot, ...normalizedWritePath(write.filePath).split("/"));
       await mkdir(path.dirname(abs), { recursive: true });
@@ -649,7 +692,7 @@ export async function runAutofixTscPreflight(
     if (stillMissing.length > 0) {
       await writeAmbientInternalImportStubs(tempRoot, [...stubModules, ...stillMissing]);
     }
-    await writeFile(path.join(tempRoot, "tsconfig.json"), buildPreflightTsconfig(host), "utf8");
+    await writeFile(path.join(tempRoot, "tsconfig.json"), buildPreflightTsconfig(host, libDir), "utf8");
     await linkHostNodeModules(tempRoot, projectRoot);
 
     const { code, stdout, stderr } = await runTscNoEmit(tempRoot, projectRoot);
@@ -657,7 +700,7 @@ export async function runAutofixTscPreflight(
 
     const diagnostics = [stdout, stderr].filter(Boolean).join("\n").trim() || "tsc failed with no output";
     const actionable = actionablePreflightDiagnostics(diagnostics);
-    // Sandbox could not load lib.es*.d.ts (TS2318 Array/Promise/…) — not a patch bug.
+    // Sandbox lib gaps (TS2318 / TS6053) — not a patch bug.
     if (actionable.length === 0) return { success: true };
 
     const firstLine = actionable[0] ?? diagnostics.slice(0, 280);
