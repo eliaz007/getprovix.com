@@ -50,7 +50,13 @@ export function useGithubAppInstallation(): GithubAppInstallationState {
         const payload = (await response.json()) as GithubAppInstallationsResponse;
         if (cancelled) return;
         if (!response.ok) {
-          setState({ ...EMPTY_GITHUB_APP_INSTALLATIONS, authenticated: true, loading: false });
+          // Don't claim "not installed" on API failure — that re-shows the
+          // connect banner after every Google sign-in when the lookup blips.
+          setState((current) => ({
+            ...current,
+            authenticated: true,
+            loading: false,
+          }));
           return;
         }
         setState({
@@ -64,7 +70,11 @@ export function useGithubAppInstallation(): GithubAppInstallationState {
       })
       .catch((error: unknown) => {
         if (cancelled || isAbortError(error)) return;
-        setState({ ...EMPTY_GITHUB_APP_INSTALLATIONS, authenticated: true, loading: false });
+        setState((current) => ({
+          ...current,
+          authenticated: true,
+          loading: false,
+        }));
       });
 
     return () => {
