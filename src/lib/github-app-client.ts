@@ -335,6 +335,44 @@ export async function resolveGithubInstallationTokenForRepo(
   return typeof token === "string" && token.length > 0 ? token : null;
 }
 
+export type GithubRepoAccessToken =
+  | { ok: true; token: string; source: "github_app" | "github_token" }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Prefer a GitHub App installation token for the repo (same path as webhook gate).
+ * When App credentials exist, never fall back to GITHUB_TOKEN — a PAT without access
+ * returns GitHub 404s that look like "repo not found".
+ */
+export async function resolveGithubRepoAccessToken(
+  owner: string,
+  repo: string
+): Promise<GithubRepoAccessToken> {
+  const appConfigured = Boolean(
+    process.env.GITHUB_APP_ID?.trim() && process.env.GITHUB_APP_PRIVATE_KEY?.trim()
+  );
+  if (appConfigured) {
+    const appToken = await resolveGithubInstallationTokenForRepo(owner, repo);
+    if (appToken) return { ok: true, token: appToken, source: "github_app" };
+    return {
+      ok: false,
+      status: 403,
+      message: `Provix GitHub App is not installed on ${owner}/${repo}, or that repo is not selected for the app. Install or update the app for this repository, then try again.`,
+    };
+  }
+
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (!token) {
+    return {
+      ok: false,
+      status: 401,
+      message:
+        "GitHub App credentials are not configured and GITHUB_TOKEN is not set. Configure the GitHub App to open pull requests.",
+    };
+  }
+  return { ok: true, token, source: "github_token" };
+}
+
 /** List repositories for an installation when the GitHub App key is configured. */
 export async function lookupGithubInstallation(installationId: number): Promise<GithubInstallationLookup> {
   const appId = process.env.GITHUB_APP_ID?.trim();

@@ -31,18 +31,20 @@ export function isRepositoryTextPath(filePath: string): boolean {
 
 export async function readGitHubSourceFile(
   repoInput: string,
-  filePath: string
+  filePath: string,
+  auth?: string | null
 ): Promise<{ ok: true; content: string } | { ok: false; message: string; status: number }> {
   return readGitHubTextFile(repoInput, filePath, {
     allow: isFirewallSourcePath,
     invalidMessage: "filePath must be a TypeScript or JavaScript source file inside the repository.",
+    auth,
   });
 }
 
 export async function readGitHubTextFile(
   repoInput: string,
   filePath: string,
-  options?: { allow?: (filePath: string) => boolean; invalidMessage?: string }
+  options?: { allow?: (filePath: string) => boolean; invalidMessage?: string; auth?: string | null }
 ): Promise<{ ok: true; content: string } | { ok: false; message: string; status: number }> {
   const parsed = parseGitHubRepository(repoInput);
   if (!parsed) {
@@ -59,8 +61,13 @@ export async function readGitHubTextFile(
     };
   }
 
+  const auth =
+    typeof options?.auth === "string" && options.auth.trim()
+      ? options.auth.trim()
+      : process.env.GITHUB_TOKEN?.trim() || undefined;
+
   const octokit = new Octokit({
-    auth: process.env.GITHUB_TOKEN || undefined,
+    auth,
     userAgent: "provix-architecture-firewall",
   });
 
@@ -88,7 +95,11 @@ export async function readGitHubTextFile(
         ? error.status
         : null;
     if (status === 401) {
-      return { ok: false, status: 401, message: "GITHUB_TOKEN was rejected while reading the repository." };
+      return {
+        ok: false,
+        status: 401,
+        message: "GitHub rejected the credentials while reading the repository.",
+      };
     }
     if (status === 404) {
       return { ok: false, status: 404, message: "File not found in that GitHub repository." };
@@ -97,7 +108,7 @@ export async function readGitHubTextFile(
       return {
         ok: false,
         status: 429,
-        message: "GitHub rate limit reached. Set GITHUB_TOKEN to raise the limit.",
+        message: "GitHub rate limit reached. Wait and try again.",
       };
     }
     return { ok: false, status: 502, message: "Could not read the file from GitHub." };

@@ -2,6 +2,7 @@ import path from "node:path";
 import { Octokit } from "@octokit/rest";
 import { analyzeSourceTexts } from "../../scripts/ingest-engine";
 import type { FirewallReport, FirewallResponse } from "@/lib/firewall-contract";
+import { resolveGithubRepoAccessToken } from "@/lib/github-app-client";
 import { parseGitHubRepository } from "@/lib/github-repo-ref";
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
@@ -36,9 +37,11 @@ function statusOf(error: unknown): number | null {
 
 function messageFor(error: unknown): string {
   const status = statusOf(error);
-  if (status === 404) return "That GitHub repository is not public or does not exist.";
+  if (status === 404) {
+    return "GitHub could not find that repository with the Provix App install. Confirm the app is installed on this repo.";
+  }
   if (status === 403 || status === 429) {
-    return "GitHub rate limit reached. Set GITHUB_TOKEN to raise the limit.";
+    return "GitHub rate limit reached. Wait and try again.";
   }
   return "The GitHub repository could not be scanned.";
 }
@@ -117,8 +120,13 @@ export async function scanPublicGitHubRepo(input: string): Promise<ScanResult> {
     return { status: 400, body: errorBody(null, "Paste a public GitHub URL or owner/repo.") };
   }
 
+  const access = await resolveGithubRepoAccessToken(parsed.owner, parsed.repo);
+  if (!access.ok) {
+    return { status: access.status, body: errorBody(parsed.repoUrl, access.message) };
+  }
+
   const octokit = new Octokit({
-    auth: process.env.GITHUB_TOKEN || undefined,
+    auth: access.token,
     userAgent: "provix-architecture-firewall",
   });
 

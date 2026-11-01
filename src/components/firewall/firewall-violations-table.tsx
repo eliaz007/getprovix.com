@@ -126,7 +126,7 @@ function violationKey(violation: FirewallViolation): string {
 
 function lacksWriteAccess(status: number, message: string): boolean {
   if (status === 401 || status === 403) return true;
-  return /GITHUB_TOKEN|cannot create a branch|permission/i.test(message);
+  return /GITHUB_TOKEN|GitHub App|cannot create a branch|permission|not installed/i.test(message);
 }
 
 function isSpuriousAutofixNoise(message: string): boolean {

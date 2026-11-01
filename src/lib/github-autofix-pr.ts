@@ -7,6 +7,7 @@ import {
 import { healAutofixWrites } from "@/lib/autofix-write-validation";
 import { isTestSourcePath, isTestSuiteSource, planAutofix } from "@/lib/firewall-autofix";
 import { recordOpenAutofixPullRequest } from "@/lib/firewall-open-prs";
+import { resolveGithubRepoAccessToken } from "@/lib/github-app-client";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import { isFirewallSourcePath, isRepositoryTextPath, readGitHubSourceFile, readGitHubTextFile } from "@/lib/github-source-file";
 import {
@@ -22,10 +23,10 @@ import {
 
 const TSCONFIG_CANDIDATES = ["tsconfig.json", "tsconfig.app.json", "jsconfig.json"] as const;
 
-async function readRepoTsconfigContents(repoUrl: string): Promise<string[]> {
+async function readRepoTsconfigContents(repoUrl: string, auth: string): Promise<string[]> {
   const texts: string[] = [];
   for (const path of TSCONFIG_CANDIDATES) {
-    const result = await readGitHubTextFile(repoUrl, path);
+    const result = await readGitHubTextFile(repoUrl, path, { auth });
     if (result.ok) texts.push(result.content);
   }
   return texts;
@@ -37,11 +38,6 @@ type PrResult = {
   status: number;
   body: FirewallAutofixPullRequestResponse;
 };
-
-function githubToken(): string | null {
-  const token = process.env.GITHUB_TOKEN?.trim();
-  return token ? token : null;
-}
 
 function statusOf(error: unknown): number | null {
   if (!error || typeof error !== "object" || !("status" in error)) return null;
@@ -60,16 +56,16 @@ function failureMessage(error: unknown): string {
   const status = statusOf(error);
   const raw = error instanceof Error ? error.message : "";
   if (status === 401) {
-    return "GITHUB_TOKEN was rejected. Use a token that can push to this repository.";
+    return "GitHub rejected Provix credentials. Reinstall the GitHub App on this repository.";
   }
   if (status === 403 && /rate limit/i.test(raw)) {
-    return "GitHub rate limit reached. Wait and try again, or use a token with a higher limit.";
+    return "GitHub rate limit reached. Wait and try again.";
   }
   if (status === 403) {
-    return "GITHUB_TOKEN cannot create a branch or pull request on this repository.";
+    return "Provix cannot create a branch or pull request on this repository. Update the GitHub App install to include this repo with Contents and Pull requests write access.";
   }
   if (status === 404) {
-    return "GitHub could not find that repository or branch. The token may not have access.";
+    return "GitHub could not find that repository or branch with the Provix App install. Confirm the app is installed on this repo (private repos look missing without access).";
   }
   if (status === 422) {
     return "GitHub rejected the pull request. The branch may already exist, or the split did not change any files.";
@@ -111,22 +107,18 @@ function pullRequestBody(filePath: string, summary: string, writes: Array<{ file
 }
 
 export async function openAutofixPullRequest(repoInput: string, filePath: string): Promise<PrResult> {
-  const token = githubToken();
-  if (!token) {
-    return {
-      status: 401,
-      body: {
-        ok: false,
-        message: "GITHUB_TOKEN is not set. Add a token with permission to push branches and open pull requests.",
-      },
-    };
-  }
-
   const ownerRepo = toGitHubOwnerRepo(repoInput);
   const [owner, repo] = ownerRepo?.split("/") ?? [];
   if (!ownerRepo || !owner || !repo) {
     return { status: 400, body: { ok: false, message: "repoUrl must be a public GitHub URL or owner/repo." } };
   }
+
+  const access = await resolveGithubRepoAccessToken(owner, repo);
+  if (!access.ok) {
+    return { status: access.status, body: { ok: false, message: access.message } };
+  }
+  const token = access.token;
+
   const repoUrl = `https://github.com/${ownerRepo}`;
   if (!isFirewallSourcePath(filePath)) {
     return {
@@ -135,7 +127,7 @@ export async function openAutofixPullRequest(repoInput: string, filePath: string
     };
   }
 
-  const remote = await readGitHubSourceFile(repoUrl, filePath);
+  const remote = await readGitHubSourceFile(repoUrl, filePath, token);
   if (!remote.ok) {
     return { status: remote.status, body: { ok: false, message: remote.message } };
   }
@@ -228,22 +220,18 @@ export async function openSecurityFixPullRequest(
   category: SecurityCategory,
   hint?: { snippet?: string | null }
 ): Promise<PrResult> {
-  const token = githubToken();
-  if (!token) {
-    return {
-      status: 401,
-      body: {
-        ok: false,
-        message: "GITHUB_TOKEN is not set. Add a token with permission to push branches and open pull requests.",
-      },
-    };
-  }
-
   const ownerRepo = toGitHubOwnerRepo(repoInput);
   const [owner, repo] = ownerRepo?.split("/") ?? [];
   if (!ownerRepo || !owner || !repo) {
     return { status: 400, body: { ok: false, message: "repoUrl must be a public GitHub URL or owner/repo." } };
   }
+
+  const access = await resolveGithubRepoAccessToken(owner, repo);
+  if (!access.ok) {
+    return { status: access.status, body: { ok: false, message: access.message } };
+  }
+  const token = access.token;
+
   const repoUrl = `https://github.com/${ownerRepo}`;
   const normalizedPath = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
   if (!isRepositoryTextPath(normalizedPath)) {
@@ -253,7 +241,7 @@ export async function openSecurityFixPullRequest(
     return { status: 400, body: { ok: false, message: "line must be a positive integer." } };
   }
 
-  const remote = await readGitHubTextFile(repoUrl, normalizedPath);
+  const remote = await readGitHubTextFile(repoUrl, normalizedPath, { auth: token });
   if (!remote.ok) {
     return { status: remote.status, body: { ok: false, message: remote.message } };
   }
@@ -272,7 +260,8 @@ export async function openSecurityFixPullRequest(
     };
   }
 
-  const tsconfigContents = category === "CLIENT_DB_EXPOSURE" ? await readRepoTsconfigContents(repoUrl) : [];
+  const tsconfigContents =
+    category === "CLIENT_DB_EXPOSURE" ? await readRepoTsconfigContents(repoUrl, token) : [];
   const layout =
     category === "CLIENT_DB_EXPOSURE"
       ? resolveSecurityFixLayout({ clientFilePath: normalizedPath, tsconfigContents })
@@ -303,7 +292,7 @@ export async function openSecurityFixPullRequest(
       return { status: 413, body: { ok: false, message: "The generated fix is too large to commit." } };
     }
     if (write.appendLine) {
-      const existing = await readGitHubTextFile(repoUrl, path);
+      const existing = await readGitHubTextFile(repoUrl, path, { auth: token });
       const current = existing.ok ? existing.content : existing.status === 404 ? null : null;
       if (!existing.ok && existing.status !== 404) {
         return { status: existing.status, body: { ok: false, message: existing.message } };
@@ -313,7 +302,7 @@ export async function openSecurityFixPullRequest(
       continue;
     }
     if (isSupportingHelperPath(path)) {
-      const existing = await readGitHubTextFile(repoUrl, path);
+      const existing = await readGitHubTextFile(repoUrl, path, { auth: token });
       if (!existing.ok && existing.status !== 404) {
         return { status: existing.status, body: { ok: false, message: existing.message } };
       }
@@ -327,7 +316,7 @@ export async function openSecurityFixPullRequest(
       continue;
     }
     if (isServerActionFilePath(path) || (layout && path === layout.serverActionPath)) {
-      const existing = await readGitHubTextFile(repoUrl, path);
+      const existing = await readGitHubTextFile(repoUrl, path, { auth: token });
       if (!existing.ok && existing.status !== 404) {
         return { status: existing.status, body: { ok: false, message: existing.message } };
       }
@@ -346,7 +335,7 @@ export async function openSecurityFixPullRequest(
   for (const helper of missingSupportingHelperWrites(writes, layout)) {
     const path = normalizeWritePath(helper.filePath);
     if (!path || presentPaths.has(path)) continue;
-    const existing = await readGitHubTextFile(repoUrl, path);
+    const existing = await readGitHubTextFile(repoUrl, path, { auth: token });
     if (!existing.ok && existing.status !== 404) {
       return { status: existing.status, body: { ok: false, message: existing.message } };
     }

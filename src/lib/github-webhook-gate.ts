@@ -11,7 +11,7 @@ import {
   type FirewallRemediation,
   type FirewallViolation,
 } from "@/lib/firewall-contract";
-import { resolveGithubInstallationTokenForRepo } from "@/lib/github-app-client";
+import { resolveGithubRepoAccessToken } from "@/lib/github-app-client";
 import { isRepositoryTextPath } from "@/lib/github-source-file";
 import {
   isServerActionFilePath,
@@ -587,24 +587,11 @@ function decodeBlob(content: string, encoding: string): string | null {
 }
 
 export async function createGithubGateClient(owner: string, repo: string): Promise<GithubGateClient> {
-  const appConfigured = Boolean(
-    process.env.GITHUB_APP_ID?.trim() && process.env.GITHUB_APP_PRIVATE_KEY?.trim()
-  );
-  const appToken = await resolveGithubInstallationTokenForRepo(owner, repo);
-  // Do not fall back to a user PAT when App creds are present but broken — PATs often
-  // lack statuses/comment write and produce a confusing 502 after a successful scan.
-  if (appConfigured && !appToken) {
-    throw new Error(
-      "GitHub App credentials are set but could not mint an installation token. Check GITHUB_APP_PRIVATE_KEY on the host (no wrapping quotes)."
-    );
+  const access = await resolveGithubRepoAccessToken(owner, repo);
+  if (!access.ok) {
+    throw new Error(access.message);
   }
-  const token = appToken ?? process.env.GITHUB_TOKEN?.trim();
-  if (!token) {
-    throw new Error(
-      "GitHub App installation token unavailable and GITHUB_TOKEN is not set."
-    );
-  }
-  const octokit = new Octokit({ auth: token, userAgent: "provix-architecture-firewall" });
+  const octokit = new Octokit({ auth: access.token, userAgent: "provix-architecture-firewall" });
   return {
     async listPullFiles(input) {
       const files: GatePullFile[] = [];
