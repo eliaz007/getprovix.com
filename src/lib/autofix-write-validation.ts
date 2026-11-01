@@ -274,6 +274,42 @@ declare function String(value?: unknown): string;
 declare function parseInt(string: string, radix?: number): number;
 declare const undefined: undefined;
 declare const NaN: number;
+interface Error {
+  name: string;
+  message: string;
+  stack?: string;
+}
+interface ErrorConstructor {
+  new (message?: string): Error;
+  (message?: string): Error;
+}
+declare var Error: ErrorConstructor;
+interface Console {
+  log(...data: unknown[]): void;
+  info(...data: unknown[]): void;
+  warn(...data: unknown[]): void;
+  error(...data: unknown[]): void;
+  debug(...data: unknown[]): void;
+}
+declare var console: Console;
+interface JSON {
+  parse(text: string): unknown;
+  stringify(value: unknown): string;
+}
+declare var JSON: JSON;
+interface Math {
+  floor(x: number): number;
+  max(...values: number[]): number;
+  min(...values: number[]): number;
+}
+declare var Math: Math;
+interface DateConstructor {
+  now(): number;
+}
+declare var Date: DateConstructor;
+type Record<K extends keyof any, T> = { [P in K]: T };
+type Partial<T> = { [P in keyof T]?: T[P] };
+type Readonly<T> = { readonly [P in keyof T]: T[P] };
 `;
 
 const SUPABASE_SERVER_STUB = `type AuthUser = { id: string };
@@ -379,6 +415,28 @@ function validateClientActionCallBoundaries(writes: readonly AutofixWriteFile[])
   return { ok: true };
 }
 
+/** Lib/.d.ts gaps from noLib hosts — not real secure-query patch bugs. */
+function isAmbientLibNoiseDiagnostic(diagnostic: ts.Diagnostic): boolean {
+  const detail = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+  if (/Do you need to change your target library\??/i.test(detail)) return true;
+  if (/Try changing the 'lib' compiler option/i.test(detail)) return true;
+  if (
+    /Cannot find global type '(Promise|Array|Object|String|Number|Boolean|Symbol|Function|IArguments|RegExp|Error)'/i.test(
+      detail
+    )
+  ) {
+    return true;
+  }
+  if (
+    /Cannot find name '(console|process|Buffer|globalThis|global|window|document|module|exports|require|__dirname|__filename|setTimeout|clearTimeout|setInterval|clearInterval|fetch|URL|URLSearchParams|TextEncoder|TextDecoder)'\b/i.test(
+      detail
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function validateInMemoryTypecheck(writes: readonly AutofixWriteFile[]): AutofixWriteValidation {
   const actionWrites = writes.filter((write) => isActionPath(write.filePath));
   if (actionWrites.length === 0) return { ok: true };
@@ -422,13 +480,7 @@ function validateInMemoryTypecheck(writes: readonly AutofixWriteFile[]): Autofix
 
   const program = ts.createProgram({ rootNames: [virtualName], options, host });
   const diagnostics = [...program.getSyntacticDiagnostics(sourceFile), ...program.getSemanticDiagnostics(sourceFile)].filter(
-    (diagnostic) => {
-      const detail = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
-      // Belt-and-suspenders if a host still emits lib-resolution noise.
-      return !/Cannot find global type '(Promise|Array|Object|String|Number|Boolean|Symbol|Function|IArguments|RegExp)'/i.test(
-        detail
-      );
-    }
+    (diagnostic) => !isAmbientLibNoiseDiagnostic(diagnostic)
   );
   if (diagnostics.length === 0) return { ok: true };
 
