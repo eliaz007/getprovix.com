@@ -574,9 +574,10 @@ function buildPreflightTsconfig(host: HostTsconfigPaths, libDir: string | null):
     paths: host.paths,
   };
   if (libDir) {
-    compilerOptions.lib = ["es2022"];
+    // Include DOM when the real typescript/lib folder is present (local/CI).
+    compilerOptions.lib = ["es2022", "dom", "dom.iterable"];
   } else {
-    // No lib.*.d.ts in this runtime — avoid TS6053 entirely.
+    // No lib.*.d.ts in this runtime (Vercel /var/task) — avoid TS6053 entirely.
     compilerOptions.noLib = true;
   }
   return `${JSON.stringify(
