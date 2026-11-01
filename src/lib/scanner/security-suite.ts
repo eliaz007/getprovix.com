@@ -1511,8 +1511,7 @@ function scanPackageJson(file: SecurityScanFile): SecurityFinding[] {
 function scanBloatedImports(file: SecurityScanFile): SecurityFinding[] {
   const filePath = normalizedPath(file.filePath);
   if (!isCodeFile(filePath) || ignoredPath(filePath) || isTestSourceFile(filePath)) return [];
-  // Ignore imports that only appear inside string/template fixtures.
-  const masked = maskCodeCommentsAndStrings(file.content);
+  const masked = maskCodeComments(file.content);
   const findings: SecurityFinding[] = [];
 
   for (const rule of BLOAT_IMPORTS) {
@@ -1523,6 +1522,8 @@ function scanBloatedImports(file: SecurityScanFile): SecurityFinding[] {
       if (!statement) continue;
       const line = lineAt(file.content, index);
       const before = lineText(file.content, line);
+      // Fixture strings in non-test files can still regex-match — only real import lines count.
+      if (!/^\s*import\b/.test(before)) continue;
       findings.push({
         filePath,
         severity: "MEDIUM",
@@ -1908,15 +1909,15 @@ function dependencyPlan(file: SecurityScanFile, line: number, summary: string): 
   }
 
   if (isTestSourceFile(filePath)) return null;
-  const masked = maskCodeCommentsAndStrings(file.content);
+  const masked = maskCodeComments(file.content);
   for (const rule of BLOAT_IMPORTS) {
     const matcher = new RegExp(rule.pattern.source, "g");
     for (const match of masked.matchAll(matcher)) {
       const index = match.index ?? 0;
       if (!match[0] || lineAt(file.content, index) !== line) continue;
       // Only rewrite a line that is itself an import statement — never a fixture string.
-      const before = lineText(file.content, line).trim();
-      if (!/^import\b/.test(before)) return null;
+      const before = lineText(file.content, line);
+      if (!/^\s*import\b/.test(before)) return null;
       return {
         title: `fix: replace full-library ${rule.packageName} import`,
         summary,
