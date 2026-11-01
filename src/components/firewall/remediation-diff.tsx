@@ -12,7 +12,7 @@ import {
   type FirewallCategory,
   type FirewallRemediation,
 } from "@/lib/firewall-contract";
-import { isTestSourcePath } from "@/lib/firewall-autofix";
+import { isExpectedAutofixRefuse, isTestSourcePath } from "@/lib/firewall-autofix";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { rowGhostActionClass, rowPrimaryActionClass } from "@/components/firewall/firewall-ui";
 
@@ -59,8 +59,7 @@ function isSpuriousAutofixNoise(message: string): boolean {
     /Cannot find name 'Promise'/i.test(message) ||
     /Do you need to change your target library/i.test(message) ||
     /Try changing the 'lib' compiler option/i.test(message) ||
-    /Test files and scanner fixtures are not auto-fixed/i.test(message) ||
-    /failed a syntax check/i.test(message)
+    isExpectedAutofixRefuse(message)
   );
 }
 
@@ -69,6 +68,7 @@ export function RemediationDiff({
   target,
   children,
   onOpened,
+  onDismissed,
 }: {
   remediation: FirewallRemediation;
   target?: { filePath: string; line: number; category: FirewallCategory; snippet?: string };
@@ -79,6 +79,8 @@ export function RemediationDiff({
     prOpen: boolean;
   }) => ReactNode;
   onOpened?: (pull: { url: string; number: number }) => void;
+  /** Expected refuse / noise — parent should drop the finding from the actionable list. */
+  onDismissed?: () => void;
 }) {
   const { repoSlug } = useFirewallView();
   const writeAccess = useGithubRepoWriteAccess(repoSlug);
@@ -154,9 +156,10 @@ export function RemediationDiff({
         return;
       }
       if (!response.ok || !payload.ok || !payload.url || typeof payload.number !== "number") {
-        if (isSpuriousAutofixNoise(message)) {
-          // Never paint a red false-positive from ambient/lib checker noise.
+        if (isSpuriousAutofixNoise(message) || isExpectedAutofixRefuse(message)) {
+          // Refuse / ambient noise: drop the row instead of a sticky red banner.
           setPull({ status: "idle" });
+          onDismissed?.();
           return;
         }
         setPull({ status: "error", message });
@@ -209,14 +212,7 @@ export function RemediationDiff({
             onClick={() => void openFixPr()}
             className={rowPrimaryActionClass}
           />
-        ) : writeAccess.loading ? null : (
-          <span
-            className="max-w-[14rem] px-1 text-right text-[11px] text-amber-200/90"
-            title={writeAccess.accessMessage ?? undefined}
-          >
-            Install GitHub App to open fix
-          </span>
-        )
+        ) : null
       ) : null}
     </div>
   );

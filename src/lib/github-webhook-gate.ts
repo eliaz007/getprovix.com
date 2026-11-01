@@ -750,7 +750,7 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
     const message =
       error instanceof Error
         ? error.message
-        : "GitHub App installation token unavailable and GITHUB_TOKEN is not set.";
+        : "Provix could not get GitHub access for this repository. Install the GitHub App on the repo and try again.";
     return json({ ok: false, message }, 500);
   }
   // createGithubGateClient refuses PAT fallback when App creds are set, so this is accurate.

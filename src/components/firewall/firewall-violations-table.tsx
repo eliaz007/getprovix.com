@@ -36,6 +36,7 @@ import {
 import {
   isActionableArchitectureViolation,
   isActionableSecurityFinding,
+  isExpectedAutofixRefuse,
   isTestSourcePath,
 } from "@/lib/firewall-autofix";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
@@ -143,7 +144,8 @@ function isSpuriousAutofixNoise(message: string): boolean {
     /Cannot find name 'console'/i.test(message) ||
     /Cannot find name 'Promise'/i.test(message) ||
     /Do you need to change your target library/i.test(message) ||
-    /Try changing the 'lib' compiler option/i.test(message)
+    /Try changing the 'lib' compiler option/i.test(message) ||
+    isExpectedAutofixRefuse(message)
   );
 }
 
@@ -161,6 +163,7 @@ export default function FirewallViolationsTable({
   const [diffs, setDiffs] = useState<Record<string, DiffCache>>({});
   const [openDiffs, setOpenDiffs] = useState<ReadonlySet<string>>(() => new Set());
   const [sessionPulls, setSessionPulls] = useState<Record<string, SessionPull>>({});
+  const [dismissedPaths, setDismissedPaths] = useState<ReadonlySet<string>>(() => new Set());
   const repoSlug = repoUrl ? toGitHubOwnerRepo(repoUrl) : null;
   const writeAccess = useGithubRepoWriteAccess(repoSlug);
   const recorded = writeAccess.recorded;
@@ -168,9 +171,11 @@ export default function FirewallViolationsTable({
     () =>
       report.violations.filter(
         (violation) =>
-          violationCategory(violation) === "ARCHITECTURE" && isActionableArchitectureViolation(violation)
+          violationCategory(violation) === "ARCHITECTURE" &&
+          isActionableArchitectureViolation(violation) &&
+          !dismissedPaths.has(violation.filePath)
       ),
-    [report.violations]
+    [report.violations, dismissedPaths]
   );
   const securityCount = report.violations.filter(
     (violation) =>
@@ -216,8 +221,23 @@ export default function FirewallViolationsTable({
     setDiffs({});
     setOpenDiffs(new Set());
     setSessionPulls({});
+    setDismissedPaths(new Set());
     setListFilter("all");
   }, [report.timestamp]);
+
+  function dismissUnfixable(filePath: string) {
+    setDismissedPaths((current) => {
+      if (current.has(filePath)) return current;
+      const next = new Set(current);
+      next.add(filePath);
+      return next;
+    });
+    setSessionPulls((prev) => {
+      const next = { ...prev };
+      delete next[filePath];
+      return next;
+    });
+  }
 
   async function toggleDiff(key: string, filePath: string) {
     if (openDiffs.has(key)) {
@@ -278,14 +298,7 @@ export default function FirewallViolationsTable({
     const current = sessionPulls[filePath];
     if (current?.status === "opening" || current?.status === "opened" || recorded[filePath]) return;
     if (isTestSourcePath(filePath)) {
-      setSessionPulls((prev) => ({
-        ...prev,
-        [filePath]: {
-          status: "error",
-          message:
-            "Test files cannot be auto-split. Shared helpers break across modules and CI fails typecheck (see PR #70).",
-        },
-      }));
+      dismissUnfixable(filePath);
       return;
     }
     if (!repoSlug) {
@@ -340,20 +353,16 @@ export default function FirewallViolationsTable({
         return;
       }
       if (!response.ok || !payload.ok || !payload.url || typeof payload.number !== "number") {
-        if (isSpuriousAutofixNoise(message)) {
-          setSessionPulls((prev) => {
-            const next = { ...prev };
-            delete next[filePath];
-            return next;
-          });
+        if (isExpectedAutofixRefuse(message) || isSpuriousAutofixNoise(message)) {
+          dismissUnfixable(filePath);
           return;
         }
         setSessionPulls((prev) => ({ ...prev, [filePath]: { status: "error", message } }));
         return;
       }
       const opened = { url: payload.url, number: payload.number };
+      // Session state is enough — recorded comes from the write-access hook fetch.
       setSessionPulls((prev) => ({ ...prev, [filePath]: { status: "opened", ...opened } }));
-      setRecorded((prev) => ({ ...prev, [filePath]: { filePath, ...opened } }));
       showToast(prOpenedToast(opened));
     } catch (error) {
       setSessionPulls((prev) => ({
@@ -417,6 +426,13 @@ export default function FirewallViolationsTable({
               Open Leaks
             </button>
           </div>
+        ) : null}
+
+        {!writeAccess.loading && !writeAccess.canOpenPullRequest && repoSlug ? (
+          <p className="border-b border-amber-400/20 bg-amber-400/5 px-5 py-2.5 text-xs text-amber-100/90" role="status">
+            {writeAccess.accessMessage ??
+              "Install the Provix GitHub App on this repository to open fix pull requests. View Diff and Copy still work."}
+          </p>
         ) : null}
 
         {sortedArchitecture.length > 0 ? (
@@ -525,11 +541,7 @@ export default function FirewallViolationsTable({
                           onClick={() => void openFixPr(violation.filePath)}
                           className={rowPrimaryActionClass}
                         />
-                      ) : writeAccess.loading ? null : (
-                        <span className="max-w-[14rem] text-right text-[11px] text-amber-200/90" title={writeAccess.accessMessage ?? undefined}>
-                          Install GitHub App to open fix
-                        </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                   {prError || diff?.status === "error" || (diffOpen && diff?.status === "ready") ? (

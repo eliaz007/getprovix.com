@@ -57,15 +57,27 @@ export function isTestSourcePath(filePath: string): boolean {
   return normalized.split("/").some((part) => part === "__tests__" || part === "__mocks__" || part === "tests");
 }
 
-/** Leaks / Open Fix: skip dependency findings that live only in test fixtures. */
+/** Leaks / Open Fix: skip findings we refuse to auto-fix (tests / fixtures). */
 export function isActionableSecurityFinding(violation: {
   filePath: string;
   category?: string | null;
 }): boolean {
-  if (violation.category === "VULNERABLE_DEPENDENCY" && isTestSourcePath(violation.filePath)) {
-    return false;
-  }
+  // Open Fix refuses every security category on test paths — don't leave them cluttering Leaks.
+  if (isTestSourcePath(violation.filePath)) return false;
   return true;
+}
+
+/** Open Fix returned a deliberate refuse — hide the row, don't paint a red error. */
+export function isExpectedAutofixRefuse(message: string): boolean {
+  return (
+    /Test files cannot be auto-split/i.test(message) ||
+    /Test files and scanner fixtures are not auto-fixed/i.test(message) ||
+    /no safe autofix/i.test(message) ||
+    /no safe security fix/i.test(message) ||
+    /This file has no safe autofix/i.test(message) ||
+    /This finding has no safe security fix/i.test(message) ||
+    /failed a syntax check/i.test(message)
+  );
 }
 
 /**

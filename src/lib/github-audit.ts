@@ -14,7 +14,10 @@ import {
   preferWorkflowSamplePaths,
   summarizeSampledTests,
 } from "@/lib/audit-content-signals";
-import { resolveGithubFallbackReadToken } from "@/lib/github-app-client";
+import {
+  resolveGithubFallbackReadToken,
+  resolveGithubRepoReadToken,
+} from "@/lib/github-app-client";
 import type { CommitHistoryStat } from "@/lib/production-audit-metrics";
 import {
   classifyRepoFilesystem,
@@ -248,17 +251,33 @@ function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
 }
 
 function githubAuthToken(): string {
-  // Audit walks many public repos; soft PAT fallback (not App write gate).
+  // User/org lookups and other calls that are not scoped to one repo.
   return resolveGithubFallbackReadToken() ?? "";
 }
 
-function githubHeaders(): HeadersInit {
+function ownerRepoFromApiUrl(url: string): { owner: string; repo: string } | null {
+  try {
+    const match = new URL(url).pathname.match(/^\/repos\/([^/]+)\/([^/]+)/);
+    if (!match?.[1] || !match[2]) return null;
+    return {
+      owner: decodeURIComponent(match[1]),
+      repo: decodeURIComponent(match[2]),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function githubHeaders(url?: string): Promise<HeadersInit> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "Provix-OpportunityMatch/1.0",
   };
 
-  const token = githubAuthToken();
+  const scoped = url ? ownerRepoFromApiUrl(url) : null;
+  const token = scoped
+    ? (await resolveGithubRepoReadToken(scoped.owner, scoped.repo)).token
+    : resolveGithubFallbackReadToken();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -412,11 +431,11 @@ type GithubHttpFailureDetails = {
 function classifyGithubHttpStatus(status: number): string {
   switch (status) {
     case 401:
-      return "auth issue (missing/invalid GITHUB_TOKEN or unauthorized)";
+      return "auth issue (GitHub rejected Provix credentials)";
     case 403:
-      return "forbidden (rate limit, private repo, or token scope)";
+      return "forbidden (rate limit, private repo, or the Provix App is not installed)";
     case 404:
-      return "not found (bad URL, missing repo, or wrong branch ref)";
+      return "not found, or the Provix App does not have access to this repository";
     case 429:
       return "rate limited";
     default:
@@ -556,7 +575,7 @@ async function githubFetch(
 
   for (let attempt = 0; attempt <= GITHUB_FETCH_RETRY_COUNT; attempt++) {
     try {
-      const headers = new Headers(githubHeaders());
+      const headers = new Headers(await githubHeaders(url));
       const extraHeaders = new Headers(init.headers);
       extraHeaders.forEach((value, key) => {
         headers.set(key, value);

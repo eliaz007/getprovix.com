@@ -5,6 +5,8 @@ import type { FirewallReport, FirewallViolation } from "@/lib/firewall-contract"
 import { violationCategory } from "@/lib/firewall-contract";
 import { isActionableSecurityFinding } from "@/lib/firewall-autofix";
 import { RemediationDiff } from "@/components/firewall/remediation-diff";
+import { useFirewallView } from "@/components/firewall/firewall-view-context";
+import { useGithubRepoWriteAccess } from "@/components/firewall/use-github-repo-write-access";
 import {
   FilePathPill,
   StatusPill,
@@ -97,21 +99,36 @@ function FindingMeta({
 }
 
 export default function SecurityGuardPanel({ report }: { report: FirewallReport }) {
+  const { repoSlug } = useFirewallView();
+  const writeAccess = useGithubRepoWriteAccess(repoSlug);
   const [openedKeys, setOpenedKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const [dismissedKeys, setDismissedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [listFilter, setListFilter] = useState<ListFilter>("all");
-  // Drop dependency findings on test fixtures — scanner skips them now; hide stale scan rows too.
+  // Drop test/fixture findings — Open Fix refuses them; don't leave them cluttering Leaks.
   const security = report.violations.filter(
     (violation) =>
-      violationCategory(violation) !== "ARCHITECTURE" && isActionableSecurityFinding(violation)
+      violationCategory(violation) !== "ARCHITECTURE" &&
+      isActionableSecurityFinding(violation) &&
+      !dismissedKeys.has(findingKey(violation))
   );
 
   useEffect(() => {
     setOpenedKeys(new Set());
+    setDismissedKeys(new Set());
     setListFilter("all");
   }, [report.timestamp]);
 
   function markOpened(key: string) {
     setOpenedKeys((current) => {
+      if (current.has(key)) return current;
+      const next = new Set(current);
+      next.add(key);
+      return next;
+    });
+  }
+
+  function markDismissed(key: string) {
+    setDismissedKeys((current) => {
       if (current.has(key)) return current;
       const next = new Set(current);
       next.add(key);
@@ -196,6 +213,13 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
           </div>
         </div>
 
+        {!writeAccess.loading && !writeAccess.canOpenPullRequest && repoSlug ? (
+          <p className="border-b border-amber-400/20 bg-amber-400/5 px-5 py-2.5 text-xs text-amber-100/90" role="status">
+            {writeAccess.accessMessage ??
+              "Install the Provix GitHub App on this repository to open fix pull requests. Inspect and Copy still work."}
+          </p>
+        ) : null}
+
         {security.length === 0 ? (
           <p className="flex items-center gap-2 px-5 py-10 text-sm text-zinc-500">
             <StatusPill label="Passed" tone="ok" />
@@ -214,6 +238,7 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
                   key={key}
                   remediation={finding.remediation}
                   onOpened={() => markOpened(key)}
+                  onDismissed={() => markDismissed(key)}
                   target={
                     finding.category
                       ? {
