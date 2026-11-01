@@ -47,7 +47,7 @@ import { DashboardNavContext } from "./dashboardnavcontext";
 import { initialsFromDisplayName } from "./initialsfromdisplayname";
 import { resolveUserDisplayName } from "./resolveuserdisplayname";
 import { getUserHeaderIdentity } from "./getuserheaderidentity";
-import { secureQuery281 } from "@/app/actions/secure-query";
+import { secureQuery281, secureQuery296 } from "@/app/actions/secure-query";
 
 /** Landing → /firewall remounts this provider; give getSession more than the mobile 1.5s race. */
 const DASHBOARD_SESSION_READ_MS = Math.max(AUTH_SESSION_TIMEOUT_MS * 3, 4500);
@@ -293,11 +293,7 @@ export function DashboardNavProviderImpl({
 
       if (!profile) {
         console.time("dashboard-layout:profile-fetch-by-user-id");
-        const byUserId = await supabase
-          .from("profiles")
-          .select(profileSelect)
-          .eq("user_id", user.id)
-          .maybeSingle();
+        const byUserId = await secureQuery296();
         console.timeEnd("dashboard-layout:profile-fetch-by-user-id");
         profile = byUserId.data;
 
