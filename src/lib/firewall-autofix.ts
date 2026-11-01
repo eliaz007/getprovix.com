@@ -76,7 +76,9 @@ export function isExpectedAutofixRefuse(message: string): boolean {
     /no safe security fix/i.test(message) ||
     /This file has no safe autofix/i.test(message) ||
     /This finding has no safe security fix/i.test(message) ||
-    /failed a syntax check/i.test(message)
+    /failed a syntax check/i.test(message) ||
+    /already fails CI/i.test(message) ||
+    /Fix the base branch first/i.test(message)
   );
 }
 

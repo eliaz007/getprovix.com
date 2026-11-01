@@ -8,6 +8,7 @@ import { healAutofixWrites } from "@/lib/autofix-write-validation";
 import { isTestSourcePath, isTestSuiteSource, planAutofix } from "@/lib/firewall-autofix";
 import { recordOpenAutofixPullRequest } from "@/lib/firewall-open-prs";
 import { resolveGithubRepoAccessToken } from "@/lib/github-app-client";
+import { assertBaseBranchReadyForAutofix } from "@/lib/github-base-ci-gate";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import { isFirewallSourcePath, isRepositoryTextPath, readGitHubSourceFile, readGitHubTextFile } from "@/lib/github-source-file";
 import {
@@ -419,6 +420,24 @@ async function publishPullRequest(input: {
       repo: input.repo,
       ref: `heads/${base}`,
     });
+
+    // 3b) HARD GATE — if main already fails CI/typecheck, refuse. Otherwise every
+    // Open Fix PR inherits that failure (Provix gate green, GitHub CI red).
+    const baseReady = await assertBaseBranchReadyForAutofix(
+      octokit,
+      input.owner,
+      input.repo,
+      base,
+      ref.data.object.sha
+    );
+    if (!baseReady.ok) {
+      console.error("[autofix/pr] refusing to open pull request; base branch CI is red", baseReady.message);
+      return {
+        status: 422,
+        body: { ok: false, message: baseReady.message },
+      };
+    }
+
     const parent = await octokit.rest.git.getCommit({
       owner: input.owner,
       repo: input.repo,
