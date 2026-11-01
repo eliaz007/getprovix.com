@@ -1,4 +1,5 @@
 import { Octokit } from "@octokit/rest";
+import { resolveGithubRepoReadToken } from "@/lib/github-app-client";
 import { parseGitHubRepository } from "@/lib/github-repo-ref";
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
@@ -61,10 +62,12 @@ export async function readGitHubTextFile(
     };
   }
 
-  const auth =
-    typeof options?.auth === "string" && options.auth.trim()
-      ? options.auth.trim()
-      : process.env.GITHUB_TOKEN?.trim() || undefined;
+  let auth: string | undefined =
+    typeof options?.auth === "string" && options.auth.trim() ? options.auth.trim() : undefined;
+  if (!auth) {
+    const read = await resolveGithubRepoReadToken(parsed.owner, parsed.repo);
+    auth = read.token ?? undefined;
+  }
 
   const octokit = new Octokit({
     auth,

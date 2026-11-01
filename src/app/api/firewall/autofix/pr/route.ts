@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isSecurityCategory, type FirewallAutofixPullRequestResponse, type FirewallResolvedFilesResponse } from "@/lib/firewall-contract";
 import { listOpenAutofixPulls } from "@/lib/firewall-open-prs";
+import { resolveGithubRepoAccessToken } from "@/lib/github-app-client";
 import { openAutofixPullRequest, openSecurityFixPullRequest } from "@/lib/github-autofix-pr";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 
@@ -17,14 +18,22 @@ function json(body: FirewallAutofixPullRequestResponse | FirewallResolvedFilesRe
 
 export async function GET(request: Request) {
   const repo = new URL(request.url).searchParams.get("repo")?.trim() ?? "";
-  if (!toGitHubOwnerRepo(repo)) {
+  const ownerRepo = toGitHubOwnerRepo(repo);
+  if (!ownerRepo) {
     return json({ ok: false, filePaths: [], message: "repo must be owner/repo." }, 400);
   }
+  const [owner, name] = ownerRepo.split("/");
+  const access =
+    owner && name
+      ? await resolveGithubRepoAccessToken(owner, name)
+      : { ok: false as const, status: 400, message: "repo must be owner/repo." };
   const recorded = await listOpenAutofixPulls(repo);
   return json({
     ok: true,
     filePaths: recorded.map((pull) => pull.filePath),
     pulls: recorded.map(({ filePath, number, url }) => ({ filePath, number, url })),
+    canOpenPullRequest: access.ok,
+    accessMessage: access.ok ? undefined : access.message,
   });
 }
 

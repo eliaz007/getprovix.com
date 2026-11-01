@@ -121,4 +121,7 @@ export type FirewallResolvedFilesResponse = {
   filePaths: string[];
   pulls?: FirewallResolvedPull[];
   message?: string;
+  /** False when Provix cannot open PRs on this repo (App not installed / no write token). */
+  canOpenPullRequest?: boolean;
+  accessMessage?: string;
 };

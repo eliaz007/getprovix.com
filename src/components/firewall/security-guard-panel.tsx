@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { FirewallReport, FirewallViolation } from "@/lib/firewall-contract";
 import { violationCategory } from "@/lib/firewall-contract";
+import { isActionableSecurityFinding } from "@/lib/firewall-autofix";
 import { RemediationDiff } from "@/components/firewall/remediation-diff";
 import {
   FilePathPill,
@@ -37,7 +38,12 @@ function findingKey(finding: FirewallViolation): string {
 }
 
 function findingsFor(report: FirewallReport, category: (typeof METRICS)[number]["id"]): FirewallViolation[] {
-  return report.violations.filter((violation) => violation.category === category);
+  return report.violations.filter(
+    (violation) =>
+      violation.category === category &&
+      violationCategory(violation) !== "ARCHITECTURE" &&
+      isActionableSecurityFinding(violation)
+  );
 }
 
 function summaryLines(message: string): string {
@@ -93,7 +99,11 @@ function FindingMeta({
 export default function SecurityGuardPanel({ report }: { report: FirewallReport }) {
   const [openedKeys, setOpenedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [listFilter, setListFilter] = useState<ListFilter>("all");
-  const security = report.violations.filter((violation) => violationCategory(violation) !== "ARCHITECTURE");
+  // Drop dependency findings on test fixtures — scanner skips them now; hide stale scan rows too.
+  const security = report.violations.filter(
+    (violation) =>
+      violationCategory(violation) !== "ARCHITECTURE" && isActionableSecurityFinding(violation)
+  );
 
   useEffect(() => {
     setOpenedKeys(new Set());

@@ -14,6 +14,7 @@ import {
   preferWorkflowSamplePaths,
   summarizeSampledTests,
 } from "@/lib/audit-content-signals";
+import { resolveGithubFallbackReadToken } from "@/lib/github-app-client";
 import type { CommitHistoryStat } from "@/lib/production-audit-metrics";
 import {
   classifyRepoFilesystem,
@@ -247,11 +248,8 @@ function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
 }
 
 function githubAuthToken(): string {
-  return (
-    process.env.GITHUB_TOKEN?.trim() ||
-    process.env.GITHUB_PAT?.trim() ||
-    ""
-  );
+  // Audit walks many public repos; soft PAT fallback (not App write gate).
+  return resolveGithubFallbackReadToken() ?? "";
 }
 
 function githubHeaders(): HeadersInit {

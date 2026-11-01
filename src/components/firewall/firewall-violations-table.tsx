@@ -20,6 +20,7 @@ import {
   tableHeadClass,
 } from "@/components/firewall/firewall-ui";
 import { OpenFixPrButton } from "@/components/firewall/open-fix-pr-button";
+import { useGithubRepoWriteAccess } from "@/components/firewall/use-github-repo-write-access";
 import Toast from "@/components/Toast";
 import { prOpenedToast, useToast } from "@/components/use-toast";
 import {
@@ -28,12 +29,15 @@ import {
   type FirewallAutofixPullRequestResponse,
   type FirewallAutofixResponse,
   type FirewallReport,
-  type FirewallResolvedFilesResponse,
   type FirewallResolvedPull,
   type FirewallSeverity,
   type FirewallViolation,
 } from "@/lib/firewall-contract";
-import { isActionableArchitectureViolation, isTestSourcePath } from "@/lib/firewall-autofix";
+import {
+  isActionableArchitectureViolation,
+  isActionableSecurityFinding,
+  isTestSourcePath,
+} from "@/lib/firewall-autofix";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import { readJsonResponse } from "@/lib/read-json-response";
 
@@ -143,13 +147,6 @@ function isSpuriousAutofixNoise(message: string): boolean {
   );
 }
 
-function recordedPulls(payload: FirewallResolvedFilesResponse): Record<string, FirewallResolvedPull> {
-  const pulls = payload.pulls ?? payload.filePaths.map((filePath) => ({ filePath, number: null, url: null }));
-  const next: Record<string, FirewallResolvedPull> = {};
-  for (const pull of pulls) next[pull.filePath] = pull;
-  return next;
-}
-
 export default function FirewallViolationsTable({
   report,
   repoUrl = null,
@@ -161,11 +158,12 @@ export default function FirewallViolationsTable({
   const { showToast, toast } = useToast();
   const [filter, setFilter] = useState<SeverityFilter>("ALL");
   const [listFilter, setListFilter] = useState<ListFilter>("all");
-  const [recorded, setRecorded] = useState<Record<string, FirewallResolvedPull>>({});
   const [diffs, setDiffs] = useState<Record<string, DiffCache>>({});
   const [openDiffs, setOpenDiffs] = useState<ReadonlySet<string>>(() => new Set());
   const [sessionPulls, setSessionPulls] = useState<Record<string, SessionPull>>({});
   const repoSlug = repoUrl ? toGitHubOwnerRepo(repoUrl) : null;
+  const writeAccess = useGithubRepoWriteAccess(repoSlug);
+  const recorded = writeAccess.recorded;
   const architecture = useMemo(
     () =>
       report.violations.filter(
@@ -175,7 +173,8 @@ export default function FirewallViolationsTable({
     [report.violations]
   );
   const securityCount = report.violations.filter(
-    (violation) => violationCategory(violation) !== "ARCHITECTURE"
+    (violation) =>
+      violationCategory(violation) !== "ARCHITECTURE" && isActionableSecurityFinding(violation)
   ).length;
 
   function violationHasOpenPr(filePath: string): boolean {
@@ -219,27 +218,6 @@ export default function FirewallViolationsTable({
     setSessionPulls({});
     setListFilter("all");
   }, [report.timestamp]);
-
-  useEffect(() => {
-    if (!repoSlug) {
-      setRecorded({});
-      return;
-    }
-    let active = true;
-    void (async () => {
-      try {
-        const response = await fetch(`/api/firewall/autofix/pr?repo=${encodeURIComponent(repoSlug)}`);
-        const payload = await readJsonResponse<FirewallResolvedFilesResponse>(response);
-        if (!active || !response.ok || !payload.ok) return;
-        setRecorded(recordedPulls(payload));
-      } catch {
-        // Keep pull requests already shown in this session.
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [repoSlug]);
 
   async function toggleDiff(key: string, filePath: string) {
     if (openDiffs.has(key)) {
@@ -314,6 +292,18 @@ export default function FirewallViolationsTable({
       setSessionPulls((prev) => ({
         ...prev,
         [filePath]: { status: "error", message: "Scan a GitHub repository before opening a pull request." },
+      }));
+      return;
+    }
+    if (!writeAccess.canOpenPullRequest) {
+      setSessionPulls((prev) => ({
+        ...prev,
+        [filePath]: {
+          status: "error",
+          message:
+            writeAccess.accessMessage ??
+            "Provix GitHub App is not installed on this repository. Install the app, then try Open Fix again.",
+        },
       }));
       return;
     }
@@ -529,12 +519,16 @@ export default function FirewallViolationsTable({
                         </a>
                       ) : knownOpen ? (
                         <StatusPill label="Opened" tone="ok" />
-                      ) : (
+                      ) : writeAccess.canOpenPullRequest && !writeAccess.loading ? (
                         <OpenFixPrButton
                           opening={opening}
                           onClick={() => void openFixPr(violation.filePath)}
                           className={rowPrimaryActionClass}
                         />
+                      ) : writeAccess.loading ? null : (
+                        <span className="max-w-[14rem] text-right text-[11px] text-amber-200/90" title={writeAccess.accessMessage ?? undefined}>
+                          Install GitHub App to open fix
+                        </span>
                       )}
                     </div>
                   </div>

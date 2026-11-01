@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/admin-access";
+import { resolveGithubRepoReadToken } from "@/lib/github-app-client";
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 import {
   PROVIX_BRANCHES,
@@ -22,15 +23,15 @@ function githubRawProvixUrl(
   return `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/${filename}`;
 }
 
-function githubFetchHeaders(): HeadersInit {
+async function githubFetchHeaders(owner: string, repo: string): Promise<HeadersInit> {
   const headers: Record<string, string> = {
     Accept: "text/plain",
     "User-Agent": "Provix-RepoVerification/1.0",
   };
 
-  const token = process.env.GITHUB_TOKEN?.trim();
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+  const access = await resolveGithubRepoReadToken(owner, repo);
+  if (access.token) {
+    headers.Authorization = `Bearer ${access.token}`;
   }
 
   return headers;
@@ -49,7 +50,7 @@ export async function fetchProvixOnBranch(
       method: "GET",
       cache: "no-store",
       redirect: "follow",
-      headers: githubFetchHeaders(),
+      headers: await githubFetchHeaders(owner, repo),
       signal: AbortSignal.timeout(15_000),
     });
 

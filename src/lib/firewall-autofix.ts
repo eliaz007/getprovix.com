@@ -57,6 +57,17 @@ export function isTestSourcePath(filePath: string): boolean {
   return normalized.split("/").some((part) => part === "__tests__" || part === "__mocks__" || part === "tests");
 }
 
+/** Leaks / Open Fix: skip dependency findings that live only in test fixtures. */
+export function isActionableSecurityFinding(violation: {
+  filePath: string;
+  category?: string | null;
+}): boolean {
+  if (violation.category === "VULNERABLE_DEPENDENCY" && isTestSourcePath(violation.filePath)) {
+    return false;
+  }
+  return true;
+}
+
 /**
  * Violations is actionable-only: Architectural Bloat on real app modules can
  * Open Fix (gated by tsc preflight). Tests / orphans / cycles stay hidden.

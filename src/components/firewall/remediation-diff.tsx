@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
 import { OpenFixPrButton } from "@/components/firewall/open-fix-pr-button";
+import { useGithubRepoWriteAccess } from "@/components/firewall/use-github-repo-write-access";
 import Toast from "@/components/Toast";
 import { prOpenedToast, useToast } from "@/components/use-toast";
 import {
@@ -80,16 +81,18 @@ export function RemediationDiff({
   onOpened?: (pull: { url: string; number: number }) => void;
 }) {
   const { repoSlug } = useFirewallView();
+  const writeAccess = useGithubRepoWriteAccess(repoSlug);
   const { showToast, toast } = useToast();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pull, setPull] = useState<PullState>({ status: "idle" });
   const lines = remediation.diff.split("\n");
-  const canOpenPr = Boolean(
+  const eligibleFinding = Boolean(
     target &&
       isSecurityCategory(target.category) &&
       !isTestSourcePath(target.filePath)
   );
+  const canOpenPr = eligibleFinding && writeAccess.canOpenPullRequest && !writeAccess.loading;
   const touched = filesTouched(remediation.diff, target?.filePath ?? "patch");
 
   async function copyPatch() {
@@ -105,12 +108,20 @@ export function RemediationDiff({
   }
 
   async function openFixPr() {
-    if (!target || !canOpenPr || pull.status === "opening" || pull.status === "opened") return;
+    if (!target || !eligibleFinding || pull.status === "opening" || pull.status === "opened") return;
     if (!repoSlug) {
       await copyPatch();
       setPull({
         status: "fallback",
         message: "Scan a GitHub repository before opening a pull request. The patch was copied to your clipboard.",
+      });
+      return;
+    }
+    if (!writeAccess.canOpenPullRequest) {
+      await copyPatch();
+      setPull({
+        status: "fallback",
+        message: `${writeAccess.accessMessage ?? "Provix GitHub App is not installed on this repository."} The patch was copied to your clipboard.`,
       });
       return;
     }
@@ -182,7 +193,7 @@ export function RemediationDiff({
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      {canOpenPr ? (
+      {eligibleFinding ? (
         pull.status === "opened" ? (
           <a
             href={pull.url}
@@ -192,12 +203,19 @@ export function RemediationDiff({
           >
             PR #{pull.number}
           </a>
-        ) : (
+        ) : canOpenPr ? (
           <OpenFixPrButton
             opening={pull.status === "opening"}
             onClick={() => void openFixPr()}
             className={rowPrimaryActionClass}
           />
+        ) : writeAccess.loading ? null : (
+          <span
+            className="max-w-[14rem] px-1 text-right text-[11px] text-amber-200/90"
+            title={writeAccess.accessMessage ?? undefined}
+          >
+            Install GitHub App to open fix
+          </span>
         )
       ) : null}
     </div>

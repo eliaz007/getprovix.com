@@ -1,4 +1,5 @@
 import { githubUsernameFromUser } from "@/lib/github-identity";
+import { resolveGithubRepoReadToken } from "@/lib/github-app-client";
 import {
   parseGitHubRepoPath,
   parseGitHubUrl,
@@ -51,6 +52,8 @@ export async function probeGitHubRepository(
 
   try {
     const response = await githubGet(
+      owner,
+      repo,
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
     );
 
@@ -92,23 +95,23 @@ export type RepoOwnershipVerification = {
   lowContributionWarning: boolean;
 };
 
-function githubHeaders(): HeadersInit {
+async function githubHeaders(owner: string, repo: string): Promise<HeadersInit> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "User-Agent": "Provix-RepoOwnership/1.0",
   };
-  const token = process.env.GITHUB_TOKEN?.trim();
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+  const access = await resolveGithubRepoReadToken(owner, repo);
+  if (access.token) {
+    headers.Authorization = `Bearer ${access.token}`;
   }
   return headers;
 }
 
-async function githubGet(url: string): Promise<Response> {
+async function githubGet(owner: string, repo: string, url: string): Promise<Response> {
   return fetch(url, {
     method: "GET",
     cache: "no-store",
-    headers: githubHeaders(),
+    headers: await githubHeaders(owner, repo),
     signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS),
   });
 }
@@ -177,6 +180,8 @@ async function commitsMatchGitHubAccount(
   }
 
   const response = await githubGet(
+    owner,
+    repo,
     `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?${params.toString()}`
   );
   if (!response.ok) {
@@ -259,8 +264,8 @@ export async function assessContribution(
 
   try {
     const [authoredResponse, recentResponse] = await Promise.all([
-      githubGet(`${base}?${authoredParams.toString()}`),
-      githubGet(`${base}?${recentParams.toString()}`),
+      githubGet(owner, repo, `${base}?${authoredParams.toString()}`),
+      githubGet(owner, repo, `${base}?${recentParams.toString()}`),
     ]);
     const authored = await readCommitList(authoredResponse);
     const recent = await readCommitList(recentResponse);
@@ -298,6 +303,8 @@ export async function userHasAuthoredCommits(
   }
 
   const response = await githubGet(
+    owner,
+    repo,
     `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?${params.toString()}`
   );
   if (!response.ok) {
@@ -340,6 +347,8 @@ export async function verifyGitHubRepoOwnership(input: {
 
   try {
     const repoResponse = await githubGet(
+      owner,
+      repo,
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
     );
     if (repoResponse.ok) {

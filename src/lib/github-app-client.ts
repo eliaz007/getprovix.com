@@ -373,6 +373,32 @@ export async function resolveGithubRepoAccessToken(
   return { ok: true, token, source: "github_token" };
 }
 
+export type GithubRepoReadToken = {
+  token: string | null;
+  source: "github_app" | "github_token" | "anonymous";
+};
+
+/**
+ * Soft read auth for probes (ownership, audit, public file checks).
+ * Prefer App install when available; otherwise PAT; otherwise anonymous.
+ * Never fails solely because the App is not installed on that repo.
+ */
+export async function resolveGithubRepoReadToken(
+  owner: string,
+  repo: string
+): Promise<GithubRepoReadToken> {
+  const appToken = await resolveGithubInstallationTokenForRepo(owner, repo);
+  if (appToken) return { token: appToken, source: "github_app" };
+  const pat = process.env.GITHUB_TOKEN?.trim() || process.env.GITHUB_PAT?.trim() || null;
+  if (pat) return { token: pat, source: "github_token" };
+  return { token: null, source: "anonymous" };
+}
+
+/** Shared PAT for GitHub API calls that are not scoped to one installed repo. */
+export function resolveGithubFallbackReadToken(): string | null {
+  return process.env.GITHUB_TOKEN?.trim() || process.env.GITHUB_PAT?.trim() || null;
+}
+
 /** List repositories for an installation when the GitHub App key is configured. */
 export async function lookupGithubInstallation(installationId: number): Promise<GithubInstallationLookup> {
   const appId = process.env.GITHUB_APP_ID?.trim();

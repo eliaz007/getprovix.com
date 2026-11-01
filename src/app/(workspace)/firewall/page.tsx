@@ -12,6 +12,7 @@ import {
 import { useGithubAppInstallation } from "@/components/onboarding/use-github-app-installation";
 import type { FirewallResponse } from "@/lib/firewall-contract";
 import { isSecurityCategory } from "@/lib/firewall-contract";
+import { isActionableSecurityFinding } from "@/lib/firewall-autofix";
 import { parseGitHubRepository, toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import {
   readFirewallScanHandoff,
@@ -261,7 +262,11 @@ export default function FirewallPage() {
       setSecurityCount(null);
       return;
     }
-    setSecurityCount(report.violations.filter((violation) => isSecurityCategory(violation.category)).length);
+    setSecurityCount(
+      report.violations.filter(
+        (violation) => isSecurityCategory(violation.category) && isActionableSecurityFinding(violation)
+      ).length
+    );
   }, [report, setSecurityCount]);
 
   return (
