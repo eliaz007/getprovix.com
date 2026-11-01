@@ -99,3 +99,24 @@ export async function secureQuery302() {
     return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } };
   }
 }
+
+export async function secureQuery305() {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } };
+    }
+    const { data, error } = await supabase
+              .from("profiles")
+              .select("role")
+              .eq("user_id", user.id)
+              .maybeSingle();
+    return { data, error };
+  } catch (error) {
+    console.error(error);
+    return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } };
+  }
+}
