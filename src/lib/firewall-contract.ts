@@ -26,6 +26,8 @@ export type FirewallViolation = {
   category?: FirewallCategory;
   snippet?: string;
   remediation?: FirewallRemediation;
+  /** False when Open Fix already knows it cannot split this file. */
+  autofixable?: boolean;
 };
 
 export function isSecurityCategory(

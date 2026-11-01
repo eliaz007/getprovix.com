@@ -65,7 +65,7 @@ describe("runAutofixTscPreflight", () => {
       { filePath: "src/app/actions/secure-query.ts", content: validAction },
       helper,
     ]);
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual(expect.objectContaining({ success: true }));
   }, 90_000);
 
   it("rejects a module split that leaves an unbound helper (PR #71 class)", async () => {
@@ -97,7 +97,7 @@ describe("runAutofixTscPreflight", () => {
         { filePath: "src/app/actions/secure-query.ts", content: validAction },
         helper,
       ])
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ mode: "full", stubCount: 0 });
   }, 90_000);
 
   it("finalizeAutofixWrites opens the path when heal and preflight pass", async () => {
@@ -164,7 +164,7 @@ describe("runAutofixTscPreflight", () => {
       ])
     );
     expect(unresolved).not.toContain("@/utils/supabase/client");
-    expect(await runAutofixTscPreflight(plan.writes)).toEqual({ success: true });
+    expect(await runAutofixTscPreflight(plan.writes)).toEqual(expect.objectContaining({ success: true }));
   });
 
   it("mirrors host tsconfig @/* path aliases into the preflight bundle", async () => {
@@ -216,7 +216,7 @@ describe("runAutofixTscPreflight", () => {
     expect(paths).toContain("src/lib/auth-session-timeout.ts");
     expect(paths).toContain("src/lib/admin-access.ts");
     expect(paths).toContain("src/utils/supabase/client.ts");
-    expect(await runAutofixTscPreflight(plan.writes)).toEqual({ success: true });
+    expect(await runAutofixTscPreflight(plan.writes)).toEqual(expect.objectContaining({ success: true }));
   });
 
   it("recursively copies @/lib and @/utils modules into the preflight bundle", async () => {
@@ -252,6 +252,6 @@ export async function secureQuery3() {
         { filePath: "src/app/actions/secure-query.ts", content: actionWithLib },
         helper,
       ])
-    ).toEqual({ success: true });
+    ).toEqual(expect.objectContaining({ success: true }));
   });
 });

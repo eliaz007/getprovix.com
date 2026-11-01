@@ -166,12 +166,15 @@ describe("gate PR comment copy", () => {
 describe("POST /api/webhooks/github", () => {
   const previousSecret = process.env.GITHUB_WEBHOOK_SECRET;
   const previousApp = process.env.NEXT_PUBLIC_APP_URL;
+  const previousHeal = process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL;
 
   afterEach(() => {
     if (previousSecret === undefined) delete process.env.GITHUB_WEBHOOK_SECRET;
     else process.env.GITHUB_WEBHOOK_SECRET = previousSecret;
     if (previousApp === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
     else process.env.NEXT_PUBLIC_APP_URL = previousApp;
+    if (previousHeal === undefined) delete process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL;
+    else process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL = previousHeal;
   });
 
   it("rejects an unauthorized payload before posting a status", async () => {
@@ -212,6 +215,7 @@ describe("POST /api/webhooks/github", () => {
 
   it("fails the check and comments when a changed line leaks or violates a boundary", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = SECRET;
+    process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL = "true";
     process.env.NEXT_PUBLIC_APP_URL = "https://provix.test";
     const content = [
       '"use client";',
@@ -269,6 +273,7 @@ describe("POST /api/webhooks/github", () => {
 
   it("commits a validated server action when a client Supabase query changed", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = SECRET;
+    process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL = "true";
     const content = `"use client";\nexport async function load() {\n  return supabase.from("jobs").select("*");\n}\n`;
     const recorded = recordingClient({
       filename: "src/components/jobs.tsx",
@@ -313,6 +318,7 @@ describe("POST /api/webhooks/github", () => {
 
   it("does not commit again when the head commit is already an autonomous heal", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = SECRET;
+    process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL = "true";
     const content = `"use client";\nexport async function load() {\n  return supabase.from("jobs").select("*");\n}\n`;
     const recorded = recordingClient(
       {

@@ -2,7 +2,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { Octokit } from "@octokit/rest";
 import { NextResponse } from "next/server";
-import { analyzeSourceTexts, type SourceTextFile } from "../../scripts/ingest-engine";
+import {
+  analyzeSourceTexts,
+  boundaryModuleSpecifiers,
+  specifierPathCandidates,
+  type SourceTextFile,
+} from "../../scripts/ingest-engine";
 import { finalizeAutofixWrites } from "@/lib/autofix-write-validation";
 import {
   isSecurityCategory,
@@ -496,8 +501,58 @@ function findingKind(violation: FirewallViolation): GateFinding["kind"] {
   return isSecurityCategory(violation.category) || violationCategory(violation) !== "ARCHITECTURE" ? "leak" : "violation";
 }
 
+const BOUNDARY_CONTEXT_CAP = 40;
+const BOUNDARY_CONTEXT_DEPTH = 5;
+
+/**
+ * Load unchanged relative/`@/` modules (barrels and the files they re-export)
+ * so a `"use client"` diff can be checked for transitive server-only imports.
+ */
+export async function collectBoundaryContextFiles(
+  changed: Array<{ filePath: string; content: string }>,
+  read: (filePath: string) => Promise<string | null>
+): Promise<Array<{ filePath: string; content: string }>> {
+  const have = new Set(changed.map((file) => normalizedPath(file.filePath)));
+  const loaded: Array<{ filePath: string; content: string }> = [];
+  const seen = new Set<string>(have);
+  const queue = changed.map((file) => ({
+    filePath: normalizedPath(file.filePath),
+    content: file.content,
+    depth: 0,
+  }));
+
+  while (queue.length > 0 && loaded.length < BOUNDARY_CONTEXT_CAP) {
+    const current = queue.shift();
+    if (!current || current.depth >= BOUNDARY_CONTEXT_DEPTH) continue;
+    for (const specifier of boundaryModuleSpecifiers(current.content)) {
+      if (loaded.length >= BOUNDARY_CONTEXT_CAP) break;
+      let resolved: string | null = null;
+      let content: string | null = null;
+      for (const candidate of specifierPathCandidates(current.filePath, specifier)) {
+        const filePath = normalizedPath(candidate);
+        if (seen.has(filePath)) continue;
+        try {
+          content = await read(filePath);
+        } catch {
+          content = null;
+        }
+        if (content == null) continue;
+        resolved = filePath;
+        break;
+      }
+      if (!resolved || content == null || seen.has(resolved)) continue;
+      seen.add(resolved);
+      loaded.push({ filePath: resolved, content });
+      queue.push({ filePath: resolved, content, depth: current.depth + 1 });
+    }
+  }
+
+  return loaded;
+}
+
 export function scanChangedFiles(
-  files: Array<{ filePath: string; content: string; patch?: string | null }>
+  files: Array<{ filePath: string; content: string; patch?: string | null }>,
+  contextFiles: Array<{ filePath: string; content: string }> = []
 ): { leaks: number; violations: number; findings: GateFinding[] } {
   const sources: SourceTextFile[] = [];
   const companions: SourceTextFile[] = [];
@@ -512,14 +567,25 @@ export function scanChangedFiles(
     else if (isCompanionFile(filePath)) companions.push(entry);
   }
 
+  const contextSources: SourceTextFile[] = [];
+  for (const file of contextFiles) {
+    const filePath = normalizedPath(file.filePath);
+    if (!filePath || changed.has(filePath) || file.content.includes("\u0000")) continue;
+    if (isSourceFile(filePath)) contextSources.push({ filePath, content: file.content });
+  }
+
   if (sources.length === 0 && companions.length === 0) {
     return { leaks: 0, violations: 0, findings: [] };
   }
 
-  const report = analyzeSourceTexts(sources, { includeOrphans: false, companionFiles: companions });
+  const report = analyzeSourceTexts([...sources, ...contextSources], {
+    includeOrphans: false,
+    companionFiles: companions,
+  });
   const findings: GateFinding[] = [];
   for (const violation of report.violations) {
     const filePath = normalizedPath(violation.filePath);
+    if (!changed.has(filePath)) continue;
     const lines = changed.get(filePath);
     if (lines && violation.line > 0 && !lines.has(violation.line)) continue;
     const category = violationCategory(violation);
@@ -779,8 +845,29 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
     return json({ ok: false, message: "GitHub did not return a changed file." }, 502);
   }
 
-  const scan = scanChangedFiles(readable);
-  const committed = await commitAutonomousHeal(gate, delivery, readable, scan.findings);
+  let context: Array<{ filePath: string; content: string }> = [];
+  if (gate.readTextFile) {
+    try {
+      context = await collectBoundaryContextFiles(readable, async (filePath) => {
+        return gate.readTextFile?.({
+          owner: delivery.owner,
+          repo: delivery.repo,
+          path: filePath,
+          ref: delivery.sha,
+        }) ?? null;
+      });
+    } catch (error) {
+      console.error(
+        "[webhooks/github] could not load unchanged imports for the boundary check",
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+  const scan = scanChangedFiles(readable, context);
+  const committed =
+    process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL === "true"
+      ? await commitAutonomousHeal(gate, delivery, readable, scan.findings)
+      : null;
   // Status on this delivery sha reflects the tree GitHub sent. Residual after in-memory
   // rounds is reported on the heal comment; the follow-up synchronize posts the head status.
   const reportFindings = committed?.residual ?? scan;

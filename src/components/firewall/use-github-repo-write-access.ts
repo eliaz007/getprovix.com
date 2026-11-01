@@ -18,6 +18,10 @@ const DEFAULT: GithubRepoWriteAccess = {
   recorded: {},
 };
 
+/** One fetch per repo — Violations, Leaks, and every RemediationDiff share the same result. */
+const cache = new Map<string, GithubRepoWriteAccess>();
+const inflight = new Map<string, Promise<GithubRepoWriteAccess>>();
+
 function recordedPulls(payload: FirewallResolvedFilesResponse): Record<string, FirewallResolvedPull> {
   const pulls = payload.pulls ?? payload.filePaths.map((filePath) => ({ filePath, number: null, url: null }));
   const next: Record<string, FirewallResolvedPull> = {};
@@ -25,52 +29,76 @@ function recordedPulls(payload: FirewallResolvedFilesResponse): Record<string, F
   return next;
 }
 
+async function fetchWriteAccess(repoSlug: string): Promise<GithubRepoWriteAccess> {
+  const existing = inflight.get(repoSlug);
+  if (existing) return existing;
+
+  const request = (async (): Promise<GithubRepoWriteAccess> => {
+    try {
+      const response = await fetch(`/api/firewall/autofix/pr?repo=${encodeURIComponent(repoSlug)}`);
+      const payload = await readJsonResponse<FirewallResolvedFilesResponse>(response);
+      if (!response.ok || !payload.ok) {
+        return {
+          loading: false,
+          canOpenPullRequest: false,
+          accessMessage: payload.message ?? "Provix cannot open pull requests on this repository.",
+          recorded: {},
+        };
+      }
+      return {
+        loading: false,
+        canOpenPullRequest: payload.canOpenPullRequest !== false,
+        accessMessage: payload.canOpenPullRequest === false ? payload.accessMessage ?? null : null,
+        recorded: recordedPulls(payload),
+      };
+    } catch {
+      return {
+        loading: false,
+        canOpenPullRequest: false,
+        accessMessage: "Could not verify GitHub App access for this repository.",
+        recorded: {},
+      };
+    }
+  })();
+
+  inflight.set(repoSlug, request);
+  try {
+    const result = await request;
+    cache.set(repoSlug, result);
+    return result;
+  } finally {
+    inflight.delete(repoSlug);
+  }
+}
+
 /**
  * Whether Provix can open PRs on this repo (GitHub App install / write token).
  * Shared by Violations + Leaks so Open Fix is hidden before a doomed request.
  */
 export function useGithubRepoWriteAccess(repoSlug: string | null): GithubRepoWriteAccess {
-  const [state, setState] = useState<GithubRepoWriteAccess>(
-    repoSlug ? { ...DEFAULT, loading: true } : DEFAULT
-  );
+  const cached = repoSlug ? cache.get(repoSlug) : undefined;
+  const [state, setState] = useState<GithubRepoWriteAccess>(() => {
+    if (!repoSlug) return DEFAULT;
+    if (cached) return cached;
+    return { ...DEFAULT, loading: true };
+  });
 
   useEffect(() => {
     if (!repoSlug) {
       setState(DEFAULT);
       return;
     }
+    const hit = cache.get(repoSlug);
+    if (hit) {
+      setState(hit);
+      return;
+    }
     let active = true;
     setState({ ...DEFAULT, loading: true });
-    void (async () => {
-      try {
-        const response = await fetch(`/api/firewall/autofix/pr?repo=${encodeURIComponent(repoSlug)}`);
-        const payload = await readJsonResponse<FirewallResolvedFilesResponse>(response);
-        if (!active) return;
-        if (!response.ok || !payload.ok) {
-          setState({
-            loading: false,
-            canOpenPullRequest: false,
-            accessMessage: payload.message ?? "Provix cannot open pull requests on this repository.",
-            recorded: {},
-          });
-          return;
-        }
-        setState({
-          loading: false,
-          canOpenPullRequest: payload.canOpenPullRequest !== false,
-          accessMessage: payload.canOpenPullRequest === false ? payload.accessMessage ?? null : null,
-          recorded: recordedPulls(payload),
-        });
-      } catch {
-        if (!active) return;
-        setState({
-          loading: false,
-          canOpenPullRequest: false,
-          accessMessage: "Could not verify GitHub App access for this repository.",
-          recorded: {},
-        });
-      }
-    })();
+    void fetchWriteAccess(repoSlug).then((result) => {
+      if (!active) return;
+      setState(result);
+    });
     return () => {
       active = false;
     };

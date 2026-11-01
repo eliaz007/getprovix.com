@@ -3,6 +3,7 @@ import type { FirewallAutofixPullRequestResponse } from "@/lib/firewall-contract
 import {
   AutofixTscPreflightError,
   assertAutofixTscPreflightPasses,
+  preflightPullRequestSection,
 } from "@/lib/autofix-tsc-preflight";
 import { healAutofixWrites } from "@/lib/autofix-write-validation";
 import { isTestSourcePath, isTestSuiteSource, planAutofix } from "@/lib/firewall-autofix";
@@ -389,8 +390,9 @@ async function publishPullRequest(input: {
 
   // 2) HARD GATE — temp preflight copies reachable `@/*` modules and ambient-stubs
   // any missing internal import (`declare module "@/…"`) before `tsc --noEmit`.
+  let preflightNote;
   try {
-    await assertAutofixTscPreflightPasses(writes);
+    preflightNote = await assertAutofixTscPreflightPasses(writes);
   } catch (error) {
     const message =
       error instanceof AutofixTscPreflightError
@@ -410,6 +412,7 @@ async function publishPullRequest(input: {
 
   // 3) Only construct the GitHub client after typecheck has passed.
   const octokit = new Octokit({ auth: input.token, userAgent: "provix-architecture-firewall" });
+  const pullBody = `${input.body}\n\n${preflightPullRequestSection(preflightNote)}`;
   let createdBranch = false;
 
   try {
@@ -474,7 +477,7 @@ async function publishPullRequest(input: {
       title: input.title,
       head: input.branch,
       base,
-      body: input.body,
+      body: pullBody,
     });
 
     await recordOpenAutofixPullRequest({
@@ -506,6 +509,23 @@ async function publishPullRequest(input: {
         body: { ok: false, message: error.message },
       };
     }
+    let orphanDeleted = false;
+    if (createdBranch && input.branch.startsWith("provix/")) {
+      try {
+        await octokit.rest.git.deleteRef({
+          owner: input.owner,
+          repo: input.repo,
+          ref: `heads/${input.branch}`,
+        });
+        orphanDeleted = true;
+      } catch (deleteError) {
+        console.error(
+          "[autofix/pr] orphan branch was not deleted",
+          input.branch,
+          deleteError instanceof Error ? deleteError.message : deleteError
+        );
+      }
+    }
     const status = statusOf(error);
     const message = failureMessage(error);
     if (status === 404) {
@@ -518,10 +538,11 @@ async function publishPullRequest(input: {
       status: status === 401 ? 401 : status === 403 || status === 404 || status === 422 ? status : 502,
       body: {
         ok: false,
-        message: createdBranch
-          ? `${message} Branch ${input.branch} was created, but the pull request was not opened.`
-          : message,
-        branch: createdBranch ? input.branch : undefined,
+        message:
+          createdBranch && !orphanDeleted
+            ? `${message} Branch ${input.branch} was created, but the pull request was not opened.`
+            : message,
+        branch: createdBranch && !orphanDeleted ? input.branch : undefined,
       },
     };
   }

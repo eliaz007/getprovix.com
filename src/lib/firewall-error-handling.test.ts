@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { analyzeSourceTexts } from "../../scripts/ingest-engine";
-import { isActionableArchitectureViolation, isTestSourcePath, planAutofix } from "@/lib/firewall-autofix";
+import {
+  isActionableArchitectureViolation,
+  isTestSourcePath,
+  planAutofix,
+} from "@/lib/firewall-autofix";
 import { applyErrorHandling, missingErrorHandlingViolations } from "@/lib/firewall-error-handling";
 
 const route = `import { NextResponse } from "next/server";
@@ -169,5 +173,24 @@ export async function load() {
         rule: "Dead Weight / Orphaned Code",
       })
     ).toBe(false);
+    expect(
+      isActionableArchitectureViolation({
+        filePath: "src/lib/shared-helpers.ts",
+        rule: "Architectural Bloat",
+        autofixable: false,
+      })
+    ).toBe(false);
+  });
+
+  it("marks unsplittable bloat as not autofixable so Violations can hide it", () => {
+    const body = Array.from({ length: 360 }, (_, index) => `  const n${index} = ${index};`).join("\n");
+    const content = `export function onlyHuge() {\n${body}\n  return n0;\n}\n`;
+    expect(planAutofix("src/lib/only-huge.ts", content).canOpenPullRequest).toBe(false);
+    const report = analyzeSourceTexts([{ filePath: "src/lib/only-huge.ts", content }], {
+      includeOrphans: false,
+    });
+    const bloat = report.violations.find((violation) => violation.rule === "Architectural Bloat");
+    expect(bloat?.autofixable).toBe(false);
+    expect(isActionableArchitectureViolation(bloat ?? { filePath: "", rule: "" })).toBe(false);
   });
 });

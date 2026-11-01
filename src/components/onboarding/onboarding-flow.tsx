@@ -362,6 +362,10 @@ export default function OnboardingFlow() {
             >
               Skip OAuth and open install only
             </button>
+            <p className="mt-4 text-center text-xs leading-relaxed text-zinc-500">
+              Scans are read-only. Provix only writes or opens a pull request when you click{" "}
+              <span className="text-zinc-300">Open Fix PR</span>.
+            </p>
             <p className="mt-6 text-[11px] leading-relaxed text-zinc-600">
               Needs <span className="font-mono text-zinc-400">GITHUB_APP_SLUG</span> in{" "}
               <span className="font-mono text-zinc-400">.env.local</span> (and{" "}
@@ -392,6 +396,10 @@ export default function OnboardingFlow() {
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-zinc-400">
               TypeScript and Next.js repos are listed first. Run the initial AST audit to open
               your Architecture Firewall dashboard.
+            </p>
+            <p className="mt-2 max-w-xl text-xs leading-relaxed text-zinc-500">
+              Scans are read-only. Provix only writes or opens a pull request when you click{" "}
+              <span className="text-zinc-300">Open Fix PR</span>.
             </p>
 
             <div className="mt-10 grid gap-3 sm:grid-cols-2">

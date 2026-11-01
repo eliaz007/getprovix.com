@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FirewallReport, FirewallViolation } from "@/lib/firewall-contract";
-import { violationCategory } from "@/lib/firewall-contract";
+import { isSecurityCategory, violationCategory } from "@/lib/firewall-contract";
 import { isActionableSecurityFinding } from "@/lib/firewall-autofix";
 import { RemediationDiff } from "@/components/firewall/remediation-diff";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
@@ -39,13 +39,18 @@ function findingKey(finding: FirewallViolation): string {
   return `${finding.category ?? "SECURITY"}:${finding.filePath}:${finding.line}:${finding.message}`;
 }
 
-function findingsFor(report: FirewallReport, category: (typeof METRICS)[number]["id"]): FirewallViolation[] {
-  return report.violations.filter(
-    (violation) =>
-      violation.category === category &&
-      violationCategory(violation) !== "ARCHITECTURE" &&
-      isActionableSecurityFinding(violation)
-  );
+/** Only list findings we can Open Fix (or already opened a PR for). */
+function isListableSecurityFinding(
+  finding: FirewallViolation,
+  opts: { canOfferFix: boolean; opened: boolean; dismissed: boolean }
+): boolean {
+  if (violationCategory(finding) === "ARCHITECTURE") return false;
+  if (!isSecurityCategory(finding.category)) return false;
+  if (!isActionableSecurityFinding(finding)) return false;
+  if (opts.dismissed) return false;
+  if (!finding.remediation) return false;
+  if (!opts.opened && !opts.canOfferFix) return false;
+  return true;
 }
 
 function summaryLines(message: string): string {
@@ -104,12 +109,20 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
   const [openedKeys, setOpenedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [dismissedKeys, setDismissedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [listFilter, setListFilter] = useState<ListFilter>("all");
-  // Drop test/fixture findings — Open Fix refuses them; don't leave them cluttering Leaks.
-  const security = report.violations.filter(
-    (violation) =>
-      violationCategory(violation) !== "ARCHITECTURE" &&
-      isActionableSecurityFinding(violation) &&
-      !dismissedKeys.has(findingKey(violation))
+  const canOfferFix = !writeAccess.loading && writeAccess.canOpenPullRequest;
+
+  // Only rows with a real Open Fix path (or an already-opened PR). No Preview-only zombies.
+  const security = useMemo(
+    () =>
+      report.violations.filter((violation) => {
+        const key = findingKey(violation);
+        return isListableSecurityFinding(violation, {
+          canOfferFix,
+          opened: openedKeys.has(key),
+          dismissed: dismissedKeys.has(key),
+        });
+      }),
+    [report.violations, canOfferFix, openedKeys, dismissedKeys]
   );
 
   useEffect(() => {
@@ -148,11 +161,11 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
       <div className={panelClass}>
         <div className="border-b border-white/[0.06] px-5 py-4">
           <h2 className={sectionLabelClass}>Security posture</h2>
-          <p className={`mt-1 ${mutedLabelClass}`}>Active leak and dependency exposures</p>
+          <p className={`mt-1 ${mutedLabelClass}`}>Fixable leak and dependency exposures</p>
         </div>
         <dl className="grid grid-cols-1 sm:grid-cols-3">
           {METRICS.map((metric, index) => {
-            const rows = findingsFor(report, metric.id);
+            const rows = security.filter((finding) => finding.category === metric.id);
             const opened = rows.filter((finding) => openedKeys.has(findingKey(finding))).length;
             const active = rows.length - opened;
             const tone = active === 0 ? "ok" : rows.some((f) => f.severity === "CRITICAL") ? "danger" : "warn";
@@ -188,42 +201,52 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
               <span className="tabular-nums text-zinc-300">{security.length}</span> total
             </p>
           </div>
-          <div className="flex flex-wrap gap-1" role="group" aria-label="Filter security findings">
-            {LIST_FILTERS.map((filter) => {
-              const count =
-                filter.id === "opened"
-                  ? security.filter((finding) => openedKeys.has(findingKey(finding))).length
-                  : filter.id === "action"
-                    ? security.filter((finding) => !openedKeys.has(findingKey(finding))).length
-                    : security.length;
-              const selected = listFilter === filter.id;
-              return (
-                <button
-                  key={filter.id}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setListFilter(filter.id)}
-                  className={filterChipClass(selected)}
-                >
-                  <span>{filter.label}</span>
-                  <span className={`tabular-nums ${selected ? "text-zinc-950/60" : "text-zinc-600"}`}>{count}</span>
-                </button>
-              );
-            })}
-          </div>
+          {security.length > 0 ? (
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Filter security findings">
+              {LIST_FILTERS.map((filter) => {
+                const count =
+                  filter.id === "opened"
+                    ? security.filter((finding) => openedKeys.has(findingKey(finding))).length
+                    : filter.id === "action"
+                      ? security.filter((finding) => !openedKeys.has(findingKey(finding))).length
+                      : security.length;
+                const selected = listFilter === filter.id;
+                return (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setListFilter(filter.id)}
+                    className={filterChipClass(selected)}
+                  >
+                    <span>{filter.label}</span>
+                    <span className={`tabular-nums ${selected ? "text-zinc-950/60" : "text-zinc-600"}`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
 
         {!writeAccess.loading && !writeAccess.canOpenPullRequest && repoSlug ? (
           <p className="border-b border-amber-400/20 bg-amber-400/5 px-5 py-2.5 text-xs text-amber-100/90" role="status">
             {writeAccess.accessMessage ??
-              "Install the Provix GitHub App on this repository to open fix pull requests. Inspect and Copy still work."}
+              "Install the Provix GitHub App on this repository to open fix pull requests."}
           </p>
         ) : null}
 
-        {security.length === 0 ? (
+        {writeAccess.loading && repoSlug ? (
+          <p className="px-5 py-10 text-sm text-zinc-500">Checking whether Provix can open fix pull requests…</p>
+        ) : security.length === 0 ? (
           <p className="flex items-center gap-2 px-5 py-10 text-sm text-zinc-500">
-            <StatusPill label="Passed" tone="ok" />
-            No active security findings
+            {!writeAccess.canOpenPullRequest && repoSlug ? (
+              "No fixable security findings to show until the GitHub App can open pull requests."
+            ) : (
+              <>
+                <StatusPill label="Passed" tone="ok" />
+                No fixable security findings
+              </>
+            )}
           </p>
         ) : visible.length === 0 ? (
           <p className="px-5 py-10 text-sm text-zinc-500">
@@ -233,22 +256,21 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
           <ul>
             {visible.map((finding) => {
               const key = findingKey(finding);
-              return finding.remediation ? (
+              // remediation is guaranteed by isListableSecurityFinding
+              const remediation = finding.remediation!;
+              return (
                 <RemediationDiff
                   key={key}
-                  remediation={finding.remediation}
+                  remediation={remediation}
                   onOpened={() => markOpened(key)}
                   onDismissed={() => markDismissed(key)}
-                  target={
-                    finding.category
-                      ? {
-                          filePath: finding.filePath,
-                          line: finding.line,
-                          category: finding.category,
-                          snippet: finding.snippet,
-                        }
-                      : undefined
-                  }
+                  target={{
+                    filePath: finding.filePath,
+                    line: finding.line,
+                    // Guaranteed by isListableSecurityFinding
+                    category: finding.category!,
+                    snippet: finding.snippet,
+                  }}
                 >
                   {({ toolbar, notice, diff, prOpen }) => (
                     <li className={`border-t border-white/[0.04] px-5 py-4 ${rowHoverClass}`}>
@@ -269,14 +291,6 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
                     </li>
                   )}
                 </RemediationDiff>
-              ) : (
-                <li key={key} className={`border-t border-white/[0.04] px-5 py-4 ${rowHoverClass}`}>
-                  <div className="space-y-2.5">
-                    <FindingMeta finding={finding} />
-                    <p className="text-sm leading-relaxed text-zinc-400">{summaryLines(finding.message)}</p>
-                    {finding.snippet ? <FindingSnippet snippet={finding.snippet} /> : null}
-                  </div>
-                </li>
               );
             })}
           </ul>

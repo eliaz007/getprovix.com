@@ -15,9 +15,41 @@ type HostTsconfigPaths = {
   aliasRoot: "src" | "root";
 };
 
+export type TscPreflightNote = {
+  mode: "full" | "skipped-no-lib" | "stubbed";
+  stubCount: number;
+};
+
 export type TscPreflightResult =
-  | { success: true }
+  | { success: true; preflight: TscPreflightNote }
   | { success: false; message: string; diagnostics: string };
+
+function preflightPass(stubCount: number, skippedNoLib = false): TscPreflightResult {
+  return {
+    success: true,
+    preflight: {
+      mode: skippedNoLib ? "skipped-no-lib" : stubCount > 0 ? "stubbed" : "full",
+      stubCount,
+    },
+  };
+}
+
+/** One section for the Open Fix PR body. Does not change whether the PR opens. */
+export function preflightPullRequestSection(note: TscPreflightNote): string {
+  if (note.mode === "skipped-no-lib") {
+    return [
+      "### Preflight",
+      "Typecheck did not run: `typescript/lib` is not in this runtime. Syntax and server-action checks did run.",
+    ].join("\n");
+  }
+  if (note.mode === "stubbed") {
+    return [
+      "### Preflight",
+      `\`tsc --noEmit\` passed with ${note.stubCount} ambient stub(s). Unresolved imports were typed as \`any\`.`,
+    ].join("\n");
+  }
+  return ["### Preflight", "`tsc --noEmit` passed on the patch graph with no ambient stubs."].join("\n");
+}
 
 export class AutofixTscPreflightError extends Error {
   readonly code = "tsc-preflight" as const;
@@ -642,7 +674,7 @@ export async function runAutofixTscPreflight(
   writes: readonly AutofixWriteFile[],
   options?: { workDir?: string; projectRoot?: string }
 ): Promise<TscPreflightResult> {
-  if (writes.length === 0) return { success: true };
+  if (writes.length === 0) return preflightPass(0);
 
   const projectRoot = options?.projectRoot ?? process.cwd();
   const host = await loadHostTsconfigPaths(projectRoot);
@@ -676,7 +708,7 @@ export async function runAutofixTscPreflight(
     // Vercel /var/task often ships `tsc` without `typescript/lib/*.d.ts` → TS6053.
     // Skip CLI preflight there; heal + structural validation already ran.
     if (!libDir) {
-      return { success: true };
+      return preflightPass(stubModules.length, true);
     }
 
     for (const write of graph.writes) {
@@ -693,16 +725,17 @@ export async function runAutofixTscPreflight(
     if (stillMissing.length > 0) {
       await writeAmbientInternalImportStubs(tempRoot, [...stubModules, ...stillMissing]);
     }
+    const stubCount = new Set([...stubModules, ...stillMissing]).size;
     await writeFile(path.join(tempRoot, "tsconfig.json"), buildPreflightTsconfig(host, libDir), "utf8");
     await linkHostNodeModules(tempRoot, projectRoot);
 
     const { code, stdout, stderr } = await runTscNoEmit(tempRoot, projectRoot);
-    if (code === 0) return { success: true };
+    if (code === 0) return preflightPass(stubCount);
 
     const diagnostics = [stdout, stderr].filter(Boolean).join("\n").trim() || "tsc failed with no output";
     const actionable = actionablePreflightDiagnostics(diagnostics);
     // Sandbox lib gaps (TS2318 / TS6053) — not a patch bug.
-    if (actionable.length === 0) return { success: true };
+    if (actionable.length === 0) return preflightPass(stubCount);
 
     const firstLine = actionable[0] ?? diagnostics.slice(0, 280);
     return {
@@ -723,8 +756,8 @@ export async function runAutofixTscPreflight(
 export async function assertAutofixTscPreflightPasses(
   writes: readonly AutofixWriteFile[],
   options?: { workDir?: string; projectRoot?: string }
-): Promise<void> {
+): Promise<TscPreflightNote> {
   const result = await runAutofixTscPreflight(writes, options);
-  if (result.success) return;
-  throw new AutofixTscPreflightError(result.message);
+  if (!result.success) throw new AutofixTscPreflightError(result.message);
+  return result.preflight;
 }

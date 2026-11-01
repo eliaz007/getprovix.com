@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { planAutofix } from "../src/lib/firewall-autofix";
 import { missingErrorHandlingViolations } from "../src/lib/firewall-error-handling";
 import { runSecuritySuiteScan } from "../src/lib/scanner/security-suite";
 
@@ -29,6 +30,8 @@ type Violation = {
     command?: string;
     envExample?: string;
   };
+  /** False when planAutofix refuses — Violations hides these rows. */
+  autofixable?: boolean;
 };
 
 type ImportStatement = {
@@ -549,18 +552,15 @@ function lookupKnown(candidate: string, knownByLower: Map<string, string>): stri
   return knownByLower.get(candidate.toLowerCase()) ?? null;
 }
 
-function resolveSpecifier(
-  fromFile: string,
-  specifier: string,
-  knownByLower: Map<string, string>
-): string | null {
+/** Project-relative paths a relative or `@/` specifier might name. Bare packages return nothing. */
+export function specifierPathCandidates(fromFile: string, specifier: string): string[] {
   let absoluteBase: string;
   if (specifier.startsWith("@/")) {
     absoluteBase = path.join(projectRoot, "src", specifier.slice(2));
   } else if (specifier.startsWith(".")) {
     absoluteBase = path.resolve(projectRoot, path.dirname(fromFile), specifier);
   } else {
-    return null;
+    return [];
   }
 
   const withoutJs = absoluteBase.replace(/\.js$/, "");
@@ -579,13 +579,267 @@ function resolveSpecifier(
       path.join(base, "index.jsx")
     );
   }
+  return candidates.map((candidate) => toProjectPath(candidate)).filter((candidate) => candidate.length > 0);
+}
 
-  for (const candidate of candidates) {
-    const resolved = lookupKnown(toProjectPath(candidate), knownByLower);
+function resolveSpecifier(
+  fromFile: string,
+  specifier: string,
+  knownByLower: Map<string, string>
+): string | null {
+  for (const candidate of specifierPathCandidates(fromFile, specifier)) {
+    const resolved = lookupKnown(candidate, knownByLower);
     if (resolved) return resolved;
   }
-
   return null;
+}
+
+const BOUNDARY_IMPORT_DEPTH = 5;
+
+type ValueLink = { specifier: string; imported: string } | { local: true };
+
+function namedClauseParts(body: string): Array<{ exported: string; imported: string; typeOnly: boolean }> {
+  const parts: Array<{ exported: string; imported: string; typeOnly: boolean }> = [];
+  for (const raw of body.split(",")) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const typeOnly = /^type\s+/.test(trimmed);
+    const core = trimmed.replace(/^type\s+/, "");
+    const match = core.match(/^([A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?$/);
+    if (!match?.[1]) continue;
+    parts.push({
+      imported: match[1],
+      exported: match[2] ?? match[1],
+      typeOnly,
+    });
+  }
+  return parts;
+}
+
+/** Runtime import / `export … from` specifiers a boundary walk must load. Type-only edges are omitted. */
+export function boundaryModuleSpecifiers(content: string): string[] {
+  const specs = new Set<string>();
+  const source = sourceForMatching(content);
+  for (const statement of extractImportStatements(source)) {
+    const text = statementText(statement);
+    if (isPureTypeImport(text)) continue;
+    if (statement.specifier.startsWith(".") || statement.specifier.startsWith("@/")) {
+      specs.add(statement.specifier);
+    }
+  }
+  const pattern = /\bexport\s+(type\s+)?(\*|\{[\s\S]*?\})\s+from\s+['"]([^'"]+)['"]/g;
+  for (const match of source.matchAll(pattern)) {
+    if (match[1]) continue;
+    const clause = match[2] ?? "";
+    const specifier = match[3] ?? "";
+    if (!specifier.startsWith(".") && !specifier.startsWith("@/")) continue;
+    if (clause.trim() === "*") {
+      specs.add(specifier);
+      continue;
+    }
+    const parts = namedClauseParts(clause.replace(/^\{/, "").replace(/\}$/, ""));
+    if (parts.some((part) => !part.typeOnly)) specs.add(specifier);
+  }
+  return [...specs];
+}
+
+function valueExportLinks(content: string): { named: Map<string, ValueLink>; stars: string[] } {
+  const source = sourceForMatching(content);
+  const imported = new Map<string, { specifier: string; imported: string }>();
+  for (const statement of extractImportStatements(source)) {
+    const text = statementText(statement);
+    if (isPureTypeImport(text)) continue;
+    if (/^\s*import\s+\*\s+as\s+/.test(text)) continue;
+    const specifier = statement.specifier;
+    if (/^\s*import\s+(?!type\b)([A-Za-z_][A-Za-z0-9_]*)\s+from\b/.test(text)) {
+      const name = text.match(/^\s*import\s+(?!type\b)([A-Za-z_][A-Za-z0-9_]*)\s+from\b/)?.[1];
+      if (name) imported.set(name, { specifier, imported: "default" });
+    }
+    const named = text.match(/\{([\s\S]*)\}/);
+    if (!named?.[1]) continue;
+    for (const part of namedClauseParts(named[1])) {
+      if (part.typeOnly) continue;
+      imported.set(part.exported, { specifier, imported: part.imported });
+    }
+  }
+
+  const named = new Map<string, ValueLink>();
+  const stars: string[] = [];
+  const pattern = /\bexport\s+(type\s+)?(\*|\{[\s\S]*?\})\s+from\s+['"]([^'"]+)['"]/g;
+  for (const match of source.matchAll(pattern)) {
+    const typeOnlyStatement = Boolean(match[1]);
+    const clause = match[2] ?? "";
+    const specifier = match[3] ?? "";
+    if (typeOnlyStatement) continue;
+    if (clause.trim() === "*") {
+      stars.push(specifier);
+      continue;
+    }
+    for (const part of namedClauseParts(clause.replace(/^\{/, "").replace(/\}$/, ""))) {
+      if (part.typeOnly) continue;
+      named.set(part.exported, { specifier, imported: part.imported });
+    }
+  }
+
+  const localExport = /\bexport\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_][A-Za-z0-9_]*)/g;
+  for (const match of source.matchAll(localExport)) {
+    const name = match[1];
+    if (name && !named.has(name)) named.set(name, { local: true });
+  }
+  if (/\bexport\s+default\b/.test(source)) named.set("default", { local: true });
+
+  const localReexport = /\bexport\s+\{([\s\S]*?)\}/g;
+  for (const match of source.matchAll(localReexport)) {
+    if (/^\s*export\s+(type\s+)?\{[\s\S]*?\}\s+from\b/.test(match[0] ?? "")) continue;
+    if (/^\s*export\s+type\b/.test(match[0] ?? "")) continue;
+    for (const part of namedClauseParts(match[1] ?? "")) {
+      if (part.typeOnly || named.has(part.exported)) continue;
+      const origin = imported.get(part.imported);
+      named.set(part.exported, origin ? { specifier: origin.specifier, imported: origin.imported } : { local: true });
+    }
+  }
+
+  return { named, stars };
+}
+
+function runtimeImportedNames(statement: string): string[] | "*" | null {
+  if (isPureTypeImport(statement)) return null;
+  if (/^\s*import\s+\*\s+as\s+/.test(statement)) return "*";
+  const names: string[] = [];
+  const defaultName = statement.match(/^\s*import\s+(?!type\b)([A-Za-z_][A-Za-z0-9_]*)\s*(?:,|\s+from\b)/);
+  if (defaultName?.[1] && !statement.startsWith("import type")) names.push("default");
+  const named = statement.match(/\{([\s\S]*)\}/);
+  if (named?.[1]) {
+    for (const part of namedClauseParts(named[1])) {
+      if (!part.typeOnly) names.push(part.imported);
+    }
+  }
+  return names.length > 0 ? names : null;
+}
+
+function serverOnlyReason(content: string): string | null {
+  if (/\bfrom\s+['"]server-only['"]/.test(content) || /^\s*import\s+['"]server-only['"]/m.test(content)) {
+    return "server-only";
+  }
+  const source = sourceForMatching(content);
+  ENV_DOT.lastIndex = 0;
+  ENV_BRACKET.lastIndex = 0;
+  for (const match of source.matchAll(ENV_DOT)) {
+    const name = match[1];
+    if (name && isUnsafeEnvName(name)) return name;
+  }
+  for (const match of source.matchAll(ENV_BRACKET)) {
+    const name = match[1];
+    if (name && isUnsafeEnvName(name)) return name;
+  }
+  SERVICE_KEY_TOKEN.lastIndex = 0;
+  const serviceKey = SERVICE_KEY_TOKEN.exec(source);
+  if (serviceKey?.[1]) return serviceKey[1];
+  if (SERVICE_KEY_CALL.test(source)) return "createServiceRoleClient";
+  if (RAW_SQL.test(source)) return "raw SQL";
+  for (const statement of extractImportStatements(source)) {
+    if (isAdminOrServiceImport(statementText(statement), statement.specifier)) return statement.specifier;
+  }
+  return null;
+}
+
+function chainLabel(filePaths: string[]): string {
+  return filePaths.map((filePath) => filePath.split("/").pop() ?? filePath).join(" -> ");
+}
+
+function followValueExports(
+  filePath: string,
+  names: string[] | "*",
+  filesByPath: Map<string, IngestedFile>,
+  knownByLower: Map<string, string>,
+  visited: Set<string>,
+  depth: number,
+  chain: string[]
+): { chain: string[]; reason: string } | null {
+  if (depth > BOUNDARY_IMPORT_DEPTH) return null;
+  const visitKey = `${filePath}::${names === "*" ? "*" : [...names].sort().join(",")}`;
+  if (visited.has(visitKey)) return null;
+  visited.add(visitKey);
+
+  const file = filesByPath.get(filePath);
+  if (!file) return null;
+  const nextChain = [...chain, filePath];
+  const reason = serverOnlyReason(file.rawContent);
+  if (reason) return { chain: nextChain, reason };
+
+  const links = valueExportLinks(file.rawContent);
+  const pending = new Map<string, Set<string>>();
+  const queueStar = (specifier: string) => {
+    const resolved = resolveSpecifier(filePath, specifier, knownByLower);
+    if (!resolved) return;
+    const bucket = pending.get(resolved) ?? new Set<string>();
+    bucket.add("*");
+    pending.set(resolved, bucket);
+  };
+  const queueName = (specifier: string, imported: string) => {
+    const resolved = resolveSpecifier(filePath, specifier, knownByLower);
+    if (!resolved) return;
+    const bucket = pending.get(resolved) ?? new Set<string>();
+    bucket.add(imported);
+    pending.set(resolved, bucket);
+  };
+
+  if (names === "*") {
+    for (const specifier of links.stars) queueStar(specifier);
+    for (const link of links.named.values()) {
+      if ("local" in link) continue;
+      queueName(link.specifier, link.imported);
+    }
+  } else {
+    for (const name of names) {
+      const link = links.named.get(name);
+      if (link && "local" in link) continue;
+      if (link && !("local" in link)) {
+        queueName(link.specifier, link.imported);
+        continue;
+      }
+      for (const specifier of links.stars) queueName(specifier, name);
+    }
+  }
+
+  for (const [resolved, requested] of pending) {
+    const nextNames = requested.has("*") ? "*" : [...requested];
+    const hit = followValueExports(resolved, nextNames, filesByPath, knownByLower, visited, depth + 1, nextChain);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * `"use client"` files that reach a server-only module through relative/`@/`
+ * imports and barrel re-exports. Type-only edges are ignored. Depth is capped.
+ */
+function transitiveClientBoundaryViolations(files: IngestedFile[]): Violation[] {
+  const filesByPath = new Map(files.map((file) => [file.filePath, file]));
+  const knownByLower = new Map(files.map((file) => [file.filePath.toLowerCase(), file.filePath]));
+  const violations: Violation[] = [];
+
+  for (const file of files) {
+    if (!hasDirective(file.rawContent, "use client")) continue;
+    const label = boundaryLabel(file);
+    for (const statement of extractImportStatements(file.rawContent)) {
+      const names = runtimeImportedNames(statementText(statement));
+      if (!names) continue;
+      const resolved = resolveSpecifier(file.filePath, statement.specifier, knownByLower);
+      if (!resolved) continue;
+      const hit = followValueExports(resolved, names, filesByPath, knownByLower, new Set(), 1, [file.filePath]);
+      if (!hit) continue;
+      violations.push({
+        filePath: file.filePath,
+        severity: "CRITICAL",
+        rule: "Boundary Violation",
+        line: statement.line,
+        message: `${label} reaches server-only code via ${chainLabel(hit.chain)} (${hit.reason}).`,
+      });
+    }
+  }
+
+  return violations;
 }
 
 function sourceForMatching(content: string): string {
@@ -826,6 +1080,7 @@ function audit(files: IngestedFile[], includeOrphans = true): Violation[] {
     ...bloatViolations(file, statementsByFile.get(file.filePath) ?? []),
     ...missingErrorHandlingViolations(file.filePath, file.rawContent),
   ]);
+  violations.push(...transitiveClientBoundaryViolations(files));
 
   violations.push(...cycleViolations(graph));
   if (includeOrphans) violations.push(...orphanViolations(files, graph));
@@ -877,7 +1132,21 @@ export function analyzeSourceTexts(
       remediation: finding.remediation,
     }))
   );
-  return buildReport(files, dedupeAndSort(violations));
+  return buildReport(files, markArchitectureAutofixability(dedupeAndSort(violations), files));
+}
+
+/** Tag Architectural Bloat with whether Open Fix can open a PR for that file. */
+function markArchitectureAutofixability(violations: Violation[], files: IngestedFile[]): Violation[] {
+  const contentByPath = new Map(files.map((file) => [file.filePath, file.rawContent]));
+  return violations.map((violation) => {
+    if (violation.rule !== "Architectural Bloat") return violation;
+    const content = contentByPath.get(violation.filePath);
+    if (!content) return { ...violation, autofixable: false };
+    return {
+      ...violation,
+      autofixable: planAutofix(violation.filePath, content).canOpenPullRequest,
+    };
+  });
 }
 
 function printDashboard(files: IngestedFile[], report: AuditReport): void {

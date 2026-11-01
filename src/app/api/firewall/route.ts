@@ -103,6 +103,7 @@ function violationsFrom(value: unknown): FirewallViolation[] {
       ...(category ? { category } : {}),
       ...(typeof record.snippet === "string" ? { snippet: record.snippet } : {}),
       ...(remediation ? { remediation } : {}),
+      ...(typeof record.autofixable === "boolean" ? { autofixable: record.autofixable } : {}),
     });
   }
   return violations;

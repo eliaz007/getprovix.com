@@ -167,20 +167,37 @@ export default function FirewallViolationsTable({
   const repoSlug = repoUrl ? toGitHubOwnerRepo(repoUrl) : null;
   const writeAccess = useGithubRepoWriteAccess(repoSlug);
   const recorded = writeAccess.recorded;
-  const architecture = useMemo(
-    () =>
-      report.violations.filter(
-        (violation) =>
-          violationCategory(violation) === "ARCHITECTURE" &&
-          isActionableArchitectureViolation(violation) &&
-          !dismissedPaths.has(violation.filePath)
-      ),
-    [report.violations, dismissedPaths]
-  );
-  const securityCount = report.violations.filter(
-    (violation) =>
-      violationCategory(violation) !== "ARCHITECTURE" && isActionableSecurityFinding(violation)
-  ).length;
+  const architecture = useMemo(() => {
+    const canOfferFix = !writeAccess.loading && writeAccess.canOpenPullRequest;
+    return report.violations.filter((violation) => {
+      if (violationCategory(violation) !== "ARCHITECTURE") return false;
+      if (!isActionableArchitectureViolation(violation)) return false;
+      if (dismissedPaths.has(violation.filePath)) return false;
+      const hasPr =
+        Boolean(writeAccess.recorded[violation.filePath]) ||
+        sessionPulls[violation.filePath]?.status === "opened";
+      // Don't list rows we can't Open Fix — Preview-only looks broken.
+      if (!hasPr && !canOfferFix) return false;
+      return true;
+    });
+  }, [
+    report.violations,
+    dismissedPaths,
+    writeAccess.loading,
+    writeAccess.canOpenPullRequest,
+    writeAccess.recorded,
+    sessionPulls,
+  ]);
+  // Match Leaks: only count findings that can actually Open Fix (have a patch + App write).
+  const securityCount =
+    !writeAccess.loading && writeAccess.canOpenPullRequest
+      ? report.violations.filter(
+          (violation) =>
+            violationCategory(violation) !== "ARCHITECTURE" &&
+            isActionableSecurityFinding(violation) &&
+            Boolean(violation.remediation)
+        ).length
+      : 0;
 
   function violationHasOpenPr(filePath: string): boolean {
     const session = sessionPulls[filePath];
@@ -347,7 +364,7 @@ export default function FirewallViolationsTable({
             status: "error",
             message: copied
               ? `${message} The patch was copied to your clipboard.`
-              : `${message} View Diff is still available.`,
+              : `${message} Preview fix is still available.`,
           },
         }));
         return;
@@ -431,7 +448,7 @@ export default function FirewallViolationsTable({
         {!writeAccess.loading && !writeAccess.canOpenPullRequest && repoSlug ? (
           <p className="border-b border-amber-400/20 bg-amber-400/5 px-5 py-2.5 text-xs text-amber-100/90" role="status">
             {writeAccess.accessMessage ??
-              "Install the Provix GitHub App on this repository to open fix pull requests. View Diff and Copy still work."}
+              "Install the Provix GitHub App on this repository to open fix pull requests."}
           </p>
         ) : null}
 
@@ -456,13 +473,17 @@ export default function FirewallViolationsTable({
           </div>
         ) : null}
 
-        {rows.length === 0 ? (
+        {writeAccess.loading && repoSlug ? (
+          <p className="px-5 py-10 text-sm text-zinc-500">Checking whether Provix can open fix pull requests…</p>
+        ) : rows.length === 0 ? (
           <p className="px-5 py-10 text-sm text-zinc-500">
-            {listFilter === "opened"
-              ? "No pull requests opened in this scan."
-              : listFilter === "action"
-                ? "No autofixable architecture issues need action."
-                : "No autofixable architecture issues in this filter."}
+            {!writeAccess.canOpenPullRequest && repoSlug
+              ? "No fixable architecture issues to show until the GitHub App can open pull requests."
+              : listFilter === "opened"
+                ? "No pull requests opened in this scan."
+                : listFilter === "action"
+                  ? "No autofixable architecture issues need action."
+                  : "No autofixable architecture issues in this filter."}
           </p>
         ) : (
           <ul>
@@ -501,8 +522,18 @@ export default function FirewallViolationsTable({
                         <FilePathPill path={violation.filePath} line={resolved ? undefined : violation.line} />
                       </div>
                       <p className="text-sm leading-relaxed text-zinc-400">
-                        {resolved ? "Fix pull request opened for this finding." : summaryLines(violation.message)}
+                        {resolved
+                          ? "Fix pull request opened for this finding."
+                          : violation.rule === "Boundary Violation"
+                            ? violation.message.trim().replace(/\s+/g, " ")
+                            : summaryLines(violation.message)}
                       </p>
+                      {!resolved && violation.rule === "Boundary Violation" ? (
+                        <p className="text-xs leading-relaxed text-zinc-600">
+                          Type-only imports (<code className="font-mono text-zinc-500">import type</code>) are
+                          ignored.
+                        </p>
+                      ) : null}
                       {!resolved && violation.snippet ? (
                         <details className="group/snippet">
                           <summary className="cursor-pointer list-none text-xs text-zinc-500 transition-colors hover:text-zinc-300 [&::-webkit-details-marker]:hidden">
@@ -521,8 +552,9 @@ export default function FirewallViolationsTable({
                         disabled={diff?.status === "loading"}
                         onClick={() => void toggleDiff(key, violation.filePath)}
                         className={rowGhostActionClass}
+                        title="Preview the proposed fix without opening a pull request"
                       >
-                        {diff?.status === "loading" ? "Loading…" : diffOpen ? "Hide" : "View Diff"}
+                        {diff?.status === "loading" ? "Loading…" : diffOpen ? "Hide" : "Preview fix"}
                       </button>
                       {opened ? (
                         <a
@@ -535,13 +567,13 @@ export default function FirewallViolationsTable({
                         </a>
                       ) : knownOpen ? (
                         <StatusPill label="Opened" tone="ok" />
-                      ) : writeAccess.canOpenPullRequest && !writeAccess.loading ? (
+                      ) : (
                         <OpenFixPrButton
                           opening={opening}
                           onClick={() => void openFixPr(violation.filePath)}
                           className={rowPrimaryActionClass}
                         />
-                      ) : null}
+                      )}
                     </div>
                   </div>
                   {prError || diff?.status === "error" || (diffOpen && diff?.status === "ready") ? (

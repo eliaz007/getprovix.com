@@ -94,7 +94,6 @@ export function RemediationDiff({
       isSecurityCategory(target.category) &&
       !isTestSourcePath(target.filePath)
   );
-  const canOpenPr = eligibleFinding && writeAccess.canOpenPullRequest && !writeAccess.loading;
   const touched = filesTouched(remediation.diff, target?.filePath ?? "patch");
 
   async function copyPatch() {
@@ -185,8 +184,9 @@ export function RemediationDiff({
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
           className={`${rowGhostActionClass} rounded-none border-r border-white/[0.08]`}
+          title="Preview the proposed fix without opening a pull request"
         >
-          {open ? "Hide" : "Inspect"}
+          {open ? "Hide" : "Preview fix"}
         </button>
         <button
           type="button"
@@ -206,13 +206,14 @@ export function RemediationDiff({
           >
             PR #{pull.number}
           </a>
-        ) : canOpenPr ? (
+        ) : (
+          // Listed Leaks rows are already gated on App write — always show Open Fix (never Preview-only).
           <OpenFixPrButton
-            opening={pull.status === "opening"}
+            opening={pull.status === "opening" || writeAccess.loading}
             onClick={() => void openFixPr()}
             className={rowPrimaryActionClass}
           />
-        ) : null
+        )
       ) : null}
     </div>
   );

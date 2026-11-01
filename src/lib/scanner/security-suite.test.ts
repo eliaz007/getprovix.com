@@ -809,6 +809,6 @@ export async function loadJobs(userId: string) {
     expect(unresolved).not.toContain("@/app/actions/secure-query");
 
     const preflight = await runAutofixTscPreflight(finalWrites);
-    expect(preflight).toEqual({ success: true });
+    expect(preflight).toEqual(expect.objectContaining({ success: true }));
   }, 90_000);
 });

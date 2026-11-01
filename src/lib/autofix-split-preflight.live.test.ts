@@ -5,7 +5,7 @@ import { runAutofixTscPreflight } from "@/lib/autofix-tsc-preflight";
 import { planAutofix } from "@/lib/firewall-autofix";
 
 describe("live split preflight on github-autofix-pr.ts", () => {
-  it("blocks the PR #71 unbound-writes split before a pull request opens", async () => {
+  it("typechecks the split without an unbound writes annotation", async () => {
     const filePath = "src/lib/github-autofix-pr.ts";
     const content = await readFile(path.join(process.cwd(), filePath), "utf8");
     const plan = planAutofix(filePath, content);
@@ -14,9 +14,6 @@ describe("live split preflight on github-autofix-pr.ts", () => {
     expect(plan.writes.length).toBeGreaterThan(1);
 
     const preflight = await runAutofixTscPreflight(plan.writes);
-    expect(preflight.success).toBe(false);
-    if (preflight.success) return;
-    expect(preflight.message).toMatch(/tsc --noEmit/i);
-    expect(preflight.diagnostics).toMatch(/Cannot find name 'writes'/i);
+    expect(preflight.success).toBe(true);
   }, 120_000);
 });

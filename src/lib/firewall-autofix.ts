@@ -78,20 +78,24 @@ export function isExpectedAutofixRefuse(message: string): boolean {
     /This finding has no safe security fix/i.test(message) ||
     /failed a syntax check/i.test(message) ||
     /already fails CI/i.test(message) ||
-    /Fix the base branch first/i.test(message)
+    /Fix the base branch first/i.test(message) ||
+    /No safe module split: helpers share bindings/i.test(message)
   );
 }
 
 /**
  * Violations is actionable-only: Architectural Bloat on real app modules can
- * Open Fix (gated by tsc preflight). Tests / orphans / cycles stay hidden.
+ * Open Fix (gated by tsc preflight). Tests / orphans / cycles / known unsplitable
+ * files stay hidden.
  */
 export function isActionableArchitectureViolation(violation: {
   filePath: string;
   rule: string;
+  autofixable?: boolean;
 }): boolean {
   if (violation.rule !== "Architectural Bloat") return false;
   if (isTestSourcePath(violation.filePath)) return false;
+  if (violation.autofixable === false) return false;
   return true;
 }
 
@@ -361,7 +365,10 @@ function renderModule(
       }
       return `import { ${other.name} } from "${spec}";`;
     });
-  const header = [directive, ...preamble, ...localImports].filter((line) => line.trim().length > 0);
+  const rewrittenPreamble = preamble.map((line) =>
+    rewriteRelativeSpecifiersInLine(line, sourcePath, modulePath)
+  );
+  const header = [directive, ...rewrittenPreamble, ...localImports].filter((line) => line.trim().length > 0);
   const typedBody = annotateUntypedCallbacks(ensureExported(body, block), arrayElementTypes(blocks, lines));
   const content = [...header, header.length > 0 ? "" : "", typedBody].filter((line, lineIndex, all) => !(line === "" && all[lineIndex - 1] === "")).join("\n").trim() + "\n";
   const exported = collectModuleExports(content);
@@ -373,6 +380,27 @@ function renderModule(
     content,
     slug,
   };
+}
+
+/**
+ * Modules land in `name/slug.ts` while the original file sat beside `name.ts`.
+ * Relative `from "..."` / `export … from "..."` paths must gain one `../`.
+ */
+function rewriteRelativeSpecifiersInLine(line: string, fromFile: string, toFile: string): string {
+  return line.replace(/(from\s+|import\s+)(["'])(\.[^"']+)\2/g, (full, prefix: string, quote: string, specifier: string) => {
+    if (!specifier.startsWith(".")) return full;
+    return `${prefix}${quote}${rebaseRelativeSpecifier(specifier, fromFile, toFile)}${quote}`;
+  });
+}
+
+function rebaseRelativeSpecifier(specifier: string, fromFile: string, toFile: string): string {
+  const fromDir = path.posix.dirname(fromFile.replace(/\\/g, "/"));
+  const toDir = path.posix.dirname(toFile.replace(/\\/g, "/"));
+  if (fromDir === toDir) return specifier;
+  const absolute = path.posix.normalize(`${fromDir}/${specifier}`);
+  let relative = path.posix.relative(toDir, absolute);
+  if (!relative.startsWith(".")) relative = `./${relative}`;
+  return relative;
 }
 
 function ensureExported(body: string, block: Block): string {
@@ -454,13 +482,31 @@ function arrayElement(typeText: string): string | null {
   return null;
 }
 
+const CALLBACK_ARRAY_METHOD =
+  /(?:(\([A-Za-z_][A-Za-z0-9_]*\s*\?\?\s*\[[^\]]*\]\))|([A-Za-z_][A-Za-z0-9_]*))\.(map|forEach|filter|flatMap|find|some|every)\(\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?!:)(\s*,\s*([A-Za-z_][A-Za-z0-9_]*))?\s*\)\s*=>/g;
+
 function annotateUntypedCallbacks(body: string, elementTypes: Map<string, string>): string {
+  const bindings = collectValueBindings(body);
+  CALLBACK_ARRAY_METHOD.lastIndex = 0;
   return body.replace(
-    /(?:(\([A-Za-z_][A-Za-z0-9_]*\s*\?\?\s*\[[^\]]*\]\))|([A-Za-z_][A-Za-z0-9_]*))\.(map|forEach|filter|flatMap|find|some|every)\(\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?!:)(\s*,\s*([A-Za-z_][A-Za-z0-9_]*))?\s*\)\s*=>/g,
-    (full, parenthesized: string | undefined, identifier: string | undefined, method: string, param: string, indexPart: string | undefined, indexName: string | undefined) => {
+    CALLBACK_ARRAY_METHOD,
+    (
+      full,
+      parenthesized: string | undefined,
+      identifier: string | undefined,
+      method: string,
+      param: string,
+      indexPart: string | undefined,
+      indexName: string | undefined,
+      offset: number
+    ) => {
       const sourceName = identifier ?? parenthesized?.match(/\(([A-Za-z_][A-Za-z0-9_]*)/)?.[1] ?? "";
-      const known = sourceName ? elementTypes.get(sourceName) : undefined;
-      const element = explicitElementType(known, sourceName, Boolean(parenthesized));
+      const propertyAccess = !parenthesized && isPropertyAccess(body, offset);
+      const known = !propertyAccess && sourceName ? elementTypes.get(sourceName) : undefined;
+      const chain = propertyAccess && identifier ? memberChainAt(body, offset, identifier) : "";
+      const element = propertyAccess
+        ? safeMemberElementType(body, chain, bindings)
+        : explicitElementType(known, sourceName, Boolean(parenthesized), bindings.has(sourceName));
       if (!element) return full;
       const indexTyped = indexName ? `, ${indexName}: number` : indexPart ?? "";
       const receiver = parenthesized ?? identifier;
@@ -469,9 +515,105 @@ function annotateUntypedCallbacks(body: string, elementTypes: Map<string, string
   );
 }
 
-function explicitElementType(known: string | undefined, sourceName: string, nullableArray: boolean): string {
+/** `record.commit_stats.flatMap` matches at `commit_stats`; the dot means it is not a binding. */
+function isPropertyAccess(source: string, offset: number): boolean {
+  let index = offset - 1;
+  while (index >= 0 && /\s/.test(source[index] ?? "")) index -= 1;
+  return source[index] === ".";
+}
+
+/** Walk `record.commit_stats` when every segment is an identifier. `?.` is not a safe `typeof` target. */
+function memberChainAt(source: string, offset: number, leaf: string): string {
+  let chain = leaf;
+  let index = offset - 1;
+  while (index >= 0) {
+    while (index >= 0 && /\s/.test(source[index] ?? "")) index -= 1;
+    if (source[index] !== ".") return chain.includes(".") ? chain : "";
+    if (source[index - 1] === "?") return "";
+    index -= 1;
+    while (index >= 0 && /\s/.test(source[index] ?? "")) index -= 1;
+    const head = source.slice(0, index + 1);
+    const ident = /[A-Za-z_][A-Za-z0-9_]*$/.exec(head);
+    if (!ident?.[0]) return "";
+    chain = `${ident[0]}.${chain}`;
+    index = ident.index - 1;
+  }
+  return chain.includes(".") ? chain : "";
+}
+
+/**
+ * `(typeof record.commit_stats)[number]` is only safe when the root is a real
+ * binding and the property is a required array. Optional or `| null` properties
+ * make the indexed access fail, so those stay unannotated.
+ */
+function safeMemberElementType(source: string, chain: string, bindings: ReadonlySet<string>): string {
+  const parts = chain.split(".");
+  const root = parts[0] ?? "";
+  const leaf = parts[parts.length - 1] ?? "";
+  if (parts.length < 2 || !root || !leaf || !bindings.has(root)) return "";
+  const declared = source.match(new RegExp(`\\b${leaf}\\s*(\\?)?\\s*:\\s*([^;\\n]+)`));
+  if (!declared) return "";
+  if (declared[1] === "?") return "";
+  const typeText = (declared[2] ?? "").trim();
+  if (/\|\s*(?:null|undefined)\b/.test(typeText)) return "";
+  if (typeText.includes("{") && !typeText.includes("}")) return "";
+  if (!/(?:\[\]\s*$|(?:Readonly)?Array\s*<)/.test(typeText)) return "";
+  return `(typeof ${chain})[number]`;
+}
+
+function collectValueBindings(source: string): Set<string> {
+  const names = new Set<string>();
+  for (const match of source.matchAll(/\b(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)/g)) {
+    if (match[1]) names.add(match[1]);
+  }
+  for (const match of source.matchAll(/\bfunction\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+    if (match[1]) names.add(match[1]);
+  }
+  for (const match of source.matchAll(/\bfunction\s+[A-Za-z_][A-Za-z0-9_]*\s*\(([^)]*)\)/g)) {
+    addParamNames(names, match[1] ?? "");
+  }
+  for (const match of source.matchAll(/\bfunction\s*\(([^)]*)\)/g)) {
+    addParamNames(names, match[1] ?? "");
+  }
+  return names;
+}
+
+function addParamNames(names: Set<string>, params: string): void {
+  let depth = 0;
+  let current = "";
+  const flush = () => {
+    const name = current.trim().match(/^(?:\.\.\.)?([A-Za-z_][A-Za-z0-9_]*)/)?.[1];
+    current = "";
+    if (name) names.add(name);
+  };
+  for (const char of params) {
+    if (char === "{" || char === "(" || char === "<" || char === "[") {
+      if (depth === 0) flush();
+      depth += 1;
+      continue;
+    }
+    if (char === "}" || char === ")" || char === ">" || char === "]") {
+      if (depth > 0) depth -= 1;
+      continue;
+    }
+    if (depth > 0) continue;
+    if (char === "," || char === ":") {
+      flush();
+      continue;
+    }
+    current += char;
+  }
+  flush();
+}
+
+function explicitElementType(
+  known: string | undefined,
+  sourceName: string,
+  nullableArray: boolean,
+  bound: boolean
+): string {
   if (known && known.length <= 160 && !known.includes("\n")) return known;
-  if (!sourceName) return "";
+  if (!sourceName || !bound) return "";
   if (nullableArray) return `NonNullable<typeof ${sourceName}>[number]`;
   return `(typeof ${sourceName})[number]`;
 }

@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["unpdf"],
+  // tsc loads lib/*.d.ts by filesystem path. NFT does not follow that, so the
+  // serverless bundle otherwise skips preflight on Vercel.
+  outputFileTracingIncludes: {
+    "/api/firewall/autofix/pr": ["./node_modules/typescript/lib/**/*"],
+    "/api/webhooks/github": ["./node_modules/typescript/lib/**/*"],
+  },
   async redirects() {
     return [
       {
