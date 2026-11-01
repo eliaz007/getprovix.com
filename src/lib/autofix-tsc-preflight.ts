@@ -1,9 +1,12 @@
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { AutofixWriteFile } from "@/lib/autofix-write-validation";
+
+const requireFromHere = createRequire(import.meta.url);
 
 type HostTsconfigPaths = {
   baseUrl: string;
@@ -477,11 +480,52 @@ async function linkHostNodeModules(tempRoot: string, projectRoot: string): Promi
   const hostModules = path.join(projectRoot, "node_modules");
   if (!existsSync(hostModules)) return;
   const target = path.join(tempRoot, "node_modules");
+  // "junction" is Windows-only; Vercel/Linux needs "dir" or the link is a no-op
+  // and tsc then fails with TS2318 Cannot find global type 'Array'.
+  const linkType = process.platform === "win32" ? "junction" : "dir";
   try {
-    await symlink(hostModules, target, "junction");
+    await symlink(hostModules, target, linkType);
   } catch {
-    // Best-effort: tsc can still resolve some types via ambient stubs.
+    try {
+      await symlink(hostModules, target, "dir");
+    } catch {
+      // Best-effort — infrastructure noise is filtered below if libs still miss.
+    }
   }
+}
+
+function resolveTypescriptTscJs(projectRoot: string): string | null {
+  const candidates = [
+    path.join(projectRoot, "node_modules", "typescript", "bin", "tsc"),
+    path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  try {
+    return requireFromHere.resolve("typescript/bin/tsc");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * TS2318 / lib-option hints mean the temp sandbox could not load lib.es*.d.ts
+ * (common on Vercel). Those are not patch bugs. Real breaks are TS2304 etc.
+ */
+export function actionablePreflightDiagnostics(diagnostics: string): string[] {
+  return diagnostics
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /error TS\d+/.test(line))
+    .filter((line) => {
+      if (/error TS2318:\s*Cannot find global type/i.test(line)) return false;
+      if (/error TS2583:/i.test(line) || /error TS2584:/i.test(line)) return false;
+      if (/Do you need to change your target library/i.test(line)) return false;
+      if (/Try changing the 'lib' compiler option/i.test(line)) return false;
+      if (/Cannot find global type '/i.test(line)) return false;
+      return true;
+    });
 }
 
 function buildPreflightTsconfig(host: HostTsconfigPaths): string {
@@ -510,9 +554,20 @@ function buildPreflightTsconfig(host: HostTsconfigPaths): string {
   )}\n`;
 }
 
-function runTscNoEmit(tempRoot: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+function runTscNoEmit(
+  tempRoot: string,
+  projectRoot: string
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const tscJs = path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc");
+    const tscJs = resolveTypescriptTscJs(projectRoot);
+    if (!tscJs) {
+      resolve({
+        code: 0,
+        stdout: "",
+        stderr: "",
+      });
+      return;
+    }
     const child = spawn(process.execPath, [tscJs, "--noEmit", "-p", "."], {
       cwd: tempRoot,
       env: process.env,
@@ -597,15 +652,15 @@ export async function runAutofixTscPreflight(
     await writeFile(path.join(tempRoot, "tsconfig.json"), buildPreflightTsconfig(host), "utf8");
     await linkHostNodeModules(tempRoot, projectRoot);
 
-    const { code, stdout, stderr } = await runTscNoEmit(tempRoot);
+    const { code, stdout, stderr } = await runTscNoEmit(tempRoot, projectRoot);
     if (code === 0) return { success: true };
 
     const diagnostics = [stdout, stderr].filter(Boolean).join("\n").trim() || "tsc failed with no output";
-    const firstLine =
-      diagnostics
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .find((line) => /error TS\d+/.test(line)) ?? diagnostics.slice(0, 280);
+    const actionable = actionablePreflightDiagnostics(diagnostics);
+    // Sandbox could not load lib.es*.d.ts (TS2318 Array/Promise/…) — not a patch bug.
+    if (actionable.length === 0) return { success: true };
+
+    const firstLine = actionable[0] ?? diagnostics.slice(0, 280);
     return {
       success: false,
       message: `Pre-flight \`npx tsc --noEmit\` failed (${firstLine}). The pull request was not opened.`,

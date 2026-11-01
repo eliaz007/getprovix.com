@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { finalizeAutofixWrites } from "@/lib/autofix-write-validation";
 import {
+  actionablePreflightDiagnostics,
   assertAutofixTscPreflightPasses,
   bundleInternalAliasGraph,
   bundleInternalAliasWrites,
@@ -39,6 +40,22 @@ export async function load() {
   return await secureQuery3();
 }
 `;
+
+describe("actionablePreflightDiagnostics", () => {
+  it("ignores TS2318 missing global types (Vercel lib sandbox gaps)", () => {
+    const noise = [
+      "error TS2318: Cannot find global type 'Array'.",
+      "error TS2318: Cannot find global type 'Promise'.",
+      "__provix_stubs__/ambient-modules.d.ts(1,1): error TS2584: Do you need to change your target library?",
+    ].join("\n");
+    expect(actionablePreflightDiagnostics(noise)).toEqual([]);
+  });
+
+  it("keeps real unbound identifier failures", () => {
+    const real = "src/lib/x.ts(1,1): error TS2304: Cannot find name 'writes'.";
+    expect(actionablePreflightDiagnostics(real)).toEqual([real]);
+  });
+});
 
 describe("runAutofixTscPreflight", () => {
   it("passes a coherent security patch through real tsc", async () => {
