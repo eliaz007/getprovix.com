@@ -37,17 +37,27 @@ describe("validateAutofixWrites", () => {
     expect(result).toEqual({ ok: true });
   });
 
-  it("accepts generated actions that call console.error (noLib ambient console)", () => {
-    const actionWithConsole = validAction.replace(
+  it("does not block Open Fix on missing ambient globals (Promise/console/fetch/lib noise)", () => {
+    const actionWithGlobals = validAction.replace(
       "  return { data, error };\n}",
-      "  if (error) {\n    console.error(error);\n  }\n  return { data, error };\n}"
+      [
+        "  if (error) {",
+        "    console.error(error);",
+        "    console.warn(JSON.stringify(error));",
+        "    void fetch;",
+        "    void setTimeout;",
+        "    void Promise.resolve(null);",
+        "  }",
+        "  return { data, error };",
+        "}",
+      ].join("\n")
     );
     const result = validateAutofixWrites([
       {
         filePath: "src/components/jobs.tsx",
         content: `"use client";\nimport { secureQuery3 } from "@/app/actions/secure-query";\nexport async function load() {\n  return await secureQuery3();\n}\n`,
       },
-      { filePath: "src/app/actions/secure-query.ts", content: actionWithConsole },
+      { filePath: "src/app/actions/secure-query.ts", content: actionWithGlobals },
       validHelper,
     ]);
     expect(result).toEqual({ ok: true });

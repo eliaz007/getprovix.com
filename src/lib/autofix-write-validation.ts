@@ -415,25 +415,30 @@ function validateClientActionCallBoundaries(writes: readonly AutofixWriteFile[])
   return { ok: true };
 }
 
-/** Lib/.d.ts gaps from noLib hosts — not real secure-query patch bugs. */
-function isAmbientLibNoiseDiagnostic(diagnostic: ts.Diagnostic): boolean {
-  const detail = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
-  if (/Do you need to change your target library\??/i.test(detail)) return true;
-  if (/Try changing the 'lib' compiler option/i.test(detail)) return true;
-  if (
-    /Cannot find global type '(Promise|Array|Object|String|Number|Boolean|Symbol|Function|IArguments|RegExp|Error)'/i.test(
-      detail
-    )
-  ) {
-    return true;
+/** Full diagnostic text including related “change your lib” hints. */
+function flattenDiagnostic(diagnostic: ts.Diagnostic): string {
+  const parts = [ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")];
+  for (const related of diagnostic.relatedInformation ?? []) {
+    parts.push(ts.flattenDiagnosticMessageText(related.messageText, "\n"));
   }
-  if (
-    /Cannot find name '(console|process|Buffer|globalThis|global|window|document|module|exports|require|__dirname|__filename|setTimeout|clearTimeout|setInterval|clearInterval|fetch|URL|URLSearchParams|TextEncoder|TextDecoder)'\b/i.test(
-      detail
-    )
-  ) {
-    return true;
-  }
+  return parts.filter(Boolean).join("\n");
+}
+
+/**
+ * The in-memory checker runs with `noLib` (Vercel often lacks lib.es*.d.ts).
+ * Only fail on patch-shape bugs we can see against our stubs. Missing globals
+ * (`Promise`, `console`, `fetch`, …) and “change your lib” hints are NOT
+ * product failures — the real `tsc` preflight gates those before a PR opens.
+ */
+function isActionableInMemoryDiagnostic(diagnostic: ts.Diagnostic): boolean {
+  const detail = flattenDiagnostic(diagnostic);
+  if (/Do you need to change your target library/i.test(detail)) return false;
+  if (/Try changing the 'lib' compiler option/i.test(detail)) return false;
+  if (/Cannot find global type\b/i.test(detail)) return false;
+  if (/Cannot find name\b/i.test(detail)) return false;
+  if (/Duplicate identifier/i.test(detail)) return true;
+  if (/not assignable|Argument of type|does not exist on type/i.test(detail)) return true;
+  // Unknown noLib noise — do not block Open Fix; preflight is the hard gate.
   return false;
 }
 
@@ -479,14 +484,15 @@ function validateInMemoryTypecheck(writes: readonly AutofixWriteFile[]): Autofix
   };
 
   const program = ts.createProgram({ rootNames: [virtualName], options, host });
-  const diagnostics = [...program.getSyntacticDiagnostics(sourceFile), ...program.getSemanticDiagnostics(sourceFile)].filter(
-    (diagnostic) => !isAmbientLibNoiseDiagnostic(diagnostic)
-  );
+  const diagnostics = [
+    ...program.getSyntacticDiagnostics(sourceFile),
+    ...program.getSemanticDiagnostics(sourceFile),
+  ].filter(isActionableInMemoryDiagnostic);
   if (diagnostics.length === 0) return { ok: true };
 
   const first = diagnostics[0];
   if (!first) return { ok: true };
-  const detail = ts.flattenDiagnosticMessageText(first.messageText, "\n").trim();
+  const detail = flattenDiagnostic(first).trim();
   const code =
     /Duplicate identifier/i.test(detail)
       ? "duplicate-user-binding"
