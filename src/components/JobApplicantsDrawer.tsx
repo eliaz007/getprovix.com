@@ -27,6 +27,7 @@ import CandidateEducationSummary from "@/components/CandidateEducationSummary";
 import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { createClient } from "@/utils/supabase/client";
+import { secureQuery395 } from "@/app/actions/secure-query";
 
 type ApplicantProfileRow = {
   id: string;
@@ -392,11 +393,7 @@ export default function JobApplicantsDrawer({
         }
 
         const { data: applicationRows, error: applicationsError } =
-          await supabase
-            .from("job_applications")
-            .select("id, candidate_id, created_at, unlocked")
-            .eq("job_id", jobId)
-            .order("created_at", { ascending: false });
+          await secureQuery395(jobId);
 
         if (applicationsError) {
           throw applicationsError;
