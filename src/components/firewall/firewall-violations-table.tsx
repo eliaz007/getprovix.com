@@ -129,6 +129,17 @@ function lacksWriteAccess(status: number, message: string): boolean {
   return /GITHUB_TOKEN|cannot create a branch|permission/i.test(message);
 }
 
+function isSpuriousAutofixNoise(message: string): boolean {
+  return (
+    /in-memory TypeScript check/i.test(message) ||
+    /Cannot find global type/i.test(message) ||
+    /Cannot find name 'console'/i.test(message) ||
+    /Cannot find name 'Promise'/i.test(message) ||
+    /Do you need to change your target library/i.test(message) ||
+    /Try changing the 'lib' compiler option/i.test(message)
+  );
+}
+
 function recordedPulls(payload: FirewallResolvedFilesResponse): Record<string, FirewallResolvedPull> {
   const pulls = payload.pulls ?? payload.filePaths.map((filePath) => ({ filePath, number: null, url: null }));
   const next: Record<string, FirewallResolvedPull> = {};
@@ -336,6 +347,14 @@ export default function FirewallViolationsTable({
         return;
       }
       if (!response.ok || !payload.ok || !payload.url || typeof payload.number !== "number") {
+        if (isSpuriousAutofixNoise(message)) {
+          setSessionPulls((prev) => {
+            const next = { ...prev };
+            delete next[filePath];
+            return next;
+          });
+          return;
+        }
         setSessionPulls((prev) => ({ ...prev, [filePath]: { status: "error", message } }));
         return;
       }

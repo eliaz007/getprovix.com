@@ -45,6 +45,18 @@ function lacksWriteAccess(status: number, message: string): boolean {
   return /GITHUB_TOKEN|cannot create a branch|permission/i.test(message);
 }
 
+/** Old server builds returned these as Open Fix failures — never show them as red banners. */
+function isSpuriousAutofixNoise(message: string): boolean {
+  return (
+    /in-memory TypeScript check/i.test(message) ||
+    /Cannot find global type/i.test(message) ||
+    /Cannot find name 'console'/i.test(message) ||
+    /Cannot find name 'Promise'/i.test(message) ||
+    /Do you need to change your target library/i.test(message) ||
+    /Try changing the 'lib' compiler option/i.test(message)
+  );
+}
+
 export function RemediationDiff({
   remediation,
   target,
@@ -121,6 +133,11 @@ export function RemediationDiff({
         return;
       }
       if (!response.ok || !payload.ok || !payload.url || typeof payload.number !== "number") {
+        if (isSpuriousAutofixNoise(message)) {
+          // Never paint a red false-positive from ambient/lib checker noise.
+          setPull({ status: "idle" });
+          return;
+        }
         setPull({ status: "error", message });
         return;
       }

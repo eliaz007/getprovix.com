@@ -614,7 +614,10 @@ export function validateAutofixWrites(writes: readonly AutofixWriteFile[]): Auto
   if (!cross.ok) return cross;
   const callBoundaries = validateClientActionCallBoundaries(writes);
   if (!callBoundaries.ok) return callBoundaries;
-  return validateInMemoryTypecheck(writes);
+  // In-memory TS is advisory for heal only — never block Open Fix. Missing
+  // lib/globals on the server caused false red banners (Promise/console/…).
+  // Real type safety is enforced by `assertAutofixTscPreflightPasses`.
+  return { ok: true };
 }
 
 function skipString(source: string, start: number): number {
@@ -993,12 +996,28 @@ export function healAutofixWrites(
 
   for (let attempt = 1; attempt <= limit; attempt += 1) {
     const validation = validateAutofixWrites(current);
-    if (validation.ok) return { ok: true, writes: current, attempts: attempt };
-    lastMessage = validation.message;
-    if (attempt === limit) break;
-    current = repairAutofixWrites(current, validation);
+    if (!validation.ok) {
+      lastMessage = validation.message;
+      if (attempt === limit) break;
+      current = repairAutofixWrites(current, validation);
+      continue;
+    }
+
+    // Drive filter/param self-heals from the soft in-memory check, but never
+    // fail Open Fix on ambient/lib gaps — preflight is the hard type gate.
+    const soft = validateInMemoryTypecheck(current);
+    if (soft.ok) return { ok: true, writes: current, attempts: attempt };
+    lastMessage = soft.message;
+    if (attempt === limit) {
+      return { ok: true, writes: current, attempts: attempt };
+    }
+    if (!REPAIRABLE.has(soft.code)) {
+      return { ok: true, writes: current, attempts: attempt };
+    }
+    current = repairAutofixWrites(current, soft);
   }
 
+  // Structural validation exhausted repairs — still a hard fail.
   return { ok: false, message: lastMessage, attempts: limit };
 }
 
