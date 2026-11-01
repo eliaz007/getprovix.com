@@ -30,7 +30,7 @@ import {
   type DashboardTab,
 } from "@/lib/dashboard-account";
 import { createClient } from "@/utils/supabase/client";
-import { readBrowserSession } from "@/lib/supabaseClient";
+import { AUTH_SESSION_TIMEOUT_MS, readBrowserSession } from "@/lib/supabaseClient";
 import {
   parseAvailabilityStatus,
   type AvailabilityStatus,
@@ -48,6 +48,9 @@ import { initialsFromDisplayName } from "./initialsfromdisplayname";
 import { resolveUserDisplayName } from "./resolveuserdisplayname";
 import { getUserHeaderIdentity } from "./getuserheaderidentity";
 import { secureQuery281 } from "@/app/actions/secure-query";
+
+/** Landing → /firewall remounts this provider; give getSession more than the mobile 1.5s race. */
+const DASHBOARD_SESSION_READ_MS = Math.max(AUTH_SESSION_TIMEOUT_MS * 3, 4500);
 
 export function DashboardNavProviderImpl({
   children,
@@ -221,6 +224,7 @@ export function DashboardNavProviderImpl({
   useEffect(() => {
     let active = true;
     let authLoadingCleared = false;
+    let sessionRetryScheduled = false;
     const supabase = createClient();
 
     const clearAuthLoading = () => {
@@ -232,7 +236,12 @@ export function DashboardNavProviderImpl({
       setAuthLoading(false);
     };
 
-    const timeoutId = window.setTimeout(clearAuthLoading, AUTH_BOOTSTRAP_TIMEOUT_MS);
+    // Must outlive the longer dashboard session read + one retry, or the footer
+    // flashes "Sign in" while getSession is still in flight after a remount.
+    const timeoutId = window.setTimeout(
+      clearAuthLoading,
+      Math.max(AUTH_BOOTSTRAP_TIMEOUT_MS, DASHBOARD_SESSION_READ_MS * 2 + 1000)
+    );
 
     const applyUser = (user: User | null) => {
       if (!user) {
@@ -367,15 +376,51 @@ export function DashboardNavProviderImpl({
       console.time("dashboard-layout:bootstrap-total");
       console.time("dashboard-layout:auth-check");
       try {
-        const {
-          data: { session },
-        } = await readBrowserSession(supabase);
+        // readBrowserSession maps timeouts to `{ session: null, error }`. That is
+        // not a real guest — treating it as one showed "Sign in" after homepage
+        // → /firewall remounts for users who were already authenticated.
+        let result = await readBrowserSession(supabase, DASHBOARD_SESSION_READ_MS);
+        if (result.error) {
+          result = await readBrowserSession(supabase, DASHBOARD_SESSION_READ_MS);
+        }
 
         if (!active) {
           return;
         }
 
-        const user = session?.user ?? null;
+        let user: User | null = null;
+        if (!result.error) {
+          user = result.data.session?.user ?? null;
+        } else {
+          console.error("Dashboard nav session read failed, trying getUser:", result.error);
+          try {
+            const recovered = await Promise.race([
+              supabase.auth.getUser(),
+              new Promise<null>((resolve) => {
+                window.setTimeout(() => resolve(null), DASHBOARD_SESSION_READ_MS);
+              }),
+            ]);
+            if (recovered && "data" in recovered) {
+              user = recovered.data.user ?? null;
+            }
+          } catch (recoverError) {
+            console.error("Dashboard nav getUser recovery failed:", recoverError);
+          }
+          if (!user) {
+            // Ambiguous failure — keep authLoading (blank footer, not "Sign in")
+            // and retry once shortly; never applyUser(null) on a timed-out read.
+            if (!sessionRetryScheduled) {
+              sessionRetryScheduled = true;
+              window.setTimeout(() => {
+                if (active) void readSession();
+              }, 750);
+              return;
+            }
+            clearAuthLoading();
+            return;
+          }
+        }
+
         applyUser(user);
         clearAuthLoading();
 
@@ -388,7 +433,6 @@ export function DashboardNavProviderImpl({
       } finally {
         console.timeEnd("dashboard-layout:auth-check");
         console.timeEnd("dashboard-layout:bootstrap-total");
-        clearAuthLoading();
       }
     };
 

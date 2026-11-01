@@ -212,6 +212,70 @@ function validateActionTypeBoundaries(filePath: string, content: string): Autofi
   return { ok: true };
 }
 
+/**
+ * Serverless/Next bundles often ship `typescript` without `lib.es*.d.ts` on disk.
+ * The in-memory check then fails with "Cannot find global type 'Promise'" even
+ * when the generated action is fine. Use noLib + this stub instead.
+ */
+const IN_MEMORY_ES_GLOBALS = `interface PromiseLike<T> {
+  then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ): PromiseLike<TResult1 | TResult2>;
+}
+interface Promise<T> {
+  then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ): Promise<TResult1 | TResult2>;
+  catch<TResult = never>(onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null): Promise<T | TResult>;
+}
+declare var Promise: {
+  new <T>(executor: (
+    resolve: (value: T | PromiseLike<T>) => void,
+    reject: (reason?: unknown) => void
+  ) => void): Promise<T>;
+  resolve<T>(value: T | PromiseLike<T>): Promise<T>;
+  reject(reason?: unknown): Promise<never>;
+  all<T>(values: readonly (T | PromiseLike<T>)[]): Promise<T[]>;
+};
+interface Array<T> {
+  length: number;
+  [n: number]: T;
+  map<U>(callbackfn: (value: T, index: number, array: T[]) => U): U[];
+  filter<S extends T>(predicate: (value: T, index: number, array: T[]) => value is S): S[];
+  filter(predicate: (value: T, index: number, array: T[]) => unknown): T[];
+}
+interface ReadonlyArray<T> {
+  length: number;
+  [n: number]: T;
+}
+declare const Array: {
+  isArray(arg: unknown): arg is unknown[];
+  from<T>(arrayLike: ArrayLike<T>): T[];
+};
+interface ArrayLike<T> {
+  readonly length: number;
+  readonly [n: number]: T;
+}
+interface Boolean {}
+interface Function {}
+interface IArguments {}
+interface Number {}
+interface Object {}
+interface RegExp {}
+interface String {
+  charAt(pos: number): string;
+}
+interface Symbol {}
+declare function Boolean(value?: unknown): boolean;
+declare function Number(value?: unknown): number;
+declare function String(value?: unknown): string;
+declare function parseInt(string: string, radix?: number): number;
+declare const undefined: undefined;
+declare const NaN: number;
+`;
+
 const SUPABASE_SERVER_STUB = `type AuthUser = { id: string };
 type PostgrestError = {
   message: string;
@@ -331,7 +395,7 @@ function validateInMemoryTypecheck(writes: readonly AutofixWriteFile[]): Autofix
     )
     .join("\n\n");
 
-  const source = `${SUPABASE_SERVER_STUB}\n${body}\n`;
+  const source = `${IN_MEMORY_ES_GLOBALS}\n${SUPABASE_SERVER_STUB}\n${body}\n`;
   const virtualName = "secure-query.check.ts";
   const options: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2022,
@@ -339,24 +403,33 @@ function validateInMemoryTypecheck(writes: readonly AutofixWriteFile[]): Autofix
     strict: true,
     noEmit: true,
     skipLibCheck: true,
-    lib: ["es2022"],
+    // Avoid loading lib.es*.d.ts from disk (often missing in the Vercel bundle).
+    noLib: true,
   };
 
   const baseHost = ts.createCompilerHost(options, true);
   const sourceFile = ts.createSourceFile(virtualName, source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
   const host: ts.CompilerHost = {
     ...baseHost,
-    fileExists: (path) => path === virtualName || baseHost.fileExists(path),
-    readFile: (path) => (path === virtualName ? source : baseHost.readFile(path)),
-    getSourceFile: (path, languageVersion, onError, shouldCreateNewSourceFile) => {
-      if (path === virtualName) return sourceFile;
-      return baseHost.getSourceFile(path, languageVersion, onError, shouldCreateNewSourceFile);
+    fileExists: (filePath) => filePath === virtualName || baseHost.fileExists(filePath),
+    readFile: (filePath) => (filePath === virtualName ? source : baseHost.readFile(filePath)),
+    getSourceFile: (filePath, languageVersion, onError, shouldCreateNewSourceFile) => {
+      if (filePath === virtualName) return sourceFile;
+      return baseHost.getSourceFile(filePath, languageVersion, onError, shouldCreateNewSourceFile);
     },
     getCurrentDirectory: () => baseHost.getCurrentDirectory(),
   };
 
   const program = ts.createProgram({ rootNames: [virtualName], options, host });
-  const diagnostics = [...program.getSyntacticDiagnostics(sourceFile), ...program.getSemanticDiagnostics(sourceFile)];
+  const diagnostics = [...program.getSyntacticDiagnostics(sourceFile), ...program.getSemanticDiagnostics(sourceFile)].filter(
+    (diagnostic) => {
+      const detail = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+      // Belt-and-suspenders if a host still emits lib-resolution noise.
+      return !/Cannot find global type '(Promise|Array|Object|String|Number|Boolean|Symbol|Function|IArguments|RegExp)'/i.test(
+        detail
+      );
+    }
+  );
   if (diagnostics.length === 0) return { ok: true };
 
   const first = diagnostics[0];
