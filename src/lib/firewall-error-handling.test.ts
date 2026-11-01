@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeSourceTexts } from "../../scripts/ingest-engine";
 import {
   isActionableArchitectureViolation,
+  isEmptyTopLevelSplitRefuse,
   isTestSourcePath,
   planAutofix,
 } from "@/lib/firewall-autofix";
@@ -182,15 +183,37 @@ export async function load() {
     ).toBe(false);
   });
 
-  it("marks unsplittable bloat as not autofixable so Violations can hide it", () => {
+  it("hides only empty top-level-split refuses from Violations for now", () => {
     const body = Array.from({ length: 360 }, (_, index) => `  const n${index} = ${index};`).join("\n");
     const content = `export function onlyHuge() {\n${body}\n  return n0;\n}\n`;
-    expect(planAutofix("src/lib/only-huge.ts", content).canOpenPullRequest).toBe(false);
+    const plan = planAutofix("src/lib/only-huge.ts", content);
+    expect(plan.canOpenPullRequest).toBe(false);
+    expect(isEmptyTopLevelSplitRefuse(plan.summary)).toBe(true);
     const report = analyzeSourceTexts([{ filePath: "src/lib/only-huge.ts", content }], {
       includeOrphans: false,
     });
     const bloat = report.violations.find((violation) => violation.rule === "Architectural Bloat");
     expect(bloat?.autofixable).toBe(false);
     expect(isActionableArchitectureViolation(bloat ?? { filePath: "", rule: "" })).toBe(false);
+  });
+
+  it("does not hide shared-binding refuses from the list yet", () => {
+    // Two top-level fns that share a closure binding → plan refuses, but not the empty-unit message.
+    const content = `
+const shared = { n: 1 };
+export function one() { return shared.n; }
+export function two() { return shared.n + 1; }
+`.repeat(40);
+    const plan = planAutofix("src/lib/shared-helpers.ts", content);
+    if (!plan.canOpenPullRequest && !isEmptyTopLevelSplitRefuse(plan.summary)) {
+      const report = analyzeSourceTexts([{ filePath: "src/lib/shared-helpers.ts", content }], {
+        includeOrphans: false,
+      });
+      const bloat = report.violations.find((violation) => violation.rule === "Architectural Bloat");
+      if (bloat) {
+        expect(bloat.autofixable).not.toBe(false);
+        expect(isActionableArchitectureViolation(bloat)).toBe(true);
+      }
+    }
   });
 });

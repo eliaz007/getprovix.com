@@ -36,6 +36,7 @@ import {
 import {
   isActionableArchitectureViolation,
   isActionableSecurityFinding,
+  isEmptyTopLevelSplitRefuse,
   isExpectedAutofixRefuse,
   isTestSourcePath,
 } from "@/lib/firewall-autofix";
@@ -291,11 +292,17 @@ export default function FirewallViolationsTable({
         }));
         return;
       }
+      const summary = payload.summary?.trim() || "Diff ready.";
+      // Only this empty-diff refuse hides the row for now — other refuses stay visible.
+      if (isEmptyTopLevelSplitRefuse(summary)) {
+        dismissUnfixable(filePath);
+        return;
+      }
       setDiffs((prev) => ({
         ...prev,
         [filePath]: {
           status: "ready",
-          summary: payload.summary?.trim() || "Diff ready.",
+          summary,
           diff: payload.diff ?? "",
         },
       }));

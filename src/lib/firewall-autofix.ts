@@ -67,6 +67,11 @@ export function isActionableSecurityFinding(violation: {
   return true;
 }
 
+/** Empty-diff refuse: single top-level unit — hide the Violations row (nothing to Open Fix). */
+export function isEmptyTopLevelSplitRefuse(message: string): boolean {
+  return /No safe top-level split\. The file stays one unit, so the diff is empty\./i.test(message);
+}
+
 /** Open Fix returned a deliberate refuse — hide the row, don't paint a red error. */
 export function isExpectedAutofixRefuse(message: string): boolean {
   return (
@@ -79,7 +84,8 @@ export function isExpectedAutofixRefuse(message: string): boolean {
     /failed a syntax check/i.test(message) ||
     /already fails CI/i.test(message) ||
     /Fix the base branch first/i.test(message) ||
-    /No safe module split: helpers share bindings/i.test(message)
+    /No safe module split: helpers share bindings/i.test(message) ||
+    isEmptyTopLevelSplitRefuse(message)
   );
 }
 

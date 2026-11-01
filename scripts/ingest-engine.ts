@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { planAutofix } from "../src/lib/firewall-autofix";
+import { isEmptyTopLevelSplitRefuse, planAutofix } from "../src/lib/firewall-autofix";
 import { missingErrorHandlingViolations } from "../src/lib/firewall-error-handling";
 import { runSecuritySuiteScan } from "../src/lib/scanner/security-suite";
 
@@ -30,7 +30,7 @@ type Violation = {
     command?: string;
     envExample?: string;
   };
-  /** False when planAutofix refuses — Violations hides these rows. */
+  /** False only for empty top-level-split refuse (for now) — Violations hides those rows. */
   autofixable?: boolean;
 };
 
@@ -1135,17 +1135,21 @@ export function analyzeSourceTexts(
   return buildReport(files, markArchitectureAutofixability(dedupeAndSort(violations), files));
 }
 
-/** Tag Architectural Bloat with whether Open Fix can open a PR for that file. */
+/**
+ * Tag Architectural Bloat autofixability.
+ * For now only hide the empty top-level-split refuse ("No safe top-level split…").
+ * Other plan refuses stay listable until we deliberately expand this.
+ */
 function markArchitectureAutofixability(violations: Violation[], files: IngestedFile[]): Violation[] {
   const contentByPath = new Map(files.map((file) => [file.filePath, file.rawContent]));
   return violations.map((violation) => {
     if (violation.rule !== "Architectural Bloat") return violation;
     const content = contentByPath.get(violation.filePath);
-    if (!content) return { ...violation, autofixable: false };
-    return {
-      ...violation,
-      autofixable: planAutofix(violation.filePath, content).canOpenPullRequest,
-    };
+    if (!content) return violation;
+    const plan = planAutofix(violation.filePath, content);
+    if (plan.canOpenPullRequest) return { ...violation, autofixable: true };
+    if (isEmptyTopLevelSplitRefuse(plan.summary)) return { ...violation, autofixable: false };
+    return { ...violation, autofixable: true };
   });
 }
 
