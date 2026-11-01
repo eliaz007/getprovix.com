@@ -107,6 +107,21 @@ describe("runSecuritySuiteScan", () => {
     expect(findings.some((item) => item.message.includes("Full-library import of moment"))).toBe(true);
   });
 
+  it("does not flag moment imports that only appear inside test fixture strings", () => {
+    const findings = runSecuritySuiteScan([
+      {
+        filePath: "src/lib/scanner/security-suite.test.ts",
+        content: [
+          'import { describe, it, expect } from "vitest";',
+          'const fixture = { filePath: "src/lib/dates.ts", content: `import moment from "moment";\\nexport const m = moment;\\n` };',
+          "describe(\"fixture\", () => { it(\"ok\", () => expect(fixture).toBeTruthy()); });",
+          "",
+        ].join("\n"),
+      },
+    ]);
+    expect(findings.some((item) => item.message.includes("Full-library import of moment"))).toBe(false);
+  });
+
   it("merges security findings into the repository scan", () => {
     const report = analyzeSourceTexts(
       [{ filePath: "src/lib/pay.ts", content: `export const key = "${stripe}";\n` }],

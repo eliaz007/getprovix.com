@@ -261,6 +261,17 @@ export async function openSecurityFixPullRequest(
     return { status: 413, body: { ok: false, message: "File is too large to fix in one pass." } };
   }
 
+  if (isTestSourcePath(normalizedPath) || isTestSuiteSource(remote.content)) {
+    return {
+      status: 422,
+      body: {
+        ok: false,
+        message:
+          "Test files and scanner fixtures are not auto-fixed. Example imports inside tests are not production dependencies.",
+      },
+    };
+  }
+
   const tsconfigContents = category === "CLIENT_DB_EXPOSURE" ? await readRepoTsconfigContents(repoUrl) : [];
   const layout =
     category === "CLIENT_DB_EXPOSURE"

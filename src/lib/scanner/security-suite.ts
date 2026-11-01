@@ -195,6 +195,90 @@ function isCodeFile(filePath: string): boolean {
   return /\.(?:ts|tsx|js|jsx)$/.test(baseName(filePath));
 }
 
+/** Vitest/Jest suites often embed example imports in strings — those are not app deps. */
+function isTestSourceFile(filePath: string): boolean {
+  const normalized = normalizedPath(filePath).replace(/^\/+/, "");
+  const name = baseName(normalized);
+  if (/\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(name)) return true;
+  return normalized.split("/").some((part) => part === "__tests__" || part === "__mocks__" || part === "tests");
+}
+
+/** Blank string/template interiors (keep quotes + newlines) so fixture text cannot match import rules. */
+function maskCodeCommentsAndStrings(source: string): string {
+  let out = "";
+  let quote: "'" | '"' | "`" | null = null;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index] ?? "";
+    const next = source[index + 1] ?? "";
+
+    if (lineComment) {
+      if (char === "\n") {
+        lineComment = false;
+        out += "\n";
+      } else {
+        out += " ";
+      }
+      continue;
+    }
+
+    if (blockComment) {
+      if (char === "*" && next === "/") {
+        out += "  ";
+        index += 1;
+        blockComment = false;
+      } else {
+        out += char === "\n" ? "\n" : " ";
+      }
+      continue;
+    }
+
+    if (quote) {
+      if (char === "\\") {
+        out += "  ";
+        index += 1;
+        continue;
+      }
+      if (char === quote) {
+        out += char;
+        quote = null;
+        continue;
+      }
+      // Keep template expression boundaries scannable without matching imports inside strings.
+      if (quote === "`" && char === "$" && next === "{") {
+        out += "${";
+        index += 1;
+        continue;
+      }
+      out += char === "\n" ? "\n" : " ";
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      out += "  ";
+      index += 1;
+      lineComment = true;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      out += "  ";
+      index += 1;
+      blockComment = true;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      quote = char;
+      out += char;
+      continue;
+    }
+    out += char;
+  }
+
+  return out;
+}
+
 function isSecretFile(filePath: string): boolean {
   if (ignoredPath(filePath)) return false;
   const name = baseName(filePath);
@@ -1426,8 +1510,9 @@ function scanPackageJson(file: SecurityScanFile): SecurityFinding[] {
 
 function scanBloatedImports(file: SecurityScanFile): SecurityFinding[] {
   const filePath = normalizedPath(file.filePath);
-  if (!isCodeFile(filePath) || ignoredPath(filePath)) return [];
-  const masked = maskCodeComments(file.content);
+  if (!isCodeFile(filePath) || ignoredPath(filePath) || isTestSourceFile(filePath)) return [];
+  // Ignore imports that only appear inside string/template fixtures.
+  const masked = maskCodeCommentsAndStrings(file.content);
   const findings: SecurityFinding[] = [];
 
   for (const rule of BLOAT_IMPORTS) {
@@ -1822,12 +1907,16 @@ function dependencyPlan(file: SecurityScanFile, line: number, summary: string): 
     return null;
   }
 
-  const masked = maskCodeComments(file.content);
+  if (isTestSourceFile(filePath)) return null;
+  const masked = maskCodeCommentsAndStrings(file.content);
   for (const rule of BLOAT_IMPORTS) {
     const matcher = new RegExp(rule.pattern.source, "g");
     for (const match of masked.matchAll(matcher)) {
       const index = match.index ?? 0;
       if (!match[0] || lineAt(file.content, index) !== line) continue;
+      // Only rewrite a line that is itself an import statement — never a fixture string.
+      const before = lineText(file.content, line).trim();
+      if (!/^import\b/.test(before)) return null;
       return {
         title: `fix: replace full-library ${rule.packageName} import`,
         summary,

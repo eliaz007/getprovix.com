@@ -11,6 +11,7 @@ import {
   type FirewallCategory,
   type FirewallRemediation,
 } from "@/lib/firewall-contract";
+import { isTestSourcePath } from "@/lib/firewall-autofix";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { rowGhostActionClass, rowPrimaryActionClass } from "@/components/firewall/firewall-ui";
 
@@ -56,7 +57,9 @@ function isSpuriousAutofixNoise(message: string): boolean {
     /Cannot find name 'console'/i.test(message) ||
     /Cannot find name 'Promise'/i.test(message) ||
     /Do you need to change your target library/i.test(message) ||
-    /Try changing the 'lib' compiler option/i.test(message)
+    /Try changing the 'lib' compiler option/i.test(message) ||
+    /Test files and scanner fixtures are not auto-fixed/i.test(message) ||
+    /failed a syntax check/i.test(message)
   );
 }
 
@@ -82,7 +85,11 @@ export function RemediationDiff({
   const [copied, setCopied] = useState(false);
   const [pull, setPull] = useState<PullState>({ status: "idle" });
   const lines = remediation.diff.split("\n");
-  const canOpenPr = Boolean(target && isSecurityCategory(target.category));
+  const canOpenPr = Boolean(
+    target &&
+      isSecurityCategory(target.category) &&
+      !isTestSourcePath(target.filePath)
+  );
   const touched = filesTouched(remediation.diff, target?.filePath ?? "patch");
 
   async function copyPatch() {
