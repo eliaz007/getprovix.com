@@ -8,6 +8,8 @@ import {
   SITE_KEYWORDS,
   SITE_LOGO_URL,
   SITE_NAME,
+  SITE_OG_IMAGE,
+  SITE_OG_IMAGE_PATH,
   SITE_TITLE,
   SITE_URL,
 } from "@/lib/site";
@@ -80,11 +82,13 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
+    images: [SITE_OG_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
+    images: [SITE_OG_IMAGE_PATH],
   },
   icons: {
     icon: "/favicon.ico",

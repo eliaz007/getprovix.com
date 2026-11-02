@@ -25,6 +25,15 @@ export const SITE_DESCRIPTION =
   "Provix verifies engineering talent with proof-of-work screening, AI GitHub audits, repository integrity analysis, and candidate scoring for technical hiring.";
 export const SITE_EMAIL = "support@getprovix.com";
 export const SITE_LOGO_URL = `${SITE_URL}/logo.svg`;
+/** Social share image — drop the file at `public/og.png` (1200×630 recommended). */
+export const SITE_OG_IMAGE_PATH = "/og.png";
+export const SITE_OG_IMAGE_URL = `${SITE_URL}${SITE_OG_IMAGE_PATH}`;
+export const SITE_OG_IMAGE = {
+  url: SITE_OG_IMAGE_PATH,
+  width: 1024,
+  height: 507,
+  alt: SITE_NAME,
+} as const;
 
 export const SITE_KEYWORDS = [
   "Provix",
@@ -57,11 +66,13 @@ export function buildPageMetadata(
       siteName: SITE_NAME,
       title: socialTitle,
       description,
+      images: [SITE_OG_IMAGE],
     },
     twitter: {
       card: "summary_large_image",
       title: socialTitle,
       description,
+      images: [SITE_OG_IMAGE_PATH],
     },
   };
 }
