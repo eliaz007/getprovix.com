@@ -3,10 +3,19 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["unpdf"],
   // tsc loads lib/*.d.ts by filesystem path. NFT does not follow that, so the
-  // serverless bundle otherwise skips preflight on Vercel.
+  // serverless bundle otherwise skips preflight on Vercel. Same for @types/react:
+  // `react` is traced as a runtime dep, but its declarations stay in devDependencies.
   outputFileTracingIncludes: {
-    "/api/firewall/autofix/pr": ["./node_modules/typescript/lib/**/*"],
-    "/api/webhooks/github": ["./node_modules/typescript/lib/**/*"],
+    "/api/firewall/autofix/pr": [
+      "./node_modules/typescript/lib/**/*",
+      "./node_modules/@types/react/**/*",
+      "./node_modules/@types/react-dom/**/*",
+    ],
+    "/api/webhooks/github": [
+      "./node_modules/typescript/lib/**/*",
+      "./node_modules/@types/react/**/*",
+      "./node_modules/@types/react-dom/**/*",
+    ],
   },
   async redirects() {
     return [

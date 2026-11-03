@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -175,14 +175,57 @@ function isNodeBuiltin(specifier: string): boolean {
   );
 }
 
-/** True when the host workspace already has the package (or @types) installed. */
+/** True when `pkgDir` ships usable `.d.ts` (types/typings entry or index.d.ts). */
+function packageHasBundledTypes(pkgDir: string): boolean {
+  const pkgJsonPath = path.join(pkgDir, "package.json");
+  if (!existsSync(pkgJsonPath)) return false;
+  try {
+    const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as {
+      types?: string;
+      typings?: string;
+    };
+    const entry = pkg.types ?? pkg.typings;
+    if (entry && existsSync(path.join(pkgDir, ...entry.replace(/^\.\//, "").split("/")))) {
+      return true;
+    }
+  } catch {
+    // Fall through to index.d.ts / @types lookup.
+  }
+  return existsSync(path.join(pkgDir, "index.d.ts"));
+}
+
+/**
+ * True when the host can resolve real types for `packageName`.
+ * Package presence alone is not enough — `react` ships JS only; types live in
+ * `@types/react`. On Vercel `/var/task`, that @types package is often missing,
+ * so returning true here used to skip ambient stubs and fail Open Fix with TS7016.
+ */
 export function hostPackageHasTypes(projectRoot: string, packageName: string): boolean {
   const parts = packageName.split("/");
-  const installed = path.join(projectRoot, "node_modules", ...parts, "package.json");
-  if (existsSync(installed)) return true;
+  const pkgDir = path.join(projectRoot, "node_modules", ...parts);
+  if (packageHasBundledTypes(pkgDir)) return true;
+
   if (!packageName.startsWith("@")) {
-    const typesPkg = path.join(projectRoot, "node_modules", "@types", packageName, "package.json");
-    if (existsSync(typesPkg)) return true;
+    const typesDir = path.join(projectRoot, "node_modules", "@types", packageName);
+    if (packageHasBundledTypes(typesDir) || existsSync(path.join(typesDir, "package.json"))) {
+      return true;
+    }
+    return false;
+  }
+
+  // Scoped: @scope/name → @types/scope__name
+  const bare = packageName.slice(1);
+  const slash = bare.indexOf("/");
+  if (slash > 0) {
+    const typesDir = path.join(
+      projectRoot,
+      "node_modules",
+      "@types",
+      `${bare.slice(0, slash)}__${bare.slice(slash + 1)}`
+    );
+    if (packageHasBundledTypes(typesDir) || existsSync(path.join(typesDir, "package.json"))) {
+      return true;
+    }
   }
   return false;
 }
@@ -239,8 +282,10 @@ export function isValidAmbientModuleName(name: string): boolean {
   if (/\$\{/.test(trimmed)) return false;
   if (trimmed.includes("…")) return false;
   if (trimmed === "@/*" || trimmed.endsWith("/*")) return false;
-  // @/alias, @scope/pkg, bare package, or node:builtin
-  return /^(?:node:[\w./+-]+|@\/[\w./+-]+|@[\w-]+\/[\w.-]+|[\w.-]+)$/.test(trimmed);
+  // @/alias, @scope/pkg, bare package (+ subpath like react/jsx-runtime), or node:builtin
+  return /^(?:node:[\w./+-]+|@\/[\w./+-]+|@[\w-]+\/[\w./+-]+|[\w.-]+(?:\/[\w.-]+)*)$/.test(
+    trimmed
+  );
 }
 
 /** Ambient `declare module` stubs for missing npm packages or unresolved `@/` aliases. */
@@ -585,8 +630,29 @@ export function actionablePreflightDiagnostics(diagnostics: string): string[] {
       if (/Do you need to change your target library/i.test(line)) return false;
       if (/Try changing the 'lib' compiler option/i.test(line)) return false;
       if (/Cannot find global type '/i.test(line)) return false;
+      // Vercel traces `react` JS but often omits `@types/react` — not a patch bug.
+      if (
+        /error TS7016:.*declaration file for module ['"]react(?:-dom|\/jsx(?:-dev)?-runtime)?['"]/i.test(
+          line
+        )
+      ) {
+        return false;
+      }
       return true;
     });
+}
+
+/** Extra ambient modules needed when the root package is stubbed (JSX runtime). */
+export function expandAmbientStubModules(moduleNames: readonly string[]): string[] {
+  const out = new Set(moduleNames.map((name) => name.trim()).filter(Boolean));
+  if (out.has("react")) {
+    out.add("react/jsx-runtime");
+    out.add("react/jsx-dev-runtime");
+  }
+  if (out.has("react-dom")) {
+    out.add("react-dom/client");
+  }
+  return [...out].sort();
 }
 
 function buildPreflightTsconfig(host: HostTsconfigPaths, libDir: string | null): string {
@@ -595,7 +661,9 @@ function buildPreflightTsconfig(host: HostTsconfigPaths, libDir: string | null):
     target: "ES2022",
     module: "esnext",
     moduleResolution: "bundler",
-    jsx: "preserve",
+    // react-jsx resolves through `react/jsx-runtime`, which we can ambient-stub when
+    // `@types/react` is missing from the serverless bundle (jsx:preserve cannot).
+    jsx: "react-jsx",
     strict: true,
     noEmit: true,
     skipLibCheck: true,
@@ -690,13 +758,13 @@ export async function runAutofixTscPreflight(
     collectionMisses: graph.missingAtAliases,
   });
   const externalPkgs = collectExternalPackageSpecifiers(graph.writes, { projectRoot });
-  const stubModules = [
+  const stubModules = expandAmbientStubModules([
     ...new Set([
       ...unresolvedAt,
       ...externalPkgs,
       ...PATH_MAPPED_STUB_PREFIXES.map((prefix) => prefix.replace(/\/$/, "")),
     ]),
-  ].filter(isValidAmbientModuleName);
+  ]).filter(isValidAmbientModuleName);
 
   const tempRoot =
     options?.workDir ??

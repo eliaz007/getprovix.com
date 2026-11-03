@@ -269,6 +269,16 @@ export async function load(userId: string) {
     expect(inPlan?.writes[1]?.content).toContain("ids: readonly string[] | undefined");
     expect(inPlan?.writes[1]?.content).toContain('.in("id", ids ?? [])');
 
+    // Already-coalesced `.in` values must not become `ids ?? [] ?? …` (TS2881).
+    const inAlready = `"use client";\nexport async function load(ids: string[] | undefined) {\n  const { data, error } = await supabase.from("profiles").select("*").in("id", ids ?? []);\n  return { data, error };\n}\n`;
+    const inAlreadyPlan = planSecurityFix(
+      { filePath: "src/components/dashboard/dashboard-nav-context.tsx", content: inAlready },
+      "CLIENT_DB_EXPOSURE",
+      3
+    );
+    expect(inAlreadyPlan?.writes[1]?.content).toContain('.in("id", ids ?? [])');
+    expect(inAlreadyPlan?.writes[1]?.content).not.toContain("ids ?? [] ??");
+
     const boolAndNumber = `"use client";\nexport async function load(isActive: boolean) {\n  const { data, error } = await supabase.from("jobs").select("*").eq("active", true).eq("priority", 1).eq("is_active", isActive);\n  return { data, error };\n}\n`;
     const boolPlan = planSecurityFix(
       { filePath: "src/components/jobs.tsx", content: boolAndNumber },

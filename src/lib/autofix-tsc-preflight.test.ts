@@ -7,6 +7,9 @@ import {
   bundleInternalAliasWrites,
   collectInternalImportSpecifiers,
   collectUnresolvedAtAliasSpecifiers,
+  expandAmbientStubModules,
+  hostPackageHasTypes,
+  isValidAmbientModuleName,
   loadHostTsconfigPaths,
   runAutofixTscPreflight,
 } from "@/lib/autofix-tsc-preflight";
@@ -52,9 +55,53 @@ describe("actionablePreflightDiagnostics", () => {
     expect(actionablePreflightDiagnostics(noise)).toEqual([]);
   });
 
+  it("ignores TS7016 for react when @types/react is missing from /var/task", () => {
+    const noise = [
+      "score-trend-chart.tsx(3,19): error TS7016: Could not find a declaration file for module 'react'. '/var/task/node_modules/react/index.js' implicitly has an 'any' type.",
+      "Toast.tsx(3,19): error TS7016: Could not find a declaration file for module 'react-dom'.",
+      "x.tsx(1,1): error TS7016: Could not find a declaration file for module 'react/jsx-runtime'.",
+    ].join("\n");
+    expect(actionablePreflightDiagnostics(noise)).toEqual([]);
+  });
+
   it("keeps real unbound identifier failures", () => {
     const real = "src/lib/x.ts(1,1): error TS2304: Cannot find name 'writes'.";
     expect(actionablePreflightDiagnostics(real)).toEqual([real]);
+  });
+});
+
+describe("hostPackageHasTypes / react stubs", () => {
+  it("treats react as typed only when @types/react (or bundled types) exist", () => {
+    // This workspace installs @types/react — so Open Fix can use real types locally.
+    expect(hostPackageHasTypes(process.cwd(), "react")).toBe(true);
+  });
+
+  it("does not treat a JS-only package.json as typed", async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const root = await mkdtemp(path.join(tmpdir(), "provix-types-"));
+    try {
+      const reactDir = path.join(root, "node_modules", "react");
+      await mkdir(reactDir, { recursive: true });
+      await writeFile(
+        path.join(reactDir, "package.json"),
+        JSON.stringify({ name: "react", main: "index.js" }),
+        "utf8"
+      );
+      expect(hostPackageHasTypes(root, "react")).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("expands react stubs to jsx-runtime subpaths and allows those module names", () => {
+    expect(expandAmbientStubModules(["react"])).toEqual([
+      "react",
+      "react/jsx-dev-runtime",
+      "react/jsx-runtime",
+    ]);
+    expect(isValidAmbientModuleName("react/jsx-runtime")).toBe(true);
   });
 });
 

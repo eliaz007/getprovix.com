@@ -1141,7 +1141,12 @@ export function normalizeSupabaseFilterExpression(
 
   for (const param of params) {
     if (!param.usedInInFilter) continue;
-    const inRe = new RegExp(`\\.\\s*in\\s*\\(\\s*(['\`"][^'\`"]+['\`"])\\s*,\\s*${param.name}\\b`, "g");
+    // Skip values that already coalesce (`ids ?? []`) — wrapping again yields
+    // `ids ?? [] ?? …` and TypeScript 5.9 TS2881 ("never nullish").
+    const inRe = new RegExp(
+      `\\.\\s*in\\s*\\(\\s*(['\`"][^'\`"]+['\`"])\\s*,\\s*${param.name}\\b(?!\\s*\\?\\?)`,
+      "g"
+    );
     next = next.replace(inRe, (_full, column: string) => `.in(${column}, ${param.name} ?? []`);
   }
   return next;
