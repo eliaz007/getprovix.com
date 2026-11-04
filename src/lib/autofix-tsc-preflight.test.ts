@@ -5,6 +5,7 @@ import {
   assertAutofixTscPreflightPasses,
   bundleInternalAliasGraph,
   bundleInternalAliasWrites,
+  collectExternalPackageSpecifiers,
   collectInternalImportSpecifiers,
   collectUnresolvedAtAliasSpecifiers,
   expandAmbientStubModules,
@@ -55,11 +56,11 @@ describe("actionablePreflightDiagnostics", () => {
     expect(actionablePreflightDiagnostics(noise)).toEqual([]);
   });
 
-  it("ignores TS7016 for react when @types/react is missing from /var/task", () => {
+  it("ignores missing declaration files from the sandbox bundle", () => {
     const noise = [
       "score-trend-chart.tsx(3,19): error TS7016: Could not find a declaration file for module 'react'. '/var/task/node_modules/react/index.js' implicitly has an 'any' type.",
-      "Toast.tsx(3,19): error TS7016: Could not find a declaration file for module 'react-dom'.",
-      "x.tsx(1,1): error TS7016: Could not find a declaration file for module 'react/jsx-runtime'.",
+      "chart.tsx(1,1): error TS7016: Could not find a declaration file for module 'recharts'.",
+      "tsconfig.json(1,1): error TS2688: Cannot find type definition file for 'node'.",
     ].join("\n");
     expect(actionablePreflightDiagnostics(noise)).toEqual([]);
   });
@@ -67,6 +68,18 @@ describe("actionablePreflightDiagnostics", () => {
   it("keeps real unbound identifier failures", () => {
     const real = "src/lib/x.ts(1,1): error TS2304: Cannot find name 'writes'.";
     expect(actionablePreflightDiagnostics(real)).toEqual([real]);
+  });
+});
+
+describe("collectExternalPackageSpecifiers", () => {
+  it("stubs next subpaths even though the next package has types", () => {
+    const specs = collectExternalPackageSpecifiers([
+      {
+        filePath: "src/components/dashboard/dashboard-nav-context/auth-bootstrap-timeout-ms.tsx",
+        content: `import { useRouter } from "next/navigation";\nexport const ms = 1;\n`,
+      },
+    ]);
+    expect(specs).toContain("next/navigation");
   });
 });
 
@@ -111,6 +124,37 @@ describe("runAutofixTscPreflight", () => {
       { filePath: "src/components/jobs.tsx", content: validClient },
       { filePath: "src/app/actions/secure-query.ts", content: validAction },
       helper,
+    ]);
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+  }, 90_000);
+
+  it("does not fail when a copied file imports next/navigation", async () => {
+    const result = await runAutofixTscPreflight([
+      {
+        filePath: "src/components/dashboard/dashboard-nav-context/auth-bootstrap-timeout-ms.tsx",
+        content: [
+          'import { useRouter } from "next/navigation";',
+          "export function timeoutMs() {",
+          "  void useRouter;",
+          "  return 15;",
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ]);
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+  }, 90_000);
+
+  it("does not fail when a stubbed any result leaves a callback parameter unannotated", async () => {
+    const result = await runAutofixTscPreflight([
+      {
+        filePath: "src/components/dashboard/score-trend-chart.tsx",
+        content: [
+          "const data: any = [];",
+          "export const points = (data ?? []).map((row) => row.id);",
+          "",
+        ].join("\n"),
+      },
     ]);
     expect(result).toEqual(expect.objectContaining({ success: true }));
   }, 90_000);

@@ -254,6 +254,14 @@ export function collectExternalPackageSpecifiers(
         continue;
       }
       if (isPathMappedStubPackage(specifier) || isNodeBuiltin(specifier)) continue;
+      // `next` is installed, but `next/navigation` and the other subpaths do not
+      // resolve from a temp tsconfig. Leaving them unstubbed fails the PR with
+      // TS2307 in whatever file imported them, even when the patch is fine.
+      if (specifier === "next" || specifier.startsWith("next/")) {
+        seen.add(specifier);
+        found.push(specifier);
+        continue;
+      }
       // Scoped packages keep the full name; subpaths still declare the package root.
       const pkg =
         specifier.startsWith("@")
@@ -630,14 +638,9 @@ export function actionablePreflightDiagnostics(diagnostics: string): string[] {
       if (/Do you need to change your target library/i.test(line)) return false;
       if (/Try changing the 'lib' compiler option/i.test(line)) return false;
       if (/Cannot find global type '/i.test(line)) return false;
-      // Vercel traces `react` JS but often omits `@types/react` — not a patch bug.
-      if (
-        /error TS7016:.*declaration file for module ['"]react(?:-dom|\/jsx(?:-dev)?-runtime)?['"]/i.test(
-          line
-        )
-      ) {
-        return false;
-      }
+      // Missing .d.ts in the serverless bundle or a stubbed import. Not a patch bug.
+      if (/error TS7016:/i.test(line)) return false;
+      if (/error TS2688:/i.test(line)) return false;
       return true;
     });
 }
@@ -665,6 +668,10 @@ function buildPreflightTsconfig(host: HostTsconfigPaths, libDir: string | null):
     // `@types/react` is missing from the serverless bundle (jsx:preserve cannot).
     jsx: "react-jsx",
     strict: true,
+    // Stubs type missing imports as `any`. strict's noImplicitAny then fails
+    // every `.map((row) => …)` on that result (TS7006) even when the real
+    // project infers `row`. Real mismatches (TS2304, TS2322, TS2345) still fail.
+    noImplicitAny: false,
     noEmit: true,
     skipLibCheck: true,
     esModuleInterop: true,

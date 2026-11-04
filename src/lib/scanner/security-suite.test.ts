@@ -14,6 +14,7 @@ import {
   isServerActionFilePath,
   mergeEnvExample,
   mergeServerAction,
+  normalizeSupabaseFilterExpression,
   pickNextSecurityFindingForBatch,
   planSecurityFix,
   relocateSecurityFixTarget,
@@ -26,6 +27,21 @@ import ts from "typescript";
 
 const stripe = `sk_live_${"b".repeat(24)}`;
 const jwt = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${"a".repeat(12)}.${"c".repeat(12)}`;
+
+describe("normalizeSupabaseFilterExpression", () => {
+  it("passes a definite number into .limit and .range", () => {
+    const expression = [
+      'supabase.from("production_audit_history").select("id")',
+      ".eq(\"user_id\", userId)",
+      ".limit(HISTORY_LIMIT)",
+      ".range(from, to)",
+    ].join("");
+    const normalized = normalizeSupabaseFilterExpression(expression);
+    expect(normalized).toContain(".limit((HISTORY_LIMIT ?? 0))");
+    expect(normalized).toContain(".range((from ?? 0), (to ?? 0))");
+    expect(normalized).not.toContain(".limit(HISTORY_LIMIT)");
+  });
+});
 
 describe("runSecuritySuiteScan", () => {
   it("redacts a live Stripe key and points the diff at process.env", () => {

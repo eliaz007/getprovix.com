@@ -1139,6 +1139,9 @@ export function normalizeSupabaseFilterExpression(
     }
   );
 
+  // `.limit` / `.range` require `number`, not `number | undefined`.
+  next = coerceNumericCallArgs(next);
+
   for (const param of params) {
     if (!param.usedInInFilter) continue;
     // Skip values that already coalesce (`ids ?? []`) — wrapping again yields
@@ -1149,6 +1152,27 @@ export function normalizeSupabaseFilterExpression(
     );
     next = next.replace(inRe, (_full, column: string) => `.in(${column}, ${param.name} ?? []`);
   }
+  return next;
+}
+
+function definiteNumberArg(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || /^\d+(?:\.\d+)?$/.test(trimmed) || trimmed.includes("??")) return trimmed;
+  return `(${trimmed} ?? 0)`;
+}
+
+/** Supabase `.limit(count)` and `.range(from, to)` reject `number | undefined`. */
+function coerceNumericCallArgs(expression: string): string {
+  let next = expression.replace(
+    /\.\s*limit\s*\(\s*([^,)]+?)\s*(,\s*\{[^}]*\})?\s*\)/g,
+    (_full, count: string, options: string | undefined) =>
+      `.limit(${definiteNumberArg(count)}${options ?? ""})`
+  );
+  next = next.replace(
+    /\.\s*range\s*\(\s*([^,)]+?)\s*,\s*([^,)]+?)\s*(,\s*\{[^}]*\})?\s*\)/g,
+    (_full, from: string, to: string, options: string | undefined) =>
+      `.range(${definiteNumberArg(from)}, ${definiteNumberArg(to)}${options ?? ""})`
+  );
   return next;
 }
 
