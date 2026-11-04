@@ -15,20 +15,20 @@ type Module = {
 const MODULES: readonly Module[] = [
   {
     id: "boundaries",
-    title: "Automated Boundary Defense",
-    description: "We ensure AI agents respect internal data boundaries and ACL rules.",
+    title: "Structure checks",
+    description: "Catch oversized modules and boundary problems, then open a fix PR when it is safe.",
     icon: Shield,
   },
   {
     id: "secrets",
-    title: "Zero-Day Secret Scrub",
-    description: "Automatically detect and replace hardcoded secrets and API keys.",
+    title: "Secret scrubbing",
+    description: "Find hardcoded API keys and secrets before they land on main.",
     icon: LockKeyhole,
   },
   {
     id: "dependencies",
-    title: "Dependency Hygiene",
-    description: "Lock in clean package.json and tsconfig.json rules, preventing bloat.",
+    title: "Dependency safety",
+    description: "Flag risky or outdated packages that weaken the repo.",
     icon: Boxes,
   },
 ];
@@ -43,7 +43,7 @@ export default function ScrollFeatures(): ReactNode {
       <div className="relative max-w-xl">
         <p className="font-mono text-[11px] tracking-[0.2em] text-purple-400 uppercase">Platform</p>
         <h2 id="modules-heading" className="mt-3 text-3xl font-semibold tracking-[-0.035em] text-[#f9fafb] sm:text-4xl">
-          Three modules on the gate.
+          What Provix checks.
         </h2>
       </div>
       <Stagger className="relative mt-10 grid gap-5 md:grid-cols-3" delay={0.05}>

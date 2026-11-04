@@ -13,8 +13,8 @@ export const dynamic = "force-static";
 export const revalidate = false;
 
 export const metadata = buildPageMetadata(
-  "The Architecture Firewall for AI Codebases",
-  "Automatically validate boundaries, secrets, and dependencies before the commit lands on main.",
+  "Architecture Firewall for GitHub",
+  "Connect GitHub, scan a TypeScript repo, and open fix pull requests for secrets, database exposure, and architecture issues.",
   "/"
 );
 
@@ -44,11 +44,11 @@ export default function Home() {
         <Reveal as="section" className="max-w-3xl">
           <p className="font-mono text-[11px] tracking-[0.22em] text-purple-400 uppercase">Provix</p>
           <h1 className="mt-5 text-4xl leading-[1.08] font-semibold tracking-[-0.04em] text-[#f9fafb] sm:text-5xl lg:text-[3.4rem]">
-            Automated Code Integrity & Safety.
-            <span className="mt-2 block text-[#f9fafb]/90">Prevent bad code from ever reaching production.</span>
+            Scan your repo. Fix risky code with a PR.
           </h1>
           <p className="mt-6 max-w-xl text-base leading-relaxed text-[#f9fafb]/75 sm:text-lg">
-            Automatically validate boundaries, secrets, and dependencies before the commit lands on main.
+            Provix finds secrets, client-side database access, and bloated modules in TypeScript
+            codebases — then opens a pull request you can review and merge.
           </p>
         </Reveal>
 
@@ -64,10 +64,10 @@ export default function Home() {
           <div className="max-w-2xl">
             <p className="font-mono text-[11px] tracking-[0.2em] text-purple-400 uppercase">Interface</p>
             <h2 id="interface-heading" className="mt-3 text-3xl font-semibold tracking-[-0.035em] text-[#f9fafb] sm:text-4xl">
-              The checks, in the product.
+              What you see after the first scan.
             </h2>
             <p className="mt-4 text-[15px] leading-relaxed text-[#f9fafb]/70">
-              A pull request comment, the secret and env rules, and a live CLI stream. Each line is OK or FAILED.
+              A clear pass/fail checklist for secrets, boundaries, and dependencies — plus one-click fix PRs.
             </p>
           </div>
           <div className="relative mt-10">
@@ -84,7 +84,7 @@ export default function Home() {
 
       <Reveal as="footer" className="relative border-t border-white/10">
         <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-6 py-10 sm:flex-row sm:items-center">
-          <p className="text-sm text-[#f9fafb]/45">© {new Date().getFullYear()} Provix · Architecture firewall</p>
+          <p className="text-sm text-[#f9fafb]/45">© {new Date().getFullYear()} Provix · Closed beta</p>
           <div className="flex items-center gap-6 text-sm">
             <Link href="/privacy" prefetch={false} className="text-[#f9fafb]/45 transition-colors hover:text-[#f9fafb]">
               Privacy

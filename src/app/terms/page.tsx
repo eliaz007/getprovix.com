@@ -3,7 +3,7 @@ import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
   "Terms of Service",
-  "Terms governing use of Provix, including repository benchmarking, candidate dossiers, and contract marketplace retainers.",
+  "Terms for using Provix Architecture Firewall, including GitHub repository scanning and automated fix pull requests.",
   "/terms"
 );
 

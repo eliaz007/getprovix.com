@@ -1,19 +1,27 @@
-import { isSecurityCategory, violationCategory, type FirewallReport, type FirewallSeverity, type FirewallViolation } from "@/lib/firewall-contract";
+import {
+  isSecurityCategory,
+  violationCategory,
+  type FirewallReport,
+  type FirewallSeverity,
+  type FirewallViolation,
+} from "@/lib/firewall-contract";
+import {
+  isActionableArchitectureViolation,
+  isActionableSecurityFinding,
+} from "@/lib/firewall-autofix";
 import type { HealingAuditEntry } from "@/lib/healing-audit";
 
 export const SECURITY_BOUNDARIES = ["CLIENT_DB_EXPOSURE", "SECRET_LEAK", "VULNERABLE_DEPENDENCY"] as const;
 export type SecurityBoundary = (typeof SECURITY_BOUNDARIES)[number];
 
 export type IntegrityPosture = "OPTIMAL" | "DEGRADED" | "AT_RISK";
-export type ReviewFixStatus = "AUTO_HEALED" | "FLAGGED_FOR_REVIEW" | "COMPILE_ABORTED";
+export type ReviewFixStatus = "FIX_READY" | "OPEN";
 
 export type BoundaryMetric = {
   id: SecurityBoundary;
   severity: "CRITICAL" | "HIGH / MEDIUM";
-  intercepted: number;
-  healed: number;
-  flagged: number;
-  status: "SECURE" | "ACTION_REQUIRED";
+  open: number;
+  status: "CLEAR" | "OPEN";
 };
 
 export type ReviewFinding = {
@@ -33,12 +41,28 @@ export type IntegrityMetrics = {
   posture: IntegrityPosture | null;
   letter: string;
   statusText: string;
-  healed: number;
-  healRate: number | null;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  fixPullRequests: number;
   openExposures: number;
-  latencyLabel: string;
   boundaries: BoundaryMetric[];
   queue: ReviewFinding[];
+};
+
+const SEVERITY_PENALTY: Record<FirewallSeverity, number> = {
+  CRITICAL: 25,
+  HIGH: 12,
+  MEDIUM: 5,
+  LOW: 2,
+};
+
+const SEVERITY_RANK: Record<FirewallSeverity, number> = {
+  CRITICAL: 0,
+  HIGH: 1,
+  MEDIUM: 2,
+  LOW: 3,
 };
 
 const BOUNDARY_SEVERITY: Record<SecurityBoundary, BoundaryMetric["severity"]> = {
@@ -57,11 +81,31 @@ export function integrityPosture(score: number | null): { posture: IntegrityPost
   return { posture: "AT_RISK", letter: "F" };
 }
 
-function reviewNote(violation: FirewallViolation): string {
-  if (isSecurityCategory(violation.category)) {
-    return "No verified auto-commit is stored for this file. The patch stays in review until a TypeScript-checked heal lands on the branch.";
+function reviewNote(violation: FirewallViolation, fixStatus: ReviewFixStatus): string {
+  if (fixStatus === "FIX_READY" && isSecurityCategory(violation.category)) {
+    return "Fix with PR can open a patch for this finding. The pull request is not merged until you review it.";
   }
-  return "Architecture findings are not committed by the webhook heal loop. Apply the recommended patch on the branch.";
+  if (fixStatus === "FIX_READY") {
+    return "Fix with PR can split this file or wrap unhandled calls. A typecheck runs before the pull request opens.";
+  }
+  return "This finding is open. Provix does not open a pull request for it.";
+}
+
+function findingStatus(violation: FirewallViolation): ReviewFixStatus {
+  if (isSecurityCategory(violation.category)) {
+    return isActionableSecurityFinding(violation) ? "FIX_READY" : "OPEN";
+  }
+  return isActionableArchitectureViolation({
+    filePath: violation.filePath,
+    rule: violation.rule,
+    autofixable: violation.autofixable,
+  })
+    ? "FIX_READY"
+    : "OPEN";
+}
+
+function countSeverity(violations: readonly FirewallViolation[], severity: FirewallSeverity): number {
+  return violations.filter((violation) => violation.severity === severity).length;
 }
 
 export function buildIntegrityMetrics(
@@ -69,54 +113,62 @@ export function buildIntegrityMetrics(
   history: readonly HealingAuditEntry[]
 ): IntegrityMetrics {
   const violations = report?.violations ?? [];
-  const healed = history.filter((entry) => entry.category === "leaks" && entry.outcome === "healed").length;
+  const critical = countSeverity(violations, "CRITICAL");
+  const high = countSeverity(violations, "HIGH");
+  const medium = countSeverity(violations, "MEDIUM");
+  const low = countSeverity(violations, "LOW");
   const openExposures = violations.length;
-  const securityOpen = violations.filter((violation) => isSecurityCategory(violation.category)).length;
-  const healDenom = healed + securityOpen;
-  const healRate = healDenom === 0 ? null : Math.round((100 * healed) / healDenom);
-  const scoreDenom = healed + openExposures;
-  const score =
-    report === null && history.length === 0
-      ? null
-      : scoreDenom === 0
-        ? 100
-        : Math.round((100 * healed) / scoreDenom);
+  const penalty = violations.reduce((sum, violation) => sum + SEVERITY_PENALTY[violation.severity], 0);
+  const score = report === null ? null : Math.max(0, 100 - penalty);
   const posture = integrityPosture(score);
+  const fixPullRequests = history.filter((entry) => entry.outcome === "healed").length;
 
   const boundaries: BoundaryMetric[] = SECURITY_BOUNDARIES.map((id) => {
-    const flagged = violations.filter((violation) => violationCategory(violation) === id).length;
+    const open = violations.filter((violation) => violationCategory(violation) === id).length;
     return {
       id,
       severity: BOUNDARY_SEVERITY[id],
-      intercepted: flagged,
-      healed: 0,
-      flagged,
-      status: flagged === 0 ? "SECURE" : "ACTION_REQUIRED",
+      open,
+      status: open === 0 ? "CLEAR" : "OPEN",
     };
   });
 
-  const queue: ReviewFinding[] = violations.map((violation, index) => ({
-    id: `${violation.filePath}:${violation.line}:${index}`,
-    severity: violation.severity,
-    category: violationCategory(violation),
-    filePath: violation.filePath,
-    line: violation.line,
-    fixStatus: "FLAGGED_FOR_REVIEW",
-    summary: violation.message.replace(/\s+/g, " ").trim(),
-    diff: violation.remediation?.diff ?? null,
-    note: reviewNote(violation),
-  }));
+  const queue: ReviewFinding[] = violations.map((violation, index) => {
+    const fixStatus = findingStatus(violation);
+    return {
+      id: `${violation.filePath}:${violation.line}:${index}`,
+      severity: violation.severity,
+      category: violationCategory(violation),
+      filePath: violation.filePath,
+      line: violation.line,
+      fixStatus,
+      summary: violation.message.replace(/\s+/g, " ").trim(),
+      diff: violation.remediation?.diff ?? null,
+      note: reviewNote(violation, fixStatus),
+    };
+  }).sort(
+    (left, right) =>
+      SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity] ||
+      left.filePath.localeCompare(right.filePath) ||
+      left.line - right.line
+  );
 
   return {
     score,
     posture: posture.posture,
     letter: posture.letter,
     statusText:
-      score === null ? "awaiting first scan" : openExposures === 0 ? "no open exposures" : `${openExposures} open`,
-    healed,
-    healRate,
+      score === null
+        ? "No scan yet"
+        : openExposures === 0
+          ? "Clean scan"
+          : `${critical} critical · ${openExposures} open`,
+    critical,
+    high,
+    medium,
+    low,
+    fixPullRequests,
     openExposures,
-    latencyLabel: "—",
     boundaries,
     queue,
   };

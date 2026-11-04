@@ -67,7 +67,7 @@ export default function ConnectRepositoryBanner() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0 max-w-2xl">
           <p className="font-mono text-sm text-zinc-100">
-            Install the Provix GitHub App to enable automated security monitoring and RLS boundary audits.
+            Install the Provix GitHub App to scan this workspace and open fix pull requests.
           </p>
           <p className="mt-1 font-mono text-[11px] text-zinc-500">
             You can manage GitHub App integration anytime in{" "}

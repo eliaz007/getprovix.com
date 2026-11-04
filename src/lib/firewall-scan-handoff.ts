@@ -1,4 +1,4 @@
-import type { FirewallReport } from "@/lib/firewall-contract";
+import type { FirewallReport, FirewallScanCoverage } from "@/lib/firewall-contract";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 
 const STORAGE_KEY = "provix.firewall.scan";
@@ -14,7 +14,19 @@ export type FirewallScanHandoff = {
   report: FirewallReport;
   note: string;
   source?: "local" | "github";
+  coverage?: FirewallScanCoverage | null;
 };
+
+function coverageFrom(value: unknown): FirewallScanCoverage | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.scanned !== "number" || typeof record.total !== "number") return null;
+  return {
+    scanned: record.scanned,
+    total: record.total,
+    treeTruncated: record.treeTruncated === true,
+  };
+}
 
 export function saveFirewallScanHandoff(handoff: FirewallScanHandoff) {
   writeStorageItem(STORAGE_KEY, JSON.stringify(handoff));
@@ -33,6 +45,7 @@ export function readLatestFirewallScanHandoff(): FirewallScanHandoff | null {
       report: parsed.report,
       note: parsed.note,
       source: parsed.source === "github" || parsed.source === "local" ? parsed.source : undefined,
+      coverage: coverageFrom(parsed.coverage),
     };
   } catch {
     return null;

@@ -2,23 +2,53 @@
 
 import { useEffect, useState } from "react";
 import ExecutionStream from "@/components/firewall/execution-stream";
+import { mutedLabelClass, panelClass } from "@/components/firewall/firewall-ui";
 import IntegrityTab from "@/components/integrity-tab";
-import HealingAuditSummaryPanel from "@/components/healing-audit-summary";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
-import type { FirewallReport } from "@/lib/firewall-contract";
+import type { FirewallReport, FirewallScanCoverage } from "@/lib/firewall-contract";
+import { partialScanLine } from "@/lib/firewall-repo-access";
 import type { HealingAuditEntry, HealingAuditResponse } from "@/lib/healing-audit";
 
 const TABS = [
-  { id: "stream" as const, label: "Execution stream" },
-  { id: "integrity" as const, label: "Repository integrity" },
+  { id: "stream" as const, label: "Live activity" },
+  { id: "integrity" as const, label: "Repo score" },
 ];
+
+function ScanBrief({
+  report,
+  coverage,
+}: {
+  report: FirewallReport | null;
+  coverage?: FirewallScanCoverage | null;
+}) {
+  if (!report) return null;
+  const criticalCount = report.violations.filter((violation) => violation.severity === "CRITICAL").length;
+  const highCount = report.violations.filter((violation) => violation.severity === "HIGH").length;
+  const otherCount = report.violations.length - criticalCount - highCount;
+  const coverageLine = partialScanLine(coverage);
+  return (
+    <section className={`${panelClass} px-5 py-5`}>
+      <p className={mutedLabelClass}>This repository</p>
+      <h2 className="mt-2 text-[15px] font-medium tracking-tight text-zinc-100">
+        {criticalCount} critical · {highCount} high · {otherCount} other
+      </h2>
+      <p className="mt-1 max-w-3xl text-sm leading-relaxed text-zinc-500">
+        The score is this scan only. Fix with PR can open a patch for database exposure, secrets, known dependency
+        floors, and oversized modules.
+      </p>
+      {coverageLine ? <p className="mt-3 text-sm text-amber-200/90">{coverageLine}</p> : null}
+    </section>
+  );
+}
 
 export default function IntegrityPanel({
   repo,
   report,
+  coverage,
 }: {
   repo: string | null;
   report: FirewallReport | null;
+  coverage?: FirewallScanCoverage | null;
 }) {
   const { integrityPane, setIntegrityPane } = useFirewallView();
   const [history, setHistory] = useState<HealingAuditEntry[]>([]);
@@ -48,12 +78,12 @@ export default function IntegrityPanel({
 
   return (
     <div className="space-y-4">
-      <HealingAuditSummaryPanel />
+      <ScanBrief report={report} coverage={coverage} />
 
       <div
         className="flex gap-1 border-b border-white/[0.06]"
         role="tablist"
-        aria-label="Integrity views"
+        aria-label="Overview views"
       >
         {TABS.map((tab) => {
           const selected = integrityPane === tab.id;

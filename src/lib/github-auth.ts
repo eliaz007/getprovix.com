@@ -13,7 +13,7 @@ export async function handleGitHubSignIn(
   const destination =
     nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")
       ? nextPath
-      : "/dashboard";
+      : "/onboarding";
 
   // Exact /auth/callback (no query). Supabase only honors allow-listed Redirect
   // URLs; query variants fall back to the Site URL and often lose the session.
@@ -30,12 +30,12 @@ export async function handleGitHubSignIn(
   });
 }
 
-export async function handleGitHubLinkIdentity(nextPath = "/dashboard") {
+export async function handleGitHubLinkIdentity(nextPath = "/onboarding") {
   const supabase = createClient();
   const destination =
     nextPath.startsWith("/") && !nextPath.startsWith("//")
       ? nextPath
-      : "/dashboard";
+      : "/onboarding";
 
   rememberOAuthNext(destination);
   const redirectTo = buildExactOAuthCallbackUrl();

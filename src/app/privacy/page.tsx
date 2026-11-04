@@ -3,7 +3,7 @@ import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
   "Privacy Policy",
-  "How Provix collects, uses, and protects your data across verification, matching, hiring, and contract marketplace workflows.",
+  "How Provix collects, uses, and protects data when you connect GitHub, scan repositories, and open fix pull requests.",
   "/privacy"
 );
 

@@ -1,48 +1,40 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Shield } from "lucide-react";
 
 const PILLARS = [
   "Auth boundaries",
-  "RLS surface",
-  "Client query exposure",
+  "Database rules",
+  "Client database access",
   "Dependency risk",
-  "AST integrity",
+  "Repo structure",
 ] as const;
 
 export default function AuditProgressOverlay({
   open,
   repo,
-  onComplete,
 }: {
   open: boolean;
   repo: string | null;
-  onComplete?: () => void;
 }) {
   const [step, setStep] = useState(0);
-  const completed = useRef(false);
 
   useEffect(() => {
-    completed.current = false;
     if (!open) {
       setStep(0);
       return;
     }
     setStep(0);
+    // Visual only. Navigation waits for the scan response in onboarding.
     const timers = PILLARS.map((_, index) =>
       setTimeout(() => {
-        const next = index + 1;
-        setStep(next);
-        if (next >= PILLARS.length && !completed.current) {
-          completed.current = true;
-          onComplete?.();
-        }
+        setStep(index + 1);
       }, 700 + index * 780)
     );
     return () => timers.forEach(clearTimeout);
-  }, [open, onComplete]);
+  }, [open]);
 
   const progress = Math.min(100, Math.round((step / PILLARS.length) * 100));
 
@@ -69,7 +61,7 @@ export default function AuditProgressOverlay({
               </div>
               <div>
                 <p className="text-sm font-semibold tracking-tight text-zinc-100">
-                  Initial AST audit
+                  Running first scan
                 </p>
                 <p className="font-mono text-xs text-zinc-500">
                   {repo ?? "repository"}
@@ -86,7 +78,7 @@ export default function AuditProgressOverlay({
               />
             </div>
             <p className="mb-6 font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-              {progress}% · walking audit pillars
+              {progress}% · checking your repo
             </p>
 
             <ul className="space-y-2.5">

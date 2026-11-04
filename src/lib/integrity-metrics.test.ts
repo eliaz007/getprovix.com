@@ -30,40 +30,40 @@ const healed: HealingAuditEntry = {
 };
 
 describe("buildIntegrityMetrics", () => {
-  it("scores a clean scan as optimal and leaves latency unset", () => {
+  it("scores a clean scan as optimal", () => {
     const metrics = buildIntegrityMetrics({ ...report, violations: [] }, []);
     expect(metrics.score).toBe(100);
     expect(metrics.posture).toBe("OPTIMAL");
     expect(metrics.letter).toBe("A+");
-    expect(metrics.latencyLabel).toBe("—");
-    expect(metrics.boundaries.every((row) => row.status === "SECURE")).toBe(true);
+    expect(metrics.statusText).toBe("Clean scan");
+    expect(metrics.boundaries.every((row) => row.status === "CLEAR" && row.open === 0)).toBe(true);
     expect(metrics.queue).toEqual([]);
   });
 
-  it("counts an open client exposure against a verified leak heal", () => {
+  it("scores the open scan and keeps fix pull requests separate", () => {
     const metrics = buildIntegrityMetrics(report, [healed]);
-    expect(metrics.healed).toBe(1);
+    expect(metrics.fixPullRequests).toBe(1);
     expect(metrics.openExposures).toBe(1);
-    expect(metrics.healRate).toBe(50);
-    expect(metrics.score).toBe(50);
-    expect(metrics.posture).toBe("AT_RISK");
+    expect(metrics.critical).toBe(1);
+    expect(metrics.score).toBe(75);
+    expect(metrics.posture).toBe("DEGRADED");
+    expect(metrics.letter).toBe("C");
     expect(metrics.boundaries.find((row) => row.id === "CLIENT_DB_EXPOSURE")).toMatchObject({
-      intercepted: 1,
-      flagged: 1,
-      status: "ACTION_REQUIRED",
+      open: 1,
+      status: "OPEN",
     });
     expect(metrics.queue[0]).toMatchObject({
       severity: "CRITICAL",
       filePath: "src/components/jobs.tsx",
       line: 12,
-      fixStatus: "FLAGGED_FOR_REVIEW",
+      fixStatus: "FIX_READY",
     });
   });
 
   it("stays blank before the first scan", () => {
     const metrics = buildIntegrityMetrics(null, []);
     expect(metrics.score).toBeNull();
-    expect(metrics.statusText).toBe("awaiting first scan");
+    expect(metrics.statusText).toBe("No scan yet");
     expect(metrics.queue).toEqual([]);
   });
 });

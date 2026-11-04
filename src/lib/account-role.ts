@@ -250,11 +250,13 @@ export function resolvePostAuthDestination(input: {
     ? EMPLOYER_DASHBOARD_PATH
     : CANDIDATE_DASHBOARD_PATH;
 
+  // Honor explicit /onboarding (GitHub App connect). Only ignore empty next,
+  // home, and the retired /onboarding/role picker — not CANDIDATE_SETUP_PATH,
+  // which is the same URL users reopen to install the App.
   if (
     !requestedUrl ||
     requestedUrl.pathname === "/" ||
-    isRoleOnboardingPath(requestedUrl.pathname) ||
-    requestedUrl.pathname === CANDIDATE_SETUP_PATH
+    isRoleOnboardingPath(requestedUrl.pathname)
   ) {
     return defaultDestination;
   }

@@ -2,7 +2,6 @@ import path from "node:path";
 import { Octokit } from "@octokit/rest";
 import { analyzeSourceTexts } from "../../scripts/ingest-engine";
 import type { FirewallReport, FirewallResponse } from "@/lib/firewall-contract";
-import { resolveGithubRepoAccessToken } from "@/lib/github-app-client";
 import { parseGitHubRepository } from "@/lib/github-repo-ref";
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
@@ -114,19 +113,14 @@ function decodeBlob(content: string, encoding: string): string | null {
   return text.includes("\u0000") ? null : text;
 }
 
-export async function scanPublicGitHubRepo(input: string): Promise<ScanResult> {
+export async function scanPublicGitHubRepo(input: string, token: string): Promise<ScanResult> {
   const parsed = parseGitHubRepository(input);
   if (!parsed) {
     return { status: 400, body: errorBody(null, "Paste a public GitHub URL or owner/repo.") };
   }
 
-  const access = await resolveGithubRepoAccessToken(parsed.owner, parsed.repo);
-  if (!access.ok) {
-    return { status: access.status, body: errorBody(parsed.repoUrl, access.message) };
-  }
-
   const octokit = new Octokit({
-    auth: access.token,
+    auth: token,
     userAgent: "provix-architecture-firewall",
   });
 
@@ -217,6 +211,11 @@ export async function scanPublicGitHubRepo(input: string): Promise<ScanResult> {
         message: `Scanned ${parsed.repoUrl}. Architecture firewall and security guard reviewed ${coverage}${companionNote}.${truncated}`,
         target: { kind: "github", repoUrl: parsed.repoUrl },
         report,
+        coverage: {
+          scanned: sources.length,
+          total: candidates.length,
+          treeTruncated: Boolean(tree.data.truncated),
+        },
       },
     };
   } catch (error) {

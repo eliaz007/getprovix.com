@@ -28,6 +28,7 @@ import {
   normalizeEmail,
 } from "@/lib/validate-email";
 import { hasCompletedCandidateSetup } from "@/lib/candidate-onboarding";
+import { workspaceEntryPath } from "@/lib/workspace-entry";
 import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
@@ -97,9 +98,16 @@ async function destinationAfterAuth(
     setupComplete = hasCompletedCandidateSetup(profile);
   }
 
+  const requestedNext = params.get("next")?.trim() ?? "";
+  const needsWorkspaceChoice =
+    !requestedNext || requestedNext === "/dashboard" || requestedNext.startsWith("/dashboard?");
+  if (needsWorkspaceChoice && getPostLoginPath(user) !== "/admin") {
+    return appendAuthQuery(await workspaceEntryPath(), search);
+  }
+
   const destination = resolvePostAuthDestination({
     role,
-    requestedNext: params.get("next"),
+    requestedNext,
     isAdmin: getPostLoginPath(user) === "/admin",
     setupComplete,
   });
@@ -417,6 +425,7 @@ export default function LoginPage() {
           {!showResetPassword && (
             <>
               <OAuthSignInButtons
+                nextPath="/onboarding"
                 accountKind={
                   mode === "sign-up"
                     ? signupKind === "business"

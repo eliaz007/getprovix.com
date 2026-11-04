@@ -74,6 +74,13 @@ describe("authentication and session validation", () => {
     expect(
       resolvePostAuthDestination({
         role: "candidate",
+        setupComplete: true,
+        requestedNext: "/onboarding",
+      })
+    ).toBe("/onboarding");
+    expect(
+      resolvePostAuthDestination({
+        role: "candidate",
         requestedNext: "/dashboard/auditor",
         isAdmin: true,
       })

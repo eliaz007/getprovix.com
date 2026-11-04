@@ -52,7 +52,7 @@ function decodePathCandidate(raw: string): string {
 
 /**
  * Prefer explicit next (query or cookie). Password recovery wins.
- * Falls back to /dashboard.
+ * Falls back to /onboarding (Architecture Firewall connect flow).
  */
 export function resolveOAuthSuccessPath(
   nextParam: string | null | undefined,
@@ -76,7 +76,7 @@ export function resolveOAuthSuccessPath(
     }
   }
 
-  return "/dashboard";
+  return "/onboarding";
 }
 
 export function buildOAuthCallbackUrl(): string {
@@ -85,7 +85,7 @@ export function buildOAuthCallbackUrl(): string {
   if (pathname === "/login" || pathname.startsWith("/login/")) {
     const params = new URLSearchParams(search);
     const next = params.get("next")?.trim() ?? "";
-    const destination = isSafeOAuthNextPath(next) ? next : "/dashboard";
+    const destination = isSafeOAuthNextPath(next) ? next : "/onboarding";
     rememberOAuthNext(destination);
     return buildExactOAuthCallbackUrl(origin);
   }
@@ -95,9 +95,9 @@ export function buildOAuthCallbackUrl(): string {
   );
 
   if (canReturn) {
-    rememberOAuthNext(pathname);
+    rememberOAuthNext(`${pathname}${search}`);
   } else {
-    rememberOAuthNext("/dashboard");
+    rememberOAuthNext("/onboarding");
   }
 
   return buildExactOAuthCallbackUrl(origin);

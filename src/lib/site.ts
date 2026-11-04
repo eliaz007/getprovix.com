@@ -20,9 +20,9 @@ export const SITE_URL = normalizeSiteUrl(
 );
 
 export const SITE_NAME = "Provix";
-export const SITE_TITLE = "Provix — Verified Candidate Intelligence";
+export const SITE_TITLE = "Provix — Architecture Firewall for GitHub";
 export const SITE_DESCRIPTION =
-  "Provix verifies engineering talent with proof-of-work screening, AI GitHub audits, repository integrity analysis, and candidate scoring for technical hiring.";
+  "Connect a GitHub repo, scan for secrets, client database exposure, and architecture issues, then open fix pull requests from one workspace.";
 export const SITE_EMAIL = "support@getprovix.com";
 export const SITE_LOGO_URL = `${SITE_URL}/logo.svg`;
 /** Social share image — drop the file at `public/og.png` (1200×630 recommended). */
@@ -37,14 +37,13 @@ export const SITE_OG_IMAGE = {
 
 export const SITE_KEYWORDS = [
   "Provix",
-  "verified candidate intelligence",
-  "proof-of-work screening",
-  "Code & Resume Auditor",
-  "developer hiring",
-  "technical recruiting",
-  "repository integrity analysis",
-  "candidate scoring",
-  "engineering talent marketplace",
+  "architecture firewall",
+  "GitHub security scan",
+  "secret leak detection",
+  "client database exposure",
+  "autofix pull request",
+  "TypeScript repository scanner",
+  "Next.js security",
 ];
 
 export function buildPageMetadata(

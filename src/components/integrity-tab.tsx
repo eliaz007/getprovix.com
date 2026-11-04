@@ -33,15 +33,23 @@ function postureLabel(posture: IntegrityPosture | null): string {
 }
 
 function fixStatusLabel(status: ReviewFinding["fixStatus"]): string {
-  if (status === "AUTO_HEALED") return "Healed";
-  if (status === "COMPILE_ABORTED") return "Blocked";
-  return "Needs review";
+  return status === "FIX_READY" ? "Can fix" : "Open";
 }
 
 function fixStatusTone(status: ReviewFinding["fixStatus"]): "ok" | "warn" | "danger" | "neutral" {
-  if (status === "AUTO_HEALED") return "ok";
-  if (status === "COMPILE_ABORTED") return "danger";
-  return "warn";
+  return status === "FIX_READY" ? "ok" : "warn";
+}
+
+function scanStamp(timestamp: string | undefined): string {
+  if (!timestamp) return "No scan yet";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "Latest scan";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function diffLineClass(line: string): string {
@@ -113,8 +121,7 @@ export default function IntegrityTab({
   history: readonly HealingAuditEntry[];
 }) {
   const metrics = buildIntegrityMetrics(report, history);
-  const scoreLabel = metrics.score === null ? "—" : `${metrics.score}%`;
-  const rateLabel = metrics.healRate === null ? "—" : `${metrics.healRate}%`;
+  const scoreLabel = metrics.score === null ? "—" : String(metrics.score);
 
   return (
     <section className={`${panelClass} space-y-0`}>
@@ -124,12 +131,7 @@ export default function IntegrityTab({
           <h2 className="truncate text-base font-medium tracking-tight text-zinc-100">
             {repo ?? "local"}
           </h2>
-          <p className="flex items-center gap-2 text-xs text-zinc-500">
-            <StatusDot tone="ok" />
-            Live
-            <span className="text-zinc-700">·</span>
-            Branch protection not reported
-          </p>
+          <p className="text-xs text-zinc-500">Scanned {scanStamp(report?.timestamp)}</p>
         </div>
         <div className="text-right">
           <p className="inline-flex items-center gap-2 text-sm text-zinc-300">
@@ -145,10 +147,10 @@ export default function IntegrityTab({
 
       <dl className="grid grid-cols-2 border-b border-white/[0.06] lg:grid-cols-4">
         {[
-          { label: "Integrity score", value: scoreLabel, hint: metrics.statusText },
-          { label: "Auto-heal rate", value: rateLabel, hint: `${metrics.healed} healed` },
-          { label: "Open exposures", value: String(metrics.openExposures), hint: "Across this scan" },
-          { label: "Mean heal latency", value: metrics.latencyLabel, hint: "No timing recorded" },
+          { label: "Repo score", value: scoreLabel, hint: "This scan, out of 100" },
+          { label: "Critical", value: String(metrics.critical), hint: "Highest severity" },
+          { label: "Open findings", value: String(metrics.openExposures), hint: metrics.statusText },
+          { label: "Fix PRs", value: String(metrics.fixPullRequests), hint: "Opened for this repo" },
         ].map((metric, index) => {
           const borders = [
             "border-b border-r border-white/[0.06] lg:border-b-0",
@@ -178,9 +180,7 @@ export default function IntegrityTab({
               <tr className={tableHeadClass}>
                 <th className="px-5 py-2.5 font-medium">Severity</th>
                 <th className="px-4 py-2.5 font-medium">Boundary</th>
-                <th className="px-4 py-2.5 font-medium">Intercepted</th>
-                <th className="px-4 py-2.5 font-medium">Healed</th>
-                <th className="px-4 py-2.5 font-medium">Flagged</th>
+                <th className="px-4 py-2.5 font-medium">Open</th>
                 <th className="px-5 py-2.5 font-medium">Status</th>
               </tr>
             </thead>
@@ -194,13 +194,11 @@ export default function IntegrityTab({
                     </span>
                   </td>
                   <td className={`${tableCellClass} text-zinc-200`}>{formatBoundaryId(row.id)}</td>
-                  <td className={`${tableCellClass} tabular-nums`}>{row.intercepted}</td>
-                  <td className={`${tableCellClass} tabular-nums`}>{row.healed}</td>
-                  <td className={`${tableCellClass} tabular-nums`}>{row.flagged}</td>
+                  <td className={`${tableCellClass} tabular-nums`}>{row.open}</td>
                   <td className={`${tableCellClass} px-5`}>
                     <span className="inline-flex items-center gap-2 text-xs text-zinc-400">
-                      <StatusDot tone={row.status === "SECURE" ? "ok" : "warn"} />
-                      {row.status === "SECURE" ? "Secure" : "Action needed"}
+                      <StatusDot tone={row.status === "CLEAR" ? "ok" : "warn"} />
+                      {row.status === "CLEAR" ? "Clear" : "Open"}
                     </span>
                   </td>
                 </tr>
@@ -209,14 +207,14 @@ export default function IntegrityTab({
           </table>
         </div>
         <p className="px-5 py-3 text-xs leading-relaxed text-zinc-600">
-          Healed counts roll into the auto-heal rate. Stored commits do not record which boundary they closed.
+          Counts are this scan. Fix with PR covers database exposure, secrets, and the dependency floors Provix knows.
         </p>
       </div>
 
       <div>
         <div className="px-5 pt-5 pb-3">
           <h3 className={sectionLabelClass}>Review queue</h3>
-          <p className="mt-1 text-xs text-zinc-500">Findings waiting for a verified heal</p>
+          <p className="mt-1 text-xs text-zinc-500">Open findings from this scan</p>
         </div>
         {metrics.queue.length === 0 ? (
           <p className="px-5 pb-5 text-sm text-zinc-500">No findings are waiting for review.</p>

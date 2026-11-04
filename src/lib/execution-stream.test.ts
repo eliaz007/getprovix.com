@@ -44,7 +44,7 @@ describe("buildExecutionEvents", () => {
       ref: "#41",
       filePath: "src/components/jobs.tsx",
       verified: true,
-      summary: "Rewrote client supabase.from() query into secure server action -> auto-committed to branch",
+      summary: "Opened a security fix pull request",
     });
     expect(events[0]?.diff).toContain("-supabase.from()");
     expect(leaksAutoHealed([healed])).toBe(1);
@@ -82,7 +82,7 @@ describe("buildExecutionEvents", () => {
   it("emits a single clean row when the scan has nothing to intercept", () => {
     const events = buildExecutionEvents({ ...report, violations: [] }, []);
     expect(events).toEqual([
-      expect.objectContaining({ badge: "CLEAN", summary: "0 leaks, 0 violations. Ready to merge." }),
+      expect.objectContaining({ badge: "CLEAN", summary: "This scan found no structure or security issues." }),
     ]);
   });
 });

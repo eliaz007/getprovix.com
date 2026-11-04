@@ -28,10 +28,6 @@ function oneLine(value: string): string {
 }
 
 function violationSummary(violation: FirewallViolation): string {
-  const category = violationCategory(violation);
-  if (category === "CLIENT_DB_EXPOSURE") return "Blocked client supabase.from() query on the scanned tree";
-  if (category === "SECRET_LEAK") return "Blocked a hardcoded secret before it reached the branch";
-  if (category === "VULNERABLE_DEPENDENCY") return "Blocked a dependency below the floor";
   return oneLine(violation.message);
 }
 
@@ -75,9 +71,9 @@ function describeViolationAction(violation: FirewallViolation): string | null {
 
 function healSummary(entry: HealingAuditEntry, violation?: FirewallViolation): string {
   if (entry.category === "leaks" && entry.outcome === "healed") {
-    return "Rewrote client supabase.from() query into secure server action -> auto-committed to branch";
+    return describeRecordedAction(entry.note) ?? "Opened a security fix pull request";
   }
-  if (entry.category === "leaks") return "Leak patch reverted on the pull request branch";
+  if (entry.category === "leaks") return "Security fix pull request was closed";
 
   const action =
     describeRecordedAction(entry.note) ??
@@ -134,7 +130,7 @@ export function buildExecutionEvents(
       ref: "scan",
       filePath: "—",
       line: null,
-      summary: "0 leaks, 0 violations. Ready to merge.",
+      summary: "This scan found no structure or security issues.",
       diff: null,
       verified: false,
     });
@@ -168,7 +164,7 @@ export function buildExecutionEvents(
       ref: "—",
       filePath: "—",
       line: null,
-      summary: "No autonomous interventions recorded yet. Engine is watching.",
+      summary: "Run a scan to see findings for this repository.",
       diff: null,
       verified: false,
     });

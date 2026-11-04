@@ -108,18 +108,25 @@ function pullRequestBody(filePath: string, summary: string, writes: Array<{ file
   ].join("\n");
 }
 
-export async function openAutofixPullRequest(repoInput: string, filePath: string): Promise<PrResult> {
+export async function openAutofixPullRequest(
+  repoInput: string,
+  filePath: string,
+  accessToken?: string
+): Promise<PrResult> {
   const ownerRepo = toGitHubOwnerRepo(repoInput);
   const [owner, repo] = ownerRepo?.split("/") ?? [];
   if (!ownerRepo || !owner || !repo) {
     return { status: 400, body: { ok: false, message: "repoUrl must be a public GitHub URL or owner/repo." } };
   }
 
-  const access = await resolveGithubRepoAccessToken(owner, repo);
-  if (!access.ok) {
-    return { status: access.status, body: { ok: false, message: access.message } };
+  const token = accessToken?.trim() || "";
+  if (!token) {
+    const access = await resolveGithubRepoAccessToken(owner, repo);
+    if (!access.ok) {
+      return { status: access.status, body: { ok: false, message: access.message } };
+    }
+    return openAutofixPullRequest(repoInput, filePath, access.token);
   }
-  const token = access.token;
 
   const repoUrl = `https://github.com/${ownerRepo}`;
   if (!isFirewallSourcePath(filePath)) {
@@ -220,7 +227,7 @@ export async function openSecurityFixPullRequest(
   filePath: string,
   line: number,
   category: SecurityCategory,
-  hint?: { snippet?: string | null }
+  hint?: { snippet?: string | null; token?: string | null }
 ): Promise<PrResult> {
   const ownerRepo = toGitHubOwnerRepo(repoInput);
   const [owner, repo] = ownerRepo?.split("/") ?? [];
@@ -228,11 +235,18 @@ export async function openSecurityFixPullRequest(
     return { status: 400, body: { ok: false, message: "repoUrl must be a public GitHub URL or owner/repo." } };
   }
 
-  const access = await resolveGithubRepoAccessToken(owner, repo);
-  if (!access.ok) {
-    return { status: access.status, body: { ok: false, message: access.message } };
+  const provided = hint?.token?.trim() || "";
+  if (!provided) {
+    const access = await resolveGithubRepoAccessToken(owner, repo);
+    if (!access.ok) {
+      return { status: access.status, body: { ok: false, message: access.message } };
+    }
+    return openSecurityFixPullRequest(repoInput, filePath, line, category, {
+      snippet: hint?.snippet,
+      token: access.token,
+    });
   }
-  const token = access.token;
+  const token = provided;
 
   const repoUrl = `https://github.com/${ownerRepo}`;
   const normalizedPath = filePath.replace(/\\/g, "/").replace(/^\/+/, "");

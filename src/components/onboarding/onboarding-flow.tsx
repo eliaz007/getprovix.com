@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -75,11 +75,6 @@ export default function OnboardingFlow() {
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [installPending, setInstallPending] = useState(false);
   const [auditing, setAuditing] = useState(false);
-  const [pillarsComplete, setPillarsComplete] = useState(false);
-  const destinationRef = useRef<string | null>(null);
-  const scanRef = useRef<Promise<void> | null>(null);
-  const leavingRef = useRef(false);
-
   const displayRepos = useMemo(() => {
     const pool = preferred.length > 0 ? preferred : repos;
     return pool.slice(0, 12);
@@ -122,6 +117,13 @@ export default function OnboardingFlow() {
         if (!payload.installed) {
           if (payload.message) setError(payload.message);
           setPhase("install");
+          return;
+        }
+
+        const stayForSetup =
+          params.get("connected") === "1" || Boolean(params.get("repo")) || Boolean(params.get("error"));
+        if (!stayForSetup) {
+          hardNavigate(integrityDashboardPath(payload.primaryRepo));
           return;
         }
 
@@ -171,62 +173,62 @@ export default function OnboardingFlow() {
     hardNavigate(GITHUB_APP_CONNECT_PATH);
   }
 
-  const handlePillarsComplete = useCallback(() => {
-    setPillarsComplete(true);
-  }, []);
-
-  useEffect(() => {
-    if (!pillarsComplete || leavingRef.current || !destinationRef.current || !scanRef.current) return;
-    const destination = destinationRef.current;
-    const scan = scanRef.current;
-    void scan.then(() => {
-      if (leavingRef.current) return;
-      leavingRef.current = true;
-      hardNavigate(destination);
-    });
-  }, [pillarsComplete]);
+  function scanFailureMessage(status: number, message: string | null): string {
+    const detail = message?.trim();
+    if (detail) return detail;
+    if (status === 401) {
+      return "GitHub rejected Provix credentials (401). Reconnect GitHub or check the access token.";
+    }
+    if (status === 403) {
+      return "GitHub refused the scan (403). Install the Provix App on this repo, or use a token that can read it.";
+    }
+    if (status === 404) {
+      return "GitHub could not find that repository (404). Check the name and that Provix can access it.";
+    }
+    return status ? `The scan failed (${status}).` : "Network error. The scan did not finish.";
+  }
 
   async function runInitialAudit() {
     if (!selectedRepo || auditing) return;
     const repo = selectedRepo;
-    const destination = integrityDashboardPath(repo);
-    destinationRef.current = destination;
     setAuditing(true);
-    setPillarsComplete(false);
     setPhase("auditing");
     setError(null);
-    leavingRef.current = false;
 
-    scanRef.current = (async () => {
-      try {
-        const response = await fetch("/api/firewall", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source: "github", repoUrl: repo }),
-        });
-        const payload = await readJsonResponse<FirewallResponse>(response);
-        if (response.ok && payload.status === "ready" && payload.report && payload.source === "github") {
-          saveFirewallScanHandoff({
-            repoUrl: repo,
-            report: payload.report,
-            note: payload.message ?? `Initial AST audit for ${repo}.`,
-            source: "github",
-          });
-        }
-      } catch {
-        // Still enter the dashboard; firewall page can retry the scan.
+    try {
+      const response = await fetch("/api/firewall", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: "github", repoUrl: repo }),
+      });
+      const payload = await readJsonResponse<FirewallResponse>(response);
+      const ready =
+        response.ok && payload.status === "ready" && payload.report && payload.source === "github";
+      if (!ready) {
+        setError(scanFailureMessage(response.status, payload.message));
+        setPhase("setup");
+        return;
       }
+      saveFirewallScanHandoff({
+        repoUrl: repo,
+        report: payload.report!,
+        note: payload.message ?? `First scan for ${repo}.`,
+        source: "github",
+        coverage: payload.coverage ?? null,
+      });
       markOnboardingAuditComplete(repo);
-    })();
+      hardNavigate(integrityDashboardPath(repo));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error. The scan did not finish.");
+      setPhase("setup");
+    } finally {
+      setAuditing(false);
+    }
   }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-zinc-950 text-zinc-100">
-      <AuditProgressOverlay
-        open={auditing || phase === "auditing"}
-        repo={selectedRepo}
-        onComplete={handlePillarsComplete}
-      />
+      <AuditProgressOverlay open={auditing || phase === "auditing"} repo={selectedRepo} />
 
       <AnimatePresence mode="wait">
         {phase === "boot" || (phase === "setup" && loadingRepos) ? (
@@ -264,9 +266,23 @@ export default function OnboardingFlow() {
                   Provix
                 </h1>
                 <p className="mt-4 max-w-sm text-sm leading-relaxed text-zinc-400">
-                  Architecture Firewall watches your AST for auth gaps, RLS drift, and
-                  client-side database leaks before they ship.
+                  Connect a repo, scan for secrets and risky database access, then open a
+                  fix pull request you can review.
                 </p>
+                <ol className="mt-8 space-y-3 text-sm text-zinc-400">
+                  <li className="flex gap-3">
+                    <span className="font-mono text-violet-300">1</span>
+                    Sign in with GitHub
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="font-mono text-violet-300">2</span>
+                    Install the Provix App
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="font-mono text-violet-300">3</span>
+                    Pick a repo and run the first scan
+                  </li>
+                </ol>
               </div>
               <div className="relative z-10 mt-12">
                 <AstTerminalMock />
@@ -286,14 +302,14 @@ export default function OnboardingFlow() {
                   <ProvixLogo />
                 </div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
-                  Architecture Firewall
+                  Step 1 of 3
                 </p>
                 <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-white">
-                  Sign in to Provix
+                  Sign in with GitHub
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-                  Connect GitHub to install the Provix App, pick a TypeScript repository, and
-                  run your first AST audit.
+                  Next you&apos;ll install the Provix App, pick a TypeScript repo, and run your
+                  first scan.
                 </p>
 
                 {error ? (
@@ -332,12 +348,15 @@ export default function OnboardingFlow() {
             exit={{ opacity: 0 }}
           >
             <ProvixLogo />
-            <h2 className="mt-10 text-3xl font-extrabold tracking-tight">
+            <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+              Step 2 of 3
+            </p>
+            <h2 className="mt-3 text-3xl font-extrabold tracking-tight">
               Install the Provix GitHub App
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-              After OAuth we hand off to GitHub so Provix can read the repositories you choose.
-              You&apos;ll return here to pick a workspace and run the first audit.
+              GitHub will ask which repositories Provix can read. After you finish, you&apos;ll
+              come back here to pick a repo and run the first scan.
             </p>
             {error ? (
               <div className="mt-6 rounded-lg border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
@@ -351,7 +370,7 @@ export default function OnboardingFlow() {
               className="mt-8 inline-flex w-full items-center justify-center gap-3 rounded-xl border border-violet-400/30 bg-violet-500/15 px-6 py-3.5 text-sm font-semibold text-violet-100 transition-all duration-200 hover:border-violet-300/50 hover:bg-violet-500/25 disabled:opacity-60"
             >
               <GitHubLogo />
-              {installPending ? "Redirecting…" : "Authorize & install"}
+              {installPending ? "Redirecting…" : "Continue to GitHub"}
               <ArrowRight className="h-4 w-4" aria-hidden />
             </button>
             <button
@@ -360,17 +379,11 @@ export default function OnboardingFlow() {
               disabled={installPending}
               className="mt-3 text-center text-xs text-zinc-500 hover:text-zinc-300"
             >
-              Skip OAuth and open install only
+              Open install page only
             </button>
             <p className="mt-4 text-center text-xs leading-relaxed text-zinc-500">
-              Scans are read-only. Provix only writes or opens a pull request when you click{" "}
-              <span className="text-zinc-300">Open Fix PR</span>.
-            </p>
-            <p className="mt-6 text-[11px] leading-relaxed text-zinc-600">
-              Needs <span className="font-mono text-zinc-400">GITHUB_APP_SLUG</span> in{" "}
-              <span className="font-mono text-zinc-400">.env.local</span> (and{" "}
-              <span className="font-mono text-zinc-400">GITHUB_APP_PRIVATE_KEY</span> to list repos after
-              install). Restart the server after saving.
+              Scans are read-only. Provix only writes when you click{" "}
+              <span className="text-zinc-300">Fix with PR</span>.
             </p>
           </motion.div>
         ) : null}
@@ -386,20 +399,20 @@ export default function OnboardingFlow() {
             <div className="flex items-center justify-between gap-4">
               <ProvixLogo />
               <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                First audit
+                Step 3 of 3
               </span>
             </div>
 
             <h2 className="mt-10 text-3xl font-extrabold tracking-tight sm:text-4xl">
-              Choose workspace & repository
+              Pick a repository
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-zinc-400">
-              TypeScript and Next.js repos are listed first. Run the initial AST audit to open
-              your Architecture Firewall dashboard.
+              TypeScript and Next.js repos are listed first. The first scan opens your workspace
+              with Overview, Structure, and Security.
             </p>
             <p className="mt-2 max-w-xl text-xs leading-relaxed text-zinc-500">
-              Scans are read-only. Provix only writes or opens a pull request when you click{" "}
-              <span className="text-zinc-300">Open Fix PR</span>.
+              Scans are read-only. Provix only writes when you click{" "}
+              <span className="text-zinc-300">Fix with PR</span>.
             </p>
 
             <div className="mt-10 grid gap-3 sm:grid-cols-2">
@@ -414,7 +427,7 @@ export default function OnboardingFlow() {
                   {
                     id: "team" as const,
                     title: "Team",
-                    copy: "Shared integrity view for collaborators.",
+                    copy: "Shared workspace for collaborators.",
                     icon: Building2,
                   },
                 ] as const
@@ -507,7 +520,7 @@ export default function OnboardingFlow() {
               className="group mt-10 inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-violet-600 to-emerald-500 px-6 py-4 text-sm font-bold tracking-tight text-white shadow-[0_16px_50px_-20px_rgba(124,58,237,0.8)] transition-transform duration-200 hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
             >
               <Sparkles className="h-4 w-4" aria-hidden />
-              {auditing ? "Running AST audit…" : "Run Initial AST Audit"}
+              {auditing ? "Running first scan…" : "Run first scan"}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
             </button>
           </motion.div>

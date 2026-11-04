@@ -27,6 +27,20 @@ const nextConfig: NextConfig = {
         destination: "/auth/callback",
         permanent: false,
       },
+      // Retired hiring-marketplace / roster URLs → current product homepage.
+      { source: "/talent", destination: "/", permanent: true },
+      { source: "/talent/:path*", destination: "/", permanent: true },
+      { source: "/employer", destination: "/", permanent: true },
+      { source: "/employer/:path*", destination: "/", permanent: true },
+      { source: "/opportunities", destination: "/", permanent: true },
+      { source: "/opportunities/:path*", destination: "/", permanent: true },
+      { source: "/pricing", destination: "/", permanent: true },
+      { source: "/audit", destination: "/", permanent: true },
+      { source: "/audit/:path*", destination: "/", permanent: true },
+      { source: "/audits", destination: "/", permanent: true },
+      { source: "/audits/:path*", destination: "/", permanent: true },
+      { source: "/p/:username", destination: "/", permanent: true },
+      { source: "/signup", destination: "/login", permanent: true },
     ];
   },
   async headers() {

@@ -339,7 +339,7 @@ export default function FirewallViolationsTable({
           status: "error",
           message:
             writeAccess.accessMessage ??
-            "Provix GitHub App is not installed on this repository. Install the app, then try Open Fix again.",
+            "Provix GitHub App is not installed on this repository. Install the app, then try Fix with PR again.",
         },
       }));
       return;
@@ -404,8 +404,9 @@ export default function FirewallViolationsTable({
       <div className={panelClass}>
         <div className="flex flex-col gap-4 border-b border-white/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h2 className={sectionLabelClass}>Architecture violations</h2>
+            <h2 className={sectionLabelClass}>Structure issues</h2>
             <p className={`mt-1 ${mutedLabelClass}`}>
+              Architecture problems Provix can open a fix PR for.{" "}
               <span className="tabular-nums text-zinc-300">{activeCount.toLocaleString("en-US")}</span>
               {activeCount === 1 ? " needs action" : " need action"}
               {openedCount > 0 ? (
@@ -416,7 +417,7 @@ export default function FirewallViolationsTable({
               ) : null}
             </p>
           </div>
-          <div className="flex flex-wrap gap-1" role="group" aria-label="Filter violations by severity">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Filter structure issues by severity">
             {FILTERS.map((item) => {
               const active = item === filter;
               const shown = countFor(sortedArchitecture, item, violationHasOpenPr, listFilter);
@@ -440,14 +441,14 @@ export default function FirewallViolationsTable({
           <div className="flex flex-col gap-2 border-b border-white/[0.06] px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-zinc-500">
               <span className="tabular-nums text-zinc-300">{securityCount.toLocaleString("en-US")}</span>
-              {securityCount === 1 ? " security finding" : " security findings"} live in Leaks
+              {securityCount === 1 ? " security finding" : " security findings"} live under Security
             </p>
             <button
               type="button"
               onClick={() => setActiveView("leaks")}
               className="inline-flex w-fit items-center rounded-md px-2.5 py-1 text-xs text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
             >
-              Open Leaks
+              Open Security
             </button>
           </div>
         ) : null}
@@ -485,12 +486,12 @@ export default function FirewallViolationsTable({
         ) : rows.length === 0 ? (
           <p className="px-5 py-10 text-sm text-zinc-500">
             {!writeAccess.canOpenPullRequest && repoSlug
-              ? "No fixable architecture issues to show until the GitHub App can open pull requests."
+              ? "No fixable structure issues to show until the GitHub App can open pull requests."
               : listFilter === "opened"
                 ? "No pull requests opened in this scan."
                 : listFilter === "action"
-                  ? "No autofixable architecture issues need action."
-                  : "No autofixable architecture issues in this filter."}
+                  ? "Nothing needs a fix PR right now."
+                  : "No structure issues in this filter."}
           </p>
         ) : (
           <ul>

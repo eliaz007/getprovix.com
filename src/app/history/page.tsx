@@ -66,15 +66,15 @@ export default async function HistoryPage() {
           <div className="flex min-w-0 items-center gap-3">
             <Link
               href="/firewall"
-              aria-label="Back to Integrity"
+              aria-label="Back to Overview"
               className="inline-flex items-center gap-1.5 text-xs text-zinc-500 transition-colors hover:text-zinc-200"
             >
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
               Back
             </Link>
             <div>
-              <p className="text-xs text-zinc-500">Audit log</p>
-              <h1 className="text-xl font-medium tracking-tight text-zinc-50">Patch history</h1>
+              <p className="text-xs text-zinc-500">Workspace</p>
+              <h1 className="text-xl font-medium tracking-tight text-zinc-50">Activity</h1>
             </div>
           </div>
           <span className={mutedLabelClass}>
@@ -104,7 +104,7 @@ export default async function HistoryPage() {
                           label={isSuccess ? "Passed" : "Blocked"}
                           tone={isSuccess ? "ok" : "danger"}
                         />
-                        <StatusPill label={isLeak ? "Leaks" : "Violations"} tone="neutral" />
+                        <StatusPill label={isLeak ? "Security" : "Structure"} tone="neutral" />
                         <FilePathPill path={log.file_path} />
                       </div>
                       <p className="text-sm text-zinc-400">

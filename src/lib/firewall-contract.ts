@@ -66,6 +66,15 @@ export type FirewallTarget =
   | { kind: "local"; snapshot: "scripts/audit-report.json" }
   | { kind: "github"; repoUrl: string };
 
+export type FirewallScanCoverage = {
+  /** Source files actually reviewed. */
+  scanned: number;
+  /** Source files seen before the size cap. */
+  total: number;
+  /** GitHub's recursive tree was cut off, so `total` is a lower bound. */
+  treeTruncated: boolean;
+};
+
 export type FirewallResponse = {
   ok: boolean;
   source: "local" | "github";
@@ -73,6 +82,7 @@ export type FirewallResponse = {
   message: string | null;
   target: FirewallTarget | null;
   report: FirewallReport | null;
+  coverage?: FirewallScanCoverage | null;
 };
 
 /** Future scan body for this same endpoint once the legacy auditor is retired. */
@@ -80,6 +90,8 @@ export type FirewallScanRequest = {
   source?: "local" | "github";
   repoUrl?: string;
   githubUrl?: string;
+  /** Optional caller PAT. Used only for this request; never stored. */
+  githubToken?: string;
 };
 
 export function isFirewallSeverity(value: string): value is FirewallSeverity {

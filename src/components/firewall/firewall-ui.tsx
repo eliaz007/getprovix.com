@@ -120,7 +120,16 @@ export function severityLabel(severity: string): string {
   return severity.charAt(0) + severity.slice(1).toLowerCase();
 }
 
+const BOUNDARY_LABELS: Record<string, string> = {
+  CLIENT_DB_EXPOSURE: "Database exposure",
+  SECRET_LEAK: "Secret leak",
+  VULNERABLE_DEPENDENCY: "Vulnerable dependency",
+  ARCHITECTURAL_BLOAT: "Oversized module",
+};
+
 export function formatBoundaryId(id: string): string {
+  const known = BOUNDARY_LABELS[id] ?? BOUNDARY_LABELS[id.toUpperCase()];
+  if (known) return known;
   return id
     .toLowerCase()
     .split("_")

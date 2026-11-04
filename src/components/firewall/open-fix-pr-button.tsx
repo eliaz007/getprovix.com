@@ -16,7 +16,7 @@ export function OpenFixPrButton({
   opening,
   onClick,
   className = rowPrimaryActionClass,
-  idleLabel = "Open Fix PR",
+  idleLabel = "Fix with PR",
   openingLabel = "Opening…",
 }: OpenFixPrButtonProps) {
   return (

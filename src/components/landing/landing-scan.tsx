@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import type { FirewallReport, FirewallResponse } from "@/lib/firewall-contract";
+import type { FirewallReport, FirewallResponse, FirewallScanCoverage } from "@/lib/firewall-contract";
 import { saveFirewallScanHandoff } from "@/lib/firewall-scan-handoff";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import { readJsonResponse } from "@/lib/read-json-response";
@@ -22,7 +22,7 @@ type ScanState =
   | { kind: "error"; message: string };
 
 type LoadedScan =
-  | { ok: true; report: FirewallReport; note: string }
+  | { ok: true; report: FirewallReport; note: string; coverage: FirewallScanCoverage | null }
   | { ok: false; message: string };
 
 function parseGitHubRepo(value: string): string | null {
@@ -54,7 +54,12 @@ async function loadScan(repoUrl: string): Promise<LoadedScan> {
   });
   const payload = await readJsonResponse<FirewallResponse>(posted);
   if (payload.status === "ready" && payload.report && payload.source === "github") {
-    return { ok: true, report: payload.report, note: payload.message ?? `Scanned ${repoUrl}.` };
+    return {
+      ok: true,
+      report: payload.report,
+      note: payload.message ?? `Scanned ${repoUrl}.`,
+      coverage: payload.coverage ?? null,
+    };
   }
 
   return { ok: false, message: payload.message ?? "The GitHub repository could not be scanned." };
@@ -132,7 +137,13 @@ export default function LandingScan() {
     }
 
     const repoSlug = toGitHubOwnerRepo(normalized) ?? normalized;
-    saveFirewallScanHandoff({ repoUrl: repoSlug, report: result.report, note: result.note, source: "github" });
+    saveFirewallScanHandoff({
+      repoUrl: repoSlug,
+      report: result.report,
+      note: result.note,
+      source: "github",
+      coverage: result.coverage,
+    });
     setState({ kind: "scanning", repoUrl: normalized, step: STEPS.length - 1, opening: true });
     await delay(450);
     if (!still()) return;

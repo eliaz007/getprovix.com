@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import IntegrityPanel from "@/components/integrity-panel";
 import FirewallViolationsTable from "@/components/firewall/firewall-violations-table";
 import SecurityGuardPanel from "@/components/firewall/security-guard-panel";
@@ -19,6 +20,7 @@ import {
   readLatestFirewallScanHandoff,
   saveFirewallScanHandoff,
 } from "@/lib/firewall-scan-handoff";
+import { partialScanLine } from "@/lib/firewall-repo-access";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
 
@@ -62,6 +64,7 @@ export default function FirewallPage() {
   const installationBootstrapped = useRef(false);
   const trimmedRepoUrl = repoUrl.trim();
   const showScanning = isScanning || state.kind === "scanning";
+  const coverageLine = state.kind === "ready" ? partialScanLine(state.payload.coverage) : null;
 
   async function loadGithubAudit(ownerRepo: string, signal?: AbortSignal) {
     const clean = sanitizeRepoParam(ownerRepo);
@@ -97,6 +100,7 @@ export default function FirewallPage() {
         report: payload.report,
         note,
         source: "github",
+        coverage: payload.coverage ?? null,
       });
       setRepoSlug(clean);
       setEntryNote(note);
@@ -132,6 +136,7 @@ export default function FirewallPage() {
           message: handoff.note,
           target: { kind: "github", repoUrl: ownerRepo || handoff.repoUrl },
           report: handoff.report,
+          coverage: handoff.coverage ?? null,
         },
       });
       return;
@@ -277,7 +282,10 @@ export default function FirewallPage() {
             <p className="text-xs text-zinc-500">Integrity</p>
             <h1 className="text-2xl font-medium tracking-tight text-zinc-50">Code firewall</h1>
             <p className="max-w-3xl text-sm leading-relaxed text-zinc-500">
-              Paste a repository to open the execution stream and integrity dashboard.
+              <Link href="/onboarding" className="text-zinc-200 underline-offset-2 hover:underline">
+                Connect GitHub
+              </Link>{" "}
+              to install the App, or paste a repository URL below to scan with an access token instead.
             </p>
           </header>
 
@@ -365,6 +373,7 @@ export default function FirewallPage() {
               {scannedRepoUrl ?? "Code firewall"}
             </h1>
             {entryNote ? <p className="max-w-xl text-sm text-zinc-600">{entryNote}</p> : null}
+            {coverageLine ? <p className="max-w-xl text-sm text-amber-200/90">{coverageLine}</p> : null}
           </div>
           <form
             className="flex w-full flex-col gap-2 sm:max-w-xl sm:flex-row sm:items-center lg:justify-end"
@@ -418,6 +427,7 @@ export default function FirewallPage() {
           <p className="text-xs text-zinc-500">Architecture</p>
           <h1 className="text-2xl font-medium tracking-tight text-zinc-50">Violations</h1>
           {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
+          {coverageLine ? <p className="max-w-3xl text-sm text-amber-200/90">{coverageLine}</p> : null}
         </header>
       ) : null}
 
@@ -426,6 +436,7 @@ export default function FirewallPage() {
           <p className="text-xs text-zinc-500">Security</p>
           <h1 className="text-2xl font-medium tracking-tight text-zinc-50">Leaks</h1>
           {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
+          {coverageLine ? <p className="max-w-3xl text-sm text-amber-200/90">{coverageLine}</p> : null}
         </header>
       ) : null}
 
@@ -459,7 +470,13 @@ export default function FirewallPage() {
         </p>
       ) : null}
 
-      {showRepoDashboard && report ? <IntegrityPanel repo={scannedRepoUrl} report={report} /> : null}
+      {showRepoDashboard && report ? (
+        <IntegrityPanel
+          repo={scannedRepoUrl}
+          report={report}
+          coverage={state.kind === "ready" ? state.payload.coverage : null}
+        />
+      ) : null}
       {activeView === "violations" && report ? (
         <FirewallViolationsTable report={report} repoUrl={scannedRepoUrl} />
       ) : null}

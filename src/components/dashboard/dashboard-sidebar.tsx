@@ -68,9 +68,9 @@ export default function DashboardSidebar() {
   }
 
   const workspaceLinks = [
-    { key: "health" as const, label: "Integrity", icon: Activity },
-    { key: "violations" as const, label: "Violations", icon: ScrollText },
-    { key: "leaks" as const, label: "Leaks", icon: Shield },
+    { key: "health" as const, label: "Overview", icon: Activity },
+    { key: "violations" as const, label: "Structure", icon: ScrollText },
+    { key: "leaks" as const, label: "Security", icon: Shield },
   ];
 
   return (
@@ -121,7 +121,7 @@ export default function DashboardSidebar() {
                   strokeWidth={1.5}
                   aria-hidden="true"
                 />
-                <span className="truncate">History</span>
+                <span className="truncate">Activity</span>
               </Link>
             </li>
         </NavSection>

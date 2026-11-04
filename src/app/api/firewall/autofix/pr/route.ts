@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "@/lib/api-auth";
 import { isSecurityCategory, type FirewallAutofixPullRequestResponse, type FirewallResolvedFilesResponse } from "@/lib/firewall-contract";
+import { authorizeFirewallRepoAccess, readProvidedGithubToken } from "@/lib/firewall-repo-access";
 import { listOpenAutofixPulls } from "@/lib/firewall-open-prs";
 import { resolveGithubRepoAccessToken } from "@/lib/github-app-client";
 import { openAutofixPullRequest, openSecurityFixPullRequest } from "@/lib/github-autofix-pr";
@@ -45,6 +47,7 @@ export async function POST(request: Request) {
     line?: unknown;
     category?: unknown;
     snippet?: unknown;
+    githubToken?: unknown;
   };
   try {
     body = (await request.json()) as {
@@ -54,9 +57,15 @@ export async function POST(request: Request) {
       line?: unknown;
       category?: unknown;
       snippet?: unknown;
+      githubToken?: unknown;
     };
   } catch {
     return json({ ok: false, message: "Request body must be JSON." }, 400);
+  }
+
+  const session = await requireApiUser(request);
+  if (session instanceof NextResponse) {
+    return json({ ok: false, message: "Sign in to open a fix pull request." }, 401);
   }
 
   if (typeof body.filePath !== "string" || !body.filePath.trim()) {
@@ -64,6 +73,23 @@ export async function POST(request: Request) {
   }
   if (typeof body.repoUrl !== "string" || !body.repoUrl.trim()) {
     return json({ ok: false, message: "repoUrl is required to open a pull request." }, 400);
+  }
+
+  const ownerRepo = toGitHubOwnerRepo(body.repoUrl);
+  const [owner, name] = ownerRepo?.split("/") ?? [];
+  if (!owner || !name) {
+    return json({ ok: false, message: "repoUrl must be a public GitHub URL or owner/repo." }, 400);
+  }
+  const granted = await authorizeFirewallRepoAccess({
+    supabase: session.supabase,
+    userId: session.user.id,
+    owner,
+    repo: name,
+    githubToken: readProvidedGithubToken(body.githubToken),
+    purpose: "write",
+  });
+  if (!granted.ok) {
+    return json({ ok: false, message: granted.message }, granted.status);
   }
 
   if (body.kind === "security") {
@@ -80,11 +106,11 @@ export async function POST(request: Request) {
       body.filePath.trim(),
       body.line,
       category,
-      { snippet }
+      { snippet, token: granted.token }
     );
     return json(opened.body, opened.status);
   }
 
-  const opened = await openAutofixPullRequest(body.repoUrl.trim(), body.filePath.trim());
+  const opened = await openAutofixPullRequest(body.repoUrl.trim(), body.filePath.trim(), granted.token);
   return json(opened.body, opened.status);
 }

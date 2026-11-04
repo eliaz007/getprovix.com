@@ -23,7 +23,7 @@ import {
 
 const METRICS = [
   { id: "SECRET_LEAK" as const, label: "Secrets" },
-  { id: "CLIENT_DB_EXPOSURE" as const, label: "Client DB" },
+  { id: "CLIENT_DB_EXPOSURE" as const, label: "Database exposure" },
   { id: "VULNERABLE_DEPENDENCY" as const, label: "Dependencies" },
 ];
 
@@ -160,7 +160,7 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
     <section className="space-y-4">
       <div className={panelClass}>
         <div className="border-b border-white/[0.06] px-5 py-4">
-          <h2 className={sectionLabelClass}>Security posture</h2>
+          <h2 className={sectionLabelClass}>Security</h2>
           <p className={`mt-1 ${mutedLabelClass}`}>Fixable leak and dependency exposures</p>
         </div>
         <dl className="grid grid-cols-1 sm:grid-cols-3">
@@ -196,8 +196,9 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
       <div className={panelClass}>
         <div className="flex flex-col gap-3 border-b border-white/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className={sectionLabelClass}>Findings</h2>
+            <h2 className={sectionLabelClass}>Fixable findings</h2>
             <p className={`mt-1 ${mutedLabelClass}`}>
+              Secrets, database exposure, and dependency risks Provix can patch.{" "}
               <span className="tabular-nums text-zinc-300">{security.length}</span> total
             </p>
           </div>

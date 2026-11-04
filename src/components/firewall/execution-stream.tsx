@@ -30,10 +30,10 @@ function badgeTone(badge: StreamBadge): "ok" | "warn" | "danger" | "neutral" {
 }
 
 function badgeLabel(badge: StreamBadge): string {
-  if (badge === "HEALED") return "Healed";
-  if (badge === "FLAGGED") return "Flagged";
-  if (badge === "BLOCKED") return "Blocked";
-  return "Info";
+  if (badge === "HEALED") return "PR opened";
+  if (badge === "FLAGGED") return "Open";
+  if (badge === "BLOCKED") return "PR closed";
+  return "Clear";
 }
 
 function diffLineClass(line: string): string {
@@ -119,14 +119,14 @@ export default function ExecutionStream({
   const events = buildExecutionEvents(report, history);
   const stats = [
     { label: "Events", value: events.length },
-    { label: "Flagged", value: events.filter((event) => event.badge === "FLAGGED").length },
-    { label: "Healed", value: events.filter((event) => event.badge === "HEALED").length },
+    { label: "Open", value: events.filter((event) => event.badge === "FLAGGED").length },
+    { label: "Fix PRs", value: events.filter((event) => event.badge === "HEALED").length },
   ];
 
   return (
     <section className={panelClass}>
       <header className="border-b border-white/[0.06] px-5 py-4">
-        <p className={mutedLabelClass}>Execution stream</p>
+        <p className={mutedLabelClass}>This scan and fix pull requests</p>
         <h2 className={`mt-1 truncate ${sectionLabelClass}`}>{repo ?? "local"}</h2>
       </header>
       <dl className="grid grid-cols-3 border-b border-white/[0.06]">

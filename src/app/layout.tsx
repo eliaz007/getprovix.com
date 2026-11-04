@@ -13,7 +13,6 @@ import {
   SITE_TITLE,
   SITE_URL,
 } from "@/lib/site";
-import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -126,11 +125,11 @@ const jsonLd = {
         availableLanguage: "English",
       },
       knowsAbout: [
-        "Candidate screening",
-        "Proof-of-work verification",
-        "GitHub repository analysis",
-        "Technical recruiting",
-        "Engineering talent matching",
+        "Architecture firewall",
+        "GitHub security scanning",
+        "Secret leak detection",
+        "Client database exposure",
+        "Automated fix pull requests",
       ],
     },
     {
@@ -139,10 +138,9 @@ const jsonLd = {
       name: SITE_NAME,
       url: SITE_URL,
       image: SITE_LOGO_URL,
-      description:
-        "Provix is a developer screening platform that replaces bloated resumes with verified proof of work, automated GitHub auditing, repository integrity analysis, and structured candidate profiles for technical hiring.",
-      applicationCategory: "BusinessApplication",
-      applicationSubCategory: "Recruiting software",
+      description: SITE_DESCRIPTION,
+      applicationCategory: "DeveloperApplication",
+      applicationSubCategory: "Security and code quality",
       operatingSystem: "Web",
       browserRequirements: "Requires JavaScript. Requires HTML5.",
       inLanguage: "en-US",
@@ -152,12 +150,10 @@ const jsonLd = {
         price: "0",
         priceCurrency: "USD",
         availability: "https://schema.org/InStock",
-        description:
-          "Free during beta for profile browsing and AI screening. " +
-          PUBLIC_PLACEMENT_TERMS_SUMMARY,
+        description: "Free during beta for GitHub repository scans and fix pull requests.",
       },
       featureList:
-        "Verified candidate profiles with proof-of-work signals, AI Code & Resume Auditor, repository integrity analysis, candidate scoring and talent matching, Pitch Studio outreach generation, warm employer introductions",
+        "GitHub App connect, repository security scan, secret leak detection, client database exposure fixes, architecture bloat autofix, Fix with PR",
       publisher: { "@id": `${SITE_URL}/#organization` },
       provider: { "@id": `${SITE_URL}/#organization` },
     },

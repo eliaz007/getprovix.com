@@ -13,7 +13,10 @@ import {
   type FirewallSummary,
   type FirewallViolation,
 } from "@/lib/firewall-contract";
+import { requireApiUser } from "@/lib/api-auth";
+import { authorizeFirewallRepoAccess, readProvidedGithubToken } from "@/lib/firewall-repo-access";
 import { scanPublicGitHubRepo } from "@/lib/github-firewall-scan";
+import { parseGitHubRepository } from "@/lib/github-repo-ref";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -249,6 +252,58 @@ export async function POST(request: Request) {
     );
   }
 
-  const scanned = await scanPublicGitHubRepo(repoUrl);
+  const session = await requireApiUser(request);
+  if (session instanceof NextResponse) {
+    return json(
+      {
+        ok: false,
+        source: "github",
+        status: "error",
+        message: "Sign in to scan a repository.",
+        target: null,
+        report: null,
+      },
+      401
+    );
+  }
+
+  const parsed = parseGitHubRepository(repoUrl);
+  if (!parsed) {
+    return json(
+      {
+        ok: false,
+        source: "github",
+        status: "error",
+        message: "Paste a public GitHub URL or owner/repo.",
+        target: null,
+        report: null,
+      },
+      400
+    );
+  }
+
+  const granted = await authorizeFirewallRepoAccess({
+    supabase: session.supabase,
+    userId: session.user.id,
+    owner: parsed.owner,
+    repo: parsed.repo,
+    githubToken: readProvidedGithubToken(body.githubToken),
+    purpose: "scan",
+  });
+  if (!granted.ok) {
+    return json(
+      {
+        ok: false,
+        source: "github",
+        status: "error",
+        message: granted.message,
+        target: { kind: "github", repoUrl: parsed.repoUrl },
+        report: null,
+      },
+      granted.status
+    );
+  }
+
+  const scanned = await scanPublicGitHubRepo(repoUrl, granted.token);
   return json(scanned.body, scanned.status);
 }

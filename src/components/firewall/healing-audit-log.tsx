@@ -67,7 +67,7 @@ export default function HealingAuditLog({ repo }: { repo: string | null }): Reac
     <section aria-labelledby="healing-log-heading" className={panelClass}>
       <header className="border-b border-white/[0.06] px-5 py-4">
         <p id="healing-log-heading" className={sectionLabelClass}>
-          History
+          Activity
         </p>
         <p className={`mt-1 font-mono text-xs text-zinc-400`}>{repo ?? "—"}</p>
       </header>

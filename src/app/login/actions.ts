@@ -46,8 +46,17 @@ export async function signInWithEmail(email: string, password: string) {
         data: { user },
       } = await supabase.auth.getUser();
       const role = user ? await loadProfileAccountKind(supabase, user.id) : null;
+      let connected = false;
+      if (user) {
+        const { data: installations } = await supabase
+          .from("github_app_installations")
+          .select("installation_id")
+          .eq("user_id", user.id)
+          .limit(1);
+        connected = Array.isArray(installations) && installations.length > 0;
+      }
       revalidatePath("/", "layout");
-      redirect(resolvePostAuthDestination({ role }));
+      redirect(connected ? resolvePostAuthDestination({ role, requestedNext: "/firewall" }) : "/onboarding");
     }
   } catch (err) {
     if (isRedirectError(err)) {
@@ -56,12 +65,7 @@ export async function signInWithEmail(email: string, password: string) {
     authError = authFailure(undefined, err);
   }
 
-  if (authError) {
-    return authError;
-  }
-
-  revalidatePath("/", "layout");
-  redirect("/dashboard");
+  return authError ?? { error: "Signed in, but the redirect did not complete." };
 }
 
 export async function signUpWithEmail(

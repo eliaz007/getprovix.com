@@ -10,9 +10,9 @@ import {
 } from "@/components/firewall/firewall-view-context";
 
 const VIEWS = [
-  { key: "health" as const, label: "Integrity" },
-  { key: "violations" as const, label: "Violations" },
-  { key: "leaks" as const, label: "Leaks" },
+  { key: "health" as const, label: "Overview" },
+  { key: "violations" as const, label: "Structure" },
+  { key: "leaks" as const, label: "Security" },
 ];
 
 export default function DashboardTopNav() {
@@ -52,7 +52,7 @@ export default function DashboardTopNav() {
         className={`shrink-0 text-sm font-medium ${onHistory ? "text-white" : "text-zinc-400 hover:text-zinc-200"}`}
         aria-current={onHistory ? "page" : undefined}
       >
-        History
+        Activity
       </Link>
       <Link
         href="/dashboard/settings"

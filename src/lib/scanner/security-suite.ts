@@ -1268,7 +1268,7 @@ function scanClientQueries(file: SecurityScanFile): SecurityFinding[] {
         rule: "Insecure Client Query",
         category: "CLIENT_DB_EXPOSURE",
         line,
-        message: `Client component runs a ${rule.kind} query. Move it behind a server action that checks supabase.auth.getUser().`,
+        message: `This client component queries the database directly. Move the query to a server action that checks the signed-in user first.`,
         snippet: original.trim().slice(0, 180),
         remediation: { diff },
       });
@@ -2063,7 +2063,7 @@ export function planSecurityFix(
     const summary =
       matched?.message ??
       findings[0]?.message ??
-      "Client component runs a database query. Move it behind a server action that checks supabase.auth.getUser().";
+      "This client component queries the database directly. Move the query to a server action that checks the signed-in user first.";
     // Prefer the relocated start line; clientPlan also accepts any line in the span.
     // Sanitize strips any residual `: any` / `as any` before save/commit.
     return finalizeSecurityFixPlan(clientPlan(file, effectiveLine, summary, layout));
