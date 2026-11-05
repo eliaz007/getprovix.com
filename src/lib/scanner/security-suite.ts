@@ -882,6 +882,12 @@ type QueryParamInfo = {
   name: string;
   propertyPaths: string[][];
   usedInInFilter: boolean;
+  /** True when `.in(col, name.map(...))` — do not rewrite to `name ?? []`. */
+  usedInInMappedFilter: boolean;
+  /** True when `.insert(name)` / `.update(name)` / `.upsert(name)` takes the whole param. */
+  usedInMutationPayload: boolean;
+  /** True when `name.field` appears inside an insert/update/upsert object literal. */
+  usedInMutationFields: boolean;
   usedInIsFilter: boolean;
   usedInLimitOrRange: boolean;
 };
@@ -910,9 +916,28 @@ function maskObjectLiteralKeys(expression: string): string {
   );
 }
 
+/** Blank arrow/function binding names so callback params are not treated as query args. */
+function maskCallbackBindings(expression: string): string {
+  return expression
+    .replace(
+      /\(\s*([A-Za-z_$][\w$]*)\s*(?:,\s*[A-Za-z_$][\w$]*)*\s*\)\s*=>/g,
+      (full) => " ".repeat(full.length)
+    )
+    .replace(
+      /\b([A-Za-z_$][\w$]*)\s*=>/g,
+      (full) => " ".repeat(full.length)
+    );
+}
+
 function extractQueryParams(expression: string): string[] {
   let masked = maskQueryExpressionStrings(expression);
   masked = maskObjectLiteralKeys(masked);
+  masked = maskCallbackBindings(masked);
+  // Drop `.map(...)` / `.filter(...)` callback bodies so arrow params are not query args.
+  masked = masked.replace(
+    /\.\s*(?:map|filter|find|findIndex|some|every|flatMap|forEach|reduce)\s*\((?:[^)(]|\([^)(]*\))*\)/g,
+    (full) => " ".repeat(full.length)
+  );
   masked = masked.replace(/(\?\.)\s*[A-Za-z_$][\w$]*/g, (part) => " ".repeat(part.length));
   masked = masked.replace(/(\.)\s*[A-Za-z_$][\w$]*/g, (part) => " ".repeat(part.length));
 
@@ -975,6 +1000,33 @@ function looksBooleanParamName(name: string): boolean {
   );
 }
 
+/** Method names on arrays/objects — never treat these as typed data properties. */
+const QUERY_METHOD_PROPERTY_NAMES = new Set([
+  "map",
+  "filter",
+  "find",
+  "findIndex",
+  "some",
+  "every",
+  "reduce",
+  "flatMap",
+  "flat",
+  "forEach",
+  "includes",
+  "indexOf",
+  "join",
+  "slice",
+  "concat",
+  "at",
+  "keys",
+  "values",
+  "entries",
+  "length",
+  "then",
+  "catch",
+  "finally",
+]);
+
 function analyzeQueryParam(expression: string, name: string): QueryParamInfo {
   const masked = maskQueryExpressionStrings(expression);
   const propertyPaths: string[][] = [];
@@ -985,11 +1037,34 @@ function analyzeQueryParam(expression: string, name: string): QueryParamInfo {
   for (const match of masked.matchAll(propRe)) {
     const chain = match[1] ?? "";
     const parts = [...chain.matchAll(/[A-Za-z_$][\w$]*/g)].map((part) => part[0] ?? "").filter(Boolean);
+    // Skip method-call chains like `owned.map` — those are not payload shapes.
+    if (parts.length === 1 && QUERY_METHOD_PROPERTY_NAMES.has(parts[0] ?? "")) continue;
+    if (parts.length > 0 && QUERY_METHOD_PROPERTY_NAMES.has(parts[0] ?? "")) continue;
     if (parts.length > 0) propertyPaths.push(parts);
   }
-  // Use the raw expression so quoted column names are still visible.
+
+  // Shape fields from `name.map((row) => row.field)` / `name.map(row => row.field)`.
+  const mapPropRe = new RegExp(
+    `\\b${name}\\s*\\.\\s*map\\s*\\(\\s*(?:\\(\\s*([A-Za-z_$][\\w$]*)\\s*\\)|([A-Za-z_$][\\w$]*))\\s*=>\\s*(?:\\1|\\2)\\s*(?:\\?\\.)?\\.\\s*([A-Za-z_$][\\w$]*)`,
+    "g"
+  );
+  for (const match of expression.matchAll(mapPropRe)) {
+    const field = match[3];
+    if (field) propertyPaths.push([field]);
+  }
+
+  // Complete `.in(col, name)` / `.in(col, name ?? [])` only — not `name.map(...)`.
   const usedInInFilter = new RegExp(
-    `\\.\\s*in\\s*\\(\\s*(['\`"][^'\`"]+['\`"])\\s*,\\s*${name}\\b`
+    `\\.\\s*in\\s*\\(\\s*(['\`"][^'\`"]+['\`"])\\s*,\\s*${name}\\s*(?:\\?\\?\\s*\\[\\s*\\]\\s*)?\\)`
+  ).test(expression);
+  const usedInInMappedFilter = new RegExp(
+    `\\.\\s*in\\s*\\(\\s*(['\`"][^'\`"]+['\`"])\\s*,\\s*${name}\\s*\\.\\s*map\\b`
+  ).test(expression);
+  const usedInMutationPayload = new RegExp(
+    `\\.\\s*(?:insert|update|upsert)\\s*\\(\\s*${name}\\s*\\)`
+  ).test(expression);
+  const usedInMutationFields = new RegExp(
+    `\\.\\s*(?:insert|update|upsert)\\s*\\(\\s*\\{[\\s\\S]*?\\b${name}\\s*(?:\\?\\.)?\\.\\s*[A-Za-z_$]`
   ).test(expression);
   const usedInIsDirect = new RegExp(
     `\\.\\s*is\\s*\\(\\s*(['\`"][^'\`"]+['\`"])\\s*,\\s*${name}\\b`
@@ -1004,9 +1079,12 @@ function analyzeQueryParam(expression: string, name: string): QueryParamInfo {
   return {
     name,
     propertyPaths,
-    usedInInFilter,
+    usedInInFilter: usedInInFilter || usedInInMappedFilter,
     usedInIsFilter: usedInIsDirect || usedInEqAsBool,
     usedInLimitOrRange,
+    usedInInMappedFilter,
+    usedInMutationPayload,
+    usedInMutationFields,
   };
 }
 
@@ -1027,13 +1105,26 @@ function mergeParamPath(root: NestedParamShape, path: readonly string[]): void {
   }
 }
 
-function renderParamShape(shape: NestedParamShape): string {
+function renderParamShape(shape: NestedParamShape, leafType: "string" | "unknown" = "string"): string {
   return `{ ${Object.entries(shape)
-    .map(([key, value]) => (value === "string" ? `${key}: string` : `${key}: ${renderParamShape(value)}`))
+    .map(([key, value]) =>
+      value === "string"
+        ? `${key}: ${leafType}`
+        : `${key}: ${renderParamShape(value, leafType)}`
+    )
     .join("; ")} }`;
 }
 
 function paramTypeAnnotation(info: QueryParamInfo): string {
+  if (info.usedInInMappedFilter && info.propertyPaths.length > 0) {
+    const shape: NestedParamShape = {};
+    for (const path of info.propertyPaths) mergeParamPath(shape, path);
+    return `${info.name}: ReadonlyArray<${renderParamShape(shape)}> | undefined`;
+  }
+  if (info.usedInMutationPayload && info.propertyPaths.length === 0) {
+    // Whole-row insert/update — caller passes a real object; cast at the call site.
+    return `${info.name}: Record<string, unknown>`;
+  }
   if (info.usedInInFilter && info.propertyPaths.length === 0) {
     return `${info.name}: readonly string[] | undefined`;
   }
@@ -1047,7 +1138,11 @@ function paramTypeAnnotation(info: QueryParamInfo): string {
   if (info.propertyPaths.length > 0) {
     const shape: NestedParamShape = {};
     for (const path of info.propertyPaths) mergeParamPath(shape, path);
-    return `${info.name}: ${renderParamShape(shape)} | undefined`;
+    // Mutation field bags must be definite — `| undefined` causes TS18048 on `.title` etc.
+    // Leaf `unknown` accepts string[] tags / nullables from the real client payload.
+    const optional = !info.usedInMutationFields && !info.usedInMutationPayload;
+    const leaf = info.usedInMutationFields || info.usedInMutationPayload ? "unknown" : "string";
+    return `${info.name}: ${renderParamShape(shape, leaf)}${optional ? " | undefined" : ""}`;
   }
   return `${info.name}: string | undefined`;
 }
@@ -1142,12 +1237,49 @@ export function normalizeSupabaseFilterExpression(
   // `.limit` / `.range` require `number`, not `number | undefined`.
   next = coerceNumericCallArgs(next);
 
+  // Whole-row mutations: Record<string, unknown> is not assignable to generated Insert types.
   for (const param of params) {
+    if (!param.usedInMutationPayload) continue;
+    const mutationRe = new RegExp(
+      `\\.\\s*(insert|update|upsert)\\s*\\(\\s*${param.name}\\s*\\)`,
+      "g"
+    );
+    next = next.replace(
+      mutationRe,
+      (_full, method: string) => `.${method}(${param.name} as never)`
+    );
+  }
+
+  // Object-literal mutations with `param.field` values typed as unknown — cast the whole row.
+  if (params.some((param) => param.usedInMutationFields)) {
+    next = next.replace(
+      /\.\s*(insert|update|upsert)\s*\(\s*(\{[\s\S]*?\})\s*\)/g,
+      (_full, method: string, objectLiteral: string) =>
+        objectLiteral.includes(" as never")
+          ? `.${method}(${objectLiteral})`
+          : `.${method}(${objectLiteral} as never)`
+    );
+  }
+
+  for (const param of params) {
+    if (param.usedInInMappedFilter) {
+      // `.in(col, owned.map(...))` → `.in(col, (owned ?? []).map(...))`
+      const mappedInRe = new RegExp(
+        `\\.\\s*in\\s*\\(\\s*(['\`"][^'\`"]+['\`"])\\s*,\\s*${param.name}\\s*\\.\\s*map\\b(?!\\s*\\?\\?)`,
+        "g"
+      );
+      next = next.replace(
+        mappedInRe,
+        (_full, column: string) => `.in(${column}, (${param.name} ?? []).map`
+      );
+      continue;
+    }
+    // Only bare `.in(col, name)` — never rewrite `name.map(...)` into `name ?? [].map(...)`.
     if (!param.usedInInFilter) continue;
     // Skip values that already coalesce (`ids ?? []`) — wrapping again yields
     // `ids ?? [] ?? …` and TypeScript 5.9 TS2881 ("never nullish").
     const inRe = new RegExp(
-      `\\.\\s*in\\s*\\(\\s*(['\`"][^'\`"]+['\`"])\\s*,\\s*${param.name}\\b(?!\\s*\\?\\?)`,
+      `\\.\\s*in\\s*\\(\\s*(['\`"][^'\`"]+['\`"])\\s*,\\s*${param.name}\\s*(?=\\))`,
       "g"
     );
     next = next.replace(inRe, (_full, column: string) => `.in(${column}, ${param.name} ?? []`);
@@ -1228,19 +1360,100 @@ function serverAction(
       "      data: { user },",
       "    } = await supabase.auth.getUser();",
       "    if (!user) {",
-      '      return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } };',
+      // `as never` keeps the action's error union assignable to PostgrestError | null on the client.
+      '      return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } as never };',
       "    }",
       ...queryBlock,
       "  } catch (error) {",
       "    console.error(error);",
-      // Same `{ data, error }` shape as success / unauthorized — keeps client assigns typecheck-safe.
-      '    return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } };',
+      '    return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } as never };',
       "  }",
       "}",
       "",
     ].join("\n"),
     "secure-query.ts"
   );
+}
+
+/** Query calls the generator fixtures actually typecheck. Anything else stays manual review. */
+const COVERED_QUERY_CALLS = new Set([
+  "from",
+  "select",
+  "insert",
+  "update",
+  "upsert",
+  "eq",
+  "neq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "like",
+  "ilike",
+  "is",
+  "in",
+  "not",
+  "order",
+  "limit",
+  "range",
+  "single",
+  "maybeSingle",
+  "map",
+]);
+
+/**
+ * True when `expression` is a Supabase shape the golden fixtures cover.
+ * `.or` / `.rpc` / `.delete` / raw SQL / prisma stay false — no Fix with PR button.
+ */
+export function isCoveredClientQueryExpression(expression: string): boolean {
+  const source = expression.trim();
+  if (!source) return false;
+  if (/\$\{|\$queryRaw|\.sql\s*`|\bprisma\b|\bdrizzle\b/i.test(source)) return false;
+  if (/\.\s*(?:or|filter|rpc|textSearch|contains|containedBy|overlaps|match|csv|delete)\s*\(/i.test(source)) {
+    return false;
+  }
+  const calls = [...source.matchAll(/\.\s*([A-Za-z_$][\w$]*)\s*\(/g)].map((match) => match[1] ?? "");
+  if (calls.length === 0 || calls.some((name) => !COVERED_QUERY_CALLS.has(name))) return false;
+  if (!calls.includes("from")) return false;
+  if (/\.\s*map\s*\(/.test(source)) {
+    if (/\.\s*map\s*\(\s*(?:async\s*)?function\b/.test(source)) return false;
+    if (/\.\s*map\s*\([\s\S]*=>\s*\{/.test(source)) return false;
+    if (
+      !/\.\s*map\s*\(\s*(?:\(\s*[A-Za-z_$][\w$]*\s*\)|[A-Za-z_$][\w$]*)\s*=>\s*[A-Za-z_$][\w$]*\s*(?:\?\.)?\.\s*[A-Za-z_$][\w$]*/.test(
+        source
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Full client-query expression starting at `line`, or null when this line is not one. */
+export function clientQueryExpressionAt(file: SecurityScanFile, line: number): string | null {
+  const filePath = normalizedPath(file.filePath);
+  if (!isCodeFile(filePath) || ignoredPath(filePath) || !/\.(?:ts|tsx)$/.test(filePath)) return null;
+  if (!hasUseClient(file.content)) return null;
+  const masked = maskCodeComments(file.content);
+  for (const rule of CLIENT_PATTERNS) {
+    const matcher = new RegExp(rule.pattern.source, "g");
+    for (const match of masked.matchAll(matcher)) {
+      const seed = match[0];
+      const index = match.index ?? 0;
+      if (!seed || masked.slice(index, index + seed.length).trim().length === 0) continue;
+      const end = extendClientQueryEnd(file.content, index, index + seed.length);
+      if (end <= index) continue;
+      if (lineAt(file.content, index) !== line) continue;
+      return inlineSelectStringLiterals(file.content.slice(index, end), file.content);
+    }
+  }
+  return null;
+}
+
+export function isFixtureCoveredClientQuery(file: SecurityScanFile, line: number): boolean {
+  const expression = clientQueryExpressionAt(file, line);
+  if (!expression) return false;
+  return isCoveredClientQueryExpression(expression);
 }
 
 function scanClientQueries(file: SecurityScanFile): SecurityFinding[] {

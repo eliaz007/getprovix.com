@@ -133,25 +133,29 @@ export function buildIntegrityMetrics(
     };
   });
 
-  const queue: ReviewFinding[] = violations.map((violation, index) => {
-    const fixStatus = findingStatus(violation);
-    return {
-      id: `${violation.filePath}:${violation.line}:${index}`,
-      severity: violation.severity,
-      category: violationCategory(violation),
-      filePath: violation.filePath,
-      line: violation.line,
-      fixStatus,
-      summary: violation.message.replace(/\s+/g, " ").trim(),
-      diff: violation.remediation?.diff ?? null,
-      note: reviewNote(violation, fixStatus),
-    };
-  }).sort(
-    (left, right) =>
-      SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity] ||
-      left.filePath.localeCompare(right.filePath) ||
-      left.line - right.line
-  );
+  // Review queue = heal queue. Only findings Fix with PR can open.
+  const queue: ReviewFinding[] = violations
+    .map((violation, index) => {
+      const fixStatus = findingStatus(violation);
+      return {
+        id: `${violation.filePath}:${violation.line}:${index}`,
+        severity: violation.severity,
+        category: violationCategory(violation),
+        filePath: violation.filePath,
+        line: violation.line,
+        fixStatus,
+        summary: violation.message.replace(/\s+/g, " ").trim(),
+        diff: violation.remediation?.diff ?? null,
+        note: reviewNote(violation, fixStatus),
+      };
+    })
+    .filter((finding) => finding.fixStatus === "FIX_READY")
+    .sort(
+      (left, right) =>
+        SEVERITY_RANK[left.severity] - SEVERITY_RANK[right.severity] ||
+        left.filePath.localeCompare(right.filePath) ||
+        left.line - right.line
+    );
 
   return {
     score,

@@ -39,15 +39,18 @@ function findingKey(finding: FirewallViolation): string {
   return `${finding.category ?? "SECURITY"}:${finding.filePath}:${finding.line}:${finding.message}`;
 }
 
-/** Only list findings we can Open Fix (or already opened a PR for). */
+/**
+ * Fix-ready rows need a preflight-backed patch and write access.
+ * Everything else in Security stays on the list as manual review — no button.
+ */
 function isListableSecurityFinding(
   finding: FirewallViolation,
   opts: { canOfferFix: boolean; opened: boolean; dismissed: boolean }
 ): boolean {
   if (violationCategory(finding) === "ARCHITECTURE") return false;
   if (!isSecurityCategory(finding.category)) return false;
-  if (!isActionableSecurityFinding(finding)) return false;
   if (opts.dismissed) return false;
+  if (!isActionableSecurityFinding(finding)) return true;
   if (!finding.remediation) return false;
   if (!opts.opened && !opts.canOfferFix) return false;
   return true;
@@ -87,8 +90,9 @@ function FindingMeta({
   finding: FirewallViolation;
   prOpen?: boolean;
 }) {
-  const tone = prOpen ? "ok" : severityTone(finding.severity);
-  const statusLabel = prOpen ? "Fixed" : severityLabel(finding.severity);
+  const manualReview = !prOpen && finding.autofixable !== true;
+  const tone = prOpen ? "ok" : manualReview ? "neutral" : severityTone(finding.severity);
+  const statusLabel = prOpen ? "Fixed" : manualReview ? "Manual review" : severityLabel(finding.severity);
   return (
     <div className="flex flex-wrap items-center gap-2">
       <StatusPill
@@ -196,9 +200,10 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
       <div className={panelClass}>
         <div className="flex flex-col gap-3 border-b border-white/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className={sectionLabelClass}>Fixable findings</h2>
+            <h2 className={sectionLabelClass}>Security findings</h2>
             <p className={`mt-1 ${mutedLabelClass}`}>
-              Secrets, database exposure, and dependency risks Provix can patch.{" "}
+              Fix with PR only appears after the patch passes the same typecheck as opening the pull request.
+              Other rows stay on manual review.{" "}
               <span className="tabular-nums text-zinc-300">{security.length}</span> total
             </p>
           </div>
@@ -245,7 +250,7 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
             ) : (
               <>
                 <StatusPill label="Passed" tone="ok" />
-                No fixable security findings
+                No security findings
               </>
             )}
           </p>
@@ -257,12 +262,23 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
           <ul>
             {visible.map((finding) => {
               const key = findingKey(finding);
-              // remediation is guaranteed by isListableSecurityFinding
-              const remediation = finding.remediation!;
+              const remediation = finding.remediation;
+              if (!remediation || !finding.category) {
+                return (
+                  <li key={key} className={`border-t border-white/[0.04] px-5 py-4 ${rowHoverClass}`}>
+                    <div className="min-w-0 space-y-2.5">
+                      <FindingMeta finding={finding} />
+                      <p className="text-sm leading-relaxed text-zinc-400">{summaryLines(finding.message)}</p>
+                      {finding.snippet ? <FindingSnippet snippet={finding.snippet} /> : null}
+                    </div>
+                  </li>
+                );
+              }
               return (
                 <RemediationDiff
                   key={key}
                   remediation={remediation}
+                  offerFix={isActionableSecurityFinding(finding)}
                   onOpened={() => markOpened(key)}
                   onDismissed={() => markDismissed(key)}
                   target={{

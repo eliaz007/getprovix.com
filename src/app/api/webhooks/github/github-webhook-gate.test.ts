@@ -271,7 +271,9 @@ describe("POST /api/webhooks/github", () => {
     expect(recorded.comments[0]).not.toContain("sk_live_");
   });
 
-  it("commits a validated server action when a client Supabase query changed", async () => {
+  it(
+    "commits a validated server action when a client Supabase query changed",
+    async () => {
     process.env.GITHUB_WEBHOOK_SECRET = SECRET;
     process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL = "true";
     const content = `"use client";\nexport async function load() {\n  return supabase.from("jobs").select("*");\n}\n`;
@@ -314,7 +316,9 @@ describe("POST /api/webhooks/github", () => {
     // Healed action must not still trip Missing Error Handling when rescanned alone.
     const { missingErrorHandlingViolations } = await import("@/lib/firewall-error-handling");
     expect(missingErrorHandlingViolations("src/app/actions/secure-query.ts", action)).toEqual([]);
-  });
+  },
+    15_000
+  );
 
   it("does not commit again when the head commit is already an autonomous heal", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = SECRET;

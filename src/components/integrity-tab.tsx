@@ -214,7 +214,7 @@ export default function IntegrityTab({
       <div>
         <div className="px-5 pt-5 pb-3">
           <h3 className={sectionLabelClass}>Review queue</h3>
-          <p className="mt-1 text-xs text-zinc-500">Open findings from this scan</p>
+          <p className="mt-1 text-xs text-zinc-500">Findings Provix can open a Fix with PR for</p>
         </div>
         {metrics.queue.length === 0 ? (
           <p className="px-5 pb-5 text-sm text-zinc-500">No findings are waiting for review.</p>

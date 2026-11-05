@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { analyzeSourceTexts } from "../../scripts/ingest-engine";
 import {
   isActionableArchitectureViolation,
+  isActionableSecurityFinding,
+  isBaseBranchCiRefuse,
   isEmptyTopLevelSplitRefuse,
+  isExpectedAutofixRefuse,
   isTestSourcePath,
   planAutofix,
 } from "@/lib/firewall-autofix";
@@ -155,23 +158,32 @@ export async function load() {
     expect(report.violations.some((violation) => violation.rule === "Architectural Bloat")).toBe(false);
   });
 
-  it("only treats non-test Architectural Bloat as actionable in Violations", () => {
+  it("only treats verified Architectural Bloat as actionable in Structure", () => {
+    expect(
+      isActionableArchitectureViolation({
+        filePath: "src/lib/big-module.ts",
+        rule: "Architectural Bloat",
+        autofixable: true,
+      })
+    ).toBe(true);
     expect(
       isActionableArchitectureViolation({
         filePath: "src/lib/big-module.ts",
         rule: "Architectural Bloat",
       })
-    ).toBe(true);
+    ).toBe(false);
     expect(
       isActionableArchitectureViolation({
         filePath: "src/lib/big-module.test.ts",
         rule: "Architectural Bloat",
+        autofixable: true,
       })
     ).toBe(false);
     expect(
       isActionableArchitectureViolation({
         filePath: "src/lib/orphan.ts",
         rule: "Dead Weight / Orphaned Code",
+        autofixable: true,
       })
     ).toBe(false);
     expect(
@@ -197,23 +209,73 @@ export async function load() {
     expect(isActionableArchitectureViolation(bloat ?? { filePath: "", rule: "" })).toBe(false);
   });
 
-  it("does not hide shared-binding refuses from the list yet", () => {
-    // Two top-level fns that share a closure binding → plan refuses, but not the empty-unit message.
-    const content = `
-const shared = { n: 1 };
-export function one() { return shared.n; }
-export function two() { return shared.n + 1; }
-`.repeat(40);
+  it("mirrors planAutofix canOpenPullRequest onto Architectural Bloat autofixable", () => {
+    const content = [
+      "const shared = { n: 1 };",
+      ...Array.from({ length: 400 }, (_, index) => `export function fn${index}() { return shared.n + ${index}; }`),
+      "",
+    ].join("\n");
     const plan = planAutofix("src/lib/shared-helpers.ts", content);
-    if (!plan.canOpenPullRequest && !isEmptyTopLevelSplitRefuse(plan.summary)) {
-      const report = analyzeSourceTexts([{ filePath: "src/lib/shared-helpers.ts", content }], {
-        includeOrphans: false,
-      });
-      const bloat = report.violations.find((violation) => violation.rule === "Architectural Bloat");
-      if (bloat) {
-        expect(bloat.autofixable).not.toBe(false);
-        expect(isActionableArchitectureViolation(bloat)).toBe(true);
-      }
-    }
+    const report = analyzeSourceTexts([{ filePath: "src/lib/shared-helpers.ts", content }], {
+      includeOrphans: false,
+    });
+    const bloat = report.violations.find((violation) => violation.rule === "Architectural Bloat");
+    expect(bloat).toBeDefined();
+    expect(bloat?.autofixable).toBe(plan.canOpenPullRequest);
+    expect(isActionableArchitectureViolation(bloat!)).toBe(plan.canOpenPullRequest);
+  });
+
+  it("requires a real remediation diff and a passed preflight for security Fix with PR rows", () => {
+    expect(
+      isActionableSecurityFinding({
+        filePath: "src/components/jobs.tsx",
+        category: "CLIENT_DB_EXPOSURE",
+        autofixable: true,
+        remediation: { diff: "- const x = supabase.from('jobs')\n+ await secureQuery()\n" },
+      })
+    ).toBe(true);
+    expect(
+      isActionableSecurityFinding({
+        filePath: "src/components/jobs.tsx",
+        category: "CLIENT_DB_EXPOSURE",
+        remediation: { diff: "- const x = supabase.from('jobs')\n+ await secureQuery()\n" },
+      })
+    ).toBe(false);
+    expect(
+      isActionableSecurityFinding({
+        filePath: "src/components/jobs.tsx",
+        category: "CLIENT_DB_EXPOSURE",
+      })
+    ).toBe(false);
+    expect(
+      isActionableSecurityFinding({
+        filePath: "src/components/jobs.tsx",
+        category: "CLIENT_DB_EXPOSURE",
+        remediation: { diff: "Move the query to a server action." },
+      })
+    ).toBe(false);
+    expect(
+      isActionableSecurityFinding({
+        filePath: "src/components/jobs.test.tsx",
+        category: "CLIENT_DB_EXPOSURE",
+        remediation: { diff: "- a\n+ b\n" },
+      })
+    ).toBe(false);
+    expect(
+      isActionableSecurityFinding({
+        filePath: "src/components/jobs.tsx",
+        category: "CLIENT_DB_EXPOSURE",
+        autofixable: false,
+        remediation: { diff: "- const x = supabase.from('jobs')\n+ await secureQuery()\n" },
+      })
+    ).toBe(false);
+  });
+
+  it("surfaces base-branch CI refuses instead of silently dismissing", () => {
+    const message =
+      "Open Fix refused: `main` already fails CI (lint-typecheck-test-build). Fix the base branch first — otherwise every autofix PR fails for the same reason, even when Provix's own gate is green.";
+    expect(isBaseBranchCiRefuse(message)).toBe(true);
+    expect(isExpectedAutofixRefuse(message)).toBe(false);
+    expect(isExpectedAutofixRefuse("This finding has no safe security fix")).toBe(true);
   });
 });

@@ -2,6 +2,7 @@ import path from "node:path";
 import { Octokit } from "@octokit/rest";
 import { analyzeSourceTexts } from "../../scripts/ingest-engine";
 import type { FirewallReport, FirewallResponse } from "@/lib/firewall-contract";
+import { applyHonestFixGate } from "@/lib/honest-fix-gate";
 import { parseGitHubRepository } from "@/lib/github-repo-ref";
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
@@ -190,12 +191,15 @@ export async function scanPublicGitHubRepo(input: string, token: string): Promis
       return { status: 502, body: errorBody(parsed.repoUrl, "GitHub returned no readable source files.") };
     }
 
-    const report = toFirewallReport(
-      analyzeSourceTexts(sources, {
-        includeOrphans: scannedAll && sources.length > 0,
-        companionFiles: companionSources,
-      })
-    );
+    const audited = analyzeSourceTexts(sources, {
+      includeOrphans: scannedAll && sources.length > 0,
+      companionFiles: companionSources,
+    });
+    const violations = await applyHonestFixGate(audited.violations, [
+      ...sources,
+      ...companionSources,
+    ]);
+    const report = toFirewallReport({ ...audited, violations });
     const coverage = scannedAll
       ? `all ${sources.length} source files`
       : `the ${sources.length} largest source files`;

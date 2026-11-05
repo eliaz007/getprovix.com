@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { isEmptyTopLevelSplitRefuse, planAutofix } from "../src/lib/firewall-autofix";
+import { planAutofix } from "../src/lib/firewall-autofix";
 import { missingErrorHandlingViolations } from "../src/lib/firewall-error-handling";
 import { runSecuritySuiteScan } from "../src/lib/scanner/security-suite";
 
@@ -1132,13 +1132,15 @@ export function analyzeSourceTexts(
       remediation: finding.remediation,
     }))
   );
-  return buildReport(files, markArchitectureAutofixability(dedupeAndSort(violations), files));
+  return buildReport(
+    files,
+    markSecurityAutofixability(markArchitectureAutofixability(dedupeAndSort(violations), files), files)
+  );
 }
 
 /**
- * Tag Architectural Bloat autofixability.
- * For now only hide the empty top-level-split refuse ("No safe top-level split…").
- * Other plan refuses stay listable until we deliberately expand this.
+ * Tag Architectural Bloat autofixability from the same planner Fix with PR uses.
+ * Structure only lists rows where canOpenPullRequest is true.
  */
 function markArchitectureAutofixability(violations: Violation[], files: IngestedFile[]): Violation[] {
   const contentByPath = new Map(files.map((file) => [file.filePath, file.rawContent]));
@@ -1147,9 +1149,20 @@ function markArchitectureAutofixability(violations: Violation[], files: Ingested
     const content = contentByPath.get(violation.filePath);
     if (!content) return violation;
     const plan = planAutofix(violation.filePath, content);
-    if (plan.canOpenPullRequest) return { ...violation, autofixable: true };
-    if (isEmptyTopLevelSplitRefuse(plan.summary)) return { ...violation, autofixable: false };
-    return { ...violation, autofixable: true };
+    return { ...violation, autofixable: plan.canOpenPullRequest };
+  });
+}
+
+/**
+ * Security rows start off the Fix with PR queue.
+ * `applyHonestFixGate` is what sets `autofixable: true`, and only after the
+ * same `tsc` preflight the pull-request path runs. Uncovered query shapes stay false.
+ */
+function markSecurityAutofixability(violations: Violation[], files: IngestedFile[]): Violation[] {
+  void files;
+  return violations.map((violation) => {
+    if (!violation.category) return violation;
+    return { ...violation, autofixable: false };
   });
 }
 
