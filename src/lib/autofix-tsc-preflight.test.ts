@@ -182,13 +182,15 @@ describe("runAutofixTscPreflight", () => {
   }, 90_000);
 
   it("assertAutofixTscPreflightPasses resolves for a valid security patch", async () => {
+    // The server helper imports next/headers; preflight ambient-stubs next/*
+    // so sandbox typecheck does not fail on App Router modules.
     await expect(
       assertAutofixTscPreflightPasses([
         { filePath: "src/components/jobs.tsx", content: validClient },
         { filePath: "src/app/actions/secure-query.ts", content: validAction },
         helper,
       ])
-    ).resolves.toEqual({ mode: "full", stubCount: 0 });
+    ).resolves.toEqual({ mode: "stubbed", stubCount: 1 });
   }, 90_000);
 
   it("finalizeAutofixWrites opens the path when heal and preflight pass", async () => {
