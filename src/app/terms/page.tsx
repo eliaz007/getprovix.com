@@ -17,111 +17,98 @@ type TermsSection = {
 
 const sections: TermsSection[] = [
   {
-    title: "1. Platform & Marketplace Structure",
+    title: "1. The service",
     intro:
-      "Provix operates an automated developer qualification platform and two-way talent marketplace connecting software engineers with founders and engineering leaders.",
+      "Provix is an architecture firewall for GitHub repositories. After you sign in, you connect a repository with the Provix GitHub App or a token that can read it. Provix scans source files, reports findings, and can open a fix pull request for issues it knows how to patch.",
     bullets: [
       {
-        label: "For Candidates:",
-        text: "We analyze submitted software repositories against production standards (architecture, tests, CI/CD, and error handling) to determine qualification for our verified talent roster.",
+        label: "Scans:",
+        text: "A scan reads repository contents through GitHub and checks them for secrets, client-side database queries, known dependency floors, and oversized modules. A scan may cover only part of a repository, including a cap on the largest source files.",
       },
       {
-        label: "For Hiring Teams:",
-        text: "We provide access to verified candidate dossiers, benchmark telemetry, and introduction channels.",
+        label: "Fix pull requests:",
+        text: "When you choose Fix with PR, Provix may open a pull request on that repository. You review and merge it. Provix does not merge pull requests for you.",
       },
       {
-        label: "Platform Role:",
-        text: "Provix is a venue for introductions. Provix is not an employer, recruiter of record, or contracting party to any eventual employment or consulting relationship formed between users. We make no representations or guarantees regarding candidate hiring, placement, or technical performance.",
+        label: "What Provix is not:",
+        text: "Provix is not a hiring marketplace, recruiter, employer, or a guarantee that a repository is secure, complete, or production-ready.",
       },
     ],
   },
   {
-    title: "2. Repository Ingestion & Intellectual Property",
+    title: "2. Your repositories",
     bullets: [
       {
-        label: "Permission to Analyze:",
-        text: "By connecting or submitting a repository (via GitHub or other git providers), you grant Provix a limited, non-exclusive license to clone, parse abstract syntax trees (ASTs), analyze dependencies, evaluate test coverage, and execute automated static scans on your code strictly to generate your benchmark score and dossier.",
+        label: "Authority:",
+        text: "You may connect only repositories you own or are allowed to scan and open pull requests on. You are responsible for the GitHub permissions you grant.",
       },
       {
-        label: "Your Code Ownership:",
-        text: "You retain full and exclusive ownership of all code, intellectual property, and proprietary repository contents. Provix does not claim any ownership rights over your software, and we do not use your private codebases to train public foundation models.",
+        label: "Permission to scan:",
+        text: "By connecting a repository, you grant Provix a limited license to read its contents, run static checks, and, when you request it, propose changes by opening a pull request. That license is only for operating the service.",
       },
       {
-        label: "Dossiers & Telemetry:",
-        text: "If your repository meets qualification thresholds, your resulting readiness score, architectural breakdown, and non-sensitive repository metadata will be compiled into a candidate dossier visible to prospective hiring teams on the network.",
+        label: "Your code:",
+        text: "You keep ownership of your code. Provix does not claim ownership of your repository or of patches you merge. We do not use your private repositories to train public foundation models.",
       },
     ],
   },
   {
-    title: "3. Automated Benchmarking Disclaimers",
+    title: "3. Automated results",
     bullets: [
       {
-        label: "Automated Nature:",
-        text: "Verification scores, readiness metrics, and architectural breakdowns are generated through automated algorithmic checks. They represent static point-in-time signals and do not constitute an exhaustive security audit, legal compliance certification, or human technical warranty.",
+        label: "Point in time:",
+        text: "Findings, scores, and suggested patches are automated and describe the files that were scanned. They are not a full security audit, a penetration test, or a certification.",
       },
       {
-        label: '"As Is" Basis:',
-        text: 'All benchmarks, scores, and platform recommendations are provided strictly on an "AS IS" and "AS AVAILABLE" basis. Hiring organizations are solely responsible for conducting their own technical due diligence before entering into any employment or contractual relationship.',
+        label: "You decide:",
+        text: "A fix pull request can be wrong, incomplete, or unsuitable for your codebase. You are responsible for reviewing it before you merge.",
+      },
+      {
+        label: '"As is":',
+        text: 'The service is provided "AS IS" and "AS AVAILABLE." We do not warrant that every issue will be found or that every opened pull request will typecheck, build, or be safe to merge.',
       },
     ],
   },
   {
-    title: "4. Acceptable Use",
+    title: "4. Acceptable use",
     bulletsLead: "You agree not to:",
     bullets: [
       {
-        text: "Submit codebases containing malicious payloads, viruses, ransomware, or intentionally obfuscated vulnerabilities.",
+        text: "Scan or open pull requests on repositories you are not allowed to access.",
       },
       {
-        text: "Attempt to exploit, reverse-engineer, manipulate, or artificially inflate Provix benchmark scores.",
+        text: "Upload or connect malware, or use Provix to attack systems or people.",
       },
       {
-        text: "Scrape, harvest, or bulk-export candidate dossiers, engineering contacts, or platform data without prior written consent.",
+        text: "Interfere with the service, probe it for other customers' data, or bypass sign-in and repository checks.",
       },
       {
-        text: "Misrepresent your identity, repository ownership, or technical contributions.",
+        text: "Misrepresent your identity or your right to a GitHub repository.",
       },
     ],
   },
   {
-    title: "5. Contract Work & Marketplace Terms",
-    intro:
-      "The following terms govern Contract Engagements & Retainers arranged through the Provix talent marketplace.",
-    bullets: [
-      {
-        label: "Nature of Engagements:",
-        text: "Clients engage talent on a weekly capped retainer basis (e.g., 10, 20, or 30+ hours per week). Weekly fees cover reserved developer capacity for that scheduled calendar week and are billed in advance. Unused hours do not roll over, accumulate, or entitle the Client to refunds, provided the Contractor was ready and available to perform services.",
-      },
-      {
-        label: "Independent Contractor Classification:",
-        text: "All developers and contractors offering services through Provix are independent contractors and not employees, partners, or agents of Provix or the Client. Contractors remain solely responsible for reporting and paying all applicable local, state, federal, and international self-employment and income taxes. Provix acts solely as an introductory vetting platform and billing conduit.",
-      },
-      {
-        label: "Intellectual Property Assignment:",
-        text: 'Upon receipt of full payment for the applicable engagement period, all code, documentation, architectures, and intellectual work product generated by the Contractor during the engagement transfer fully, irrevocably, and exclusively to the Client as "work made for hire." Provix claims zero ownership over Client codebase, data, or Contractor work product.',
-      },
-      {
-        label: "Non-Circumvention (Platform Exclusivity):",
-        text: "Clients and Contractors introduced or matched through Provix agree not to negotiate, solicit, contract, or complete freelance, consulting, or employment agreements directly or indirectly off-platform for a period of twelve (12) months following the initial introduction. Any direct engagement without Provix’s written consent is subject to standard placement and platform buyout fees.",
-      },
-    ],
-  },
-  {
-    title: "6. Termination & Suspension",
+    title: "5. Accounts",
     paragraphs: [
-      "We reserve the right to suspend or terminate accounts, remove repositories, or revoke verified roster status at any time if conduct violates these Terms or compromises platform security and integrity.",
+      "Scans and fix pull requests require a signed-in account. You are responsible for activity under your account and for keeping your sign-in credentials private. A personal access token you submit is used for that request and is not a license for Provix to act on repositories you do not control.",
     ],
   },
   {
-    title: "7. Limitation of Liability",
+    title: "6. Suspension",
     paragraphs: [
-      "To the maximum extent permitted by applicable law, Provix, its founders, and affiliates shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, employment opportunities, or business goodwill arising from your use of or inability to access the Services.",
+      "We may suspend or terminate an account, or refuse a scan or pull request, if use violates these Terms or puts the service or other people at risk.",
     ],
   },
   {
-    title: "8. Modifications",
+    title: "7. Limitation of liability",
     paragraphs: [
-      'We may update these Terms periodically. Any modifications take effect upon updating the "Last Updated" date at the top of this document. Continued use of the Services signifies acceptance of the revised Terms.',
+      "To the maximum extent permitted by law, Provix and its operators are not liable for indirect, incidental, special, consequential, or punitive damages, including lost profits, lost data, or damage from merging a pull request, arising from your use of the service or from findings the scan did not report.",
+    ],
+  },
+  {
+    title: "8. Changes",
+    paragraphs: [
+      'We may update these Terms. The "Last updated" date at the top of this page will change when we do. Continuing to use Provix after that date means you accept the updated Terms.',
     ],
   },
 ];
@@ -147,20 +134,19 @@ export default function TermsPage() {
           <div className="mt-4 space-y-1 text-sm leading-relaxed text-zinc-400">
             <p>
               <span className="font-semibold text-zinc-300">Last Updated:</span>{" "}
-              October 8, 2026
+              November 4, 2026
             </p>
             <p>
               <span className="font-semibold text-zinc-300">Effective Date:</span>{" "}
-              October 6, 2026
+              November 4, 2026
             </p>
           </div>
           <p className="mt-6 text-sm leading-relaxed text-zinc-400">
-            Welcome to Provix (&quot;Provix,&quot; &quot;we,&quot; &quot;us,&quot;
-            or &quot;our&quot;), accessible at getprovix.com and associated
-            domains. By accessing or using our platform, automated repository
-            benchmarks, candidate dossiers, and talent network (collectively, the
-            &quot;Services&quot;), you agree to be bound by these Terms of Service
-            (&quot;Terms&quot;).
+            These Terms of Service (&quot;Terms&quot;) govern use of Provix
+            (&quot;Provix,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;)
+            at getprovix.com. The service scans GitHub repositories and can open
+            fix pull requests. By creating an account, connecting a repository, or
+            using a scan or fix, you agree to these Terms.
           </p>
         </header>
 

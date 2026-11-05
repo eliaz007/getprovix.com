@@ -15,60 +15,57 @@ type PrivacySection = {
 
 const sections: PrivacySection[] = [
   {
-    title: "Information We Collect",
+    title: "Information we collect",
     paragraphs: [
-      "When you create an account or complete onboarding, Provix collects account information through Supabase authentication and profile fields you provide — such as your name, email, role, experience level, skills, portfolio links, and employer or candidate profile details.",
-      "For candidates, Provix may process GitHub and proof-of-work metrics when you submit repositories or portfolio URLs for screening. This can include repository metadata, commit activity samples, language signals, README excerpts, and derived technical indicators used to generate integrity and execution scores.",
-      "We also collect usage data when you interact with the platform, including pages visited, feature usage (such as talent pool browsing, deep screening requests, and job matching), device and browser type, and standard server logs generated during normal operation.",
+      "When you create an account, Provix stores the sign-in details needed to identify you, such as your email address and the account record created by our authentication provider.",
+      "When you install the Provix GitHub App, we store the installation and the repository names you connected so we can tell which repos your account may scan.",
+      "When you run a scan or open a fix pull request, we read repository files from GitHub for that request. A personal access token you paste is used for that request. We also store records of fix pull requests we open, such as the repository, file path, and pull request reference.",
+      "We collect ordinary product logs, such as pages you open, errors, and browser type, so we can run and debug the service.",
     ],
   },
   {
-    title: "How We Use Information",
+    title: "How we use information",
     paragraphs: [
-      "Provix uses collected information to operate the platform and deliver its core services: generating verification and integrity scores, producing employer interview cheat sheets, matching candidates to open roles, and displaying relevant talent pool results.",
-      "Profile and screening data help employers evaluate proof-of-work signals before outreach, while candidate data helps personalize job recommendations, application workflows, and visibility settings within the talent pool.",
-      "We may use aggregated or de-identified usage data to improve product performance, reliability, and user experience. We do not sell personal information.",
+      "We use this information to sign you in, scan repositories you are allowed to access, show findings, and open fix pull requests you request.",
+      "We do not sell personal information, and we do not publish your repository contents as a public profile or talent listing.",
+      "We may use aggregated, de-identified usage data to understand which parts of the product fail and to improve scans and fixes.",
     ],
   },
   {
-    title: "Contract Profile Data & Financial Processing",
+    title: "GitHub access",
     bullets: [
       {
-        label: "Visibility:",
-        text: 'If a developer toggles "Open for Contract Work," their target hourly rate and weekly capacity tiers are shared with verified, authenticated employer accounts on Provix to facilitate matches.',
+        label: "GitHub App:",
+        text: "If you install the App, GitHub gives Provix a short-lived installation token for repositories you selected. We use it to read those repositories and to open pull requests when you ask.",
       },
       {
-        label: "Payment Processing:",
-        text: "Financial billing and payment collection are conducted via third-party processors (such as Stripe). Provix does not collect, log, or store complete credit card or banking details directly on its servers.",
+        label: "Personal token:",
+        text: "If you supply a personal access token, Provix uses it only to read or write the repository for that request. Do not send a token for an account or repository you do not control.",
       },
     ],
   },
   {
-    title: "Third-Party Infrastructure",
+    title: "Processors",
     paragraphs: [
-      "Provix relies on trusted infrastructure and service providers to run the product:",
-      "Supabase — authentication, database storage, and row-level security for profile and application data.",
-      "Vercel — application hosting, edge delivery, and deployment infrastructure.",
-      "Google Gemini AI — AI-assisted screening, matching, essay review, college fit analysis, and related structured outputs sent through our API routes.",
-      "GitHub API — repository metadata and public code signals used during proof-of-work and deep screening workflows when candidates or employers provide GitHub URLs.",
-      "Stripe and similar payment processors — billing and payment collection for marketplace engagements when those features are enabled.",
-      "These providers process data only as needed to deliver their services to Provix and are subject to their own privacy and security practices.",
+      "Supabase stores accounts and the GitHub installation records tied to your user.",
+      "Vercel hosts the application.",
+      "GitHub receives API calls to list files, read content, and open pull requests on repositories you connect.",
+      "Those providers process data to deliver their services and have their own privacy terms.",
     ],
   },
   {
-    title: "Data Security & Retention",
+    title: "Security and retention",
     paragraphs: [
-      "Provix applies industry-standard safeguards to protect your information, including encrypted transport (HTTPS/TLS), access controls, and Supabase Row Level Security (RLS) policies that restrict profile access to authorized users and permitted application flows.",
-      "Authentication credentials are managed by Supabase Auth; Provix does not store raw passwords in application code.",
-      "We retain account and profile data for as long as your account remains active or as needed to provide services, comply with legal obligations, resolve disputes, and enforce our agreements. You may request deletion of your account data subject to applicable law and operational requirements.",
+      "Traffic to Provix uses HTTPS. Account passwords are handled by the authentication provider; the application does not keep raw passwords.",
+      "We keep account and installation records while your account is active, and pull-request records so the workspace can show what was opened. You can ask us to delete your account data, except where we need to keep a record for security, fraud, or legal reasons.",
     ],
   },
   {
-    title: "User Rights & Contact",
+    title: "Your requests",
     paragraphs: [
-      "Depending on your location, you may have rights to access, correct, export, or delete personal information we hold about you, or to object to certain processing activities.",
-      "To exercise these rights or ask questions about this policy, contact us at support@getprovix.com. We will respond within a reasonable timeframe.",
-      "We may update this Privacy Policy from time to time. Material changes will be reflected on this page with an updated effective date.",
+      "You may ask to access, correct, or delete personal information we hold about you.",
+      "Email support@getprovix.com. We will respond within a reasonable time.",
+      "If we change this policy, we will update the date on this page.",
     ],
   },
 ];
@@ -92,9 +89,9 @@ export default function PrivacyPage() {
             Privacy Policy
           </h1>
           <p className="mt-4 text-sm text-textMuted leading-relaxed">
-            Effective date: October 8, 2026. This policy describes how Provix
-            collects, uses, and protects information when you use our verified
-            candidate intelligence platform and contract talent marketplace.
+            Effective date: November 4, 2026. This policy describes how Provix
+            collects, uses, and protects information when you sign in, connect a
+            GitHub repository, run a scan, or open a fix pull request.
           </p>
         </header>
 

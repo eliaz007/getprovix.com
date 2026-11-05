@@ -25,14 +25,14 @@ export const SITE_DESCRIPTION =
   "Connect a GitHub repo, scan for secrets, client database exposure, and architecture issues, then open fix pull requests from one workspace.";
 export const SITE_EMAIL = "support@getprovix.com";
 export const SITE_LOGO_URL = `${SITE_URL}/logo.svg`;
-/** Social share image — drop the file at `public/og.png` (1200×630 recommended). */
-export const SITE_OG_IMAGE_PATH = "/og.png";
+/** Social share image — drop the file at `public/og.jpg` (1200×630 recommended). */
+export const SITE_OG_IMAGE_PATH = "/og.jpg";
 export const SITE_OG_IMAGE_URL = `${SITE_URL}${SITE_OG_IMAGE_PATH}`;
 export const SITE_OG_IMAGE = {
   url: SITE_OG_IMAGE_PATH,
-  width: 1024,
-  height: 507,
-  alt: SITE_NAME,
+  width: 1200,
+  height: 675,
+  alt: `${SITE_NAME} — Architecture Firewall for GitHub`,
 } as const;
 
 export const SITE_KEYWORDS = [
