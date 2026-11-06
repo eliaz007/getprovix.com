@@ -4,9 +4,14 @@ import { planAutofix } from "@/lib/firewall-autofix";
 import { isSecurityCategory } from "@/lib/firewall-contract";
 import {
   isFixtureCoveredClientQuery,
+  isServerActionFilePath,
+  isSupportingHelperPath,
+  mergeEnvExample,
+  mergeServerAction,
   planSecurityFix,
-  serverActionFilePath,
+  resolveSecurityFixLayout,
   type SecurityCategory,
+  type SecurityFixWrite,
 } from "@/lib/scanner/security-suite";
 
 type GatedViolation = {
@@ -90,6 +95,52 @@ async function gateArchitecture<T extends GatedViolation>(
   return { ...violation, autofixable: agent.ok };
 }
 
+/**
+ * Mirror `openSecurityFixPullRequest` assembly: merge into the live secure-query /
+ * .env.example and never clobber an existing createClient helper. Without this,
+ * scan preflight can overwrite `secure-query.ts` with a single new export and
+ * fail (or worse, pass) differently from Fix with PR.
+ */
+export function assembleSecurityPlanWritesForGate(
+  writes: readonly SecurityFixWrite[],
+  contentByPath: ReadonlyMap<string, string>,
+  serverActionPath: string | null
+): { filePath: string; content: string }[] {
+  const assembled: { filePath: string; content: string }[] = [];
+  for (const write of writes) {
+    const path = write.filePath.replace(/\\/g, "/");
+    if (write.appendLine) {
+      assembled.push({
+        filePath: path,
+        content: mergeEnvExample(contentByPath.get(path) ?? null, write.appendLine),
+      });
+      continue;
+    }
+    if (isSupportingHelperPath(path)) {
+      if (contentByPath.has(path)) continue;
+      assembled.push({ filePath: path, content: write.content });
+      continue;
+    }
+    if (isServerActionFilePath(path) || (serverActionPath != null && path === serverActionPath)) {
+      assembled.push({
+        filePath: path,
+        content: mergeServerAction(contentByPath.get(path) ?? null, write.content),
+      });
+      continue;
+    }
+    assembled.push({ filePath: path, content: write.content });
+  }
+  return assembled;
+}
+
+function tsconfigContentsFromScan(contentByPath: ReadonlyMap<string, string>): string[] {
+  const contents: string[] = [];
+  for (const [path, content] of contentByPath) {
+    if (/(^|\/)tsconfig[^/]*\.json$/i.test(path)) contents.push(content);
+  }
+  return contents;
+}
+
 async function gateSecurity<T extends GatedViolation>(
   violation: T,
   contentByPath: ReadonlyMap<string, string>,
@@ -101,14 +152,27 @@ async function gateSecurity<T extends GatedViolation>(
     return { ...violation, autofixable: false };
   }
   const category = violation.category;
+  const layout =
+    category === "CLIENT_DB_EXPOSURE"
+      ? resolveSecurityFixLayout({
+          clientFilePath: filePath,
+          tsconfigContents: tsconfigContentsFromScan(contentByPath),
+        })
+      : null;
+  const serverActionPath = layout?.serverActionPath ?? null;
   const uncoveredClient =
     category === "CLIENT_DB_EXPOSURE" &&
     !isFixtureCoveredClientQuery({ filePath, content }, violation.line);
   if (!uncoveredClient) {
-    const plan = planSecurityFix({ filePath, content }, category as SecurityCategory, violation.line);
+    const plan = planSecurityFix(
+      { filePath, content },
+      category as SecurityCategory,
+      violation.line,
+      layout
+    );
     if (plan && plan.writes.length > 0) {
       const finalized = await finalizeAutofixWrites(
-        plan.writes.map((write) => ({ filePath: write.filePath, content: write.content }))
+        assembleSecurityPlanWritesForGate(plan.writes, contentByPath, serverActionPath)
       );
       if (finalized.ok) return { ...violation, autofixable: true };
     }
@@ -126,8 +190,8 @@ async function gateSecurity<T extends GatedViolation>(
     },
     content,
     existingServerAction:
-      category === "CLIENT_DB_EXPOSURE"
-        ? (contentByPath.get(serverActionFilePath(filePath)) ?? null)
+      category === "CLIENT_DB_EXPOSURE" && serverActionPath
+        ? (contentByPath.get(serverActionPath) ?? null)
         : null,
     existingEnvExample: category === "SECRET_LEAK" ? (contentByPath.get(".env.example") ?? null) : null,
   });

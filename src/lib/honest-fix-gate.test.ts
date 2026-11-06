@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { analyzeSourceTexts } from "../../scripts/ingest-engine";
 import { applyHonestFixGate } from "@/lib/honest-fix-gate";
@@ -150,4 +152,28 @@ export function charge(mode: "${FAKE_STRIPE_LIVE_KEY}"): string {
     expect(rows.filter((row) => row.autofixable === true)).toHaveLength(1);
     expect(rows.filter((row) => row.autofixable !== true)).toHaveLength(1);
   });
+
+  it("merges the live secure-query before gating employer-job-postings inserts", async () => {
+    const clientPath = "src/components/employer/employer-job-postings.tsx";
+    const actionPath = "src/app/actions/secure-query.ts";
+    const client = readFileSync(path.join(process.cwd(), clientPath), "utf8");
+    const action = readFileSync(path.join(process.cwd(), actionPath), "utf8");
+    const files = [
+      { filePath: clientPath, content: client },
+      { filePath: actionPath, content: action },
+    ];
+    const report = analyzeSourceTexts(files);
+    const inserts = report.violations.filter(
+      (violation) =>
+        violation.category === "CLIENT_DB_EXPOSURE" &&
+        violation.filePath.replace(/\\/g, "/") === clientPath &&
+        [344, 356, 366].includes(violation.line)
+    );
+    expect(inserts.length).toBeGreaterThan(0);
+    const gated = await applyHonestFixGate(inserts, files);
+    for (const row of gated) {
+      expect(row.autofixable, `line ${row.line} should pass the click-path merge preflight`).toBe(true);
+    }
+    expect(agenticFixWithRetry).not.toHaveBeenCalled();
+  }, 180_000);
 });
