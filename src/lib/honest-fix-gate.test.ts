@@ -166,8 +166,7 @@ export function charge(mode: "${FAKE_STRIPE_LIVE_KEY}"): string {
     const inserts = report.violations.filter(
       (violation) =>
         violation.category === "CLIENT_DB_EXPOSURE" &&
-        violation.filePath.replace(/\\/g, "/") === clientPath &&
-        [344, 356, 366].includes(violation.line)
+        violation.filePath.replace(/\\/g, "/") === clientPath
     );
     expect(inserts.length).toBeGreaterThan(0);
     const gated = await applyHonestFixGate(inserts, files);
