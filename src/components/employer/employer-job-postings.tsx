@@ -26,7 +26,7 @@ import {
 import { readJsonResponse } from "@/lib/read-json-response";
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 import { createClient } from "@/utils/supabase/client";
-import { secureQuery145 } from "@/app/actions/secure-query";
+import { secureQuery145, secureQuery339 } from "@/app/actions/secure-query";
 
 type ListingRow = {
   id: string;
@@ -336,11 +336,7 @@ export default function EmployerJobPostings() {
     };
 
     try {
-      let { data, error } = await supabase
-        .from("jobs")
-        .insert(dbPayload)
-        .select("*")
-        .single();
+      let { data, error } = await secureQuery339(dbPayload);
 
       if (error && isSupabaseSchemaError(error)) {
         const {
