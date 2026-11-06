@@ -89,9 +89,9 @@ export default function Home() {
               Catch and heal Next.js vulnerabilities before the PR merges.
             </h1>
             <p className="mt-6 max-w-xl text-base leading-relaxed text-[#a1a1aa] md:text-lg">
-              Provix inspects Next.js App Router and TypeScript pull requests at the AST level.
-              It finds security flaws, unvalidated inputs, and type-safety leaks, then commits a
-              verified patch directly to your branch.
+              Stop just flagging bad code and start auto-healing it. Provix catches leaked secrets,
+              exposed client-side Supabase queries, and architectural bloat in Next.js and TypeScript
+              repos, then opens a type-checked Pull Request to fix them automatically.
             </p>
             <div className="mt-10 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
               <ConnectRepositoryButton label="Install GitHub App [->]" className={primaryButton} />
@@ -162,8 +162,13 @@ export default function Home() {
               Autonomous PR healing
             </h2>
             <p className="mt-4 text-sm leading-relaxed text-[#a1a1aa]">
-              A scanner that dumps fifty warnings still leaves the patch to you. Provix writes the
-              TypeScript diff, checks it in a sandbox, and leaves a commit you can land in one click.
+              When a push or pull request triggers a check, Provix runs deterministic AST analysis to
+              catch hardcoded API keys (OpenAI, Stripe, AWS, Supabase), client-side database exposure,
+              vulnerable dependencies, and oversized files. Instead of just dropping a warning, Provix
+              generates the code patch, falls back to a bounded Gemini retry loop for complex shapes,
+              verifies the fix against tsc --noEmit, and opens a clean provix/auto-heal-* Pull Request
+              ready for review. Anything that cannot pass strict compiler verification safely falls
+              back to manual review.
             </p>
             <div className="mt-8 border border-white/10 bg-[#0a0a0a]">
               <div className="flex items-center justify-between border-b border-white/10 px-3 py-2 font-mono text-[10px] text-[#71717a]">
@@ -255,13 +260,15 @@ export default function Home() {
             <article className="border-b border-white/10 p-8 md:border-b-0 md:p-10">
               <p className="font-mono text-[11px] text-[#7c3aed]">02 // PARSE & HEAL</p>
               <p className="mt-4 text-sm leading-relaxed text-[#a1a1aa]">
-                The AST engine isolates the security and type flaw, then synthesizes a minimal diff.
+                The AST engine isolates the security flaw or bloat, then synthesizes a minimal diff,
+                falling back to a bounded Gemini retry loop for complex shapes.
               </p>
             </article>
             <article className="p-8 md:p-10">
               <p className="font-mono text-[11px] text-[#7c3aed]">03 // VERIFY & MERGE</p>
               <p className="mt-4 text-sm leading-relaxed text-[#a1a1aa]">
-                The patch is type-checked in an isolated sandbox and posted on your pull request.
+                The patch passes tsc --noEmit and a sandbox check, then opens a provix/auto-heal-*
+                pull request ready for review.
               </p>
             </article>
           </div>
