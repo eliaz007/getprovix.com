@@ -23,8 +23,12 @@ function hardNavigate(path: string) {
  */
 export default function ConnectRepositoryButton({
   label = "Connect Repo",
+  variant = "default",
+  className,
 }: {
   label?: string;
+  variant?: "default" | "editorial";
+  className?: string;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -70,12 +74,20 @@ export default function ConnectRepositoryButton({
         type="button"
         onClick={() => void connect()}
         disabled={pending}
-        className="inline-flex items-center justify-center rounded-lg bg-zinc-100 px-4 py-2.5 font-mono text-sm font-semibold text-zinc-950 transition-colors hover:bg-zinc-200 disabled:cursor-wait disabled:opacity-70"
+        className={
+          className ??
+          (variant === "editorial"
+            ? "inline-flex items-center justify-center gap-2 rounded-md bg-[#7c3aed] px-6 py-3.5 text-sm font-medium text-white transition-colors hover:bg-[#6d28d9] disabled:cursor-wait disabled:opacity-70"
+            : "inline-flex items-center justify-center rounded-lg bg-zinc-100 px-4 py-2.5 font-mono text-sm font-semibold text-zinc-950 transition-colors hover:bg-zinc-200 disabled:cursor-wait disabled:opacity-70")
+        }
       >
         {pending ? "Connecting…" : label}
+        {!className && variant === "editorial" && !pending ? (
+          <span className="font-mono" aria-hidden="true">[-&gt;]</span>
+        ) : null}
       </button>
       {error ? (
-        <p className="font-mono text-xs text-rose-300" role="alert">
+        <p className="font-mono text-xs text-[#EF4444]" role="alert">
           {error}
         </p>
       ) : null}

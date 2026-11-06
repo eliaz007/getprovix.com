@@ -870,6 +870,12 @@ function repairActionParamTypesAndFilters(content: string): string {
           )
           .filter((path) => path.length > 0);
         if (propPaths.length > 0) {
+          // Keep generator mutation bags (`unknown` leaves / Record). Rewriting to
+          // `{ …: string } | undefined` causes TS18048 and string[]→string call failures
+          // on inserts like employer-job-postings object-literal fallbacks.
+          if (/\bunknown\b/.test(type) || /Record\s*<\s*string\s*,\s*unknown\s*>/.test(type)) {
+            return part;
+          }
           return `${paramName}: ${inferObjectTypeFromPaths(propPaths)} | undefined`;
         }
 

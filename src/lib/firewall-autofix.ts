@@ -57,14 +57,30 @@ export function isTestSourcePath(filePath: string): boolean {
   return normalized.split("/").some((part) => part === "__tests__" || part === "__mocks__" || part === "tests");
 }
 
-/** Leaks / Open Fix: skip findings we refuse to auto-fix (tests / fixtures). */
+/** True when remediation carries a real unified-diff patch Fix with PR can apply. */
+export function hasSafeSecurityRemediation(
+  remediation?: { diff?: string } | null
+): boolean {
+  const diff = remediation?.diff?.trim() ?? "";
+  if (diff.length < 8) return false;
+  // At least one added or removed content line (not only --- / +++ / @@ headers).
+  return /^(?:\+[^+]|-[^-]).+$/m.test(diff);
+}
+
+/**
+ * Security Fix with PR: only when the scan already ran the same `tsc` preflight
+ * the pull-request path uses (`autofixable === true`). A diff alone is not enough.
+ * Missing or failed preflight stays manual review — no button.
+ */
 export function isActionableSecurityFinding(violation: {
   filePath: string;
   category?: string | null;
+  remediation?: { diff?: string } | null;
+  autofixable?: boolean;
 }): boolean {
-  // Open Fix refuses every security category on test paths — don't leave them cluttering Leaks.
   if (isTestSourcePath(violation.filePath)) return false;
-  return true;
+  if (violation.autofixable !== true) return false;
+  return hasSafeSecurityRemediation(violation.remediation);
 }
 
 /** Empty-diff refuse: single top-level unit — hide the Violations row (nothing to Open Fix). */
@@ -72,8 +88,15 @@ export function isEmptyTopLevelSplitRefuse(message: string): boolean {
   return /No safe top-level split\. The file stays one unit, so the diff is empty\./i.test(message);
 }
 
+/** Base branch is already red — show this to the user; do not silently dismiss. */
+export function isBaseBranchCiRefuse(message: string): boolean {
+  return /already fails CI/i.test(message) || /Fix the base branch first/i.test(message);
+}
+
 /** Open Fix returned a deliberate refuse — hide the row, don't paint a red error. */
 export function isExpectedAutofixRefuse(message: string): boolean {
+  // Base-CI refuse is actionable feedback — never treat it as a silent dismiss.
+  if (isBaseBranchCiRefuse(message)) return false;
   return (
     /Test files cannot be auto-split/i.test(message) ||
     /Test files and scanner fixtures are not auto-fixed/i.test(message) ||
@@ -82,17 +105,15 @@ export function isExpectedAutofixRefuse(message: string): boolean {
     /This file has no safe autofix/i.test(message) ||
     /This finding has no safe security fix/i.test(message) ||
     /failed a syntax check/i.test(message) ||
-    /already fails CI/i.test(message) ||
-    /Fix the base branch first/i.test(message) ||
     /No safe module split: helpers share bindings/i.test(message) ||
     isEmptyTopLevelSplitRefuse(message)
   );
 }
 
 /**
- * Violations is actionable-only: Architectural Bloat on real app modules can
- * Open Fix (gated by tsc preflight). Tests / orphans / cycles / known unsplitable
- * files stay hidden.
+ * Structure is actionable-only: Architectural Bloat on real app modules where
+ * the scan-time planner already produced a patch. Tests / orphans / cycles /
+ * refused splits stay hidden so Fix with PR is never a dead click.
  */
 export function isActionableArchitectureViolation(violation: {
   filePath: string;
@@ -101,7 +122,9 @@ export function isActionableArchitectureViolation(violation: {
 }): boolean {
   if (violation.rule !== "Architectural Bloat") return false;
   if (isTestSourcePath(violation.filePath)) return false;
-  if (violation.autofixable === false) return false;
+  // Scan tags autofixable from planAutofix. Treat missing as not listable —
+  // never show a Fix with PR row we have not verified.
+  if (violation.autofixable !== true) return false;
   return true;
 }
 
@@ -124,6 +147,13 @@ function refusedPlan(filePath: string, summary: string): AutofixPlan {
   };
 }
 
+/**
+ * Deterministic AST split / error-handling plan for Architectural Bloat.
+ * When this returns `canOpenPullRequest: false` (shared closures, one top-level
+ * unit, tests) or the writes fail `finalizeAutofixWrites`, callers behind
+ * `PROVIX_AGENTIC_CLIENT_DB=1` may fall back to `agenticFixWithRetry` with
+ * category `ARCHITECTURAL_BLOAT`. This planner stays rule-based and never calls Gemini.
+ */
 export function planAutofix(filePath: string, content: string): AutofixPlan {
   const normalized = filePath.replace(/\\/g, "/");
   if (isTestSourcePath(normalized) || isTestSuiteSource(content)) {

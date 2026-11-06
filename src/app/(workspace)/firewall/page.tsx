@@ -21,6 +21,7 @@ import {
   saveFirewallScanHandoff,
 } from "@/lib/firewall-scan-handoff";
 import { partialScanLine } from "@/lib/firewall-repo-access";
+import { withBrowserSession } from "@/lib/browser-auth-headers";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
 
@@ -76,7 +77,8 @@ export default function FirewallPage() {
     try {
       const response = await fetch("/api/firewall", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await withBrowserSession({ "Content-Type": "application/json" }),
+        credentials: "include",
         body: JSON.stringify({ source: "github", repoUrl: clean }),
         signal,
       });

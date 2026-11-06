@@ -16,6 +16,7 @@ const report: FirewallReport = {
       message: "Client calls supabase.from",
       line: 12,
       category: "CLIENT_DB_EXPOSURE",
+      autofixable: true,
       remediation: { diff: "-supabase.from()\n+await secureQuery()" },
     },
   ],
@@ -65,5 +66,37 @@ describe("buildIntegrityMetrics", () => {
     expect(metrics.score).toBeNull();
     expect(metrics.statusText).toBe("No scan yet");
     expect(metrics.queue).toEqual([]);
+  });
+
+  it("keeps scan score for all findings but only queues Fix with PR rows", () => {
+    const metrics = buildIntegrityMetrics(
+      {
+        ...report,
+        violations: [
+          ...report.violations,
+          {
+            filePath: "src/lib/cycle-a.ts",
+            severity: "HIGH",
+            rule: "Circular Dependency",
+            message: "A imports B imports A",
+            line: 1,
+            category: "ARCHITECTURE",
+          },
+          {
+            filePath: "src/lib/advice-only.ts",
+            severity: "CRITICAL",
+            rule: "Client query",
+            message: "Client calls supabase.from",
+            line: 3,
+            category: "CLIENT_DB_EXPOSURE",
+          },
+        ],
+      },
+      []
+    );
+    expect(metrics.openExposures).toBe(3);
+    expect(metrics.queue).toHaveLength(1);
+    expect(metrics.queue[0]?.filePath).toBe("src/components/jobs.tsx");
+    expect(metrics.queue[0]?.fixStatus).toBe("FIX_READY");
   });
 });

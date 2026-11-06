@@ -69,6 +69,7 @@ export function RemediationDiff({
   children,
   onOpened,
   onDismissed,
+  offerFix = true,
 }: {
   remediation: FirewallRemediation;
   target?: { filePath: string; line: number; category: FirewallCategory; snippet?: string };
@@ -81,6 +82,8 @@ export function RemediationDiff({
   onOpened?: (pull: { url: string; number: number }) => void;
   /** Expected refuse / noise — parent should drop the finding from the actionable list. */
   onDismissed?: () => void;
+  /** False for manual-review rows: show the finding, never the Fix with PR button. */
+  offerFix?: boolean;
 }) {
   const { repoSlug } = useFirewallView();
   const writeAccess = useGithubRepoWriteAccess(repoSlug);
@@ -196,7 +199,7 @@ export function RemediationDiff({
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      {eligibleFinding ? (
+      {eligibleFinding && offerFix ? (
         pull.status === "opened" ? (
           <a
             href={pull.url}

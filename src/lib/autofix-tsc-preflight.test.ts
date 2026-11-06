@@ -3,6 +3,7 @@ import { finalizeAutofixWrites } from "@/lib/autofix-write-validation";
 import {
   actionablePreflightDiagnostics,
   assertAutofixTscPreflightPasses,
+  formatAutofixTscFailure,
   bundleInternalAliasGraph,
   bundleInternalAliasWrites,
   collectExternalPackageSpecifiers,
@@ -63,6 +64,15 @@ describe("actionablePreflightDiagnostics", () => {
       "tsconfig.json(1,1): error TS2688: Cannot find type definition file for 'node'.",
     ].join("\n");
     expect(actionablePreflightDiagnostics(noise)).toEqual([]);
+  });
+
+  it("keeps every diagnostic line and puts patched-file errors first", () => {
+    const unrelated = "src/lib/other.ts(1,1): error TS2709: Cannot use namespace 'Metadata' as a type.";
+    const patched = "src/app/actions/secure-query.ts(4,1): error TS2305: Module '\"@/app/actions/secure-query\"' has no exported member 'secureQuery184'.";
+    const message = formatAutofixTscFailure([unrelated, patched], ["src/app/actions/secure-query.ts"]);
+    expect(message).toContain(unrelated);
+    expect(message).toContain(patched);
+    expect(message.indexOf(patched)).toBeLessThan(message.indexOf(unrelated));
   });
 
   it("keeps real unbound identifier failures", () => {
@@ -179,6 +189,26 @@ describe("runAutofixTscPreflight", () => {
     if (result.success) return;
     expect(result.message).toMatch(/tsc --noEmit/i);
     expect(result.diagnostics).toMatch(/writes/i);
+  }, 90_000);
+
+  it("accepts NextResponse and Metadata type annotations", async () => {
+    const result = await runAutofixTscPreflight([
+      {
+        filePath: "src/lib/next-type-probe.ts",
+        content: [
+          'import { NextResponse } from "next/server";',
+          'import type { Metadata } from "next";',
+          "export function reply(response: NextResponse): NextResponse {",
+          "  return response ?? NextResponse.json({ ok: true });",
+          "}",
+          "export function meta(): Metadata {",
+          '  return { title: "ok", description: "d" };',
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ]);
+    expect(result.success).toBe(true);
   }, 90_000);
 
   it("assertAutofixTscPreflightPasses resolves for a valid security patch", async () => {

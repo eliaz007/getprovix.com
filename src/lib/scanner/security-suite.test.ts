@@ -14,6 +14,7 @@ import {
   isServerActionFilePath,
   mergeEnvExample,
   mergeServerAction,
+  isCoveredClientQueryExpression,
   normalizeSupabaseFilterExpression,
   pickNextSecurityFindingForBatch,
   planSecurityFix,
@@ -294,6 +295,29 @@ export async function load(userId: string) {
     );
     expect(inAlreadyPlan?.writes[1]?.content).toContain('.in("id", ids ?? [])');
     expect(inAlreadyPlan?.writes[1]?.content).not.toContain("ids ?? [] ??");
+
+    // `.in(col, owned.map(...))` must not become `owned ?? [].map` (TS2339 never.id).
+    const inMapped = `"use client";\nexport async function load(owned: { id: string }[]) {\n  const { data, error } = await supabase.from("job_applications").select("job_id").in("job_id", owned.map((job) => job.id));\n  return { data, error };\n}\n`;
+    const inMappedPlan = planSecurityFix(
+      { filePath: "src/components/employer/employer-job-postings.tsx", content: inMapped },
+      "CLIENT_DB_EXPOSURE",
+      3
+    );
+    expect(inMappedPlan?.writes[1]?.content).toContain(
+      "owned: ReadonlyArray<{ id: string }> | undefined"
+    );
+    expect(inMappedPlan?.writes[1]?.content).toContain('.in("job_id", (owned ?? []).map');
+    expect(inMappedPlan?.writes[1]?.content).not.toContain("owned ?? [].map");
+    expect(inMappedPlan?.writes[1]?.content).not.toMatch(/secureQuery3\([^)]*\bjob\b/);
+
+    const insertPayload = `"use client";\nexport async function create(dbPayload: Record<string, unknown>) {\n  const { data, error } = await supabase.from("jobs").insert(dbPayload).select("*").single();\n  return { data, error };\n}\n`;
+    const insertPlan = planSecurityFix(
+      { filePath: "src/components/employer/employer-job-postings.tsx", content: insertPayload },
+      "CLIENT_DB_EXPOSURE",
+      3
+    );
+    expect(insertPlan?.writes[1]?.content).toContain("dbPayload: Record<string, unknown>");
+    expect(insertPlan?.writes[1]?.content).toContain(".insert(dbPayload as never)");
 
     const boolAndNumber = `"use client";\nexport async function load(isActive: boolean) {\n  const { data, error } = await supabase.from("jobs").select("*").eq("active", true).eq("priority", 1).eq("is_active", isActive);\n  return { data, error };\n}\n`;
     const boolPlan = planSecurityFix(
@@ -837,4 +861,22 @@ export async function loadJobs(userId: string) {
     const preflight = await runAutofixTscPreflight(finalWrites);
     expect(preflight).toEqual(expect.objectContaining({ success: true }));
   }, 90_000);
+});
+
+describe("isCoveredClientQueryExpression", () => {
+  it("covers fixture shapes and holds unknown query shapes", () => {
+    expect(
+      isCoveredClientQueryExpression(
+        'supabase.from("job_applications").select("job_id").in("job_id", owned.map((job) => job.id))'
+      )
+    ).toBe(true);
+    expect(
+      isCoveredClientQueryExpression('supabase.from("jobs").insert(dbPayload).select("*").single()')
+    ).toBe(true);
+    expect(
+      isCoveredClientQueryExpression('supabase.from("profiles").select("*").or(`id.eq.${id}`)')
+    ).toBe(false);
+    expect(isCoveredClientQueryExpression('supabase.rpc("admin_jobs")')).toBe(false);
+    expect(isCoveredClientQueryExpression('supabase.from("jobs").delete().eq("id", id)')).toBe(false);
+  });
 });

@@ -23,6 +23,7 @@ import {
 } from "@/lib/github-app-install";
 import type { GithubInstallationRepo } from "@/lib/github-app-client";
 import type { OnboardingRepositoriesResponse } from "@/lib/onboarding-repos";
+import { withBrowserSession } from "@/lib/browser-auth-headers";
 import { readJsonResponse } from "@/lib/read-json-response";
 import type { FirewallResponse } from "@/lib/firewall-contract";
 import {
@@ -45,13 +46,31 @@ function hardNavigate(path: string) {
   }
 }
 
+const FIREWALL_BOUNCE_KEY = "provix.onboarding.firewallBounce";
+
+/** One automatic jump to the dashboard. A second jump within a few seconds means we bounced back. */
+function redirectToWorkspace(path: string): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(FIREWALL_BOUNCE_KEY) || "0");
+    if (Number.isFinite(last) && Date.now() - last < 4000) return false;
+    sessionStorage.setItem(FIREWALL_BOUNCE_KEY, String(Date.now()));
+  } catch {
+    // Private mode can still navigate once.
+  }
+  hardNavigate(path);
+  return true;
+}
+
 function errorMessageFromSearch(): string | null {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
   const error = params.get("error")?.trim();
   if (!error) return null;
-  if (error === "oauth_failed" || error === "github_oauth_failed") {
-    return "GitHub authorization failed. Check App credentials, then try Authorize & install again.";
+  if (error === "oauth_failed") {
+    return "Sign-in could not finish. Restart with npm run dev, then try Continue with GitHub again.";
+  }
+  if (error === "github_oauth_failed") {
+    return "GitHub App authorization failed. Check App credentials, then try Authorize & install again.";
   }
   if (error === "github_app_not_configured") {
     return "Add GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET to .env.local, then restart the dev server.";
@@ -93,8 +112,7 @@ export default function OnboardingFlow() {
     async function boot() {
       const params = new URLSearchParams(window.location.search);
       const completed = params.get("error") ? null : readOnboardingAuditComplete();
-      if (completed?.repo) {
-        hardNavigate(integrityDashboardPath(completed.repo));
+      if (completed?.repo && redirectToWorkspace(integrityDashboardPath(completed.repo))) {
         return;
       }
 
@@ -122,8 +140,7 @@ export default function OnboardingFlow() {
 
         const stayForSetup =
           params.get("connected") === "1" || Boolean(params.get("repo")) || Boolean(params.get("error"));
-        if (!stayForSetup) {
-          hardNavigate(integrityDashboardPath(payload.primaryRepo));
+        if (!stayForSetup && redirectToWorkspace(integrityDashboardPath(payload.primaryRepo))) {
           return;
         }
 
@@ -198,7 +215,8 @@ export default function OnboardingFlow() {
     try {
       const response = await fetch("/api/firewall", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await withBrowserSession({ "Content-Type": "application/json" }),
+        credentials: "include",
         body: JSON.stringify({ source: "github", repoUrl: repo }),
       });
       const payload = await readJsonResponse<FirewallResponse>(response);
@@ -235,7 +253,7 @@ export default function OnboardingFlow() {
           <motion.div
             key="boot"
             className="flex min-h-screen items-center justify-center"
-            initial={{ opacity: 0 }}
+            initial={false}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >

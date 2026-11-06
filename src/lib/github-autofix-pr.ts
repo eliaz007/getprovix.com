@@ -5,14 +5,17 @@ import {
   assertAutofixTscPreflightPasses,
   preflightPullRequestSection,
 } from "@/lib/autofix-tsc-preflight";
-import { healAutofixWrites } from "@/lib/autofix-write-validation";
+import { agenticFixWithRetry, isAgenticClientDbEnabled } from "@/lib/agentic-fix-with-retry";
+import { finalizeAutofixWrites, healAutofixWrites } from "@/lib/autofix-write-validation";
 import { isTestSourcePath, isTestSuiteSource, planAutofix } from "@/lib/firewall-autofix";
 import { recordOpenAutofixPullRequest } from "@/lib/firewall-open-prs";
 import { resolveGithubRepoAccessToken } from "@/lib/github-app-client";
 import { assertBaseBranchReadyForAutofix } from "@/lib/github-base-ci-gate";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import { isFirewallSourcePath, isRepositoryTextPath, readGitHubSourceFile, readGitHubTextFile } from "@/lib/github-source-file";
+import { autopilotBranchName, runAutopilotFix, type AutopilotFinding } from "@/lib/provix-autopilot";
 import {
+  isFixtureCoveredClientQuery,
   isServerActionFilePath,
   isSupportingHelperPath,
   mergeEnvExample,
@@ -20,7 +23,9 @@ import {
   missingSupportingHelperWrites,
   planSecurityFix,
   resolveSecurityFixLayout,
+  serverActionFilePath,
   type SecurityCategory,
+  type SecurityFixPlan,
 } from "@/lib/scanner/security-suite";
 
 const TSCONFIG_CANDIDATES = ["tsconfig.json", "tsconfig.app.json", "jsconfig.json"] as const;
@@ -156,7 +161,19 @@ export async function openAutofixPullRequest(
   }
 
   const plan = planAutofix(filePath, remote.content);
+  const agentic = isAgenticClientDbEnabled();
   if (!plan.canOpenPullRequest || plan.writes.length === 0) {
+    if (agentic) {
+      return openArchitectureAgentFallback({
+        token,
+        owner,
+        repo,
+        repoUrl,
+        filePath,
+        content: remote.content,
+        summary: plan.summary,
+      });
+    }
     return {
       status: 422,
       body: {
@@ -170,6 +187,34 @@ export async function openAutofixPullRequest(
     plan.writes.length === 1
       ? `fix: handle errors in ${filePath}`
       : `refactor: split ${filePath} into modules`;
+  const writes = plan.writes.map((file) => ({ filePath: file.filePath, content: file.content }));
+
+  if (agentic) {
+    const finalized = await finalizeAutofixWrites(writes);
+    if (!finalized.ok) {
+      return openArchitectureAgentFallback({
+        token,
+        owner,
+        repo,
+        repoUrl,
+        filePath,
+        content: remote.content,
+        summary: finalized.message,
+      });
+    }
+    return publishPullRequest({
+      token,
+      owner,
+      repo,
+      repoUrl,
+      title,
+      summary: plan.summary,
+      branch: branchName(filePath),
+      body: pullRequestBody(filePath, plan.summary, finalized.writes),
+      recordFilePath: filePath,
+      writes: finalized.writes,
+    });
+  }
 
   return publishPullRequest({
     token,
@@ -179,9 +224,131 @@ export async function openAutofixPullRequest(
     title,
     summary: plan.summary,
     branch: branchName(filePath),
-    body: pullRequestBody(filePath, plan.summary, plan.writes),
+    body: pullRequestBody(filePath, plan.summary, writes),
     recordFilePath: filePath,
-    writes: plan.writes.map((file) => ({ filePath: file.filePath, content: file.content })),
+    writes,
+  });
+}
+
+/**
+ * Phase 4 autopilot: plan → optional agentic fallback → tsc gate → PR on
+ * `provix/auto-heal-*`. Used by the webhook push/audit path and manual triggers.
+ */
+export async function openAutopilotPullRequest(
+  repoInput: string,
+  finding: AutopilotFinding,
+  options?: { token?: string; content?: string }
+): Promise<PrResult> {
+  const ownerRepo = toGitHubOwnerRepo(repoInput);
+  const [owner, repo] = ownerRepo?.split("/") ?? [];
+  if (!ownerRepo || !owner || !repo) {
+    return { status: 400, body: { ok: false, message: "repoUrl must be a public GitHub URL or owner/repo." } };
+  }
+  const token = options?.token?.trim() || "";
+  if (!token) {
+    const access = await resolveGithubRepoAccessToken(owner, repo);
+    if (!access.ok) {
+      return { status: access.status, body: { ok: false, message: access.message } };
+    }
+    return openAutopilotPullRequest(repoInput, finding, { ...options, token: access.token });
+  }
+
+  const repoUrl = `https://github.com/${ownerRepo}`;
+  const filePath = finding.filePath.replace(/\\/g, "/");
+  let content = options?.content;
+  if (content == null) {
+    const remote = await readGitHubSourceFile(repoUrl, filePath, token);
+    if (!remote.ok) {
+      return { status: remote.status, body: { ok: false, message: remote.message } };
+    }
+    content = remote.content;
+  }
+  if (content.length > MAX_CONTENT) {
+    return { status: 413, body: { ok: false, message: "File is too large to fix in one pass." } };
+  }
+
+  const serverActionPath = serverActionFilePath(filePath);
+  const existingAction =
+    finding.category === "CLIENT_DB_EXPOSURE"
+      ? await readGitHubTextFile(repoUrl, serverActionPath, { auth: token })
+      : null;
+  const existingEnv =
+    finding.category === "SECRET_LEAK"
+      ? await readGitHubTextFile(repoUrl, ".env.example", { auth: token })
+      : null;
+  const tsconfigs = await readRepoTsconfigContents(repoUrl, token);
+
+  const fix = await runAutopilotFix({
+    finding,
+    content,
+    existingServerAction: existingAction?.ok ? existingAction.content : null,
+    existingEnvExample: existingEnv?.ok ? existingEnv.content : null,
+    tsconfigText: tsconfigs[0] ?? null,
+  });
+  if (!fix.ok) {
+    return { status: 422, body: { ok: false, message: fix.message } };
+  }
+
+  return publishPullRequest({
+    token,
+    owner,
+    repo,
+    repoUrl,
+    title: fix.title,
+    summary: fix.summary,
+    branch: autopilotBranchName(fix.branchSlug, filePath),
+    body: [
+      "## Provix autopilot",
+      "",
+      fix.summary,
+      "",
+      `Source: ${fix.source} (${fix.attempts} attempt${fix.attempts === 1 ? "" : "s"})`,
+      "",
+      "### Files in this pull request",
+      ...fix.writes.map((write) => `- \`${write.filePath}\``),
+      "",
+      "Generated by Provix.",
+    ].join("\n"),
+    recordFilePath: filePath,
+    writes: fix.writes,
+  });
+}
+
+async function openArchitectureAgentFallback(input: {
+  token: string;
+  owner: string;
+  repo: string;
+  repoUrl: string;
+  filePath: string;
+  content: string;
+  summary: string;
+}): Promise<PrResult> {
+  const agent = await agenticFixWithRetry({
+    finding: {
+      filePath: input.filePath,
+      line: 1,
+      category: "ARCHITECTURAL_BLOAT",
+      snippet: input.summary,
+    },
+    content: input.content,
+    existingServerAction: null,
+    existingEnvExample: null,
+  });
+  if (!agent.ok) {
+    return { status: 422, body: { ok: false, message: MANUAL_REVIEW_MESSAGE } };
+  }
+  const summary = "Split a component into modules after the deterministic split could not be typechecked.";
+  return publishPullRequest({
+    token: input.token,
+    owner: input.owner,
+    repo: input.repo,
+    repoUrl: input.repoUrl,
+    title: `refactor: split ${input.filePath} into modules`,
+    summary,
+    branch: branchName(input.filePath),
+    body: pullRequestBody(input.filePath, summary, agent.writes),
+    recordFilePath: input.filePath,
+    writes: agent.writes,
   });
 }
 
@@ -220,6 +387,83 @@ function normalizeWritePath(filePath: string): string | null {
   const normalized = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
   if (!isRepositoryTextPath(normalized)) return null;
   return normalized;
+}
+
+const MANUAL_REVIEW_MESSAGE = "This finding stays on manual review. No pull request was opened.";
+
+function agenticFallbackSummary(category: SecurityCategory, filePath: string): { title: string; summary: string; branchSlug: string } {
+  if (category === "SECRET_LEAK") {
+    return {
+      title: `fix: remove hardcoded secret from ${filePath}`,
+      summary: "Removed a hardcoded secret from source.",
+      branchSlug: "secret",
+    };
+  }
+  if (category === "VULNERABLE_DEPENDENCY") {
+    return {
+      title: `fix: update dependency in ${filePath}`,
+      summary: "Updated a vulnerable or deprecated dependency.",
+      branchSlug: "dependency",
+    };
+  }
+  return {
+    title: `fix: move client query in ${filePath} to a server action`,
+    summary: "Moved a client Supabase query behind a signed-in server action.",
+    branchSlug: "client-query",
+  };
+}
+
+async function openAgenticClientDbFallback(input: {
+  token: string;
+  owner: string;
+  repo: string;
+  repoUrl: string;
+  normalizedPath: string;
+  line: number;
+  category: SecurityCategory;
+  content: string;
+  snippet?: string | null;
+  layout: ReturnType<typeof resolveSecurityFixLayout> | null;
+  plan: SecurityFixPlan | null;
+}): Promise<PrResult> {
+  const clientDb = input.category === "CLIENT_DB_EXPOSURE";
+  const serverActionPath =
+    input.layout?.serverActionPath ?? serverActionFilePath(input.normalizedPath);
+  const existingAction = clientDb
+    ? await readGitHubTextFile(input.repoUrl, serverActionPath, { auth: input.token })
+    : null;
+  const existingEnv = input.category === "SECRET_LEAK"
+    ? await readGitHubTextFile(input.repoUrl, ".env.example", { auth: input.token })
+    : null;
+  const agent = await agenticFixWithRetry({
+    finding: {
+      filePath: input.normalizedPath,
+      line: input.line,
+      category: input.category,
+      ...(input.snippet ? { snippet: input.snippet } : {}),
+    },
+    content: input.content,
+    layout: input.layout,
+    existingServerAction: existingAction?.ok ? existingAction.content : null,
+    existingEnvExample: existingEnv?.ok ? existingEnv.content : null,
+  });
+  if (!agent.ok) {
+    return { status: 422, body: { ok: false, message: MANUAL_REVIEW_MESSAGE } };
+  }
+  const fallback = agenticFallbackSummary(input.category, input.normalizedPath);
+  const summary = input.plan?.summary ?? fallback.summary;
+  return publishPullRequest({
+    token: input.token,
+    owner: input.owner,
+    repo: input.repo,
+    repoUrl: input.repoUrl,
+    title: input.plan?.title ?? fallback.title,
+    summary,
+    branch: securityBranchName(input.plan?.branchSlug ?? fallback.branchSlug, input.normalizedPath),
+    body: securityPullRequestBody(summary, agent.writes),
+    recordFilePath: input.normalizedPath,
+    writes: agent.writes,
+  });
 }
 
 export async function openSecurityFixPullRequest(
@@ -290,7 +534,23 @@ export async function openSecurityFixPullRequest(
     layout,
     { snippet: hint?.snippet }
   );
+  const agenticFallback = isAgenticClientDbEnabled();
   if (!plan || plan.writes.length === 0) {
+    if (agenticFallback) {
+      return openAgenticClientDbFallback({
+        token,
+        owner,
+        repo,
+        repoUrl,
+        normalizedPath,
+        line,
+        category,
+        content: remote.content,
+        snippet: hint?.snippet,
+        layout,
+        plan,
+      });
+    }
     return {
       status: 422,
       body: { ok: false, message: "This finding has no safe security fix, so no pull request was opened." },
@@ -363,7 +623,7 @@ export async function openSecurityFixPullRequest(
     presentPaths.add(path);
   }
 
-  return publishPullRequest({
+  const publishInput = {
     token,
     owner,
     repo,
@@ -373,8 +633,47 @@ export async function openSecurityFixPullRequest(
     branch: securityBranchName(plan.branchSlug, normalizedPath),
     body: securityPullRequestBody(plan.summary, writes),
     recordFilePath: normalizedPath,
-    writes,
-  });
+  };
+
+  if (agenticFallback) {
+    const uncoveredClient =
+      category === "CLIENT_DB_EXPOSURE" &&
+      !isFixtureCoveredClientQuery({ filePath: normalizedPath, content: remote.content }, line);
+    if (uncoveredClient) {
+      return openAgenticClientDbFallback({
+        token,
+        owner,
+        repo,
+        repoUrl,
+        normalizedPath,
+        line,
+        category,
+        content: remote.content,
+        snippet: hint?.snippet,
+        layout,
+        plan,
+      });
+    }
+    const finalized = await finalizeAutofixWrites(writes);
+    if (!finalized.ok) {
+      return openAgenticClientDbFallback({
+        token,
+        owner,
+        repo,
+        repoUrl,
+        normalizedPath,
+        line,
+        category,
+        content: remote.content,
+        snippet: hint?.snippet,
+        layout,
+        plan,
+      });
+    }
+    return publishPullRequest({ ...publishInput, writes: finalized.writes });
+  }
+
+  return publishPullRequest({ ...publishInput, writes });
 }
 
 async function publishPullRequest(input: {
