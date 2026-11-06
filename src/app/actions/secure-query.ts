@@ -165,3 +165,24 @@ export async function secureQuery145(owned: ReadonlyArray<{ id: string }> | unde
     return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } as never };
   }
 }
+
+export async function secureQuery339(dbPayload: Record<string, unknown>) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } as never };
+    }
+    const { data, error } = await supabase
+        .from("jobs")
+        .insert(dbPayload as never)
+        .select("*")
+        .single();
+    return { data, error };
+  } catch (error) {
+    console.error(error);
+    return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } as never };
+  }
+}
