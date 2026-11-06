@@ -3,7 +3,7 @@ import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
   "Terms of Service",
-  "Terms for using Provix Architecture Firewall, including GitHub repository scanning and automated fix pull requests.",
+  "Terms for using Provix, an automated code security, static analysis, and self-healing software platform, including GitHub repository scanning and automated fix pull requests.",
   "/terms"
 );
 
@@ -19,7 +19,7 @@ const sections: TermsSection[] = [
   {
     title: "1. The service",
     intro:
-      "Provix is an architecture firewall for GitHub repositories. After you sign in, you connect a repository with the Provix GitHub App or a token that can read it. Provix scans source files, reports findings, and can open a fix pull request for issues it knows how to patch.",
+      "Provix is an automated code security, static analysis, and self-healing software platform for GitHub repositories. After you sign in, you connect a repository with the Provix GitHub App or a token that can read it. Provix scans source files, reports findings, and can open a fix pull request for issues it knows how to patch.",
     bullets: [
       {
         label: "Scans:",
@@ -27,11 +27,11 @@ const sections: TermsSection[] = [
       },
       {
         label: "Fix pull requests:",
-        text: "When you choose Fix with PR, Provix may open a pull request on that repository. You review and merge it. Provix does not merge pull requests for you.",
+        text: "When you choose Fix with PR, Provix generates the patch, may fall back to a bounded AI retry loop for complex shapes, verifies the result against tsc --noEmit, and opens a pull request on that repository. You review and merge it. Provix does not merge pull requests for you.",
       },
       {
         label: "What Provix is not:",
-        text: "Provix is not a hiring marketplace, recruiter, employer, or a guarantee that a repository is secure, complete, or production-ready.",
+        text: "Provix is an automated code security, static analysis, and self-healing software platform. It is not a hiring marketplace, recruiter, employer, or a guarantee that a repository is secure, complete, or production-ready.",
       },
     ],
   },
