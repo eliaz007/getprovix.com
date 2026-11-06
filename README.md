@@ -1,18 +1,27 @@
 # Provix
 
-Provix is a modern, full-stack developer screening platform designed to replace bloated resumes with verified proof of work, automated code auditing, and structured candidate profiles.
+**Automated code security and architectural auditing for Next.js and TypeScript repositories.**
 
-## Tech Stack
-* **Framework:** Next.js (App Router) / TypeScript
-* **Styling:** Tailwind CSS
-* **Backend & Database:** Supabase, PostgreSQL
-* **Infrastructure:** Vercel, Custom DNS Routing
+Provix scans your codebase for structural anti-patterns and security vulnerabilities, tests its own patches behind the scenes, and opens clean, verified GitHub Pull Requests to fix them.
 
-## Features
-* **Verified Candidate Profiles:** Clean developer portfolios featuring technical stats and verified credentials.
-* **AI GitHub Auditor:** Automated repository analysis that scans codebase architecture, commit velocity, and tech stack alignment.
-* **Pitch Studio:** AI-powered outreach generation tailored for high-signal technical recruitment.
-* **Warm Intros:** Streamlined employer introduction workflow with candidate approval controls.
+---
 
-## Architecture & Setup
-Provix leverages Supabase for secure backend database management and authentication, paired with server-side API routes for real-time code auditing and AI-driven insights.
+## The Reliability-First Philosophy
+
+Most automated refactoring tools operate on blind optimism: they guess a fix, open a broken PR, and leave your CI pipeline red. 
+
+Provix takes a different approach. **Reliability first, coverage second.** 
+
+### Key Features
+
+* **Pre-Execution TypeScript Preflight:** Before any "Fix with PR" button is exposed, Provix runs a full TypeScript preflight check locally on the generated patch. If the patch doesn't compile cleanly, the button is hidden.
+* **Zero False Breakages:** Complex or unfamiliar code shapes (such as custom `.or()`, `.delete()`, or raw SQL queries) are safely routed to **Manual Review** rather than risking a broken build.
+* **CI Health Gate:** Built-in GitHub CI checks ensure that automated PRs are only unlocked when your repository's `main` branch is healthy and green.
+
+---
+
+## How It Works
+
+1. **Scan:** Provix parses your Next.js/TypeScript repository for architectural debt and security flaws.
+2. **Verify:** Generated AST patches undergo rigorous preflight validation against your local environment.
+3. **Execute:** A clean, 100% preflight-tested Pull Request is opened instantly for you to merge with confidence.

@@ -8,7 +8,7 @@ export async function secureQuery184() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return { data: null, error: { message: "Unauthorized" } };
+    return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } };
   }
   const { data, error } = await supabase
           .from("profiles")
@@ -25,7 +25,7 @@ export async function secureQuery95() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return { data: null, error: { message: "Unauthorized" } };
+    return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } };
   }
   const { data, error } = await supabase
       .from("profiles")
@@ -142,5 +142,47 @@ export async function secureQuery284(userId: string | undefined) {
   } catch (error) {
     console.error(error);
     return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } };
+  }
+}
+
+export async function secureQuery145(owned: ReadonlyArray<{ id: string }> | undefined) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } as never };
+    }
+    const { data, error } = await supabase
+        .from("job_applications")
+        .select("job_id")
+        .in("job_id", (owned ?? []).map((job) => job.id)
+        );
+    return { data, error };
+  } catch (error) {
+    console.error(error);
+    return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } as never };
+  }
+}
+
+export async function secureQuery339(dbPayload: Record<string, unknown>) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } as never };
+    }
+    const { data, error } = await supabase
+        .from("jobs")
+        .insert(dbPayload as never)
+        .select("*")
+        .single();
+    return { data, error };
+  } catch (error) {
+    console.error(error);
+    return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } as never };
   }
 }

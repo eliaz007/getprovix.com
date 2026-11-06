@@ -26,6 +26,7 @@ import {
 import { readJsonResponse } from "@/lib/read-json-response";
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 import { createClient } from "@/utils/supabase/client";
+import { secureQuery145, secureQuery339 } from "@/app/actions/secure-query";
 
 type ListingRow = {
   id: string;
@@ -142,13 +143,7 @@ export default function EmployerJobPostings() {
         return;
       }
 
-      const { data: applications, error: interestError } = await supabase
-        .from("job_applications")
-        .select("job_id")
-        .in(
-          "job_id",
-          owned.map((job) => job.id)
-        );
+      const { data: applications, error: interestError } = await secureQuery145(owned);
 
       if (interestError) {
         console.error("Failed to fetch job interest counts:", interestError);
@@ -341,11 +336,7 @@ export default function EmployerJobPostings() {
     };
 
     try {
-      let { data, error } = await supabase
-        .from("jobs")
-        .insert(dbPayload)
-        .select("*")
-        .single();
+      let { data, error } = await secureQuery339(dbPayload);
 
       if (error && isSupabaseSchemaError(error)) {
         const {
