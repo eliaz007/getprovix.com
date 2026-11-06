@@ -28,6 +28,7 @@ import {
 } from "@/lib/talent-pool-candidate";
 import { resolveTalentProfileId } from "@/lib/talent-pool-profiles";
 import { createClient } from "@/utils/supabase/client";
+import { secureQuery257 } from "@/app/actions/secure-query";
 
 /** Job context for deep screening — extends shared type with id/description. */
 export type DeepScreeningJobContext = ScreeningJobContext & {
@@ -254,11 +255,7 @@ export default function GeminiDeepScreening({
     void (async () => {
       try {
         const supabase = createClient();
-        const { data, error: loadError } = await supabase
-          .from("candidate_screenings")
-          .select("id, audit_data, integrity_score")
-          .eq("candidate_key", screeningKey)
-          .maybeSingle();
+        const { data, error: loadError } = await secureQuery257(screeningKey);
 
         if (cancelled || runId !== runIdRef.current) {
           return;
