@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { FirewallReport, FirewallResponse, FirewallScanCoverage } from "@/lib/firewall-contract";
 import { saveFirewallScanHandoff } from "@/lib/firewall-scan-handoff";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
+import { withBrowserSession } from "@/lib/browser-auth-headers";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 const STEPS = [
@@ -49,7 +50,8 @@ function delay(ms: number) {
 async function loadScan(repoUrl: string): Promise<LoadedScan> {
   const posted = await fetch("/api/firewall", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await withBrowserSession({ "Content-Type": "application/json" }),
+    credentials: "include",
     body: JSON.stringify({ source: "github", repoUrl }),
   });
   const payload = await readJsonResponse<FirewallResponse>(posted);

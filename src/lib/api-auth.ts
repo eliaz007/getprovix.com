@@ -59,29 +59,28 @@ export async function requireApiUser(
     if (user) {
       return { user, supabase: cookieClient };
     }
-
-    const accessToken = readBearerToken(request);
-    if (accessToken) {
-      try {
-        const tokenClient = createAccessTokenClient(accessToken);
-        const {
-          data: { user: tokenUser },
-          error: tokenError,
-        } = await tokenClient.auth.getUser(accessToken);
-
-        if (tokenUser && !tokenError) {
-          return { user: tokenUser, supabase: tokenClient };
-        }
-      } catch (error) {
-        console.error("[api-auth] bearer token validation failed:", error);
-      }
-    }
-
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   } catch (error) {
-    console.error("[api-auth] requireApiUser failed:", error);
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    console.error("[api-auth] cookie session lookup failed:", error);
   }
+
+  const accessToken = readBearerToken(request);
+  if (accessToken) {
+    try {
+      const tokenClient = createAccessTokenClient(accessToken);
+      const {
+        data: { user: tokenUser },
+        error: tokenError,
+      } = await tokenClient.auth.getUser(accessToken);
+
+      if (tokenUser && !tokenError) {
+        return { user: tokenUser, supabase: tokenClient };
+      }
+    } catch (error) {
+      console.error("[api-auth] bearer token validation failed:", error);
+    }
+  }
+
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 
 export async function requireAiApiUser(): Promise<ApiUserAccess | NextResponse> {

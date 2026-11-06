@@ -357,6 +357,160 @@ describe("POST /api/webhooks/github", () => {
     expect(recorded.comments).toEqual([]);
     expect(recorded.commits).toEqual([]);
   });
+
+  it("opens a provix/auto-heal PR from a signed default-branch push", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = SECRET;
+    process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL = "true";
+    const content = `"use client";\nexport async function load() {\n  return supabase.from("jobs").select("*");\n}\n`;
+    const pushBody = JSON.stringify({
+      ref: "refs/heads/main",
+      after: "abc123def4567890abcdef1234567890abcdef12",
+      deleted: false,
+      repository: {
+        name: "getprovix.com",
+        default_branch: "main",
+        owner: { login: "eliaz007" },
+      },
+      head_commit: { id: "abc123def4567890abcdef1234567890abcdef12", message: "feat: jobs page" },
+      commits: [
+        {
+          message: "feat: jobs page",
+          added: ["src/components/jobs.tsx"],
+          modified: [],
+          removed: [],
+        },
+      ],
+    });
+    const files = new Map<string, string>([["src/components/jobs.tsx", content]]);
+    const gate: GithubGateClient = {
+      async listPullFiles() {
+        return [];
+      },
+      async readFile() {
+        return null;
+      },
+      async postStatus() {},
+      async postComment() {},
+      async readTextFile(input) {
+        return files.get(input.path) ?? null;
+      },
+    };
+    const opened: Array<{ repo: string; finding: { filePath: string; category: string }; branch?: string }> = [];
+    const response = await handleGithubWebhook(requestFor(pushBody, signature(pushBody), "push"), gate, {
+      resolveToken: async () => ({ ok: true, token: "test-token" }),
+      openPullRequest: async (repo, finding) => {
+        opened.push({ repo, finding: { filePath: finding.filePath, category: finding.category } });
+        return {
+          status: 201,
+          body: {
+            ok: true,
+            message: "Opened pull request #99.",
+            url: "https://github.com/eliaz007/getprovix.com/pull/99",
+            number: 99,
+            branch: "provix/auto-heal-client-query-src-components-jobs-abc",
+            title: "fix: move client query",
+            base: "main",
+          },
+        };
+      },
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      healed: true,
+      autopilot: true,
+      pullRequestNumber: 99,
+      branch: "provix/auto-heal-client-query-src-components-jobs-abc",
+    });
+    expect(opened).toEqual([
+      {
+        repo: "eliaz007/getprovix.com",
+        finding: { filePath: "src/components/jobs.tsx", category: "CLIENT_DB_EXPOSURE" },
+      },
+    ]);
+  });
+
+  it("ignores pushes to non-default branches so auto-heal PRs do not loop", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = SECRET;
+    process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL = "true";
+    const pushBody = JSON.stringify({
+      ref: "refs/heads/provix/auto-heal-secret-billing-xyz",
+      after: "abc123def4567890abcdef1234567890abcdef12",
+      repository: {
+        name: "getprovix.com",
+        default_branch: "main",
+        owner: { login: "eliaz007" },
+      },
+      commits: [{ added: ["src/lib/billing.ts"], modified: [], removed: [] }],
+    });
+    const response = await handleGithubWebhook(
+      requestFor(pushBody, signature(pushBody), "push"),
+      recordingClient({
+        filename: "src/lib/billing.ts",
+        status: "added",
+        sha: "f".repeat(40),
+        content: "export {}",
+      }).gate
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, ignored: true });
+  });
+
+  it("accepts a signed repository_dispatch audit trigger", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = SECRET;
+    process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL = "true";
+    const content = `"use client";\nexport async function load() {\n  return supabase.from("jobs").select("*");\n}\n`;
+    const auditBody = JSON.stringify({
+      action: "provix-audit",
+      repository: {
+        name: "getprovix.com",
+        default_branch: "main",
+        owner: { login: "eliaz007" },
+      },
+      client_payload: {
+        event: "provix-audit",
+        sha: "abc123def4567890abcdef1234567890abcdef12",
+        branch: "main",
+        paths: ["src/components/jobs.tsx"],
+      },
+    });
+    const gate: GithubGateClient = {
+      async listPullFiles() {
+        return [];
+      },
+      async readFile() {
+        return null;
+      },
+      async postStatus() {},
+      async postComment() {},
+      async readTextFile() {
+        return content;
+      },
+    };
+    const response = await handleGithubWebhook(
+      requestFor(auditBody, signature(auditBody), "repository_dispatch"),
+      gate,
+      {
+        resolveToken: async () => ({ ok: true, token: "test-token" }),
+        openPullRequest: async () => ({
+          status: 201,
+          body: {
+            ok: true,
+            message: "Opened",
+            url: "https://github.com/eliaz007/getprovix.com/pull/7",
+            number: 7,
+            branch: "provix/auto-heal-client-query-jobs-1",
+          },
+        }),
+      }
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      autopilot: true,
+      pullRequestNumber: 7,
+    });
+  });
 });
 
 function handleSigned(body: string, gate: GithubGateClient) {

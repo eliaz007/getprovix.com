@@ -296,13 +296,74 @@ export function isValidAmbientModuleName(name: string): boolean {
   );
 }
 
+const NEXT_TYPE_STUBS = new Set(["next", "next/server"]);
+
+/**
+ * A script-file `declare module "next/server";` replaces `node_modules/next`
+ * and turns `NextResponse` / `Metadata` into namespaces (TS2709). Those two
+ * modules are written separately: an augmentation when Next's real types
+ * exist, or a class/interface declaration when they do not.
+ */
+function isNextTypeStub(name: string): boolean {
+  return NEXT_TYPE_STUBS.has(name);
+}
+
 /** Ambient `declare module` stubs for missing npm packages or unresolved `@/` aliases. */
 export function buildAmbientModuleStubs(moduleNames: readonly string[]): string {
-  const valid = [...new Set(moduleNames.map((name) => name.trim()).filter(isValidAmbientModuleName))].sort();
+  const valid = [...new Set(moduleNames.map((name) => name.trim()).filter(isValidAmbientModuleName))]
+    .filter((name) => !isNextTypeStub(name))
+    .sort();
   if (valid.length === 0) return "";
   // Empty ambient modules typecheck as `any` for default *and* named imports.
   // (`export = any` alone still fails named imports with TS2305.)
   return `${valid.map((name) => `declare module "${name}";\n`).join("")}`;
+}
+
+/**
+ * `next` and `next/server` stubs that keep `NextResponse` and `Metadata`
+ * usable as types. When the host has Next's real declarations this file is a
+ * module, so the interfaces augment instead of replacing `after` and the rest.
+ * When Next is absent, the declarations live in the script stub file and
+ * define the modules themselves.
+ */
+export function buildNextTypeStubs(
+  moduleNames: readonly string[],
+  nextTypesAvailable: boolean
+): { script: string; moduleFile: string } {
+  const names = [...new Set(moduleNames.map((name) => name.trim()))].filter(isNextTypeStub).sort();
+  if (names.length === 0) return { script: "", moduleFile: "" };
+  const metadata = `declare module "next" {
+  export interface Metadata {
+    title?: string | { absolute?: string; default?: string; template?: string };
+    description?: string;
+    alternates?: { canonical?: string | string[] };
+    openGraph?: { [key: string]: unknown };
+    twitter?: { [key: string]: unknown };
+    [key: string]: unknown;
+  }
+}`;
+  const responseAugment = `declare module "next/server" {
+  export interface NextResponse<Body = unknown> extends Response {}
+  export interface NextRequest extends Request {}
+}`;
+  const responseDeclare = `declare module "next/server" {
+  export class NextResponse<Body = unknown> extends Response {
+    static json<JsonBody>(body: JsonBody, init?: ResponseInit): NextResponse<JsonBody>;
+    static redirect(url: string | URL, init?: number | ResponseInit): NextResponse<unknown>;
+    static rewrite(destination: string | URL, init?: ResponseInit): NextResponse<unknown>;
+    static next(init?: ResponseInit): NextResponse<unknown>;
+  }
+  export class NextRequest extends Request {}
+  export function after(task: () => unknown): void;
+}`;
+  const blocks = [
+    names.includes("next") ? metadata : "",
+    names.includes("next/server") ? (nextTypesAvailable ? responseAugment : responseDeclare) : "",
+  ].filter(Boolean);
+  if (nextTypesAvailable) {
+    return { script: "", moduleFile: `export {};\n\n${blocks.join("\n\n")}\n` };
+  }
+  return { script: `${blocks.join("\n\n")}\n`, moduleFile: "" };
 }
 
 export type InternalAliasBundle = {
@@ -378,15 +439,25 @@ export function collectMissingAtAliasesInTempRoot(
 /** Write `declare module "…";` stubs under `__provix_stubs__/ambient-modules.d.ts`. */
 export async function writeAmbientInternalImportStubs(
   tempRoot: string,
-  moduleNames: readonly string[]
+  moduleNames: readonly string[],
+  options?: { projectRoot?: string }
 ): Promise<string | null> {
   const unique = [...new Set(moduleNames)].sort();
   if (unique.length === 0) return null;
-  const content = buildAmbientModuleStubs(unique);
-  const abs = path.join(tempRoot, "__provix_stubs__", "ambient-modules.d.ts");
-  await mkdir(path.dirname(abs), { recursive: true });
-  await writeFile(abs, content, "utf8");
-  return abs;
+  const projectRoot = options?.projectRoot ?? process.cwd();
+  const nextTypes = buildNextTypeStubs(unique, hostPackageHasTypes(projectRoot, "next"));
+  const content = `${buildAmbientModuleStubs(unique)}${nextTypes.script}`;
+  const dir = path.join(tempRoot, "__provix_stubs__");
+  await mkdir(dir, { recursive: true });
+  const abs = path.join(dir, "ambient-modules.d.ts");
+  if (content.trim()) await writeFile(abs, content, "utf8");
+  const nextAbs = path.join(dir, "next-types.d.ts");
+  if (nextTypes.moduleFile) {
+    await writeFile(nextAbs, nextTypes.moduleFile, "utf8");
+  } else if (existsSync(nextAbs)) {
+    await rm(nextAbs, { force: true });
+  }
+  return content.trim() ? abs : nextTypes.moduleFile ? nextAbs : null;
 }
 
 function workspaceCandidates(basePath: string): string[] {
@@ -624,6 +695,37 @@ export function typescriptLibDirectory(projectRoot: string): string | null {
  * TS2318 / TS6053 / lib-option hints mean the runtime could not load lib.*.d.ts
  * (common on Vercel `/var/task`). Those are not patch bugs. Real breaks are TS2304.
  */
+function diagnosticMentionsWrite(line: string, writePaths: readonly string[]): boolean {
+  const needles = writePaths.flatMap((filePath) => {
+    const normalized = filePath.replace(/\\/g, "/");
+    const noExt = normalized.replace(/\.(?:tsx|ts|jsx|js)$/, "");
+    return [normalized, noExt, noExt.replace(/^src\//, "@/")];
+  });
+  return needles.some((needle) => needle.length > 0 && line.includes(needle));
+}
+
+/**
+ * Every actionable `tsc` line, with errors in the patched files and their
+ * importers first. The retry prompt needs more than the first line.
+ */
+export function formatAutofixTscFailure(
+  actionable: readonly string[],
+  writePaths: readonly string[] = []
+): string {
+  const ranked = [...actionable].sort(
+    (left, right) =>
+      Number(diagnosticMentionsWrite(right, writePaths)) - Number(diagnosticMentionsWrite(left, writePaths))
+  );
+  const shown = ranked.slice(0, 80);
+  const hidden = ranked.length - shown.length;
+  const head = "Pre-flight `npx tsc --noEmit` failed. The pull request was not opened.";
+  const body = [
+    ...shown,
+    ...(hidden > 0 ? [`… ${hidden} more TypeScript diagnostics`] : []),
+  ].join("\n");
+  return body ? `${head}\n${body}` : head;
+}
+
 export function actionablePreflightDiagnostics(diagnostics: string): string[] {
   return diagnostics
     .split(/\r?\n/)
@@ -791,14 +893,14 @@ export async function runAutofixTscPreflight(
       await mkdir(path.dirname(abs), { recursive: true });
       await writeFile(abs, write.content.endsWith("\n") ? write.content : `${write.content}\n`, "utf8");
     }
-    await writeAmbientInternalImportStubs(tempRoot, stubModules);
+    await writeAmbientInternalImportStubs(tempRoot, stubModules, { projectRoot });
     // Re-scan after materializing seeds in case relative imports still miss.
     const stillMissing = collectMissingAtAliasesInTempRoot(tempRoot, graph.writes, {
       aliasRoot: host.aliasRoot,
       hostPaths: host.paths,
     });
     if (stillMissing.length > 0) {
-      await writeAmbientInternalImportStubs(tempRoot, [...stubModules, ...stillMissing]);
+      await writeAmbientInternalImportStubs(tempRoot, [...stubModules, ...stillMissing], { projectRoot });
     }
     const stubCount = new Set([...stubModules, ...stillMissing]).size;
     await writeFile(path.join(tempRoot, "tsconfig.json"), buildPreflightTsconfig(host, libDir), "utf8");
@@ -812,10 +914,12 @@ export async function runAutofixTscPreflight(
     // Sandbox lib gaps (TS2318 / TS6053) — not a patch bug.
     if (actionable.length === 0) return preflightPass(stubCount);
 
-    const firstLine = actionable[0] ?? diagnostics.slice(0, 280);
     return {
       success: false,
-      message: `Pre-flight \`npx tsc --noEmit\` failed (${firstLine}). The pull request was not opened.`,
+      message: formatAutofixTscFailure(
+        actionable.length > 0 ? actionable : [diagnostics.slice(0, 280)],
+        graph.writes.map((write) => write.filePath)
+      ),
       diagnostics,
     };
   } finally {

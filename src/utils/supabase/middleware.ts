@@ -74,8 +74,10 @@ export async function updateSession(request: NextRequest) {
   // Public homepage, marketing/legal pages, and static assets must not
   // create a Supabase client or call getUser() / refresh the session.
   // Auth runs only on protected app paths such as /dashboard and /settings.
+  // Pass no request object: NextResponse.next({ request }) makes the dev
+  // client treat every document load as stale and reload /onboarding forever.
   if (shouldSkipMiddlewareAuth(pathname)) {
-    return NextResponse.next({ request });
+    return NextResponse.next();
   }
 
   let supabaseResponse = NextResponse.next({
@@ -117,6 +119,12 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // The firewall is the signed-in workspace. Guests who open it from the
+  // landing page go through GitHub connect first, not the empty dashboard.
+  if (!user && (pathname === "/firewall" || pathname.startsWith("/firewall/"))) {
+    return redirectWithSessionCookies(request, supabaseResponse, "/onboarding");
+  }
 
   // API routes must always return JSON. A redirect to the marketing page
   // follows to HTML, and response.json() then throws on "<!DOCTYPE".

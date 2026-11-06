@@ -147,6 +147,13 @@ function refusedPlan(filePath: string, summary: string): AutofixPlan {
   };
 }
 
+/**
+ * Deterministic AST split / error-handling plan for Architectural Bloat.
+ * When this returns `canOpenPullRequest: false` (shared closures, one top-level
+ * unit, tests) or the writes fail `finalizeAutofixWrites`, callers behind
+ * `PROVIX_AGENTIC_CLIENT_DB=1` may fall back to `agenticFixWithRetry` with
+ * category `ARCHITECTURAL_BLOAT`. This planner stays rule-based and never calls Gemini.
+ */
 export function planAutofix(filePath: string, content: string): AutofixPlan {
   const normalized = filePath.replace(/\\/g, "/");
   if (isTestSourcePath(normalized) || isTestSuiteSource(content)) {

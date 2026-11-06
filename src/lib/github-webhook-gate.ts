@@ -8,6 +8,7 @@ import {
   specifierPathCandidates,
   type SourceTextFile,
 } from "../../scripts/ingest-engine";
+import { isAgenticClientDbEnabled } from "@/lib/agentic-fix-with-retry";
 import { finalizeAutofixWrites } from "@/lib/autofix-write-validation";
 import {
   isSecurityCategory,
@@ -18,6 +19,8 @@ import {
 } from "@/lib/firewall-contract";
 import { resolveGithubRepoAccessToken } from "@/lib/github-app-client";
 import { isRepositoryTextPath } from "@/lib/github-source-file";
+import { openAutopilotPullRequest } from "@/lib/github-autofix-pr";
+import { runAutopilotFix } from "@/lib/provix-autopilot";
 import {
   isServerActionFilePath,
   isSupportingHelperPath,
@@ -99,12 +102,25 @@ export type GithubGateClient = {
 };
 
 type PullRequestDelivery = {
+  kind: "pull_request";
   owner: string;
   repo: string;
   number: number;
   sha: string;
   branch: string;
 };
+
+type PushDelivery = {
+  kind: "push";
+  owner: string;
+  repo: string;
+  sha: string;
+  branch: string;
+  defaultBranch: string;
+  changedPaths: string[];
+};
+
+type WebhookDelivery = PullRequestDelivery | PushDelivery;
 
 function json(body: Record<string, unknown>, status = 200) {
   return NextResponse.json(body, {
@@ -381,34 +397,106 @@ export async function prepareAutonomousHeal(input: {
           ? resolveSecurityFixLayout({ clientFilePath: filePath, tsconfigContents: [input.tsconfigText] })
           : null;
       const plan = planSecurityFix({ filePath, content }, live.category, live.line, layout);
-      if (!plan || plan.writes.length === 0) break;
+      if (plan && plan.writes.length > 0) {
+        let changed = false;
+        for (const write of plan.writes) {
+          const path = normalizedPath(write.filePath);
+          if (!isRepositoryTextPath(path)) return null;
+          let next = write.content;
+          if (write.appendLine) {
+            const existing = extras.get(path) ?? contents.get(path) ?? (await input.readText?.(path)) ?? null;
+            next = mergeEnvExample(existing, write.appendLine);
+          } else if (isSupportingHelperPath(path) && path !== filePath) {
+            const existing = extras.get(path) ?? contents.get(path) ?? (await input.readText?.(path)) ?? null;
+            // Keep an existing createClient helper; only scaffold when the repo has none.
+            if (existing != null) continue;
+            next = write.content;
+          } else if (isServerActionFilePath(path) && path !== filePath) {
+            const existing = extras.get(path) ?? contents.get(path) ?? (await input.readText?.(path)) ?? null;
+            next = mergeServerAction(existing, write.content);
+          }
+          if (path === filePath) {
+            if (next !== content) changed = true;
+            contents.set(path, next);
+          } else if (extras.get(path) !== next) {
+            changed = true;
+            extras.set(path, next);
+          }
+        }
+        notes.push(`${filePath}:${live.line}  ${live.category}  ${plan.title}`);
+        if (!changed) break;
+        continue;
+      }
+
+      // Deterministic plan missing/uncovered — Phase 4 agentic autopilot fallback.
+      if (!isAgenticClientDbEnabled()) break;
+      const existingActionPath = layout?.serverActionPath;
+      const existingServerAction = existingActionPath
+        ? (extras.get(existingActionPath) ??
+          contents.get(existingActionPath) ??
+          (await input.readText?.(existingActionPath)) ??
+          null)
+        : null;
+      const existingEnvExample =
+        extras.get(".env.example") ?? contents.get(".env.example") ?? (await input.readText?.(".env.example")) ?? null;
+      const agent = await runAutopilotFix({
+        finding: {
+          filePath,
+          line: live.line,
+          category: live.category,
+          snippet: live.message,
+        },
+        content,
+        existingServerAction,
+        existingEnvExample,
+        tsconfigText: input.tsconfigText,
+      });
+      if (!agent.ok) break;
       let changed = false;
-      for (const write of plan.writes) {
+      for (const write of agent.writes) {
         const path = normalizedPath(write.filePath);
         if (!isRepositoryTextPath(path)) return null;
-        let next = write.content;
-        if (write.appendLine) {
-          const existing = extras.get(path) ?? contents.get(path) ?? (await input.readText?.(path)) ?? null;
-          next = mergeEnvExample(existing, write.appendLine);
-        } else if (isSupportingHelperPath(path) && path !== filePath) {
-          const existing = extras.get(path) ?? contents.get(path) ?? (await input.readText?.(path)) ?? null;
-          // Keep an existing createClient helper; only scaffold when the repo has none.
-          if (existing != null) continue;
-          next = write.content;
-        } else if (isServerActionFilePath(path) && path !== filePath) {
-          const existing = extras.get(path) ?? contents.get(path) ?? (await input.readText?.(path)) ?? null;
-          next = mergeServerAction(existing, write.content);
-        }
         if (path === filePath) {
-          if (next !== content) changed = true;
-          contents.set(path, next);
-        } else if (extras.get(path) !== next) {
+          if (write.content !== content) changed = true;
+          contents.set(path, write.content);
+        } else if (extras.get(path) !== write.content) {
           changed = true;
-          extras.set(path, next);
+          extras.set(path, write.content);
         }
       }
-      notes.push(`${filePath}:${live.line}  ${live.category}  ${plan.title}`);
+      notes.push(`${filePath}:${live.line}  ${live.category}  autopilot:${agent.source}`);
       if (!changed) break;
+    }
+  }
+
+  // Architectural bloat: one file per heal round via planAutofix → agentic.
+  if (notes.length === 0 && isAgenticClientDbEnabled()) {
+    const bloat = input.findings.find((finding) => finding.rule === "Architectural Bloat");
+    if (bloat) {
+      const filePath = normalizedPath(bloat.filePath);
+      const content = contents.get(filePath);
+      if (content != null) {
+        const agent = await runAutopilotFix({
+          finding: {
+            filePath,
+            line: bloat.line,
+            category: "ARCHITECTURAL_BLOAT",
+            rule: bloat.rule,
+            snippet: bloat.message,
+          },
+          content,
+          tsconfigText: input.tsconfigText,
+        });
+        if (agent.ok) {
+          for (const write of agent.writes) {
+            const path = normalizedPath(write.filePath);
+            if (!isRepositoryTextPath(path)) return null;
+            if (path === filePath) contents.set(path, write.content);
+            else extras.set(path, write.content);
+          }
+          notes.push(`${filePath}:${bloat.line}  ARCHITECTURAL_BLOAT  autopilot:${agent.source}`);
+        }
+      }
     }
   }
 
@@ -612,10 +700,15 @@ function readString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function parseDelivery(eventName: string | null, payload: unknown): PullRequestDelivery | "ignore" | "invalid" {
+function parseDelivery(eventName: string | null, payload: unknown): WebhookDelivery | "ignore" | "invalid" {
   if (eventName === "ping") return "ignore";
-  if (eventName !== "pull_request") return "ignore";
   if (!payload || typeof payload !== "object") return "invalid";
+
+  if (eventName === "push" || eventName === "repository_dispatch") {
+    return parsePushOrAuditDelivery(eventName, payload);
+  }
+  if (eventName !== "pull_request") return "ignore";
+
   const body = payload as {
     action?: unknown;
     repository?: { name?: unknown; owner?: { login?: unknown } };
@@ -632,7 +725,101 @@ function parseDelivery(eventName: string | null, payload: unknown): PullRequestD
   if (!/^[0-9a-f]{7,40}$/i.test(sha)) return "invalid";
   if (!isPullRequestBranch(branch)) return "invalid";
   if (typeof number !== "number" || !Number.isInteger(number) || number <= 0) return "invalid";
-  return { owner, repo, number, sha, branch };
+  return { kind: "pull_request", owner, repo, number, sha, branch };
+}
+
+function parsePushOrAuditDelivery(
+  eventName: string,
+  payload: object
+): PushDelivery | "ignore" | "invalid" {
+  const body = payload as {
+    action?: unknown;
+    ref?: unknown;
+    after?: unknown;
+    deleted?: unknown;
+    forced?: unknown;
+    repository?: {
+      name?: unknown;
+      default_branch?: unknown;
+      owner?: { login?: unknown; name?: unknown };
+    };
+    commits?: Array<{ added?: unknown; modified?: unknown; removed?: unknown; message?: unknown }>;
+    head_commit?: { message?: unknown; id?: unknown };
+    client_payload?: {
+      event?: unknown;
+      sha?: unknown;
+      branch?: unknown;
+      paths?: unknown;
+    };
+  };
+
+  if (eventName === "repository_dispatch") {
+    const action = readString(body.action);
+    const event = readString(body.client_payload?.event);
+    if (action !== "provix-audit" && event !== "provix-audit" && action !== "audit") return "ignore";
+  }
+
+  const owner =
+    readString(body.repository?.owner?.login) || readString(body.repository?.owner?.name);
+  const repo = readString(body.repository?.name);
+  const defaultBranch = readString(body.repository?.default_branch) || "main";
+  if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) return "invalid";
+
+  if (eventName === "push") {
+    if (body.deleted === true) return "ignore";
+    const ref = readString(body.ref);
+    if (!ref.startsWith("refs/heads/")) return "ignore";
+    const branch = ref.slice("refs/heads/".length);
+    if (!isPullRequestBranch(branch)) return "invalid";
+    // Autopilot opens PRs from the default branch tip only — avoid heal loops on
+    // provix/auto-heal-* and other feature branches.
+    if (branch !== defaultBranch) return "ignore";
+    if (branch.startsWith("provix/auto-heal-") || branch.startsWith("provix/security-") || branch.startsWith("provix/split-")) {
+      return "ignore";
+    }
+    const sha = readString(body.after) || readString(body.head_commit?.id);
+    if (!/^[0-9a-f]{7,40}$/i.test(sha) || /^0+$/.test(sha)) return "ignore";
+    const headMessage = readString(body.head_commit?.message);
+    if (isAutonomousHealCommit(headMessage) || /Generated by Provix/i.test(headMessage)) return "ignore";
+
+    const changed = new Set<string>();
+    for (const commit of body.commits ?? []) {
+      for (const list of [commit.added, commit.modified] as const) {
+        if (!Array.isArray(list)) continue;
+        for (const entry of list) {
+          const path = readString(entry);
+          if (path) changed.add(normalizedPath(path));
+        }
+      }
+    }
+    return {
+      kind: "push",
+      owner,
+      repo,
+      sha,
+      branch,
+      defaultBranch,
+      changedPaths: [...changed].slice(0, FILE_CAP),
+    };
+  }
+
+  // repository_dispatch audit — client_payload may name sha / branch / paths.
+  const sha = readString(body.client_payload?.sha) || readString(body.after);
+  const branch = readString(body.client_payload?.branch) || defaultBranch;
+  if (!/^[0-9a-f]{7,40}$/i.test(sha)) return "invalid";
+  if (!isPullRequestBranch(branch)) return "invalid";
+  const paths = Array.isArray(body.client_payload?.paths)
+    ? body.client_payload.paths.map((entry) => readString(entry)).filter(Boolean).map(normalizedPath)
+    : [];
+  return {
+    kind: "push",
+    owner,
+    repo,
+    sha,
+    branch,
+    defaultBranch,
+    changedPaths: paths.slice(0, FILE_CAP),
+  };
 }
 
 function isPullRequestBranch(branch: string): boolean {
@@ -785,7 +972,135 @@ function statusOf(error: unknown): number | null {
   return typeof error.status === "number" ? error.status : null;
 }
 
-export async function handleGithubWebhook(request: Request, client?: GithubGateClient): Promise<Response> {
+/**
+ * Push / repository_dispatch audit path: scan changed files, run autopilot
+ * (plan → agentic → tsc), open one `provix/auto-heal-*` pull request.
+ */
+export async function handlePushAutopilot(
+  delivery: PushDelivery,
+  gate: GithubGateClient,
+  options?: {
+    openPullRequest?: typeof openAutopilotPullRequest;
+    resolveToken?: (
+      owner: string,
+      repo: string
+    ) => Promise<{ ok: true; token: string } | { ok: false; status: number; message: string }>;
+  }
+): Promise<Response> {
+  if (process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL !== "true") {
+    return json({ ok: true, ignored: true, reason: "autopilot_disabled" });
+  }
+
+  const resolveToken = options?.resolveToken ?? resolveGithubRepoAccessToken;
+  const openPullRequest = options?.openPullRequest ?? openAutopilotPullRequest;
+  const access = await resolveToken(delivery.owner, delivery.repo);
+  if (!access.ok) {
+    return json({ ok: false, message: access.message }, access.status >= 400 ? access.status : 500);
+  }
+
+  const readable: Array<{ filePath: string; content: string; patch?: string | null }> = [];
+  if (!gate.readTextFile) {
+    return json({ ok: false, message: "GitHub file reads are unavailable for this delivery." }, 500);
+  }
+
+  const paths =
+    delivery.changedPaths.length > 0
+      ? delivery.changedPaths.filter((path) => isSourceFile(path) || isCompanionFile(path))
+      : [];
+  for (const filePath of paths.slice(0, FILE_CAP)) {
+    try {
+      const content = await gate.readTextFile({
+        owner: delivery.owner,
+        repo: delivery.repo,
+        path: filePath,
+        ref: delivery.sha,
+      });
+      if (content == null) continue;
+      readable.push({ filePath, content, patch: null });
+    } catch (error) {
+      console.error(
+        "[webhooks/github] could not read a pushed file",
+        filePath,
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+  if (readable.length === 0) {
+    return json({ ok: true, ignored: true, reason: "no_readable_files" });
+  }
+
+  const scan = scanChangedFiles(readable);
+  if (scan.findings.length === 0) {
+    return json({
+      ok: true,
+      state: "success",
+      leaks: 0,
+      violations: 0,
+      healed: false,
+      autopilot: false,
+    });
+  }
+
+  const target =
+    scan.findings.find((finding) => isSecurityCategory(finding.category)) ??
+    scan.findings.find((finding) => finding.rule === "Architectural Bloat") ??
+    scan.findings[0];
+  if (!target) {
+    return json({ ok: true, ignored: true, reason: "no_actionable_finding" });
+  }
+  const content = readable.find((file) => normalizedPath(file.filePath) === normalizedPath(target.filePath))?.content;
+  if (!content) {
+    return json({ ok: true, ignored: true, reason: "finding_file_missing" });
+  }
+
+  const result = await openPullRequest(
+    `${delivery.owner}/${delivery.repo}`,
+    {
+      filePath: target.filePath,
+      line: target.line,
+      category: target.rule === "Architectural Bloat" ? "ARCHITECTURAL_BLOAT" : target.category,
+      rule: target.rule,
+      snippet: target.message,
+    },
+    { token: access.token, content }
+  );
+
+  if (!result.body.ok) {
+    return json(
+      {
+        ok: true,
+        state: "failure",
+        leaks: scan.leaks,
+        violations: scan.violations,
+        healed: false,
+        autopilot: false,
+        message: result.body.message,
+      },
+      200
+    );
+  }
+
+  return json({
+    ok: true,
+    state: "success",
+    leaks: scan.leaks,
+    violations: scan.violations,
+    healed: true,
+    autopilot: true,
+    pullRequestUrl: result.body.url,
+    pullRequestNumber: result.body.number,
+    branch: result.body.branch,
+  });
+}
+
+export async function handleGithubWebhook(
+  request: Request,
+  client?: GithubGateClient,
+  options?: {
+    openPullRequest?: typeof openAutopilotPullRequest;
+    resolveToken?: (owner: string, repo: string) => Promise<{ ok: true; token: string } | { ok: false; status: number; message: string }>;
+  }
+): Promise<Response> {
   const body = Buffer.from(await request.arrayBuffer());
   const secret = process.env.GITHUB_WEBHOOK_SECRET?.trim() ?? "";
   if (!secret) {
@@ -804,7 +1119,12 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
 
   const delivery = parseDelivery(request.headers.get("x-github-event"), payload);
   if (delivery === "ignore") return json({ ok: true, ignored: true });
-  if (delivery === "invalid") return json({ ok: false, message: "Pull request payload is missing owner, repo, number, or sha." }, 400);
+  if (delivery === "invalid") {
+    return json(
+      { ok: false, message: "Webhook payload is missing owner, repo, branch, or sha." },
+      400
+    );
+  }
 
   const appConfigured = Boolean(
     process.env.GITHUB_APP_ID?.trim() && process.env.GITHUB_APP_PRIVATE_KEY?.trim()
@@ -821,6 +1141,10 @@ export async function handleGithubWebhook(request: Request, client?: GithubGateC
   }
   // createGithubGateClient refuses PAT fallback when App creds are set, so this is accurate.
   const authSource = client ? "injected" : appConfigured ? "github_app" : "github_token_fallback";
+
+  if (delivery.kind === "push") {
+    return handlePushAutopilot(delivery, gate, options);
+  }
 
   let files: GatePullFile[];
   try {

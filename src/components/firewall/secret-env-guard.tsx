@@ -49,33 +49,33 @@ export default function SecretEnvGuard(): ReactNode {
   return (
     <section
       aria-labelledby="secret-guard-heading"
-      className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-xl sm:p-6"
+      className="rounded-none border border-white/10 bg-[#141414] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] sm:p-6"
     >
-      <p className="font-mono text-[11px] tracking-[0.18em] text-purple-400 uppercase">Secrets</p>
-      <h2 id="secret-guard-heading" className="mt-2 text-xl font-semibold tracking-tight text-[#f9fafb]">
+      <p className="text-[11px] font-medium tracking-[0.16em] text-[#c4b5fd] uppercase">Secrets</p>
+      <h2 id="secret-guard-heading" className="mt-2 text-xl font-medium tracking-tight text-[#ededed]">
         Secret leak and env guard
       </h2>
-      <p className="mt-2 text-sm leading-relaxed text-[#f9fafb]/65">
+      <p className="mt-2 text-sm leading-relaxed text-[#a1a1aa]">
         Each rule is enforced or off in this browser. A scan still reports OK or FAILED for the rules left on.
       </p>
 
-      <ul className="mt-5 divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10 bg-black/30">
+      <ul className="mt-5 divide-y divide-white/10 overflow-hidden rounded-none border border-white/10 bg-[#141414]">
         {SECRET_RULE_CATALOG.map((rule) => {
           const on = !disabled.includes(rule.id);
           return (
-            <li key={rule.id} className="flex items-center gap-3 px-3 py-3 transition-colors hover:bg-white/[0.03]">
+            <li key={rule.id} className="flex items-center gap-3 px-3 py-3 transition-colors hover:bg-white/5">
               <button type="button" onClick={() => setOpenId(rule.id)} className="min-w-0 flex-1 text-left">
-                <p className="truncate text-sm font-medium text-[#f9fafb]">{rule.label}</p>
-                <p className="mt-0.5 truncate font-mono text-[11px] text-[#f9fafb]/40">{rule.envName}</p>
+                <p className="truncate text-sm font-medium text-[#ededed]">{rule.label}</p>
+                <p className="mt-0.5 truncate font-mono text-[11px] text-[#a1a1aa]">{rule.envName}</p>
               </button>
-              <span className={`font-mono text-[11px] ${on ? "text-[#34d399]" : "text-[#f9fafb]/35"}`}>
+              <span className={`font-mono text-[11px] ${on ? "text-[#10b981]" : "text-[#a1a1aa]"}`}>
                 {on ? "OK" : "OFF"}
               </span>
               <button
                 type="button"
                 aria-pressed={on}
                 onClick={() => toggle(rule.id)}
-                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${on ? "bg-purple-600" : "bg-white/15"}`}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${on ? "bg-[#7c3aed]" : "bg-[#18181B]"}`}
               >
                 <motion.span
                   layout
@@ -84,7 +84,7 @@ export default function SecretEnvGuard(): ReactNode {
                       ? { duration: 0 }
                       : { type: "spring", stiffness: 520, damping: 32 }
                   }
-                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm ${on ? "left-5" : "left-0.5"}`}
+                  className={`absolute top-0.5 h-5 w-5 rounded-full shadow-sm ${on ? "left-5 bg-[#18181B]" : "left-0.5 bg-[#7c3aed]"}`}
                 />
                 <span className="sr-only">{on ? `Turn off ${rule.label}` : `Turn on ${rule.label}`}</span>
               </button>
@@ -97,13 +97,13 @@ export default function SecretEnvGuard(): ReactNode {
         {ENV_CHECKS.map((check) => (
           <li
             key={check.id}
-            className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 backdrop-blur-sm transition-colors hover:border-white/15"
+            className="rounded-none border border-white/10 bg-[#141414] px-3 py-2"
           >
             <div className="flex items-baseline justify-between gap-3 font-mono text-[12px]">
-              <span className="text-[#f9fafb]/80">{check.label}</span>
-              <span className="text-[#34d399]">OK</span>
+              <span className="text-[#ededed]">{check.label}</span>
+              <span className="text-[#10b981]">OK</span>
             </div>
-            <p className="mt-1 text-[12px] text-[#f9fafb]/45">{check.detail}</p>
+            <p className="mt-1 text-[12px] text-[#a1a1aa]">{check.detail}</p>
           </li>
         ))}
       </ul>
@@ -133,7 +133,7 @@ function RuleDrawer({
 }): ReactNode {
   const reduce = useReducedMotion();
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm" role="presentation" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/60" role="presentation" onClick={onClose}>
       <motion.aside
         role="dialog"
         aria-modal="true"
@@ -141,46 +141,46 @@ function RuleDrawer({
         initial={reduce ? false : { x: 28, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-        className="h-full w-full max-w-md overflow-y-auto border-l border-white/10 bg-[#0e1117]/95 p-6 shadow-[-24px_0_80px_-32px_rgba(168,85,247,0.45)] backdrop-blur-xl"
+        className="h-full w-full max-w-md overflow-y-auto border-l border-white/10 bg-[#18181B] p-6 shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="font-mono text-[11px] tracking-[0.16em] text-purple-400 uppercase">Rule</p>
-            <h3 id="secret-rule-title" className="mt-2 text-lg font-semibold text-[#f9fafb]">
+            <p className="text-[11px] font-medium tracking-[0.16em] text-[#c4b5fd] uppercase">Rule</p>
+            <h3 id="secret-rule-title" className="mt-2 text-lg font-medium tracking-tight text-[#ededed]">
               {rule.label}
             </h3>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm text-[#f9fafb]/60 hover:text-[#f9fafb]">
+          <button type="button" onClick={onClose} className="rounded-full px-3 py-1 text-sm text-[#a1a1aa] hover:text-[#ededed]">
             Close
           </button>
         </div>
         <dl className="mt-6 space-y-4 font-mono text-[12px]">
           <div>
-            <dt className="text-[#f9fafb]/40">ENV</dt>
-            <dd className="mt-1 text-[#f9fafb]">{rule.envName}</dd>
+            <dt className="text-[#a1a1aa]">ENV</dt>
+            <dd className="mt-1 text-[#ededed]">{rule.envName}</dd>
           </div>
           <div>
-            <dt className="text-[#f9fafb]/40">PATTERN</dt>
-            <dd className="mt-1 break-all text-[#f9fafb]/80">{rule.pattern}</dd>
+            <dt className="text-[#a1a1aa]">PATTERN</dt>
+            <dd className="mt-1 break-all text-[#ededed]">{rule.pattern}</dd>
           </div>
           <div>
-            <dt className="text-[#f9fafb]/40">REPLACEMENT</dt>
-            <dd className="mt-1 text-purple-300">process.env.{rule.envName}</dd>
+            <dt className="text-[#a1a1aa]">REPLACEMENT</dt>
+            <dd className="mt-1 text-[#10b981]">process.env.{rule.envName}</dd>
           </div>
           <div>
-            <dt className="text-[#f9fafb]/40">.env.example</dt>
-            <dd className="mt-1 text-[#f9fafb]">{rule.envName}=</dd>
+            <dt className="text-[#a1a1aa]">.env.example</dt>
+            <dd className="mt-1 text-[#ededed]">{rule.envName}=</dd>
           </div>
           <div>
-            <dt className="text-[#f9fafb]/40">STATE</dt>
-            <dd className={`mt-1 ${enabled ? "text-[#34d399]" : "text-rose-400"}`}>{enabled ? "OK" : "OFF"}</dd>
+            <dt className="text-[#a1a1aa]">STATE</dt>
+            <dd className={`mt-1 ${enabled ? "text-[#10b981]" : "text-[#ef4444]"}`}>{enabled ? "OK" : "OFF"}</dd>
           </div>
         </dl>
         <MotionButton
           type="button"
           onClick={onToggle}
-          className="mt-8 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-purple-500"
+          className="mt-8 rounded-full bg-[#7c3aed] px-6 py-3.5 text-sm font-medium text-white transition-colors hover:bg-[#6d28d9]"
         >
           {enabled ? "Turn rule off" : "Turn rule on"}
         </MotionButton>

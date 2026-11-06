@@ -64,10 +64,10 @@ function TypedDetail({ text, active }: { text: string; active: boolean }): React
   }, [text, active, reduce]);
 
   return (
-    <span className="truncate text-[#f9fafb]/45">
+    <span className="truncate text-[#a1a1aa]">
       {text.slice(0, shown)}
       {active && shown < text.length ? (
-        <span className="text-purple-400" aria-hidden>
+        <span className="text-[#10b981]" aria-hidden>
           ▌
         </span>
       ) : null}
@@ -107,17 +107,17 @@ export default function CliLogStream(): ReactNode {
   return (
     <section
       aria-labelledby="cli-stream-heading"
-      className="overflow-hidden rounded-2xl border border-white/10 bg-black/80 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-xl"
+      className="overflow-hidden rounded-none border border-white/10 bg-[#141414] shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
     >
       <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5">
         <div>
-          <p id="cli-stream-heading" className="font-mono text-[11px] tracking-wide text-[#f9fafb]/70">
-            <span className="text-purple-400">provix</span>
-            <span className="text-[#f9fafb]/35">@</span>
+          <p id="cli-stream-heading" className="font-mono text-[11px] tracking-wide text-[#a1a1aa]">
+            <span className="text-[#ededed]">provix</span>
+            <span className="text-[#a1a1aa]">@</span>
             cli
           </p>
         </div>
-        <p className="font-mono text-[11px] text-purple-300">live</p>
+        <p className="font-mono text-[11px] text-[#10b981]">live</p>
       </header>
       <div
         className="min-h-[280px] overflow-x-auto px-4 py-4 sm:px-5"
@@ -125,8 +125,8 @@ export default function CliLogStream(): ReactNode {
         aria-live="polite"
         aria-relevant="additions text"
       >
-        <p className="font-mono text-[12px] text-[#f9fafb]/45">
-          <span className="text-purple-400">$</span> npx provix@latest
+        <p className="font-mono text-[12px] text-[#a1a1aa]">
+          <span className="text-[#ededed]">$</span> npx provix@latest
         </p>
         <ul className="mt-3 min-w-[36rem] space-y-1.5">
           <AnimatePresence initial={false}>
@@ -140,13 +140,13 @@ export default function CliLogStream(): ReactNode {
                   transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                   className="grid grid-cols-[4.5rem_minmax(0,9rem)_4.25rem_minmax(0,1fr)] items-baseline gap-x-3 font-mono text-[12px] sm:text-[13px]"
                 >
-                  <span className="text-[#f9fafb]/30">{line.clock}</span>
-                  <span className="text-[#f9fafb]/80">{line.label}</span>
+                  <span className="text-[#a1a1aa]">{line.clock}</span>
+                  <span className="text-[#ededed]">{line.label}</span>
                   <motion.span
                     initial={reduce ? false : { opacity: 0, scale: 0.92 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.08, duration: 0.22 }}
-                    className={line.state === "OK" ? "text-[#34d399]" : "text-rose-400"}
+                    className={line.state === "OK" ? "text-[#10b981]" : "text-[#ef4444]"}
                   >
                     {line.state}
                   </motion.span>
@@ -156,7 +156,7 @@ export default function CliLogStream(): ReactNode {
             })}
           </AnimatePresence>
         </ul>
-        <p className="mt-3 font-mono text-[13px] text-purple-400" aria-hidden="true">
+        <p className="mt-3 font-mono text-[13px] text-[#10b981]" aria-hidden="true">
           <span className="animate-pulse motion-reduce:animate-none">▌</span>
         </p>
       </div>

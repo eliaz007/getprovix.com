@@ -230,8 +230,12 @@ export function isStaticAssetPath(pathname: string): boolean {
 /**
  * Homepage, marketing/legal pages, and static files must not call
  * supabase.auth.getUser() or refresh a session in middleware/proxy.
+ * /firewall still checks the session so a guest is sent to onboarding.
  */
 export function shouldSkipMiddlewareAuth(pathname: string): boolean {
+  if (pathname === "/firewall" || pathname.startsWith("/firewall/")) {
+    return false;
+  }
   return isStaticAssetPath(pathname) || isPublicRoute(pathname);
 }
 

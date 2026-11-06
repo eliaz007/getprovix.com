@@ -63,21 +63,17 @@ export default function PipelineFlow(): ReactNode {
   }, [revealed, run.checks.length, showStatus]);
 
   return (
-    <Reveal as="section" aria-labelledby="pipeline-heading" className="relative mt-28">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -inset-x-6 top-20 h-[75%] rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(168,85,247,0.12),transparent_72%)] blur-2xl"
-      />
-      <div className="relative max-w-2xl">
-        <p className="font-mono text-[11px] tracking-[0.2em] text-purple-400 uppercase">Runner</p>
-        <h2 id="pipeline-heading" className="mt-3 text-3xl font-semibold tracking-[-0.035em] text-[#f9fafb] sm:text-4xl">
+    <Reveal as="section" aria-labelledby="pipeline-heading" className="border-b border-white/10 px-6 py-16 sm:px-10">
+      <div className="max-w-2xl">
+        <p className="font-mono text-xs tracking-widest text-[#a1a1aa] uppercase">[ 05 // Runner ]</p>
+        <h2 id="pipeline-heading" className="mt-3 text-3xl font-medium tracking-[-0.03em] text-[#ededed] sm:text-4xl">
           STATUS: PASSED or FAILED.
         </h2>
-        <p className="mt-4 text-[15px] leading-relaxed text-[#f9fafb]/70">
+        <p className="mt-4 text-[15px] leading-relaxed text-[#a1a1aa]">
           AST parse, boundary check, secret scan, immutable check, and the dependency floor each return OK or FAILED.
         </p>
       </div>
-      <div className="relative mt-10">
+      <div className="mt-12">
         <RunnerReadout
           target="app/checkout/page.tsx"
           checks={run.checks}

@@ -75,7 +75,7 @@ function toMarkdown(report: Report): string {
 }
 
 function stateClass(state: CheckState | Report["status"]): string {
-  return state === "OK" || state === "PASSED" ? "text-[#34d399]" : "text-rose-400";
+  return state === "OK" || state === "PASSED" ? "text-[#10b981]" : "text-[#ef4444]";
 }
 
 export default function PrCommentPreview(): ReactNode {
@@ -87,17 +87,17 @@ export default function PrCommentPreview(): ReactNode {
   return (
     <section
       aria-labelledby="pr-comment-heading"
-      className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] backdrop-blur-xl sm:p-6"
+      className="rounded-none border border-white/10 bg-[#141414] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] sm:p-6"
     >
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-[11px] tracking-[0.18em] text-purple-400 uppercase">Pull request</p>
-          <h2 id="pr-comment-heading" className="mt-2 text-xl font-semibold tracking-tight text-[#f9fafb]">
+          <p className="text-[11px] font-medium tracking-[0.16em] text-[#c4b5fd] uppercase">Pull request</p>
+          <h2 id="pr-comment-heading" className="mt-2 text-xl font-medium tracking-tight text-[#ededed]">
             GitHub comment
           </h2>
         </div>
         <div className="flex flex-wrap gap-2">
-          <div className="flex rounded-lg border border-white/10 bg-black/30 p-0.5" role="tablist" aria-label="Report state">
+          <div className="flex rounded-full border border-white/10 bg-[#18181B] p-0.5" role="tablist" aria-label="Report state">
             {REPORTS.map((item) => (
               <button
                 key={item.id}
@@ -105,15 +105,15 @@ export default function PrCommentPreview(): ReactNode {
                 role="tab"
                 aria-selected={item.id === report.id}
                 onClick={() => setReportId(item.id)}
-                className={`rounded-md px-3 py-1.5 font-mono text-[11px] tracking-wide transition-[background-color,color,transform] active:scale-[0.98] ${
-                  item.id === report.id ? "bg-purple-600 text-white" : "text-[#f9fafb]/55 hover:text-[#f9fafb]"
+                className={`rounded-full px-3 py-1.5 text-[11px] font-medium tracking-wide transition-colors ${
+                  item.id === report.id ? "bg-[#7c3aed] text-white" : "text-[#a1a1aa] hover:text-[#ededed]"
                 }`}
               >
                 {item.id === "failed" ? "Failing rules" : "After patch"}
               </button>
             ))}
           </div>
-          <div className="flex rounded-lg border border-white/10 bg-black/30 p-0.5" role="tablist" aria-label="Comment format">
+          <div className="flex rounded-full border border-white/10 bg-[#18181B] p-0.5" role="tablist" aria-label="Comment format">
             {(["preview", "markdown"] as const).map((item) => (
               <button
                 key={item}
@@ -121,8 +121,8 @@ export default function PrCommentPreview(): ReactNode {
                 role="tab"
                 aria-selected={mode === item}
                 onClick={() => setMode(item)}
-                className={`rounded-md px-3 py-1.5 font-mono text-[11px] tracking-wide transition-[background-color,color,transform] active:scale-[0.98] ${
-                  mode === item ? "bg-white/[0.08] text-[#f9fafb]" : "text-[#f9fafb]/55 hover:text-[#f9fafb]"
+                className={`rounded-full px-3 py-1.5 text-[11px] font-medium tracking-wide transition-colors ${
+                  mode === item ? "bg-[#18181B] text-[#ededed]" : "text-[#a1a1aa] hover:text-[#ededed]"
                 }`}
               >
                 {item === "preview" ? "Preview" : "Markdown"}
@@ -132,33 +132,33 @@ export default function PrCommentPreview(): ReactNode {
         </div>
       </div>
 
-      <article className="mt-5 overflow-hidden rounded-xl border border-white/10 bg-black/80 backdrop-blur-sm">
+      <article className="mt-5 overflow-hidden rounded-none border border-white/10 bg-[#141414]">
         <header className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-600 text-[11px] font-semibold text-white">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#7c3aed] text-[11px] font-semibold text-white">
             P
           </span>
           <div>
-            <p className="text-sm font-medium text-[#f9fafb]">
-              provix[bot] <span className="font-normal text-[#f9fafb]/45">commented on this pull request</span>
+            <p className="text-sm font-medium text-[#ededed]">
+              provix[bot] <span className="font-normal text-[#a1a1aa]">commented on this pull request</span>
             </p>
-            <p className="font-mono text-[10px] tracking-wide text-purple-300">check · architecture firewall</p>
+            <p className="font-mono text-[10px] tracking-wide text-[#10b981]">check · architecture firewall</p>
           </div>
         </header>
         {mode === "markdown" ? (
-          <pre className="overflow-x-auto px-4 py-4 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-[#f9fafb]/80">
+          <pre className="overflow-x-auto px-4 py-4 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-[#ededed]">
             {markdown}
           </pre>
         ) : (
           <div className="px-4 py-4 sm:px-5">
-            <h3 className="text-base font-semibold text-[#f9fafb]">Provix · architecture firewall</h3>
+            <h3 className="text-base font-medium tracking-tight text-[#ededed]">Provix · architecture firewall</h3>
             <p className="mt-3 font-mono text-[13px]">
-              <span className="text-[#f9fafb]/50">STATUS</span>{" "}
+              <span className="text-[#a1a1aa]">STATUS</span>{" "}
               <span className={`font-semibold ${stateClass(report.status)}`}>{report.status}</span>
             </p>
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[32rem] border-collapse text-left font-mono text-[12px]">
                 <thead>
-                  <tr className="border-b border-white/[0.08] text-[#f9fafb]/40">
+                  <tr className="border-b border-white/10 text-[#a1a1aa]">
                     <th className="py-2 pr-4 font-medium">Check</th>
                     <th className="py-2 pr-4 font-medium">State</th>
                     <th className="py-2 font-medium">Detail</th>
@@ -166,17 +166,17 @@ export default function PrCommentPreview(): ReactNode {
                 </thead>
                 <tbody>
                   {report.checks.map((check) => (
-                    <tr key={check.label} className="border-b border-white/[0.06]">
-                      <td className="py-2 pr-4 text-[#f9fafb]/85">{check.label}</td>
+                    <tr key={check.label} className="border-b border-white/10">
+                      <td className="py-2 pr-4 text-[#ededed]">{check.label}</td>
                       <td className={`py-2 pr-4 ${stateClass(check.state)}`}>{check.state}</td>
-                      <td className="py-2 text-[#f9fafb]/55">{check.detail.replaceAll("`", "")}</td>
+                      <td className="py-2 text-[#a1a1aa]">{check.detail.replaceAll("`", "")}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <h4 className="mt-5 text-sm font-semibold text-[#f9fafb]">Automated patch</h4>
-            <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-[#f9fafb]/75">
+            <h4 className="mt-5 text-sm font-medium text-[#ededed]">Automated patch</h4>
+            <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-[#a1a1aa]">
               {report.patch.map((line) => (
                 <li key={line}>{line.replaceAll("`", "")}</li>
               ))}
