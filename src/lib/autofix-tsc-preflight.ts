@@ -999,12 +999,16 @@ export function spawnPreflightNodeChild(
     let timedOut = false;
     let stdout = "";
     let stderr = "";
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timers: {
+      deadline?: ReturnType<typeof setTimeout>;
+      grace?: ReturnType<typeof setTimeout>;
+    } = {};
 
     const finish = (result: PreflightChildResult) => {
       if (settled) return;
       settled = true;
-      if (timer !== undefined) clearTimeout(timer);
+      if (timers.deadline !== undefined) clearTimeout(timers.deadline);
+      if (timers.grace !== undefined) clearTimeout(timers.grace);
       resolve(result);
     };
 
@@ -1020,12 +1024,12 @@ export function spawnPreflightNodeChild(
     const timeoutDiagnostics = () =>
       `${stderr}\npreflight timed out after ${timeoutMs}ms`;
 
-    timer = setTimeout(() => {
+    timers.deadline = setTimeout(() => {
       timedOut = true;
       forceKillPreflightChild(child);
       // Wait briefly for `close` so Windows releases cwd locks before temp cleanup.
       // If the process never exits, still settle so the route can hard-fail.
-      setTimeout(() => {
+      timers.grace = setTimeout(() => {
         finish({
           code: 1,
           stdout,
