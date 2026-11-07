@@ -70,6 +70,9 @@ export default function Home() {
               <Link href="#security" className="hidden font-mono text-[11px] text-[#a1a1aa] transition hover:text-[#ededed] md:inline">
                 Security
               </Link>
+              <Link href="#trust" className="hidden font-mono text-[11px] text-[#a1a1aa] transition hover:text-[#ededed] lg:inline">
+                Trust
+              </Link>
               <Link href="/onboarding" prefetch={false} className="font-mono text-[11px] text-[#a1a1aa] transition hover:text-[#ededed]">
                 Onboarding
               </Link>
@@ -135,10 +138,10 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="architecture" className="relative grid scroll-mt-14 grid-cols-1 border-b border-white/10 md:grid-cols-12">
+        <section id="architecture" className="relative grid scroll-mt-14 grid-cols-1 border-b border-white/10 lg:grid-cols-12">
           <CornerMarks />
-          <article id="ast" className="scroll-mt-14 border-b border-white/10 p-8 md:col-span-7 md:border-r md:p-10">
-            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">01 // AST</p>
+          <article id="ast" className="min-w-0 scroll-mt-14 border-b border-white/10 p-8 lg:col-span-7 lg:border-r lg:p-10">
+            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">AST ENGINE</p>
             <h2 className="mt-3 text-2xl font-semibold tracking-[-0.03em]">
               Deep Next.js and TypeScript AST analysis
             </h2>
@@ -156,8 +159,8 @@ export default function Home() {
             </div>
           </article>
 
-          <article className="border-b border-white/10 p-8 md:col-span-5 md:p-10">
-            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">02 // HEAL</p>
+          <article className="min-w-0 border-b border-white/10 p-8 lg:col-span-5 lg:p-10">
+            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">AUTO HEAL</p>
             <h2 className="mt-3 text-2xl font-semibold tracking-[-0.03em]">
               Autonomous PR healing
             </h2>
@@ -190,8 +193,8 @@ export default function Home() {
             </div>
           </article>
 
-          <article id="security" className="scroll-mt-14 border-b border-white/10 p-8 md:col-span-5 md:border-r md:border-b-0 md:p-10">
-            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">03 // ACCESS</p>
+          <article id="security" className="min-w-0 scroll-mt-14 border-b border-white/10 p-8 lg:col-span-5 lg:border-r lg:border-b-0 lg:p-10">
+            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">ACCESS</p>
             <h2 className="mt-3 text-2xl font-semibold tracking-[-0.03em]">
               Dual zero-trust onboarding
             </h2>
@@ -201,14 +204,14 @@ export default function Home() {
             </p>
             <div className="mt-6 grid grid-cols-1 border border-white/10 sm:grid-cols-2">
               <div className="border-b border-white/10 p-4 sm:border-r sm:border-b-0">
-                <p className="font-mono text-[10px] text-[#7c3aed]">MODE 01</p>
+                <p className="font-mono text-[10px] text-[#7c3aed]">INSTALL</p>
                 <p className="mt-2 text-sm text-[#ededed]">GitHub App</p>
                 <p className="mt-2 text-xs leading-relaxed text-[#a1a1aa]">
                   One install. Every pull request is intercepted by webhook.
                 </p>
               </div>
               <div className="p-4">
-                <p className="font-mono text-[10px] text-[#71717a]">MODE 02</p>
+                <p className="font-mono text-[10px] text-[#71717a]">TOKEN</p>
                 <p className="mt-2 text-sm text-[#ededed]">Scoped token</p>
                 <p className="mt-2 text-xs leading-relaxed text-[#a1a1aa]">
                   A fine-grained PAT. No full GitHub OAuth link required.
@@ -217,8 +220,8 @@ export default function Home() {
             </div>
           </article>
 
-          <article className="p-8 md:col-span-7 md:p-10">
-            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">04 // SANDBOX</p>
+          <article className="min-w-0 p-8 lg:col-span-7 lg:p-10">
+            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">SANDBOX</p>
             <h2 className="mt-3 text-2xl font-semibold tracking-[-0.03em]">
               Zero-noise sandbox verification
             </h2>
@@ -245,32 +248,88 @@ export default function Home() {
 
         <section aria-labelledby="execute-heading" className="border-b border-white/10">
           <div className="border-b border-white/10 px-8 py-6 md:px-10">
-            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">05 // RUNNER</p>
+            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">RUNNER</p>
             <h2 id="execute-heading" className="mt-2 text-2xl font-semibold tracking-[-0.03em]">
               How Provix executes
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 md:divide-x md:divide-white/10">
-            <article className="border-b border-white/10 p-8 md:border-b-0 md:p-10">
-              <p className="font-mono text-[11px] text-[#7c3aed]">01 // INTERCEPT</p>
+            <article className="min-w-0 border-b border-white/10 p-8 md:border-b-0 md:p-10">
+              <p className="font-mono text-[11px] text-[#7c3aed]">INTERCEPT</p>
               <p className="mt-4 text-sm leading-relaxed text-[#a1a1aa]">
                 Triggered by a GitHub pull request webhook, or by a manual scan with a scoped token.
               </p>
             </article>
-            <article className="border-b border-white/10 p-8 md:border-b-0 md:p-10">
-              <p className="font-mono text-[11px] text-[#7c3aed]">02 // PARSE & HEAL</p>
+            <article className="min-w-0 border-b border-white/10 p-8 md:border-b-0 md:p-10">
+              <p className="font-mono text-[11px] text-[#7c3aed]">PARSE & HEAL</p>
               <p className="mt-4 text-sm leading-relaxed text-[#a1a1aa]">
                 The AST engine isolates the security flaw or bloat, then synthesizes a minimal diff,
                 falling back to a bounded Gemini retry loop for complex shapes.
               </p>
             </article>
-            <article className="p-8 md:p-10">
-              <p className="font-mono text-[11px] text-[#7c3aed]">03 // VERIFY & MERGE</p>
+            <article className="min-w-0 p-8 md:p-10">
+              <p className="font-mono text-[11px] text-[#7c3aed]">VERIFY & OPEN PR</p>
               <p className="mt-4 text-sm leading-relaxed text-[#a1a1aa]">
                 The patch passes tsc --noEmit and a sandbox check, then opens a provix/auto-heal-*
                 pull request ready for review.
               </p>
             </article>
+          </div>
+        </section>
+
+        <section id="trust" aria-labelledby="trust-heading" className="relative scroll-mt-14 border-b border-white/10">
+          <CornerMarks />
+          <div className="border-b border-white/10 px-8 py-6 md:px-10">
+            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">TRUST & PRIVACY</p>
+            <h2 id="trust-heading" className="mt-2 text-2xl font-semibold tracking-[-0.03em]">
+              What happens to your code?
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#a1a1aa]">
+              Short answers for the questions developers ask before connecting a repo.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 lg:divide-x lg:divide-white/10">
+            <article className="min-w-0 border-b border-white/10 p-8 lg:border-b-0 lg:p-10">
+              <p className="font-mono text-[11px] text-[#7c3aed]">EPHEMERAL READ</p>
+              <p className="mt-4 text-sm leading-relaxed text-[#a1a1aa]">
+                Provix reads repository files from GitHub for the scan or fix request. We do not keep
+                a copy of your source tree as a product dataset.
+              </p>
+            </article>
+            <article className="min-w-0 border-b border-white/10 p-8 lg:border-b-0 lg:p-10">
+              <p className="font-mono text-[11px] text-[#7c3aed]">NO MODEL TRAINING</p>
+              <p className="mt-4 text-sm leading-relaxed text-[#a1a1aa]">
+                Private repositories are not used to train public foundation models. Patches stay on
+                your GitHub as pull requests you control.
+              </p>
+            </article>
+            <article className="min-w-0 p-8 lg:p-10">
+              <p className="font-mono text-[11px] text-[#7c3aed]">SCOPED ACCESS</p>
+              <p className="mt-4 text-sm leading-relaxed text-[#a1a1aa]">
+                Use the GitHub App or a fine-grained token limited to the repos you choose. Revoke
+                access anytime. Full details live in our{" "}
+                <Link href="/privacy" prefetch={false} className="text-[#ededed] underline decoration-white/20 underline-offset-2 transition hover:decoration-white/50">
+                  Privacy
+                </Link>{" "}
+                page.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section id="about" aria-labelledby="about-heading" className="relative scroll-mt-14 border-b border-white/10">
+          <CornerMarks />
+          <div className="p-8 md:p-10">
+            <p className="font-mono text-[11px] tracking-[0.14em] text-[#71717a]">WHO WE ARE</p>
+            <h2 id="about-heading" className="mt-3 max-w-2xl text-2xl font-semibold tracking-[-0.03em]">
+              Built by a developer, for developers
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[#a1a1aa]">
+              Provix started as a solo build: one engineer tired of scanners that dump warnings and
+              leave the patch to you. The product is still early, closed beta, and opinionated about
+              Next.js and TypeScript. If you connect a repo, you get an honest autofix path with a
+              human still owning the merge.
+            </p>
           </div>
         </section>
 
@@ -284,6 +343,10 @@ export default function Home() {
               Use Access Token
             </Link>
           </div>
+          <p className="mt-8 max-w-xl text-xs leading-relaxed text-[#71717a]">
+            Made by a developer who ships Next.js apps and got tired of security theater. Provix is
+            independent software, not a hiring marketplace.
+          </p>
           <div className="mt-12 flex flex-col gap-4 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="font-mono text-[11px] tracking-[0.12em] text-[#71717a]">
               SYSTEM STATUS: OPERATIONAL // GETPROVIX.COM

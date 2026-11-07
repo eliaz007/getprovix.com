@@ -11,7 +11,7 @@ export default function LandingConnect() {
   return (
     <section id="access" aria-labelledby="access-heading" className="scroll-mt-24 border-b border-white/10">
       <div className="px-6 py-12 sm:px-10">
-        <p className="font-mono text-xs tracking-widest text-[#a1a1aa] uppercase">[ 02 // Access ]</p>
+        <p className="font-mono text-xs tracking-widest text-[#a1a1aa] uppercase">Access</p>
         <h2 id="access-heading" className="mt-3 max-w-2xl text-3xl font-medium tracking-[-0.03em] text-[#ededed] sm:text-4xl">
           Install the GitHub App, or scan with a scoped token.
         </h2>

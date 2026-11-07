@@ -12,19 +12,19 @@ type Module = {
 const MODULES: readonly Module[] = [
   {
     id: "boundaries",
-    index: "03.1",
+    index: "Structure",
     title: "Structure checks",
     description: "Catch oversized modules and boundary problems, then open a fix PR when it is safe.",
   },
   {
     id: "secrets",
-    index: "03.2",
+    index: "Secrets",
     title: "Secret scrubbing",
     description: "Find hardcoded API keys and secrets before they land on main.",
   },
   {
     id: "dependencies",
-    index: "03.3",
+    index: "Dependencies",
     title: "Dependency safety",
     description: "Flag risky or outdated packages that weaken the repo.",
   },
@@ -34,7 +34,7 @@ export default function ScrollFeatures(): ReactNode {
   return (
     <section id="features" aria-labelledby="modules-heading" className="relative scroll-mt-24 border-b border-white/10">
       <div className="px-6 py-12 sm:px-10">
-        <p className="font-mono text-xs tracking-widest text-[#a1a1aa] uppercase">[ 03 // Checks ]</p>
+        <p className="font-mono text-xs tracking-widest text-[#a1a1aa] uppercase">Checks</p>
         <h2
           id="modules-heading"
           className="mt-3 max-w-2xl text-3xl font-medium tracking-[-0.03em] text-[#ededed] sm:text-4xl"
