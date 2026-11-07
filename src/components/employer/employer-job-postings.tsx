@@ -26,7 +26,7 @@ import {
 import { readJsonResponse } from "@/lib/read-json-response";
 import { isSupabaseSchemaError } from "@/lib/supabase-schema-errors";
 import { createClient } from "@/utils/supabase/client";
-import { secureQuery145, secureQuery339 } from "@/app/actions/secure-query";
+import { secureQuery145, secureQuery339, secureQuery347 } from "@/app/actions/secure-query";
 
 type ListingRow = {
   id: string;
@@ -344,11 +344,7 @@ export default function EmployerJobPostings() {
           hourly_rate_range: _rate,
           ...withoutContractFields
         } = dbPayload;
-        const retry = await supabase
-          .from("jobs")
-          .insert(withoutContractFields)
-          .select("*")
-          .single();
+        const retry = await secureQuery347(withoutContractFields);
         data = retry.data;
         error = retry.error;
       }
