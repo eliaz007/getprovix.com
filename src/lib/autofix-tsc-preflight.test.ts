@@ -1,8 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { finalizeAutofixWrites } from "@/lib/autofix-write-validation";
 import {
+  AUTOFIX_ROUTE_MAX_DURATION_MS,
   actionablePreflightDiagnostics,
   assertAutofixTscPreflightPasses,
+  buildTscPreflightEnv,
   formatAutofixTscFailure,
   bundleInternalAliasGraph,
   bundleInternalAliasWrites,
@@ -10,10 +16,14 @@ import {
   collectInternalImportSpecifiers,
   collectUnresolvedAtAliasSpecifiers,
   expandAmbientStubModules,
+  hardPreflightFailureFromChild,
   hostPackageHasTypes,
   isValidAmbientModuleName,
   loadHostTsconfigPaths,
+  removeOwnedPreflightTempDir,
   runAutofixTscPreflight,
+  spawnPreflightNodeChild,
+  TSC_PREFLIGHT_TIMEOUT_MS,
 } from "@/lib/autofix-tsc-preflight";
 import { SUPABASE_SERVER_HELPER } from "@/lib/scanner/security-suite";
 
@@ -377,4 +387,215 @@ export async function secureQuery3() {
       ])
     ).toEqual(expect.objectContaining({ success: true }));
   });
+});
+
+describe("tsc preflight execution hardening", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the child timeout under the autofix route budget with cleanup margin", () => {
+    expect(AUTOFIX_ROUTE_MAX_DURATION_MS).toBe(60_000);
+    expect(TSC_PREFLIGHT_TIMEOUT_MS).toBeLessThan(AUTOFIX_ROUTE_MAX_DURATION_MS);
+    // Leave headroom for materialization, cleanup, and response writing.
+    expect(AUTOFIX_ROUTE_MAX_DURATION_MS - TSC_PREFLIGHT_TIMEOUT_MS).toBeGreaterThanOrEqual(10_000);
+  });
+
+  it("buildTscPreflightEnv copies only allowlisted keys and drops app secrets", () => {
+    const env = buildTscPreflightEnv({
+      PATH: "/usr/bin",
+      Path: "C:\\Windows\\System32",
+      TEMP: "C:\\Temp",
+      TMPDIR: "/tmp",
+      HOME: "/home/provix",
+      USERPROFILE: "C:\\Users\\provix",
+      SystemRoot: "C:\\Windows",
+      GITHUB_APP_PRIVATE_KEY: "-----BEGIN RSA PRIVATE KEY-----",
+      GITHUB_WEBHOOK_SECRET: "whsec_test",
+      GITHUB_TOKEN: "ghp_test",
+      SUPABASE_SERVICE_ROLE_KEY: "service_role_secret",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon_key",
+      OPENAI_API_KEY: "sk-test",
+      GEMINI_API_KEY: "gem-test",
+      ANTHROPIC_API_KEY: "ant-test",
+      NODE_OPTIONS: "--require ./evil-preload.js",
+      PROVIX_AUTONOMOUS_WEBHOOK_HEAL: "true",
+      SECRET_PAYLOAD: "should-never-pass",
+    });
+
+    expect(env.PATH).toBe("/usr/bin");
+    expect(env.Path).toBe("C:\\Windows\\System32");
+    expect(env.TEMP).toBe("C:\\Temp");
+    expect(env.TMPDIR).toBe("/tmp");
+    expect(env.HOME).toBe("/home/provix");
+    expect(env.USERPROFILE).toBe("C:\\Users\\provix");
+    expect(env.SystemRoot).toBe("C:\\Windows");
+
+    expect(env.GITHUB_APP_PRIVATE_KEY).toBeUndefined();
+    expect(env.GITHUB_WEBHOOK_SECRET).toBeUndefined();
+    expect(env.GITHUB_TOKEN).toBeUndefined();
+    expect(env.SUPABASE_SERVICE_ROLE_KEY).toBeUndefined();
+    expect(env.NEXT_PUBLIC_SUPABASE_ANON_KEY).toBeUndefined();
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+    expect(env.GEMINI_API_KEY).toBeUndefined();
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(env.NODE_OPTIONS).toBeUndefined();
+    expect(env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL).toBeUndefined();
+    expect(env.SECRET_PAYLOAD).toBeUndefined();
+    // Never silently expand to the full parent env.
+    expect(Object.keys(env).sort()).toEqual(
+      ["HOME", "PATH", "Path", "SystemRoot", "TEMP", "TMPDIR", "USERPROFILE"].sort()
+    );
+  });
+
+  it("terminates a hung child when the preflight deadline elapses", async () => {
+    const started = Date.now();
+    const result = await spawnPreflightNodeChild(["-e", "setInterval(() => {}, 1000)"], {
+      cwd: process.cwd(),
+      timeoutMs: 250,
+    });
+    const elapsed = Date.now() - started;
+    expect(result.timedOut).toBe(true);
+    expect(result.code).toBe(1);
+    expect(result.spawnFailed).toBe(false);
+    expect(result.stderr).toMatch(/preflight timed out after 250ms/);
+    expect(elapsed).toBeLessThan(5_000);
+  }, 10_000);
+
+  it("hardPreflightFailureFromChild treats timeout/spawn/signal/null exits as failures", () => {
+    expect(
+      hardPreflightFailureFromChild({
+        code: 1,
+        stdout: "",
+        stderr: "preflight timed out after 250ms",
+        timedOut: true,
+        spawnFailed: false,
+        signal: null,
+      }, 250)
+    ).toEqual(
+      expect.objectContaining({
+        success: false,
+        message: expect.stringMatching(/timed out after 250ms/i),
+      })
+    );
+    expect(
+      hardPreflightFailureFromChild({
+        code: 1,
+        stdout: "",
+        stderr: "spawn ENOENT",
+        timedOut: false,
+        spawnFailed: true,
+        signal: null,
+      })
+    ).toEqual(expect.objectContaining({ success: false, message: expect.stringMatching(/failed to start/i) }));
+    expect(
+      hardPreflightFailureFromChild({
+        code: null,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        spawnFailed: false,
+        signal: "SIGKILL",
+      })
+    ).toEqual(expect.objectContaining({ success: false, message: expect.stringMatching(/signal SIGKILL/i) }));
+    expect(
+      hardPreflightFailureFromChild({
+        code: null,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        spawnFailed: false,
+        signal: null,
+      })
+    ).toEqual(expect.objectContaining({ success: false, message: expect.stringMatching(/abnormally/i) }));
+    // Ordinary non-zero tsc exit is not a hard abnormal failure — diagnostics decide.
+    expect(
+      hardPreflightFailureFromChild({
+        code: 1,
+        stdout: "error TS2304: Cannot find name 'writes'.",
+        stderr: "",
+        timedOut: false,
+        spawnFailed: false,
+        signal: null,
+      })
+    ).toBeNull();
+  });
+
+  it("runAutofixTscPreflight hard-fails when the TypeScript child times out", async () => {
+    const projectRoot = await mkdtemp(path.join(tmpdir(), "provix-hang-tsc-"));
+    try {
+      const binDir = path.join(projectRoot, "node_modules", "typescript", "bin");
+      const libDir = path.join(projectRoot, "node_modules", "typescript", "lib");
+      await mkdir(binDir, { recursive: true });
+      await mkdir(libDir, { recursive: true });
+      // Satisfy typescriptLibDirectory so preflight does not skip-no-lib.
+      await writeFile(path.join(libDir, "lib.es2022.d.ts"), "export {};\n", "utf8");
+      await writeFile(path.join(libDir, "lib.d.ts"), "export {};\n", "utf8");
+      // Hang forever — no TS diagnostics, so a soft gate would wrongly pass.
+      await writeFile(path.join(binDir, "tsc"), "setInterval(() => {}, 1000);\n", "utf8");
+
+      const result = await runAutofixTscPreflight(
+        [{ filePath: "src/ok.ts", content: "export const ok = 1;\n" }],
+        { projectRoot, timeoutMs: 300 }
+      );
+
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.message).toMatch(/timed out/i);
+      expect(result.diagnostics).toMatch(/preflight timed out after 300ms/);
+      // Missing actionable TS diagnostics must not convert timeout into a pass.
+      expect(actionablePreflightDiagnostics(result.diagnostics)).toEqual([]);
+    } finally {
+      await removeOwnedPreflightTempDir(projectRoot);
+    }
+  }, 15_000);
+
+  it("removes owned temp directories on cleanup", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "provix-autofix-tsc-"));
+    await writeFile(path.join(dir, "marker.txt"), "cleanup-me\n", "utf8");
+    expect(existsSync(dir)).toBe(true);
+    await removeOwnedPreflightTempDir(dir);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it("logs cleanup failures without dumping absolute paths or file contents", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // NUL in the path is rejected by Node/libuv and reliably hits the catch path.
+    const poisoned = `${path.join(tmpdir(), "provix-autofix-tsc-secret-name")}\0trail`;
+    await removeOwnedPreflightTempDir(poisoned);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[autofix/tsc-preflight] temp cleanup failed",
+      expect.objectContaining({
+        dir: expect.any(String),
+        message: expect.any(String),
+      })
+    );
+    const detail = errorSpy.mock.calls.find(
+      (call) => call[0] === "[autofix/tsc-preflight] temp cleanup failed"
+    )?.[1] as { dir: string; message: string };
+    expect(detail.message.length).toBeLessThanOrEqual(200);
+    // Basename only — never the full temp root or repository file bodies.
+    expect(detail.dir).toMatch(/^provix-autofix-tsc-/);
+    expect(detail.dir).not.toContain(path.sep);
+    expect(JSON.stringify(detail)).not.toContain("secret-payload-body");
+  });
+
+  it("does not delete caller-provided work directories", async () => {
+    const workDir = await mkdtemp(path.join(tmpdir(), "provix-caller-work-"));
+    try {
+      const result = await runAutofixTscPreflight(
+        [
+          { filePath: "src/components/jobs.tsx", content: validClient },
+          { filePath: "src/app/actions/secure-query.ts", content: validAction },
+          helper,
+        ],
+        { workDir }
+      );
+      expect(result.success).toBe(true);
+      expect(existsSync(workDir)).toBe(true);
+      expect(existsSync(path.join(workDir, "tsconfig.json"))).toBe(true);
+    } finally {
+      await removeOwnedPreflightTempDir(workDir);
+    }
+  }, 90_000);
 });
