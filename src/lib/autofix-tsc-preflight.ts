@@ -630,7 +630,77 @@ export async function bundleInternalAliasWrites(
   return graph.writes;
 }
 
-const TSC_PREFLIGHT_TIMEOUT_MS = 90_000;
+/**
+ * Autofix / webhook routes set `maxDuration = 60` (seconds). Child tsc must
+ * finish with margin for materialization, cleanup, and JSON response writing.
+ * Never raise this to meet or exceed the route budget.
+ */
+export const AUTOFIX_ROUTE_MAX_DURATION_MS = 60_000;
+export const TSC_PREFLIGHT_TIMEOUT_MS = 45_000;
+
+/**
+ * Env keys the Node/`tsc` child may need for path resolution and OS temp I/O.
+ * Explicit allowlist only — never copy `process.env` wholesale (secrets leak).
+ * Do not include NODE_OPTIONS (preload injection) or any app credentials.
+ */
+const TSC_PREFLIGHT_ENV_ALLOWLIST = [
+  // Path lookup (Node native addons / Windows PATHEXT)
+  "PATH",
+  "Path",
+  "PATHEXT",
+  // Windows process / temp roots
+  "SystemRoot",
+  "SYSTEMROOT",
+  "windir",
+  "WINDIR",
+  "ComSpec",
+  "COMSPEC",
+  "TEMP",
+  "TMP",
+  "USERPROFILE",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  // POSIX
+  "HOME",
+  "TMPDIR",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+] as const;
+
+/**
+ * Build a minimal environment for the TypeScript preflight subprocess.
+ * Never silently falls back to the full parent environment.
+ */
+export function buildTscPreflightEnv(
+  source: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const key of TSC_PREFLIGHT_ENV_ALLOWLIST) {
+    const value = source[key];
+    if (typeof value === "string" && value.length > 0) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
+/**
+ * Remove a Provix-owned preflight temp tree. Failures are logged without
+ * dumping file contents or absolute paths that may include user data.
+ */
+export async function removeOwnedPreflightTempDir(tempRoot: string): Promise<void> {
+  try {
+    await rm(tempRoot, { recursive: true, force: true });
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    console.error("[autofix/tsc-preflight] temp cleanup failed", {
+      dir: path.basename(tempRoot),
+      code: typeof err?.code === "string" ? err.code : undefined,
+      message: (err?.message ?? String(error)).slice(0, 200),
+    });
+  }
+}
 
 async function linkHostNodeModules(tempRoot: string, projectRoot: string): Promise<void> {
   const hostModules = path.join(projectRoot, "node_modules");
@@ -800,45 +870,232 @@ function buildPreflightTsconfig(host: HostTsconfigPaths, libDir: string | null):
   )}\n`;
 }
 
-function runTscNoEmit(
-  tempRoot: string,
-  projectRoot: string
-): Promise<{ code: number | null; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    const tscJs = resolveTypescriptTscJs(projectRoot);
-    if (!tscJs) {
-      resolve({
-        code: 0,
-        stdout: "",
-        stderr: "",
+export type PreflightChildResult = {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  spawnFailed: boolean;
+  signal: NodeJS.Signals | null;
+};
+
+/**
+ * Best-effort termination of the preflight child (and descendants when practical).
+ * Windows: `taskkill /T /F`. POSIX: kill the process group started with `detached: true`.
+ */
+export function forceKillPreflightChild(child: {
+  pid?: number | undefined;
+  kill: (signal?: NodeJS.Signals | number) => boolean;
+}): void {
+  const pid = child.pid;
+  if (typeof pid !== "number" || !Number.isFinite(pid) || pid <= 0) {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Already exited.
+    }
+    return;
+  }
+
+  if (process.platform === "win32") {
+    try {
+      const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true,
+        // Cast: project `ProcessEnv` requires NODE_ENV; allowlist intentionally omits it.
+        env: buildTscPreflightEnv() as NodeJS.ProcessEnv,
+      });
+      killer.on("error", () => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // Already exited.
+        }
       });
       return;
+    } catch {
+      // Fall through to direct kill.
     }
-    const child = spawn(process.execPath, [tscJs, "--noEmit", "-p", "."], {
-      cwd: tempRoot,
-      env: process.env,
-      windowsHide: true,
-    });
+  } else {
+    try {
+      // Negative PID = process group (requires detached spawn below).
+      process.kill(-pid, "SIGKILL");
+      return;
+    } catch {
+      // Fall through to direct kill.
+    }
+  }
+
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    try {
+      child.kill();
+    } catch {
+      // Already exited.
+    }
+  }
+}
+
+/**
+ * Map timeout / spawn / signal / null-exit outcomes to a hard preflight failure.
+ * Returns null when the child completed normally (exit code 0 or ordinary tsc diagnostics).
+ */
+export function hardPreflightFailureFromChild(
+  result: PreflightChildResult,
+  timeoutMs: number = TSC_PREFLIGHT_TIMEOUT_MS
+): Extract<TscPreflightResult, { success: false }> | null {
+  const combined =
+    [result.stdout, result.stderr].filter(Boolean).join("\n").trim() || "tsc failed with no output";
+
+  if (result.timedOut) {
+    return {
+      success: false,
+      message: `Pre-flight \`npx tsc --noEmit\` timed out after ${timeoutMs}ms. The pull request was not opened.`,
+      diagnostics: combined,
+    };
+  }
+  if (result.spawnFailed) {
+    return {
+      success: false,
+      message: `Pre-flight \`npx tsc --noEmit\` failed to start (${combined.slice(0, 280)}). The pull request was not opened.`,
+      diagnostics: combined,
+    };
+  }
+  if (result.signal != null) {
+    return {
+      success: false,
+      message: `Pre-flight \`npx tsc --noEmit\` was terminated by signal ${result.signal}. The pull request was not opened.`,
+      diagnostics: combined,
+    };
+  }
+  if (result.code === null) {
+    return {
+      success: false,
+      message:
+        "Pre-flight `npx tsc --noEmit` exited abnormally without an exit code. The pull request was not opened.",
+      diagnostics: combined,
+    };
+  }
+  return null;
+}
+
+/**
+ * Spawn a Node child with the fixed env allowlist and a hard deadline.
+ * `env` cannot be overridden — secrets must never reach the subprocess.
+ * Exported for timeout regression tests; production uses `runTscNoEmit`.
+ */
+export function spawnPreflightNodeChild(
+  args: readonly string[],
+  options: {
+    cwd: string;
+    timeoutMs?: number;
+  }
+): Promise<PreflightChildResult> {
+  const timeoutMs = options.timeoutMs ?? TSC_PREFLIGHT_TIMEOUT_MS;
+  const env = buildTscPreflightEnv();
+  return new Promise((resolve) => {
+    let settled = false;
+    let timedOut = false;
     let stdout = "";
     let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill();
-      resolve({ code: 1, stdout, stderr: `${stderr}\npreflight timed out after ${TSC_PREFLIGHT_TIMEOUT_MS}ms` });
-    }, TSC_PREFLIGHT_TIMEOUT_MS);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = (result: PreflightChildResult) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      resolve(result);
+    };
+
+    // Cast: project `ProcessEnv` requires NODE_ENV; allowlist intentionally omits it.
+    // POSIX: detached so forceKill can signal the whole process group.
+    const child = spawn(process.execPath, [...args], {
+      cwd: options.cwd,
+      env: env as NodeJS.ProcessEnv,
+      windowsHide: true,
+      detached: process.platform !== "win32",
+    });
+
+    const timeoutDiagnostics = () =>
+      `${stderr}\npreflight timed out after ${timeoutMs}ms`;
+
+    timer = setTimeout(() => {
+      timedOut = true;
+      forceKillPreflightChild(child);
+      // Wait briefly for `close` so Windows releases cwd locks before temp cleanup.
+      // If the process never exits, still settle so the route can hard-fail.
+      setTimeout(() => {
+        finish({
+          code: 1,
+          stdout,
+          stderr: timeoutDiagnostics(),
+          timedOut: true,
+          spawnFailed: false,
+          signal: null,
+        });
+      }, 1_500);
+    }, timeoutMs);
+
     child.stdout?.on("data", (chunk: Buffer | string) => {
       stdout += String(chunk);
     });
     child.stderr?.on("data", (chunk: Buffer | string) => {
       stderr += String(chunk);
     });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({ code: 1, stdout, stderr: error.message });
+    child.on("error", (error: Error) => {
+      finish({
+        code: 1,
+        stdout,
+        stderr: error.message,
+        timedOut,
+        spawnFailed: true,
+        signal: null,
+      });
     });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ code, stdout, stderr });
+    child.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
+      if (timedOut) {
+        finish({
+          code: 1,
+          stdout,
+          stderr: timeoutDiagnostics(),
+          timedOut: true,
+          spawnFailed: false,
+          signal: signal ?? null,
+        });
+        return;
+      }
+      finish({
+        code,
+        stdout,
+        stderr,
+        timedOut: false,
+        spawnFailed: false,
+        signal: signal ?? null,
+      });
     });
+  });
+}
+
+function runTscNoEmit(
+  tempRoot: string,
+  projectRoot: string,
+  timeoutMs: number = TSC_PREFLIGHT_TIMEOUT_MS
+): Promise<PreflightChildResult> {
+  const tscJs = resolveTypescriptTscJs(projectRoot);
+  if (!tscJs) {
+    return Promise.resolve({
+      code: 0,
+      stdout: "",
+      stderr: "",
+      timedOut: false,
+      spawnFailed: false,
+      signal: null,
+    });
+  }
+  return spawnPreflightNodeChild([tscJs, "--noEmit", "-p", "."], {
+    cwd: tempRoot,
+    timeoutMs,
   });
 }
 
@@ -849,11 +1106,12 @@ function runTscNoEmit(
  */
 export async function runAutofixTscPreflight(
   writes: readonly AutofixWriteFile[],
-  options?: { workDir?: string; projectRoot?: string }
+  options?: { workDir?: string; projectRoot?: string; timeoutMs?: number }
 ): Promise<TscPreflightResult> {
   if (writes.length === 0) return preflightPass(0);
 
   const projectRoot = options?.projectRoot ?? process.cwd();
+  const timeoutMs = options?.timeoutMs ?? TSC_PREFLIGHT_TIMEOUT_MS;
   const host = await loadHostTsconfigPaths(projectRoot);
   const graph = await bundleInternalAliasGraph(writes, {
     projectRoot,
@@ -906,12 +1164,16 @@ export async function runAutofixTscPreflight(
     await writeFile(path.join(tempRoot, "tsconfig.json"), buildPreflightTsconfig(host, libDir), "utf8");
     await linkHostNodeModules(tempRoot, projectRoot);
 
-    const { code, stdout, stderr } = await runTscNoEmit(tempRoot, projectRoot);
-    if (code === 0) return preflightPass(stubCount);
+    const childResult = await runTscNoEmit(tempRoot, projectRoot, timeoutMs);
+    const abnormal = hardPreflightFailureFromChild(childResult, timeoutMs);
+    if (abnormal) return abnormal;
+    if (childResult.code === 0) return preflightPass(stubCount);
 
-    const diagnostics = [stdout, stderr].filter(Boolean).join("\n").trim() || "tsc failed with no output";
+    const diagnostics =
+      [childResult.stdout, childResult.stderr].filter(Boolean).join("\n").trim() ||
+      "tsc failed with no output";
     const actionable = actionablePreflightDiagnostics(diagnostics);
-    // Sandbox lib gaps (TS2318 / TS6053) — not a patch bug.
+    // Sandbox lib gaps (TS2318 / TS6053) — not a patch bug. Only after a normal exit.
     if (actionable.length === 0) return preflightPass(stubCount);
 
     return {
@@ -924,7 +1186,7 @@ export async function runAutofixTscPreflight(
     };
   } finally {
     if (ownsTemp) {
-      await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
+      await removeOwnedPreflightTempDir(tempRoot);
     }
   }
 }
@@ -934,7 +1196,7 @@ export async function runAutofixTscPreflight(
  */
 export async function assertAutofixTscPreflightPasses(
   writes: readonly AutofixWriteFile[],
-  options?: { workDir?: string; projectRoot?: string }
+  options?: { workDir?: string; projectRoot?: string; timeoutMs?: number }
 ): Promise<TscPreflightNote> {
   const result = await runAutofixTscPreflight(writes, options);
   if (!result.success) throw new AutofixTscPreflightError(result.message);
