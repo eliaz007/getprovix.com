@@ -19,7 +19,7 @@ import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 import { formatGpa } from "@/lib/gpa";
 import { getPublicProfileBySlug } from "@/lib/public-profile";
 import { buildPublicProfileUrl } from "@/lib/profile-url";
-import { SITE_OG_IMAGE, SITE_OG_IMAGE_PATH } from "@/lib/site";
+import { SITE_OG_IMAGE_PATH } from "@/lib/site";
 import type { Metadata } from "next";
 
 type PublicProfilePageProps = {
@@ -57,7 +57,7 @@ export async function generateMetadata({
       description:
         profile.bio ?? "Verified proof-of-work profile on Provix.",
       url,
-      images: [SITE_OG_IMAGE],
+      images: [SITE_OG_IMAGE_PATH],
     },
     twitter: {
       card: "summary_large_image",

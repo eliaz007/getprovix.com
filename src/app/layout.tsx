@@ -8,8 +8,7 @@ import {
   SITE_KEYWORDS,
   SITE_LOGO_URL,
   SITE_NAME,
-  SITE_OG_IMAGE,
-  SITE_OG_IMAGE_PATH,
+  SITE_SOCIAL_TITLE,
   SITE_TITLE,
   SITE_URL,
 } from "@/lib/site";
@@ -79,15 +78,16 @@ export const metadata: Metadata = {
     locale: "en_US",
     url: SITE_URL,
     siteName: SITE_NAME,
-    title: SITE_TITLE,
+    title: SITE_SOCIAL_TITLE,
     description: SITE_DESCRIPTION,
-    images: [SITE_OG_IMAGE],
+    // Image comes from `src/app/opengraph-image.png` (file convention), which
+    // emits hashed, cache-busting URLs for every route that does not opt out.
   },
   twitter: {
     card: "summary_large_image",
-    title: SITE_TITLE,
+    title: SITE_SOCIAL_TITLE,
     description: SITE_DESCRIPTION,
-    images: [SITE_OG_IMAGE_PATH],
+    // Image comes from `src/app/opengraph-image.png` (file convention).
   },
   icons: {
     icon: "/favicon.ico",

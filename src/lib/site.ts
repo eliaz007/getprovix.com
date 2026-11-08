@@ -20,20 +20,26 @@ export const SITE_URL = normalizeSiteUrl(
 );
 
 export const SITE_NAME = "Provix";
-export const SITE_TITLE = "Provix — Architecture Firewall for GitHub";
+/** Home page / social-share title. The root layout uses `title.default`, so this
+ *  must include the brand and read as a complete standalone title. */
+export const SITE_TITLE = "Automated Security for Next.js & Supabase | Provix";
+/** Social titles are rendered verbatim (no `| Provix` template applied), so the
+ *  brand suffix is stripped here to avoid "| Provix | Provix". */
+export const SITE_SOCIAL_TITLE = SITE_TITLE.replace(
+  new RegExp(`\\s*\\|\\s*${SITE_NAME}$`),
+  ""
+);
 export const SITE_DESCRIPTION =
-  "Connect a GitHub repo, scan for secrets, client database exposure, and architecture issues, then open fix pull requests from one workspace.";
+  "Provix identifies security vulnerabilities in Next.js and Supabase repositories and helps developers remediate supported findings through GitHub pull requests.";
 export const SITE_EMAIL = "support@getprovix.com";
 export const SITE_LOGO_URL = `${SITE_URL}/logo.svg`;
-/** Social share image — drop the file at `public/og.jpg` (1200×630 recommended). */
-export const SITE_OG_IMAGE_PATH = "/og.jpg";
-export const SITE_OG_IMAGE_URL = `${SITE_URL}${SITE_OG_IMAGE_PATH}`;
-export const SITE_OG_IMAGE = {
-  url: SITE_OG_IMAGE_PATH,
-  width: 1200,
-  height: 675,
-  alt: `${SITE_NAME} — Architecture Firewall for GitHub`,
-} as const;
+/** Social share image — `src/app/opengraph-image.png` (1200×630, 1.91:1), the
+ *  same asset Next.js serves from the file convention for routes that inherit
+ *  root metadata. Pages that declare their own `openGraph` replace the parent
+ *  object wholesale (dropping the inherited image), so `buildPageMetadata`
+ *  references this path explicitly to keep one image site-wide. Next.js still
+ *  emits a hashed URL for the file-convention routes. */
+export const SITE_OG_IMAGE_PATH = "/opengraph-image.png";
 
 export const SITE_KEYWORDS = [
   "Provix",
@@ -44,6 +50,8 @@ export const SITE_KEYWORDS = [
   "autofix pull request",
   "TypeScript repository scanner",
   "Next.js security",
+  "Supabase security",
+  "Supabase service role key leak",
 ];
 
 export function buildPageMetadata(
@@ -58,6 +66,10 @@ export function buildPageMetadata(
     title,
     description,
     alternates: { canonical: url },
+    // A page-level `openGraph` object replaces the parent's wholesale, which
+    // would drop the image inherited from `src/app/opengraph-image.png`. Point
+    // at that file explicitly so every page keeps one shared image instead of
+    // drifting per-page copies.
     openGraph: {
       type: "website",
       locale: "en_US",
@@ -65,7 +77,7 @@ export function buildPageMetadata(
       siteName: SITE_NAME,
       title: socialTitle,
       description,
-      images: [SITE_OG_IMAGE],
+      images: [SITE_OG_IMAGE_PATH],
     },
     twitter: {
       card: "summary_large_image",
