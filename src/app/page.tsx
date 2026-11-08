@@ -347,10 +347,11 @@ export default function Home() {
               Built by a developer, for developers
             </h2>
             <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-400">
-              Provix started as a solo build: one engineer tired of scanners that dump warnings and
-              leave the patch to you. The product is still early, closed beta, and opinionated about
-              Next.js and TypeScript. If you connect a repo, you get an honest autofix path with a
-              human still owning the merge.
+              Most security scanners just dump a list of warnings on your desk and leave you to fix
+              the mess. Provix was built by a solo engineer to actually finish the job. It is
+              designed specifically for Next.js and TypeScript: when it finds a vulnerability, it
+              writes the fix and opens a clean Pull Request. You stay in complete control and only
+              merge when you&apos;re ready.
             </p>
           </div>
         </section>
