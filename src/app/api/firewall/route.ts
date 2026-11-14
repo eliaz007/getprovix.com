@@ -1,6 +1,7 @@
-export { runtime } from "./route/runtime";
-export { dynamic } from "./route/dynamic";
-export { maxDuration } from "./route/maxduration";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 export { REPORT_PATH } from "./route/report-path";
 export { LOCAL_TARGET } from "./route/local-target";
 export { json } from "./route/json";
