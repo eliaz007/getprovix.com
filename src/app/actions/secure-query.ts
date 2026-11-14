@@ -207,3 +207,25 @@ export async function secureQuery257(screeningKey: string | undefined) {
     return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } as never };
   }
 }
+
+export async function secureQuery417(employerId: string | undefined, jobId: string | undefined, candidateIds: readonly string[] | undefined) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: null, error: { message: "Unauthorized", details: "", hint: "", code: "401" } as never };
+    }
+    const { data, error } = await supabase
+            .from("talent_match_scores")
+            .select("candidate_id, match_percentage")
+            .eq("employer_id", employerId == null ? undefined : String(employerId))
+            .eq("job_id", jobId == null ? undefined : String(jobId))
+            .in("candidate_id", candidateIds ?? []);
+    return { data, error };
+  } catch (error) {
+    console.error(error);
+    return { data: null, error: { message: "The request could not be completed.", details: "", hint: "", code: "500" } as never };
+  }
+}
