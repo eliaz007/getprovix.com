@@ -27,6 +27,7 @@ import CandidateEducationSummary from "@/components/CandidateEducationSummary";
 import ScoreMeter from "@/components/ScoreMeter";
 import VerifiedOnProvixPill from "@/components/VerifiedOnProvixPill";
 import { createClient } from "@/utils/supabase/client";
+import { secureQuery417 } from "@/app/actions/secure-query";
 
 type ApplicantProfileRow = {
   id: string;
@@ -414,12 +415,7 @@ export default function JobApplicantsDrawer({
         const matchByCandidateId = new Map<string, number>();
 
         if (candidateIds.length > 0) {
-          const { data: matchRows, error: matchError } = await supabase
-            .from("talent_match_scores")
-            .select("candidate_id, match_percentage")
-            .eq("employer_id", employerId)
-            .eq("job_id", jobId)
-            .in("candidate_id", candidateIds);
+          const { data: matchRows, error: matchError } = await secureQuery417(employerId, jobId, candidateIds);
 
           if (matchError) {
             console.error("Failed to load applicant match scores:", matchError);
