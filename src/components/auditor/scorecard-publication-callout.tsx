@@ -42,11 +42,11 @@ const DIAGNOSTIC_BULLETS = [
 const VERIFIED_BULLETS = [
   {
     icon: Radar,
-    text: "Direct founder inbound: Get discovered by hiring teams seeking vetted builders.",
+    text: "Workspace visibility: Publish a verified audit so your team can review production readiness.",
   },
   {
     icon: BadgeCheck,
-    text: "Public proof-of-work: Share a verified audit link highlighting your architecture and tests.",
+    text: "Public proof-of-work: Share a verified audit link highlighting architecture, security, and tests.",
   },
   {
     icon: FolderGit2,
@@ -147,8 +147,8 @@ export default function ScorecardPublicationCallout({
       setStatus("saved");
       setMessage(
         payload.enrolled_in_talent_pool === true || nextClaim.is_publicly_visible
-          ? "Published to the talent roster. Founders can now request intros."
-          : "Private diagnostic saved to your candidate dashboard."
+          ? "Published verified audit to your profile."
+          : "Private diagnostic saved to your dashboard."
       );
     } catch (error) {
       setStatus("error");
@@ -163,14 +163,14 @@ export default function ScorecardPublicationCallout({
   }
 
   const title = canPublish
-    ? "Verified Pass — Founder Roster eligible (75+)"
-    : "Private diagnostic — below the 75 roster bar";
+    ? "Verified Pass — publish eligible (75+)"
+    : "Private diagnostic — below the 75 publish bar";
   const subtitle = canPublish
-    ? "This repository cleared Provix production standards. Publish it to the live Founder Roster so hiring teams can request intros."
-    : "This dossier stays private. Resolve the operational deficits below, then re-submit for verification before it can appear on the Founder Roster.";
+    ? "This repository cleared Provix production standards. Publish the audit result to your workspace profile."
+    : "This dossier stays private. Resolve the operational deficits below, then re-submit for verification before it can be published.";
   const bullets = canPublish ? VERIFIED_BULLETS : DIAGNOSTIC_BULLETS;
   const buttonLabel = canPublish
-    ? "Publish to Live Founder Roster →"
+    ? "Publish Verified Audit →"
     : "Keep Private & Fix Operational Deficits →";
 
   return (

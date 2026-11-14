@@ -504,8 +504,8 @@ export default function GitHubResumeAuditor({
               </h2>
               <p className="max-w-sm text-sm leading-relaxed text-zinc-500">
                 Submit a repository you own. Provix scores architecture, CI/CD,
-                and test resilience. Clear 75+ to publish onto the live Founder
-                Roster.
+                security posture, and test resilience for Next.js and Supabase
+                codebases.
               </p>
             </div>
           )}
@@ -517,17 +517,17 @@ export default function GitHubResumeAuditor({
       <PageHeader
         className="print:hidden"
         eyebrow={
-          isEmployerView ? "Evaluation & Screening" : "Provix Roster Verification"
+          isEmployerView ? "Team Repository Audit" : "Provix Security Audit"
         }
         title={
           isEmployerView
-            ? "Candidate Repository Audit"
-            : "Provix Roster Verification"
+            ? "Team Repository Audit"
+            : "Provix Security Audit"
         }
         description={
           isEmployerView
-            ? "Deep-audit a candidate GitHub repository for architectural deficits, then generate targeted technical screen questions."
-            : "Submit a repository you own for production verification. Clear 75+ to publish onto the live Founder Roster; scores below that stay private with actionable remediation."
+            ? "Deep-audit a GitHub repository for security and architectural deficits, then generate targeted review questions."
+            : "Submit a repository you own for Next.js and Supabase security and architecture verification. Scores below target stay private with actionable remediation."
         }
       />
 
@@ -574,8 +574,8 @@ export default function GitHubResumeAuditor({
             {!isEmployerView ? (
               <p className="mb-2 text-xs leading-relaxed text-zinc-500">
                 Submit a public repository under your authenticated GitHub
-                account. Ownership is verified before the scan can publish to
-                the Founder Roster.
+                account. Ownership is verified before the scan can publish
+                results in your workspace.
               </p>
             ) : null}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">

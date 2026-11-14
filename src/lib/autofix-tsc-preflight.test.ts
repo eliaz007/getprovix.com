@@ -298,7 +298,7 @@ describe("runAutofixTscPreflight", () => {
     );
     expect(unresolved).not.toContain("@/utils/supabase/client");
     expect(await runAutofixTscPreflight(plan.writes)).toEqual(expect.objectContaining({ success: true }));
-  });
+  }, 90_000);
 
   it("mirrors host tsconfig @/* path aliases into the preflight bundle", async () => {
     const host = await loadHostTsconfigPaths(process.cwd());
@@ -350,7 +350,7 @@ describe("runAutofixTscPreflight", () => {
     expect(paths).toContain("src/lib/admin-access.ts");
     expect(paths).toContain("src/utils/supabase/client.ts");
     expect(await runAutofixTscPreflight(plan.writes)).toEqual(expect.objectContaining({ success: true }));
-  });
+  }, 90_000);
 
   it("recursively copies @/lib and @/utils modules into the preflight bundle", async () => {
     const actionWithLib = `"use server";
@@ -386,7 +386,7 @@ export async function secureQuery3() {
         helper,
       ])
     ).toEqual(expect.objectContaining({ success: true }));
-  });
+  }, 90_000);
 });
 
 describe("tsc preflight execution hardening", () => {

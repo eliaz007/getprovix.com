@@ -3,7 +3,7 @@ import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
   "Terms of Service",
-  "Terms for using Provix, an automated code security, static analysis, and self-healing software platform, including GitHub repository scanning and automated fix pull requests.",
+  "Terms for using Provix, an automated Next.js and Supabase code security and architecture auditing platform that scans GitHub repositories and opens verified fix pull requests.",
   "/terms"
 );
 
@@ -19,11 +19,11 @@ const sections: TermsSection[] = [
   {
     title: "1. The service",
     intro:
-      "Provix is an automated code security, static analysis, and self-healing software platform for GitHub repositories. After you sign in, you connect a repository with the Provix GitHub App or a token that can read it. Provix scans source files, reports findings, and can open a fix pull request for issues it knows how to patch.",
+      "Provix is an automated Next.js and Supabase code security and architecture auditing platform for GitHub repositories. After you sign in, you connect a repository with the Provix GitHub App or a token that can read it. Provix scans source files, reports findings, and can open a fix pull request for issues it knows how to patch.",
     bullets: [
       {
         label: "Scans:",
-        text: "A scan reads repository contents through GitHub and checks them for secrets, client-side database queries, known dependency floors, and oversized modules. A scan may cover only part of a repository, including a cap on the largest source files.",
+        text: "A scan reads repository contents through GitHub and checks them for secrets, client-side database queries, insecure session auth patterns, known dependency floors, and oversized modules. A scan may cover only part of a repository, including a cap on the largest source files.",
       },
       {
         label: "Fix pull requests:",
@@ -31,7 +31,7 @@ const sections: TermsSection[] = [
       },
       {
         label: "What Provix is not:",
-        text: "Provix is an automated code security, static analysis, and self-healing software platform. It is not a hiring marketplace, recruiter, employer, or a guarantee that a repository is secure, complete, or production-ready.",
+        text: "Provix is a developer security and architecture tooling product. It is not a job board, recruiting agency, or employment marketplace, and it does not guarantee that a repository is secure, complete, or production-ready.",
       },
     ],
   },
@@ -44,11 +44,15 @@ const sections: TermsSection[] = [
       },
       {
         label: "Permission to scan:",
-        text: "By connecting a repository, you grant Provix a limited license to read its contents, run static checks, and, when you request it, propose changes by opening a pull request. That license is only for operating the service.",
+        text: "By connecting a repository, you grant Provix a limited license to read its contents, run static and AI-assisted analysis, and, when you request it, propose changes by opening a pull request. That license is only for operating the service.",
       },
       {
         label: "Your code:",
-        text: "You keep ownership of your code. Provix does not claim ownership of your repository or of patches you merge. We do not use your private repositories to train public foundation models.",
+        text: "You keep ownership of your code. Provix does not claim ownership of your repository or of patches you merge.",
+      },
+      {
+        label: "Ephemeral processing:",
+        text: "Repository code is processed ephemerally for static analysis, bounded AI-assisted remediation, and pull request generation. Provix does not store your repository source as a permanent archive at rest, and does not use your code to train AI models.",
       },
     ],
   },
@@ -134,19 +138,21 @@ export default function TermsPage() {
           <div className="mt-4 space-y-1 text-sm leading-relaxed text-zinc-400">
             <p>
               <span className="font-semibold text-zinc-300">Last Updated:</span>{" "}
-              November 4, 2026
+              November 13, 2026
             </p>
             <p>
               <span className="font-semibold text-zinc-300">Effective Date:</span>{" "}
-              November 4, 2026
+              November 13, 2026
             </p>
           </div>
           <p className="mt-6 text-sm leading-relaxed text-zinc-400">
             These Terms of Service (&quot;Terms&quot;) govern use of Provix
             (&quot;Provix,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;)
-            at getprovix.com. The service scans GitHub repositories and can open
-            fix pull requests. By creating an account, connecting a repository, or
-            using a scan or fix, you agree to these Terms.
+            at getprovix.com. Provix is an automated Next.js and Supabase code
+            security and architecture auditing platform that scans GitHub
+            repositories and can open fix pull requests. By creating an account,
+            connecting a repository, or using a scan or fix, you agree to these
+            Terms.
           </p>
         </header>
 

@@ -11,7 +11,12 @@ import {
 } from "@/lib/firewall-autofix";
 import type { HealingAuditEntry } from "@/lib/healing-audit";
 
-export const SECURITY_BOUNDARIES = ["CLIENT_DB_EXPOSURE", "SECRET_LEAK", "VULNERABLE_DEPENDENCY"] as const;
+export const SECURITY_BOUNDARIES = [
+  "CLIENT_DB_EXPOSURE",
+  "SECRET_LEAK",
+  "VULNERABLE_DEPENDENCY",
+  "INSECURE_AUTH_SESSION",
+] as const;
 export type SecurityBoundary = (typeof SECURITY_BOUNDARIES)[number];
 
 export type IntegrityPosture = "OPTIMAL" | "DEGRADED" | "AT_RISK";
@@ -19,7 +24,7 @@ export type ReviewFixStatus = "FIX_READY" | "OPEN";
 
 export type BoundaryMetric = {
   id: SecurityBoundary;
-  severity: "CRITICAL" | "HIGH / MEDIUM";
+  severity: "CRITICAL" | "HIGH" | "HIGH / MEDIUM";
   open: number;
   status: "CLEAR" | "OPEN";
 };
@@ -69,6 +74,7 @@ const BOUNDARY_SEVERITY: Record<SecurityBoundary, BoundaryMetric["severity"]> = 
   CLIENT_DB_EXPOSURE: "CRITICAL",
   SECRET_LEAK: "CRITICAL",
   VULNERABLE_DEPENDENCY: "HIGH / MEDIUM",
+  INSECURE_AUTH_SESSION: "HIGH",
 };
 
 export function integrityPosture(score: number | null): { posture: IntegrityPosture | null; letter: string } {

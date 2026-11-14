@@ -10,6 +10,8 @@ const NAME = /^[\w.-]+$/;
 const TRAILING_PAGE_SEGMENTS = new Set([
   "violations",
   "health",
+  "audits",
+  "audit",
   "firewall",
   "settings",
   "dashboard",
@@ -43,7 +45,7 @@ export function toGitHubOwnerRepo(input: string): string | null {
 
   let slug = trimmed
     .replace(/[?#].*$/, "")
-    .replace(/\/+(?:violations|health|firewall|settings|leaks|history)\/?$/i, "")
+    .replace(/\/+(?:violations|health|audits|audit|firewall|settings|leaks|history)\/?$/i, "")
     .replace(/\/+$/, "");
   const hosted = slug.match(/^(?:[a-z][a-z0-9+.-]*:\/\/)?(?:www\.)?github\.com\/(.+)$/i);
   if (hosted) {

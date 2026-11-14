@@ -3,7 +3,7 @@ import { buildPageMetadata } from "@/lib/site";
 
 export const metadata = buildPageMetadata(
   "Privacy Policy",
-  "How Provix collects, uses, and protects data when you connect GitHub, scan repositories, and open fix pull requests.",
+  "How Provix collects, uses, and protects data when you connect GitHub, scan Next.js and Supabase repositories, and open automated fix pull requests.",
   "/privacy"
 );
 
@@ -14,6 +14,12 @@ type PrivacySection = {
 };
 
 const sections: PrivacySection[] = [
+  {
+    title: "Who we are",
+    paragraphs: [
+      "Provix is an automated Next.js and Supabase code security and architecture auditing platform. It scans repositories you connect, reports findings, and can open verified fix pull requests. Provix is not a hiring marketplace, talent network, or recruiting service.",
+    ],
+  },
   {
     title: "Information we collect",
     paragraphs: [
@@ -26,9 +32,17 @@ const sections: PrivacySection[] = [
   {
     title: "How we use information",
     paragraphs: [
-      "We use this information to sign you in, scan repositories you are allowed to access, show findings, and open fix pull requests you request.",
-      "We do not sell personal information, and we do not publish your repository contents as a public profile or talent listing.",
+      "We use this information to sign you in, scan repositories you are allowed to access, show security and architecture findings, and open fix pull requests you request.",
+      "We do not sell personal information. We do not publish your repository contents as a public profile or directory listing.",
       "We may use aggregated, de-identified usage data to understand which parts of the product fail and to improve scans and fixes.",
+    ],
+  },
+  {
+    title: "Repository code handling",
+    paragraphs: [
+      "Repository source code is processed ephemerally for static analysis, bounded AI-assisted remediation, and pull request generation. File contents are read for the active request, used to produce findings or patches, and are not retained as a permanent code archive at rest on Provix systems.",
+      "Provix does not use your repository code to train AI models. Any model provider involved in a remediation request receives only the context needed for that request and is not authorized by Provix to retain your private code for model training.",
+      "We may keep limited operational metadata (for example repository name, file path, finding category, and pull request URL) so your workspace can show scan history and opened fixes. That metadata is not a copy of your full repository.",
     ],
   },
   {
@@ -89,9 +103,10 @@ export default function PrivacyPage() {
             Privacy Policy
           </h1>
           <p className="mt-4 text-sm text-textMuted leading-relaxed">
-            Effective date: November 4, 2026. This policy describes how Provix
+            Effective date: November 13, 2026. This policy describes how Provix
             collects, uses, and protects information when you sign in, connect a
-            GitHub repository, run a scan, or open a fix pull request.
+            GitHub repository, run a security or architecture scan, or open a fix
+            pull request.
           </p>
         </header>
 

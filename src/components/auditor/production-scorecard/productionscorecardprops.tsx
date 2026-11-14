@@ -23,6 +23,6 @@ export type ProductionScorecardProps = {
   audience?: "candidate" | "employer";
   /** Terminal-style forensic receipts under each pillar (non-compact dossier). */
   pillarSubLogs?: PillarSubLog[] | null;
-  /** Shown under Founder Hiring Verdict when History blocks Provix Verified. */
+  /** Shown under Production Risk Verdict when History blocks Provix Verified. */
   historyVerifiedNote?: string | null;
 };

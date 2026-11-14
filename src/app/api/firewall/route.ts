@@ -3,9 +3,16 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import {
   FIREWALL_CATEGORIES,
+  FIREWALL_PVIM_ANALYSIS_STATUSES,
+  FIREWALL_PVIM_REASONING_STATUSES,
   isFirewallSeverity,
   type FirewallCategory,
   type FirewallLargestFile,
+  type FirewallPvimAnalysis,
+  type FirewallPvimFinding,
+  type FirewallPvimReasoning,
+  type FirewallPvimRemediationCode,
+  type FirewallPvimRemediationStatus,
   type FirewallRemediation,
   type FirewallReport,
   type FirewallResponse,
@@ -127,18 +134,171 @@ function largestFilesFrom(value: unknown): FirewallLargestFile[] {
     .slice(0, 5);
 }
 
+function pvimRemediationFrom(value: unknown): FirewallPvimRemediationStatus | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.kind === "pending") return { kind: "pending" };
+  if (
+    record.kind === "supported" &&
+    (record.category === "SECRET_LEAK" || record.category === "CLIENT_DB_EXPOSURE") &&
+    record.requiresScannerAgreement === true
+  ) {
+    return {
+      kind: "supported",
+      category: record.category,
+      requiresScannerAgreement: true,
+    };
+  }
+  if (
+    record.kind === "unsupported" &&
+    typeof record.code === "string" &&
+    typeof record.reason === "string"
+  ) {
+    return {
+      kind: "unsupported",
+      code: record.code as FirewallPvimRemediationCode,
+      reason: record.reason,
+    };
+  }
+  return undefined;
+}
+
+function pvimFindingsFrom(value: unknown): FirewallPvimFinding[] {
+  if (!Array.isArray(value)) return [];
+  const findings: FirewallPvimFinding[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    if (record.source !== "pvim") continue;
+    if (typeof record.findingId !== "string" || !record.findingId.trim()) continue;
+    if (typeof record.label !== "string" || !record.label.trim()) continue;
+    if (typeof record.ruleId !== "string") continue;
+    if (typeof record.confidence !== "string" || !record.confidence.trim()) continue;
+    const line = numberField(record.line);
+    const remediation = pvimRemediationFrom(record.remediation);
+    const engineSource =
+      record.engineSource === "m1" || record.engineSource === "m2" ? record.engineSource : undefined;
+    findings.push({
+      findingId: record.findingId.trim(),
+      source: "pvim",
+      ...(engineSource ? { engineSource } : {}),
+      label: record.label.trim(),
+      ruleId: record.ruleId,
+      confidence: record.confidence.trim(),
+      family: typeof record.family === "string" ? record.family : record.family === null ? null : undefined,
+      filePath: typeof record.filePath === "string" ? record.filePath : null,
+      line: line !== null && line >= 1 ? line : null,
+      ...(typeof record.message === "string" ? { message: record.message } : {}),
+      ...(typeof record.snippet === "string" ? { snippet: record.snippet } : {}),
+      ...(remediation ? { remediation } : {}),
+    });
+  }
+  return findings;
+}
+
+function pvimAnalysisFrom(value: unknown): FirewallPvimAnalysis | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.status !== "string" ||
+    !(FIREWALL_PVIM_ANALYSIS_STATUSES as readonly string[]).includes(record.status)
+  ) {
+    return undefined;
+  }
+  const findingCount = numberField(record.findingCount);
+  const incomplete = numberField(record.incomplete);
+  const elapsedMs = numberField(record.elapsedMs);
+  if (findingCount === null || incomplete === null || elapsedMs === null) return undefined;
+  return {
+    status: record.status as FirewallPvimAnalysis["status"],
+    findingCount,
+    incomplete,
+    elapsedMs,
+    ...(typeof record.engineVersion === "string" ? { engineVersion: record.engineVersion } : {}),
+    ...(typeof record.jobId === "string" ? { jobId: record.jobId } : {}),
+    ...(typeof record.message === "string" ? { message: record.message } : {}),
+  };
+}
+
+function stringListField(value: unknown, maxItems: number, maxLen: number): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: string[] = [];
+  for (const item of value) {
+    if (out.length >= maxItems) break;
+    if (typeof item !== "string") continue;
+    const trimmed = item.replace(/\s+/g, " ").trim();
+    if (!trimmed) continue;
+    out.push(trimmed.length <= maxLen ? trimmed : `${trimmed.slice(0, maxLen - 1).trimEnd()}…`);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function pvimReasoningFrom(value: unknown): FirewallPvimReasoning | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.status !== "string" ||
+    !(FIREWALL_PVIM_REASONING_STATUSES as readonly string[]).includes(record.status)
+  ) {
+    return undefined;
+  }
+  if (typeof record.detail !== "string") return undefined;
+  if (typeof record.hasCriticalReliabilityFlags !== "boolean") return undefined;
+  const flags = stringListField(record.criticalReliabilityFlags, 32, 200) ?? [];
+  const openQuestions = stringListField(record.openQuestions, 8, 200);
+  const answerBlurbs = stringListField(record.answerBlurbs, 8, 240);
+  const notes =
+    typeof record.notes === "string" && record.notes.trim()
+      ? record.notes.replace(/\s+/g, " ").trim().slice(0, 500)
+      : record.notes === null
+        ? null
+        : undefined;
+
+  return {
+    status: record.status as FirewallPvimReasoning["status"],
+    detail: record.detail,
+    hasCriticalReliabilityFlags: record.hasCriticalReliabilityFlags,
+    criticalReliabilityFlags: flags,
+    ...(typeof record.provider === "string" || record.provider === null
+      ? { provider: record.provider }
+      : {}),
+    ...(typeof record.caseId === "string" || record.caseId === null ? { caseId: record.caseId } : {}),
+    ...(typeof record.caseSelection === "string" || record.caseSelection === null
+      ? { caseSelection: record.caseSelection }
+      : {}),
+    ...(typeof record.stopReason === "string" || record.stopReason === null
+      ? { stopReason: record.stopReason }
+      : {}),
+    ...(typeof record.error === "string" || record.error === null ? { error: record.error } : {}),
+    ...(notes !== undefined ? { notes } : {}),
+    ...(openQuestions ? { openQuestions } : {}),
+    ...(answerBlurbs ? { answerBlurbs } : {}),
+  };
+}
+
 function reportFrom(value: unknown): FirewallReport | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   const architectureScore = numberField(record.architectureScore);
   const summary = summaryFrom(record.summary);
   if (typeof record.timestamp !== "string" || architectureScore === null || !summary) return null;
+  const commitSha =
+    typeof record.commitSha === "string" && record.commitSha.trim()
+      ? record.commitSha.trim()
+      : undefined;
+  const pvim = pvimAnalysisFrom(record.pvim);
+  const pvimFindings = pvimFindingsFrom(record.pvimFindings);
+  const pvimReasoning = pvimReasoningFrom(record.pvimReasoning);
   return {
     timestamp: record.timestamp,
     architectureScore: Math.round(architectureScore),
     summary,
     violations: violationsFrom(record.violations),
     largestFiles: largestFilesFrom(record.files),
+    ...(commitSha ? { commitSha } : {}),
+    ...(pvim ? { pvim } : {}),
+    ...(pvimFindings.length > 0 ? { pvimFindings } : {}),
+    ...(pvimReasoning ? { pvimReasoning } : {}),
   };
 }
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, History, ScrollText, Settings, Shield } from "lucide-react";
+import { Activity, History, Radar, ScrollText, Settings, Shield } from "lucide-react";
 import { isFirewallPath } from "@/lib/dashboard-account";
 import { ProvixLogo } from "@/components/ProvixLogo";
 import { useDashboardNav } from "@/components/dashboard/dashboard-nav-context";
@@ -12,10 +12,18 @@ import {
   useFirewallView,
   type FirewallView,
 } from "@/components/firewall/firewall-view-context";
+import { WORKSPACE_NAV } from "@/lib/product-copy";
 
 const navListClass = "m-0 flex list-none flex-col gap-0.5 p-0";
 const sectionHeaderClass =
   "mb-1 block px-3 font-mono text-[10px] font-semibold uppercase tracking-widest text-zinc-500";
+
+const VIEW_ICONS = {
+  health: Activity,
+  audits: Radar,
+  violations: ScrollText,
+  leaks: Shield,
+} as const;
 
 function navItemClass(isActive: boolean) {
   return `w-full text-left px-3 py-2 text-sm font-medium flex items-center gap-3 cursor-pointer transition-colors ${
@@ -67,19 +75,13 @@ export default function DashboardSidebar() {
     router.push(firewallHref(repoSlug, view));
   }
 
-  const workspaceLinks = [
-    { key: "health" as const, label: "Overview", icon: Activity },
-    { key: "violations" as const, label: "Structure", icon: ScrollText },
-    { key: "leaks" as const, label: "Security", icon: Shield },
-  ];
-
   return (
     <div className="flex min-h-screen flex-col justify-between bg-[#0E0E12] p-4">
       <div>
         <SidebarBrand />
         <NavSection title="Workspace">
-          {workspaceLinks.map((item) => {
-            const Icon = item.icon;
+          {WORKSPACE_NAV.map((item) => {
+            const Icon = VIEW_ICONS[item.key];
             const isActive = active === item.key;
             return (
               <li key={item.key}>

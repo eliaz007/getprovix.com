@@ -9,6 +9,11 @@ export const WORKSPACE_NAV = [
     hint: "Score and recent activity for this repo",
   },
   {
+    key: "audits" as const,
+    label: "Audits",
+    hint: "Pick a repository and run a security audit",
+  },
+  {
     key: "violations" as const,
     label: "Structure",
     hint: "Architecture issues Provix can fix with a PR",

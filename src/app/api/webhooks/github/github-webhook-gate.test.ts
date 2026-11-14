@@ -127,6 +127,15 @@ describe("gate PR comment copy", () => {
       })
     ).toContain("server action");
 
+    const secretFix = gateFixForFinding({
+      category: "SECRET_LEAK",
+      rule: "Hardcoded Secret",
+      remediation: { diff: "", envExample: "STRIPE_SECRET_KEY=" },
+    });
+    expect(secretFix).toContain("Rotate or revoke");
+    expect(secretFix).toContain("Git history");
+    expect(secretFix).toContain("does not rotate credentials or rewrite history");
+
     const body = gateComment({
       leaks: 1,
       violations: 1,
@@ -138,8 +147,9 @@ describe("gate PR comment copy", () => {
           rule: "Hardcoded Secret",
           kind: "leak",
           category: "SECRET_LEAK",
-          message: "Stripe secret is committed in source. Move it to STRIPE_SECRET_KEY.",
-          fix: "Move the secret into an environment variable (STRIPE_SECRET_KEY) and remove it from source.",
+          message:
+            "Stripe live secret key is exposed in source. Replace the literal with process.env.STRIPE_SECRET_KEY. Moving the value into an environment variable does not invalidate the exposed credential.",
+          fix: secretFix,
         },
         {
           filePath: "src/components/billing.tsx",
@@ -156,8 +166,9 @@ describe("gate PR comment copy", () => {
     expect(body).toContain("### Provix Architecture Firewall");
     expect(body).toContain("1 leak, 1 violation. See PR comment.");
     expect(body).toContain("`src/components/billing.tsx:5`");
-    expect(body).toContain("Stripe secret is committed in source");
-    expect(body).toContain("Fix: Move the secret into an environment variable");
+    expect(body).toContain("Stripe live secret key is exposed in source");
+    expect(body).toContain("does not invalidate the exposed credential");
+    expect(body).toContain("Fix: Rotate or revoke the exposed credential");
     expect(body).toContain("Fix: Move the query into a server action");
     expect(body).toContain("[Open Heal queue](https://provix.test/firewall?repo=acme%2Fdemo&view=violations)");
   });
@@ -213,63 +224,80 @@ describe("POST /api/webhooks/github", () => {
     expect(recorded.commits).toEqual([]);
   });
 
-  it("fails the check and comments when a changed line leaks or violates a boundary", async () => {
-    process.env.GITHUB_WEBHOOK_SECRET = SECRET;
-    process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL = "true";
-    process.env.NEXT_PUBLIC_APP_URL = "https://provix.test";
-    const content = [
-      '"use client";',
-      "",
-      'import { createClient } from "@supabase/supabase-js";',
-      "",
-      `export const key = "${FAKE_STRIPE_LIVE_KEY}";`,
-      "",
-    ].join("\n");
-    const recorded = recordingClient({
-      filename: "src/components/billing.tsx",
-      status: "added",
-      sha: "dddddddddddddddddddddddddddddddddddddddd",
-      patch: [
-        "@@ -0,0 +1,5 @@",
-        '+"use client";',
-        "+",
-        '+import { createClient } from "@supabase/supabase-js";',
-        "+",
-        `+export const key = "${FAKE_STRIPE_LIVE_KEY}";`,
-      ].join("\n"),
-      content,
-    });
-    const response = await handleSigned(delivery(), recorded.gate);
-    const body = (await response.json()) as { leaks: number; violations: number; description: string; state: string };
-    expect(response.status).toBe(200);
-    expect(body).toMatchObject({
-      state: "failure",
-      leaks: 1,
-      violations: 1,
-      description: "1 leak, 1 violation. See PR comment.",
-    });
-    expect(recorded.statuses[0]?.payload).toEqual({
-      state: "failure",
-      context: GATE_CONTEXT,
-      description: "1 leak, 1 violation. See PR comment.",
-      target_url: "https://provix.test/firewall?repo=eliaz007%2Fgetprovix.com&view=violations",
-    });
-    expect(recorded.commits).toHaveLength(1);
-    expect(recorded.commits[0]?.branch).toBe("provix/fix-login");
-    expect(recorded.commits[0]?.parentSha).toBe("abc123def4567890");
-    expect(recorded.commits[0]?.message.startsWith(`${HEAL_COMMIT_PREFIX} abc123def4567890`)).toBe(true);
-    const patched = recorded.commits[0]?.files.find((file) => file.path === "src/components/billing.tsx")?.content ?? "";
-    const example = recorded.commits[0]?.files.find((file) => file.path === ".env.example")?.content ?? "";
-    expect(patched).not.toContain("sk_live_");
-    expect(patched).toContain("process.env.STRIPE_SECRET_KEY");
-    expect(example).toContain("STRIPE_SECRET_KEY=");
-    expect(recorded.comments).toHaveLength(1);
-    expect(recorded.comments[0]).toContain("provix/autonomous-heal");
-    expect(recorded.comments[0]).toContain("committed to provix/fix-login");
-    expect(recorded.comments[0]).toContain("SECRET_LEAK");
-    expect(recorded.comments[0]).toMatch(/Validation passed\.|Partial heal:/);
-    expect(recorded.comments[0]).not.toContain("sk_live_");
-  });
+  // Same class as the client-DB heal case below: autonomous heal runs real
+  // finalizeAutofixWrites → tsc. Under a loaded full suite that exceeds Vitest's
+  // default 5s; keep assertions intact and match the sibling budget.
+  it(
+    "fails the check and comments when a changed line leaks or violates a boundary",
+    async () => {
+      process.env.GITHUB_WEBHOOK_SECRET = SECRET;
+      process.env.PROVIX_AUTONOMOUS_WEBHOOK_HEAL = "true";
+      process.env.NEXT_PUBLIC_APP_URL = "https://provix.test";
+      const content = [
+        '"use client";',
+        "",
+        'import { createClient } from "@supabase/supabase-js";',
+        "",
+        `export const key = "${FAKE_STRIPE_LIVE_KEY}";`,
+        "",
+      ].join("\n");
+      const recorded = recordingClient({
+        filename: "src/components/billing.tsx",
+        status: "added",
+        sha: "dddddddddddddddddddddddddddddddddddddddd",
+        patch: [
+          "@@ -0,0 +1,5 @@",
+          '+"use client";',
+          "+",
+          '+import { createClient } from "@supabase/supabase-js";',
+          "+",
+          `+export const key = "${FAKE_STRIPE_LIVE_KEY}";`,
+        ].join("\n"),
+        content,
+      });
+      const response = await handleSigned(delivery(), recorded.gate);
+      const body = (await response.json()) as {
+        leaks: number;
+        violations: number;
+        description: string;
+        state: string;
+      };
+      expect(response.status).toBe(200);
+      expect(body).toMatchObject({
+        state: "failure",
+        leaks: 1,
+        violations: 1,
+        description: "1 leak, 1 violation. See PR comment.",
+      });
+      expect(recorded.statuses[0]?.payload).toEqual({
+        state: "failure",
+        context: GATE_CONTEXT,
+        description: "1 leak, 1 violation. See PR comment.",
+        target_url: "https://provix.test/firewall?repo=eliaz007%2Fgetprovix.com&view=violations",
+      });
+      expect(recorded.commits).toHaveLength(1);
+      expect(recorded.commits[0]?.branch).toBe("provix/fix-login");
+      expect(recorded.commits[0]?.parentSha).toBe("abc123def4567890");
+      expect(recorded.commits[0]?.message.startsWith(`${HEAL_COMMIT_PREFIX} abc123def4567890`)).toBe(
+        true
+      );
+      const patched =
+        recorded.commits[0]?.files.find((file) => file.path === "src/components/billing.tsx")
+          ?.content ?? "";
+      const example =
+        recorded.commits[0]?.files.find((file) => file.path === ".env.example")?.content ?? "";
+      expect(patched).not.toContain("sk_live_");
+      expect(patched).toContain("process.env.STRIPE_SECRET_KEY");
+      expect(example).toContain("STRIPE_SECRET_KEY=");
+      expect(recorded.comments).toHaveLength(1);
+      expect(recorded.comments[0]).toContain("provix/autonomous-heal");
+      expect(recorded.comments[0]).toContain("committed to provix/fix-login");
+      expect(recorded.comments[0]).toContain("SECRET_LEAK");
+      expect(recorded.comments[0]).toMatch(/Validation passed\.|Partial heal:/);
+      expect(recorded.comments[0]).not.toContain("sk_live_");
+    },
+    15_000
+  );
 
   it(
     "commits a validated server action when a client Supabase query changed",

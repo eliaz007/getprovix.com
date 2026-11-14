@@ -1,4 +1,16 @@
-export type SecurityCategory = "SECRET_LEAK" | "CLIENT_DB_EXPOSURE" | "VULNERABLE_DEPENDENCY";
+import {
+  GET_SESSION_MESSAGE,
+  INSECURE_AUTH_SESSION_RULE,
+  findGetSessionOccurrences,
+  getSessionRemediationDiff,
+  rewriteGetSessionToGetUser,
+} from "@/lib/scanner/get-session-auth";
+
+export type SecurityCategory =
+  | "SECRET_LEAK"
+  | "CLIENT_DB_EXPOSURE"
+  | "VULNERABLE_DEPENDENCY"
+  | "INSECURE_AUTH_SESSION";
 
 export type SecuritySeverity = "CRITICAL" | "HIGH" | "MEDIUM";
 
@@ -30,6 +42,11 @@ type SecretRule = {
   label: string;
   envName: string;
   pattern: RegExp;
+  /**
+   * When set, this capture group is the credential value (match[0] may include
+   * assignment context). Used for AWS secret keys where the ID alone is not a secret.
+   */
+  valueGroup?: number;
 };
 
 export type SecretRuleCatalogEntry = {
@@ -38,6 +55,46 @@ export type SecretRuleCatalogEntry = {
   envName: string;
   pattern: string;
 };
+
+/**
+ * Shared secret-leak guidance. Moving a value into an env var does not invalidate
+ * the exposed credential. Provix never rotates credentials or rewrites Git history.
+ */
+export function secretLeakMessage(label: string, envName: string): string {
+  return (
+    `${label} is exposed in source. Rotate or revoke it first — moving it to ${envName} ` +
+    "does not invalidate the leaked credential. Store the replacement in the deployment " +
+    "environment. If this value was committed or pushed, scrub Git history " +
+    "(rewriting history affects collaborators). Provix does not rotate credentials or rewrite history."
+  );
+}
+
+export function secretLeakRemediationCommand(envName?: string): string {
+  const env = envName?.trim();
+  const store = env
+    ? `store the replacement securely in the deployment environment as ${env}`
+    : "store the replacement securely in the deployment environment";
+  return (
+    `Rotate or revoke the exposed credential, then ${store}. ` +
+    "Moving the value into an environment variable does not invalidate the leak. " +
+    "If it was committed or pushed, removing it from the current file does not remove it from Git history — " +
+    "scrub history only when necessary (rewriting history affects collaborators). " +
+    "Provix does not rotate credentials or rewrite history."
+  );
+}
+
+export function secretLeakPullRequestSection(envName?: string): string {
+  const env = envName?.trim();
+  return [
+    "### Credential response (required)",
+    "- Moving the value into an environment variable does **not** invalidate the exposed credential.",
+    env
+      ? `- Rotate or revoke the compromised credential, then store the replacement securely in the deployment environment (\`${env}\`).`
+      : "- Rotate or revoke the compromised credential, then store the replacement securely in the deployment environment.",
+    "- If the secret was committed or pushed, removing it from the current file does **not** remove it from Git history. Scrub history only when necessary — rewriting history affects collaborators.",
+    "- Provix does not rotate credentials or rewrite history.",
+  ].join("\n");
+}
 
 const SECRET_RULES: readonly SecretRule[] = [
   {
@@ -65,10 +122,14 @@ const SECRET_RULES: readonly SecretRule[] = [
     envName: "ANTHROPIC_API_KEY",
     pattern: /sk-ant-[a-zA-Z0-9\-_]{20,}/g,
   },
+  // AKIA… is an access key *ID*, not a secret. Only flag when a secret access key
+  // is assigned to a secret-key property / env name (sufficient credential evidence).
   {
-    label: "AWS access key",
-    envName: "AWS_ACCESS_KEY_ID",
-    pattern: /AKIA[0-9A-Z]{16}/g,
+    label: "AWS secret access key",
+    envName: "AWS_SECRET_ACCESS_KEY",
+    pattern:
+      /(?:aws[_-]?secret[_-]?access[_-]?key|secretAccessKey|SECRET_ACCESS_KEY)\s*[=:]\s*['"`]?([A-Za-z0-9/+=]{40})['"`]?/gi,
+    valueGroup: 1,
   },
 ];
 
@@ -78,6 +139,23 @@ export const SECRET_RULE_CATALOG: readonly SecretRuleCatalogEntry[] = SECRET_RUL
   envName: rule.envName,
   pattern: rule.pattern.source,
 }));
+
+function secretMatchValue(
+  rule: SecretRule,
+  match: RegExpMatchArray
+): { secret: string; index: number } | null {
+  if (rule.valueGroup != null) {
+    const secret = match[rule.valueGroup];
+    if (!secret) return null;
+    const full = match[0] ?? "";
+    const fullIndex = match.index ?? 0;
+    const offset = full.indexOf(secret);
+    return { secret, index: fullIndex + (offset >= 0 ? offset : 0) };
+  }
+  const secret = match[0];
+  if (!secret) return null;
+  return { secret, index: match.index ?? 0 };
+}
 
 type DepFloor = {
   name: string;
@@ -230,8 +308,8 @@ function redact(secret: string): string {
   if (secret.startsWith("sk-proj-")) return `sk-proj-...${tail}`;
   if (secret.startsWith("sk-ant-")) return `sk-ant-...${tail}`;
   if (secret.startsWith("sbp_")) return `sbp_...${tail}`;
-  if (secret.startsWith("AKIA")) return `AKIA...${tail}`;
   if (secret.startsWith("eyJ")) return `eyJ...${tail}`;
+  // AWS secret access keys and other opaque tokens — never echo the full value.
   return `${secret.slice(0, 4)}...${tail}`;
 }
 
@@ -367,11 +445,12 @@ function scanSecrets(file: SecurityScanFile): SecurityFinding[] {
   const findings: SecurityFinding[] = [];
 
   for (const rule of SECRET_RULES) {
-    const matcher = new RegExp(rule.pattern.source, "g");
+    const matcher = new RegExp(rule.pattern.source, rule.pattern.flags.includes("i") ? "gi" : "g");
     for (const match of masked.matchAll(matcher)) {
-      const secret = match[0];
-      const index = match.index ?? 0;
-      if (!secret || masked.slice(index, index + secret.length) !== secret) continue;
+      const extracted = secretMatchValue(rule, match);
+      if (!extracted) continue;
+      const { secret, index } = extracted;
+      if (masked.slice(index, index + secret.length) !== secret) continue;
       const line = lineAt(file.content, index);
       const originalLine = lineText(file.content, line);
       const envName = isEnvFile(filePath) ? envNameOnLine(originalLine, rule.envName) : rule.envName;
@@ -388,12 +467,12 @@ function scanSecrets(file: SecurityScanFile): SecurityFinding[] {
         rule: "Hardcoded Secret",
         category: "SECRET_LEAK",
         line,
-        message: `${rule.label} is committed in source. Move it to ${envName}.`,
+        message: secretLeakMessage(rule.label, envName),
         snippet: redactedLine.trim().slice(0, 180),
         remediation: {
           diff: unifiedLine(filePath, line, redactedLine, patchedLine, exampleDiff),
           envExample,
-          command: `Add ${envName} to the deployment environment.`,
+          command: secretLeakRemediationCommand(envName),
         },
       });
     }
@@ -1515,6 +1594,54 @@ function scanClientQueries(file: SecurityScanFile): SecurityFinding[] {
   return findings;
 }
 
+function scanGetSessionAuth(file: SecurityScanFile): SecurityFinding[] {
+  const filePath = normalizedPath(file.filePath);
+  if (!isCodeFile(filePath) || ignoredPath(filePath) || isTestSourceFile(filePath)) return [];
+
+  return findGetSessionOccurrences(filePath, file.content).map((occurrence) => {
+    const rewritten = occurrence.autofixable
+      ? rewriteGetSessionToGetUser(file.content, filePath, occurrence.line)
+      : null;
+    const diff =
+      rewritten && rewritten.changed
+        ? getSessionRemediationDiff(filePath, file.content, rewritten.content, occurrence.line)
+        : [
+            `--- a/${filePath}`,
+            `+++ b/${filePath}`,
+            `@@ -${occurrence.line} +${occurrence.line} @@`,
+            `-${occurrence.snippet}`,
+            `+${occurrence.snippet.replace(/\.getSession\s*\(/g, ".getUser(")}`,
+          ].join("\n");
+
+    return {
+      filePath,
+      severity: "HIGH" as const,
+      rule: INSECURE_AUTH_SESSION_RULE,
+      category: "INSECURE_AUTH_SESSION" as const,
+      line: occurrence.line,
+      message: GET_SESSION_MESSAGE,
+      snippet: occurrence.snippet,
+      remediation: { diff },
+    };
+  });
+}
+
+function getSessionAuthPlan(
+  file: SecurityScanFile,
+  line: number,
+  summary: string
+): SecurityFixPlan | null {
+  const filePath = normalizedPath(file.filePath);
+  const rewritten = rewriteGetSessionToGetUser(file.content, filePath, line);
+  if (!rewritten?.changed) return null;
+  return {
+    title: `fix: replace getSession with getUser in ${filePath}`,
+    summary,
+    branchSlug: "get-user",
+    writes: [{ filePath, content: rewritten.content }],
+  };
+}
+
 function recordOfStrings(value: unknown): Record<string, string> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const entries = Object.entries(value);
@@ -1729,6 +1856,7 @@ export function runSecuritySuiteScan(files: readonly SecurityScanFile[]): Securi
   const findings = files.flatMap((file) => [
     ...scanSecrets(file),
     ...scanClientQueries(file),
+    ...scanGetSessionAuth(file),
     ...scanPackageJson(file),
     ...scanBloatedImports(file),
   ]);
@@ -1945,11 +2073,12 @@ function secretPlan(file: SecurityScanFile, line: number, summary: string): Secu
   const filePath = normalizedPath(file.filePath);
   const masked = maskForScan(filePath, file.content);
   for (const rule of SECRET_RULES) {
-    const matcher = new RegExp(rule.pattern.source, "g");
+    const matcher = new RegExp(rule.pattern.source, rule.pattern.flags.includes("i") ? "gi" : "g");
     for (const match of masked.matchAll(matcher)) {
-      const secret = match[0];
-      const index = match.index ?? 0;
-      if (!secret || lineAt(file.content, index) !== line) continue;
+      const extracted = secretMatchValue(rule, match);
+      if (!extracted) continue;
+      const { secret, index } = extracted;
+      if (lineAt(file.content, index) !== line) continue;
       const originalLine = lineText(file.content, line);
       const envName = isEnvFile(filePath) ? envNameOnLine(originalLine, rule.envName) : rule.envName;
       const patchedLine = replaceLiteral(originalLine, secret, envName, filePath);
@@ -2101,8 +2230,9 @@ function dependencyPlan(file: SecurityScanFile, line: number, summary: string): 
  */
 const BATCH_APPLY_CATEGORY_ORDER: Record<SecurityCategory, number> = {
   CLIENT_DB_EXPOSURE: 0,
-  SECRET_LEAK: 1,
-  VULNERABLE_DEPENDENCY: 2,
+  INSECURE_AUTH_SESSION: 1,
+  SECRET_LEAK: 2,
+  VULNERABLE_DEPENDENCY: 3,
 };
 
 export type BatchApplyFindingRef = {
@@ -2311,6 +2441,9 @@ export function planSecurityFix(
   if (!finding) return null;
   if (category === "SECRET_LEAK") {
     return finalizeSecurityFixPlan(secretPlan(file, effectiveLine, finding.message));
+  }
+  if (category === "INSECURE_AUTH_SESSION") {
+    return finalizeSecurityFixPlan(getSessionAuthPlan(file, effectiveLine, finding.message));
   }
   return finalizeSecurityFixPlan(dependencyPlan(file, effectiveLine, finding.message));
 }

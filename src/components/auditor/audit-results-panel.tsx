@@ -734,11 +734,11 @@ function RemediationSimulator({
         <div className="min-w-0">
           <div className={`${SECTION_LABEL} mb-1`}>Remediation Simulator</div>
           <h3 className="text-sm font-bold tracking-tight text-zinc-100">
-            Path to Talent Network Qualification
+            Path to Publish Threshold
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
             Simulate targeted fixes to reach the {PUBLIC_SCORECARD_THRESHOLD}+
-            network threshold. Select items below to inspect remediation steps.
+            publish threshold. Select items below to inspect remediation steps.
           </p>
         </div>
         <div className="shrink-0 space-y-1.5 sm:text-right">

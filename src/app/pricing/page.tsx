@@ -4,15 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
-  Clock3,
+  GitPullRequest,
   ShieldCheck,
   Sparkles,
-  Users,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import { getCorporateWorkEmailValidationMessage } from "@/lib/corporate-email";
-import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type FeatureHighlight = {
@@ -21,32 +19,32 @@ type FeatureHighlight = {
   icon: typeof ShieldCheck;
 };
 
-const employerHighlights: FeatureHighlight[] = [
+const productHighlights: FeatureHighlight[] = [
   {
-    title: "Zero Upfront Subscription",
+    title: "Repository Security Scans",
     description:
-      "Free account, unlimited profile browsing, and instant AI screening reports.",
-    icon: Sparkles,
-  },
-  {
-    title: "Contract / Hourly Hires",
-    description:
-      "Transparent, low-margin hourly rates with built-in contractor management.",
-    icon: Clock3,
-  },
-  {
-    title: "Full-Time Placements",
-    description:
-      PUBLIC_PLACEMENT_TERMS_SUMMARY,
+      "Connect GitHub and scan Next.js and Supabase code for secrets, client DB exposure, insecure auth sessions, and architecture risks.",
     icon: ShieldCheck,
+  },
+  {
+    title: "Verified Fix Pull Requests",
+    description:
+      "For supported findings, Provix opens a typed fix PR after a tsc preflight. You review and merge—Provix does not merge for you.",
+    icon: GitPullRequest,
+  },
+  {
+    title: "Ephemeral Code Handling",
+    description:
+      "Source is processed for the active analysis request. Provix does not keep a permanent code archive at rest and does not use your code to train AI models.",
+    icon: Sparkles,
   },
 ];
 
-const talentHighlights = [
-  "List your profile in the Provix Talent Network",
-  "Get AI match scores against live roles",
-  "Share proof-of-work and portfolio links",
-  "Apply through the Provix Talent Network with one click",
+const freeHighlights = [
+  "Sign in with GitHub and connect repositories you own",
+  "Run security and architecture audits from the workspace",
+  "Review findings with file paths and categories",
+  "Open verified fix pull requests for supported issues",
 ];
 
 const BETA_UNLOCK_STORAGE_KEY = "beta_unlocked_session";
@@ -124,7 +122,7 @@ export default function PricingPage() {
 
       markBetaUnlocked();
       setSuccessMessage(
-        "Beta access active! Deep screening unlocked. Redirecting to your dashboard…"
+        "Beta access active. Redirecting to your security workspace…"
       );
       window.setTimeout(() => router.push("/dashboard"), 1200);
     } catch (err) {
@@ -144,20 +142,21 @@ export default function PricingPage() {
       <div className="w-full max-w-5xl mx-auto space-y-16">
         <section className="text-center hero-fade-in">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-textMuted mb-6">
-            Performance-Based Hiring
+            Security &amp; Architecture Auditing
           </p>
 
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-textMain">
-            Hire from the Provix Talent Network with Zero Upfront Cost
+            Automated audits for Next.js and Supabase
           </h1>
           <p className="text-textMuted text-base sm:text-lg mt-4 max-w-3xl mx-auto leading-relaxed">
-            Browse profiles, view proof-of-work, and generate Gemini Deep
-            Screenings for free during our beta.
+            Scan repositories, review findings, and open verified fix pull
+            requests during beta—with ephemeral code processing and no model
+            training on your source.
           </p>
         </section>
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {employerHighlights.map((item) => {
+          {productHighlights.map((item) => {
             const Icon = item.icon;
             return (
               <Card key={item.title} interactive className="p-6">
@@ -180,8 +179,8 @@ export default function PricingPage() {
             Unlock Early Beta Access
           </h2>
           <p className="text-sm text-textMuted text-center mt-2 leading-relaxed">
-            Tell us where you hire from and we&apos;ll enable deep screening,
-            profile browsing, and candidate contact tools instantly.
+            Share your team details and we&apos;ll enable deeper repository
+            scanning and fix pull requests for your account.
           </p>
 
           <div className="mt-6 space-y-3">
@@ -218,7 +217,7 @@ export default function PricingPage() {
                     setErrorMessage(null);
                   }
                 }}
-                placeholder="hiring@company.com"
+                placeholder="you@company.com"
                 className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm text-textMain placeholder:text-textMuted focus:outline-none focus:border-brand transition-[border-color,box-shadow] duration-150 ease-out"
               />
             </div>
@@ -246,7 +245,7 @@ export default function PricingPage() {
         <div className="flex items-center gap-4">
           <div className="flex-1 border-t border-border" />
           <span className="text-xs text-textMuted uppercase tracking-widest font-semibold">
-            For Talent &amp; Students
+            During Beta
           </span>
           <div className="flex-1 border-t border-border" />
         </div>
@@ -254,18 +253,18 @@ export default function PricingPage() {
         <Card interactive className="p-8 max-w-3xl mx-auto w-full">
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-              <Users className="w-5 h-5" aria-hidden />
+              <CheckCircle2 className="w-5 h-5" aria-hidden />
             </div>
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-textMain">
-                Always Free for Candidates
+                Free for developers in beta
               </h2>
               <p className="text-textMuted text-sm mt-2 leading-relaxed">
-                Build a verified profile, get matched to roles, and showcase
-                proof-of-work at no cost.
+                Connect GitHub, run audits, and open fix pull requests at no cost
+                while beta access is open.
               </p>
               <ul className="mt-5 space-y-3">
-                {talentHighlights.map((item) => (
+                {freeHighlights.map((item) => (
                   <li
                     key={item}
                     className="flex items-center gap-3 text-sm text-textMain"
@@ -284,7 +283,7 @@ export default function PricingPage() {
                 onClick={() => router.push("/login")}
                 className="mt-6"
               >
-                Create Candidate Profile
+                Create Developer Account
               </Button>
             </div>
           </div>

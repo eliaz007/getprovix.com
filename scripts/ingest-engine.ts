@@ -23,7 +23,11 @@ type Violation = {
   rule: string;
   message: string;
   line: number;
-  category?: "SECRET_LEAK" | "CLIENT_DB_EXPOSURE" | "VULNERABLE_DEPENDENCY";
+  category?:
+    | "SECRET_LEAK"
+    | "CLIENT_DB_EXPOSURE"
+    | "VULNERABLE_DEPENDENCY"
+    | "INSECURE_AUTH_SESSION";
   snippet?: string;
   remediation?: {
     diff: string;

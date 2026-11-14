@@ -33,20 +33,32 @@ export function isRepositoryTextPath(filePath: string): boolean {
 export async function readGitHubSourceFile(
   repoInput: string,
   filePath: string,
-  auth?: string | null
-): Promise<{ ok: true; content: string } | { ok: false; message: string; status: number }> {
+  auth?: string | null,
+  ref?: string | null
+): Promise<
+  { ok: true; content: string; blobSha?: string } | { ok: false; message: string; status: number }
+> {
   return readGitHubTextFile(repoInput, filePath, {
     allow: isFirewallSourcePath,
     invalidMessage: "filePath must be a TypeScript or JavaScript source file inside the repository.",
     auth,
+    ref,
   });
 }
 
 export async function readGitHubTextFile(
   repoInput: string,
   filePath: string,
-  options?: { allow?: (filePath: string) => boolean; invalidMessage?: string; auth?: string | null }
-): Promise<{ ok: true; content: string } | { ok: false; message: string; status: number }> {
+  options?: {
+    allow?: (filePath: string) => boolean;
+    invalidMessage?: string;
+    auth?: string | null;
+    /** Commit SHA, branch, or tag. When omitted, GitHub serves the default-branch tip. */
+    ref?: string | null;
+  }
+): Promise<
+  { ok: true; content: string; blobSha?: string } | { ok: false; message: string; status: number }
+> {
   const parsed = parseGitHubRepository(repoInput);
   if (!parsed) {
     return { ok: false, status: 400, message: "repoUrl must be a public GitHub URL or owner/repo." };
@@ -69,6 +81,9 @@ export async function readGitHubTextFile(
     auth = read.token ?? undefined;
   }
 
+  const pin =
+    typeof options?.ref === "string" && options.ref.trim() ? options.ref.trim() : undefined;
+
   const octokit = new Octokit({
     auth,
     userAgent: "provix-architecture-firewall",
@@ -79,6 +94,7 @@ export async function readGitHubTextFile(
       owner: parsed.owner,
       repo: parsed.repo,
       path: normalized,
+      ...(pin ? { ref: pin } : {}),
     });
     if (Array.isArray(response.data) || response.data.type !== "file" || typeof response.data.content !== "string") {
       return { ok: false, status: 404, message: "File not found in that GitHub repository." };
@@ -91,7 +107,11 @@ export async function readGitHubTextFile(
     if (content.includes("\u0000")) {
       return { ok: false, status: 415, message: "That file is not readable text." };
     }
-    return { ok: true, content };
+    const blobSha =
+      typeof response.data.sha === "string" && response.data.sha.trim()
+        ? response.data.sha.trim()
+        : undefined;
+    return blobSha ? { ok: true, content, blobSha } : { ok: true, content };
   } catch (error) {
     const status =
       error && typeof error === "object" && "status" in error && typeof error.status === "number"

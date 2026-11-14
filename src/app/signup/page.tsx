@@ -26,7 +26,7 @@ function buildLoginQuery(searchParams: SignupSearchParams): string {
 }
 
 /**
- * Marketplace entry for role-based account creation.
+ * Auth entry for role-based account creation.
  * `/signup?role=developer` and `/signup?role=founder` land on the shared
  * login UI in sign-up mode with the role pre-selected.
  */

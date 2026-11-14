@@ -15,7 +15,6 @@ import WorkPreferenceTimezoneBadge from "@/components/WorkPreferenceTimezoneBadg
 import Card from "@/components/ui/Card";
 import ScoreMeter from "@/components/ScoreMeter";
 import { resolveCandidateScore } from "@/lib/candidate-score";
-import { PUBLIC_PLACEMENT_TERMS_SUMMARY } from "@/lib/placement-terms";
 import { formatGpa } from "@/lib/gpa";
 import { getPublicProfileBySlug } from "@/lib/public-profile";
 import { buildPublicProfileUrl } from "@/lib/profile-url";
@@ -41,7 +40,7 @@ export async function generateMetadata({
 
   const description =
     profile.bio ??
-    `${profile.displayName} — verified candidate profile on Provix.`;
+    `${profile.displayName} — verified engineering profile on Provix.`;
   const url = buildPublicProfileUrl(profile.profileSlug);
   const title = profile.displayName;
 
@@ -340,7 +339,7 @@ export default async function PublicCandidateProfilePage({
                 </div>
               ) : (
                 <div className="rounded-2xl border border-dashed border-border bg-background px-4 py-6 text-sm text-textMuted">
-                  Proof-of-work links will appear here once the candidate adds
+                  Proof-of-work links will appear here once the developer adds
                   portfolio or demo artifacts.
                 </div>
               )}
@@ -359,9 +358,10 @@ export default async function PublicCandidateProfilePage({
                     </p>
                     <p className="mt-1 text-xs leading-relaxed text-textMuted">
                       This profile is complete and a GitHub integrity audit has
-                      run successfully. Employers hire on a contingency placement
-                      model with no upfront subscriptions.{" "}
-                      {PUBLIC_PLACEMENT_TERMS_SUMMARY}
+                      run successfully. Provix is an automated Next.js and
+                      Supabase security and architecture auditing platform;
+                      repository code is processed ephemerally and is never used
+                      to train AI models.
                     </p>
                   </div>
                 </div>

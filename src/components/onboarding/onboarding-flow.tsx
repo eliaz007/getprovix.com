@@ -425,8 +425,8 @@ export default function OnboardingFlow() {
               Pick a repository
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-zinc-400">
-              TypeScript and Next.js repos are listed first. The first scan opens your workspace
-              with Overview, Structure, and Security.
+              TypeScript and Next.js repos are listed first. The first scan opens Audits, then your
+              Overview, Structure, and Security tabs.
             </p>
             <p className="mt-2 max-w-xl text-xs leading-relaxed text-zinc-500">
               Scans are read-only. Provix only writes when you click{" "}

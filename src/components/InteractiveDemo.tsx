@@ -87,14 +87,14 @@ const PEER_REVIEW_BULLETS = [
 
 const FOUNDER_VERDICT_BULLETS = [
   "The repository demonstrates senior architectural discipline with functional CI workflows and isolated error boundaries.",
-  "Low production risk.",
-  "Well-suited for an early-stage team requiring rapid execution without technical debt.",
+  "Low production risk for Next.js and Supabase deployment patterns.",
+  "Suitable for teams that need rapid iteration without accumulating security or architecture debt.",
 ];
 
 const WORKSPACE_NAV = [
   { id: "profile" as const, label: "Profile", icon: User },
-  { id: "talent" as const, label: "Talent Network", icon: Compass },
-  { id: "intros" as const, label: "Intro Requests", icon: Mail, badge: "2 new" },
+  { id: "talent" as const, label: "Audits", icon: Compass },
+  { id: "intros" as const, label: "Fix Requests", icon: Mail, badge: "2 new" },
 ] as const;
 
 function metricTone(score: number): string {
@@ -197,7 +197,7 @@ function ExecutiveVerdictCard() {
                 Technical Peer Review
               </p>
               <span className="rounded border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-xs text-blue-400">
-                FOR CANDIDATES
+                FOR DEVELOPERS
               </span>
             </div>
             <p className="mt-1 text-xs leading-snug text-zinc-500">
@@ -210,10 +210,10 @@ function ExecutiveVerdictCard() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                  Founder Hiring Verdict
+                  Production Risk Verdict
                 </p>
                 <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400">
-                  FOR HIRING TEAMS
+                  FOR TEAMS
                 </span>
               </div>
               <span className="inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-300">
@@ -221,7 +221,7 @@ function ExecutiveVerdictCard() {
               </span>
             </div>
             <p className="mt-1 text-xs leading-snug text-zinc-500">
-              Production risk evaluation for founders and recruiters.
+              Production risk evaluation for engineering leads and reviewers.
             </p>
             <BriefBullets items={FOUNDER_VERDICT_BULLETS} />
           </section>
@@ -377,8 +377,8 @@ function BenchmarkRepoModal({
           Benchmark Your Repository
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-          Paste a public GitHub repo to continue into roster verification. Sign
-          in is required to run the audit.
+          Paste a public GitHub repo to continue into a security audit. Sign in
+          is required to run the scan.
         </p>
         <form onSubmit={handleSubmit} className="mt-5 space-y-3">
           <label htmlFor={inputId} className="block text-xs font-semibold text-zinc-300">
@@ -470,7 +470,7 @@ function ProfilePreview({
               </div>
               <span className="ml-auto hidden items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[10px] font-semibold text-violet-300 sm:inline-flex">
                 <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
-                Interviewing
+                Auditing
               </span>
             </div>
             <div>
@@ -504,7 +504,7 @@ function ProfilePreview({
                   northwind/checkout-bff
                 </p>
                 <p className="mt-1 text-xs text-zinc-500">
-                  Primary verified repository on the public roster
+                  Primary verified repository in the security workspace
                 </p>
               </div>
               <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 font-mono text-[10px] font-bold text-emerald-300">
@@ -544,30 +544,30 @@ function headerCopy(nav: DemoNav): {
 } {
   if (nav === "auditor") {
     return {
-      title: "Roster Verification",
+      title: "Security Audit",
       subtitle:
-        "Automated AST code audits and verified architectural benchmarks",
+        "Automated Next.js and Supabase security scans with architecture benchmarks",
       action: "Run Audit",
     };
   }
   if (nav === "profile") {
     return {
-      title: "Public Dossier Preview",
+      title: "Workspace Preview",
       subtitle:
-        "Manage your verified repositories, tech stack, and inbound visibility",
+        "Manage connected repositories, stack signals, and audit history",
       action: "Share Profile",
     };
   }
   if (nav === "talent") {
     return {
-      title: "Talent Network",
-      subtitle: "Roles matched to verified production engineers",
-      action: "Browse Roles",
+      title: "Audit History",
+      subtitle: "Past repository scans and production readiness scores",
+      action: "Browse Audits",
     };
   }
   return {
-    title: "Intro Requests",
-    subtitle: "Inbound founder interest on your verified dossier",
+    title: "Fix Requests",
+    subtitle: "Verified fix pull requests opened from supported findings",
     action: "View Inbox",
   };
 }
@@ -699,7 +699,7 @@ export default function InteractiveDemo() {
                       strokeWidth={1.5}
                       aria-hidden
                     />
-                    <span className="truncate">Roster Verification</span>
+                    <span className="truncate">Security Audit</span>
                   </button>
                 </li>
               </ul>
@@ -719,7 +719,7 @@ export default function InteractiveDemo() {
                       className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500"
                       aria-hidden
                     />
-                    <span className="truncate">Interviewing</span>
+                    <span className="truncate">Auditing</span>
                   </div>
                 </div>
                 <button
@@ -743,8 +743,8 @@ export default function InteractiveDemo() {
               {[
                 { id: "auditor" as const, label: "Audits" },
                 { id: "profile" as const, label: "Profile" },
-                { id: "talent" as const, label: "Network" },
-                { id: "intros" as const, label: "Intros" },
+                { id: "talent" as const, label: "History" },
+                { id: "intros" as const, label: "Fixes" },
               ].map((item) => {
                 const active = nav === item.id;
                 return (
@@ -796,18 +796,18 @@ export default function InteractiveDemo() {
 
               {nav === "talent" ? (
                 <div className={`${GLASS_CARD} space-y-3 p-6`}>
-                  <p className={SECTION_LABEL}>Matched roles</p>
+                  <p className={SECTION_LABEL}>Recent audits</p>
                   <p className="text-sm font-semibold text-zinc-100">
-                    Early-stage teams hiring verified full-stack engineers
+                    Next.js and Supabase repositories scanned this week
                   </p>
                   <p className="text-sm leading-relaxed text-zinc-400">
-                    Sign in to browse live openings matched to your audit score
-                    and declared stack. Guests see this preview only.
+                    Sign in to review live findings, scores, and opened fix pull
+                    requests. Guests see this preview only.
                   </p>
                   <div className="grid gap-2 pt-2">
                     {[
-                      "Founding Engineer · Seed SaaS",
-                      "Full-Stack · Series A Infra",
+                      "northwind/checkout-bff · Score 84",
+                      "acme/supabase-api · 3 findings",
                     ].map((role) => (
                       <div
                         key={role}
@@ -823,19 +823,19 @@ export default function InteractiveDemo() {
               {nav === "intros" ? (
                 <div className={`${GLASS_CARD} space-y-3 p-6`}>
                   <div className="flex items-center justify-between gap-2">
-                    <p className={SECTION_LABEL}>Inbox</p>
+                    <p className={SECTION_LABEL}>Fix pull requests</p>
                     <span className="rounded border border-white/[0.08] bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-zinc-200">
                       2 new
                     </span>
                   </div>
                   {[
                     {
-                      company: "Northstar Labs",
-                      note: "Interested in your checkout BFF audit",
+                      company: "northwind/checkout-bff",
+                      note: "Opened PR: harden session auth getUser()",
                     },
                     {
-                      company: "Harbor Systems",
-                      note: "Wants to discuss Full-Stack ownership",
+                      company: "acme/supabase-api",
+                      note: "Opened PR: move client query to server",
                     },
                   ].map((item) => (
                     <div

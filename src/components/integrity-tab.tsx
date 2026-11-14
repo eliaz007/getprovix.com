@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import {
+  FilePathPill,
   StatusDot,
+  elevatedSurfaceClass,
   formatBoundaryId,
   mutedLabelClass,
   panelClass,
@@ -77,12 +79,11 @@ function ReviewRow({ finding }: { finding: ReviewFinding }) {
         <td className={`${tableCellClass} max-w-[18rem]`}>
           <button
             type="button"
-            className="block w-full truncate text-left font-mono text-xs text-zinc-200 hover:text-white"
+            className="block w-full min-w-0 text-left hover:opacity-90"
             aria-expanded={open}
             onClick={() => setOpen((current) => !current)}
           >
-            {finding.filePath}
-            <span className="text-zinc-600">:{finding.line}</span>
+            <FilePathPill path={finding.filePath} line={finding.line} />
           </button>
         </td>
         <td className={tableCellClass}>
@@ -124,53 +125,56 @@ export default function IntegrityTab({
   const scoreLabel = metrics.score === null ? "—" : String(metrics.score);
 
   return (
-    <section className={`${panelClass} space-y-0`}>
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-white/[0.06] px-5 py-5">
-        <div className="min-w-0 space-y-1">
-          <p className={mutedLabelClass}>Repository</p>
-          <h2 className="truncate text-base font-medium tracking-tight text-zinc-100">
-            {repo ?? "local"}
-          </h2>
-          <p className="text-xs text-zinc-500">Scanned {scanStamp(report?.timestamp)}</p>
-        </div>
-        <div className="text-right">
-          <p className="inline-flex items-center gap-2 text-sm text-zinc-300">
-            <StatusDot tone={postureTone(metrics.posture)} />
-            {postureLabel(metrics.posture)}
-            {metrics.letter !== "—" ? (
-              <span className="text-zinc-500">{metrics.letter}</span>
-            ) : null}
-          </p>
-          <p className="mt-1 text-xs text-zinc-500">{metrics.statusText}</p>
-        </div>
-      </header>
+    <div className="space-y-4">
+      <section className={`${elevatedSurfaceClass} overflow-hidden`}>
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800/60 px-5 py-4">
+          <div className="min-w-0 space-y-1">
+            <p className={mutedLabelClass}>Repository</p>
+            <h2 className="truncate text-base font-medium tracking-tight text-zinc-100">
+              {repo ?? "local"}
+            </h2>
+            <p className="text-xs text-zinc-500">Scanned {scanStamp(report?.timestamp)}</p>
+          </div>
+          <div className="text-right">
+            <p className="inline-flex items-center gap-2 text-sm text-zinc-300">
+              <StatusDot tone={postureTone(metrics.posture)} />
+              {postureLabel(metrics.posture)}
+              {metrics.letter !== "—" ? (
+                <span className="text-zinc-500">{metrics.letter}</span>
+              ) : null}
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">{metrics.statusText}</p>
+          </div>
+        </header>
 
-      <dl className="grid grid-cols-2 border-b border-white/[0.06] lg:grid-cols-4">
-        {[
-          { label: "Repo score", value: scoreLabel, hint: "This scan, out of 100" },
-          { label: "Critical", value: String(metrics.critical), hint: "Highest severity" },
-          { label: "Open findings", value: String(metrics.openExposures), hint: metrics.statusText },
-          { label: "Fix PRs", value: String(metrics.fixPullRequests), hint: "Opened for this repo" },
-        ].map((metric, index) => {
-          const borders = [
-            "border-b border-r border-white/[0.06] lg:border-b-0",
-            "border-b border-white/[0.06] lg:border-b-0 lg:border-r",
-            "border-r border-white/[0.06]",
-            "",
-          ][index];
-          return (
-            <div key={metric.label} className={`px-5 py-5 ${borders}`}>
-              <dt className={mutedLabelClass}>{metric.label}</dt>
-              <dd className="mt-2 text-2xl font-medium tabular-nums tracking-tight text-zinc-50">
-                {metric.value}
-              </dd>
-              <p className="mt-1 truncate text-xs text-zinc-600">{metric.hint}</p>
-            </div>
-          );
-        })}
-      </dl>
+        <dl className="grid grid-cols-2 lg:grid-cols-4">
+          {[
+            { label: "Repo score", value: scoreLabel, hint: "This scan, out of 100" },
+            { label: "Critical", value: String(metrics.critical), hint: "Highest severity" },
+            { label: "Open findings", value: String(metrics.openExposures), hint: metrics.statusText },
+            { label: "Fix PRs", value: String(metrics.fixPullRequests), hint: "Opened for this repo" },
+          ].map((metric, index) => {
+            const borders = [
+              "border-b border-r border-zinc-800/60 lg:border-b-0",
+              "border-b border-zinc-800/60 lg:border-b-0 lg:border-r",
+              "border-r border-zinc-800/60",
+              "",
+            ][index];
+            return (
+              <div key={metric.label} className={`px-5 py-4 ${borders}`}>
+                <dt className={mutedLabelClass}>{metric.label}</dt>
+                <dd className="mt-2 text-2xl font-medium tabular-nums tracking-tight text-zinc-50">
+                  {metric.value}
+                </dd>
+                <p className="mt-1 truncate text-xs text-zinc-600">{metric.hint}</p>
+              </div>
+            );
+          })}
+        </dl>
+      </section>
 
-      <div className="border-b border-white/[0.06]">
+      <section className={panelClass}>
+      <div className="border-b border-zinc-800/60">
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <h3 className={sectionLabelClass}>Security boundaries</h3>
         </div>
@@ -238,6 +242,7 @@ export default function IntegrityTab({
           </div>
         )}
       </div>
-    </section>
+      </section>
+    </div>
   );
 }

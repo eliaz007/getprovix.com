@@ -30,6 +30,7 @@ import {
   pickNextSecurityFindingForBatch,
   planSecurityFix,
   resolveSecurityFixLayout,
+  secretLeakRemediationCommand,
   sortFindingsForBatchApply,
 } from "@/lib/scanner/security-suite";
 
@@ -157,14 +158,18 @@ export function gateFixForFinding(input: {
   rule: string;
   remediation?: FirewallRemediation;
 }): string {
+  if (input.category === "SECRET_LEAK") {
+    // Prefer the finding's command when present; otherwise shared rotation/history copy.
+    if (input.remediation?.command?.trim()) return input.remediation.command.trim();
+    const name = input.remediation?.envExample?.replace(/=$/, "").trim();
+    return secretLeakRemediationCommand(name || undefined);
+  }
   if (input.remediation?.command?.trim()) return input.remediation.command.trim();
   if (input.remediation?.envExample?.trim()) {
     const name = input.remediation.envExample.replace(/=$/, "").trim();
     return `Move the secret into an environment variable${name ? ` (${name})` : ""} and remove it from source.`;
   }
   switch (input.category) {
-    case "SECRET_LEAK":
-      return "Move the secret into an environment variable and remove it from source.";
     case "CLIENT_DB_EXPOSURE":
       return "Move the query into a server action that checks supabase.auth.getUser().";
     case "VULNERABLE_DEPENDENCY":

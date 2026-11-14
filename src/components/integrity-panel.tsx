@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ExecutionStream from "@/components/firewall/execution-stream";
-import { mutedLabelClass, panelClass } from "@/components/firewall/firewall-ui";
+import { elevatedSurfaceClass, mutedLabelClass } from "@/components/firewall/firewall-ui";
 import IntegrityTab from "@/components/integrity-tab";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
 import type { FirewallReport, FirewallScanCoverage } from "@/lib/firewall-contract";
@@ -27,7 +27,7 @@ function ScanBrief({
   const otherCount = report.violations.length - criticalCount - highCount;
   const coverageLine = partialScanLine(coverage);
   return (
-    <section className={`${panelClass} px-5 py-5`}>
+    <section className={`${elevatedSurfaceClass} p-4`}>
       <p className={mutedLabelClass}>This repository</p>
       <h2 className="mt-2 text-[15px] font-medium tracking-tight text-zinc-100">
         {criticalCount} critical · {highCount} high · {otherCount} other
@@ -81,7 +81,7 @@ export default function IntegrityPanel({
       <ScanBrief report={report} coverage={coverage} />
 
       <div
-        className="flex gap-1 border-b border-white/[0.06]"
+        className="flex gap-1 border-b border-zinc-800/60"
         role="tablist"
         aria-label="Overview views"
       >

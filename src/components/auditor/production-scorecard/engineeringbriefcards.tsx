@@ -29,7 +29,7 @@ export function EngineeringBriefCards({
           Technical Peer Review
         </p>
         <span className="text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-          FOR CANDIDATES
+          FOR DEVELOPERS
         </span>
       </div>
       <p className="mt-1 text-xs leading-snug text-zinc-500">
@@ -49,10 +49,10 @@ export function EngineeringBriefCards({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-            Founder Hiring Verdict
+            Production Risk Verdict
           </p>
           <span className="text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-            FOR HIRING TEAMS
+            FOR TEAMS
           </span>
         </div>
         <span
@@ -64,7 +64,7 @@ export function EngineeringBriefCards({
         </span>
       </div>
       <p className="mt-1 text-xs leading-snug text-zinc-500">
-        Production risk evaluation for founders and recruiters.
+        Production risk evaluation for engineering leads and reviewers.
       </p>
       {historyVerifiedNote ? (
         <p className="mt-2 rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[12px] leading-snug text-amber-100">

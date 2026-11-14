@@ -94,7 +94,7 @@ export default function Toast({
             <a
               href={link.href}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="font-semibold text-emerald-300 underline decoration-emerald-500/40 underline-offset-2 transition-colors hover:text-emerald-200 hover:decoration-emerald-300"
             >
               {link.label}

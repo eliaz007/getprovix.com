@@ -22,7 +22,7 @@ export const SITE_URL = normalizeSiteUrl(
 export const SITE_NAME = "Provix";
 /** Home page / social-share title. The root layout uses `title.default`, so this
  *  must include the brand and read as a complete standalone title. */
-export const SITE_TITLE = "Automated Security for Next.js & Supabase | Provix";
+export const SITE_TITLE = "Automated Security for Next.js and Supabase | Provix";
 /** Social titles are rendered verbatim (no `| Provix` template applied), so the
  *  brand suffix is stripped here to avoid "| Provix | Provix". */
 export const SITE_SOCIAL_TITLE = SITE_TITLE.replace(
@@ -30,7 +30,7 @@ export const SITE_SOCIAL_TITLE = SITE_TITLE.replace(
   ""
 );
 export const SITE_DESCRIPTION =
-  "Provix identifies security vulnerabilities in Next.js and Supabase repositories and helps developers remediate supported findings through GitHub pull requests.";
+  "Provix scans your Next.js, TypeScript, and Supabase repo for security bugs and opens a Pull Request with the fix—checked with tsc so it won't break your build. Code is scanned in memory, never stored, and never used to train AI models.";
 export const SITE_EMAIL = "support@getprovix.com";
 export const SITE_LOGO_URL = `${SITE_URL}/logo.svg`;
 /** Social share image — `src/app/opengraph-image.png` (1200×630, 1.91:1), the

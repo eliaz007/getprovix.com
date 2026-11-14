@@ -115,7 +115,7 @@ export default function TalentNetworkStatusBanner({
       className="mb-6 rounded-xl border border-border bg-panel/80 px-4 py-4"
     >
       <p className="text-sm font-bold text-textMain">
-        Steps to get featured in the Talent Network
+        Steps to publish a verified audit profile
       </p>
       <ul className="mt-3 space-y-2.5">
         <StepRow

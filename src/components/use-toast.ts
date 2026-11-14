@@ -60,14 +60,14 @@ export function useToast(defaultDurationMs = DEFAULT_DURATION_MS) {
   return { showToast, dismissToast, toast };
 }
 
-/** Success copy for the autofix “Open Fix PR” flow. */
+/** Success copy for the autofix “Open Fix PR” / “Ship PR” flow (Structure + Security). */
 export function prOpenedToast(pull: { number: number; url: string }): ShowToastInput {
   return {
-    message: `PR #${pull.number} opened successfully`,
+    message: `Pull Request #${pull.number} opened`,
     variant: "success",
     link: {
       href: pull.url,
-      label: `View PR #${pull.number} ↗`,
+      label: "View PR on GitHub ↗",
     },
     durationMs: 5200,
   };

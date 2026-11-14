@@ -2,7 +2,11 @@
 
 import { useState, type ReactNode } from "react";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
-import { OpenFixPrButton } from "@/components/firewall/open-fix-pr-button";
+import {
+  FindingDiffDrawer,
+  filesTouchedFromDiff,
+  rowDismissActionClass,
+} from "@/components/firewall/finding-diff-drawer";
 import { useGithubRepoWriteAccess } from "@/components/firewall/use-github-repo-write-access";
 import Toast from "@/components/Toast";
 import { prOpenedToast, useToast } from "@/components/use-toast";
@@ -14,26 +18,7 @@ import {
 } from "@/lib/firewall-contract";
 import { isExpectedAutofixRefuse, isTestSourcePath } from "@/lib/firewall-autofix";
 import { readJsonResponse } from "@/lib/read-json-response";
-import { rowGhostActionClass, rowPrimaryActionClass } from "@/components/firewall/firewall-ui";
-
-function lineClass(line: string): string {
-  if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) {
-    return "text-zinc-500";
-  }
-  if (line.startsWith("+")) return "border-l-2 border-emerald-500 bg-emerald-500/10 text-emerald-200";
-  if (line.startsWith("-")) return "border-l-2 border-red-500 bg-red-500/10 text-red-200";
-  return "text-zinc-400";
-}
-
-function filesTouched(diff: string, fallback: string): string[] {
-  const files: string[] = [];
-  for (const line of diff.split("\n")) {
-    const match = /^\+\+\+ b\/(.+)$/.exec(line);
-    const path = match?.[1];
-    if (path && path !== "/dev/null" && !files.includes(path)) files.push(path);
-  }
-  return files.length > 0 ? files : [fallback];
-}
+import { rowGhostActionClass } from "@/components/firewall/firewall-ui";
 
 type PullState =
   | { status: "idle" }
@@ -80,9 +65,9 @@ export function RemediationDiff({
     prOpen: boolean;
   }) => ReactNode;
   onOpened?: (pull: { url: string; number: number }) => void;
-  /** Expected refuse / noise — parent should drop the finding from the actionable list. */
+  /** User dismiss or expected refuse — parent should drop the finding from the Open queue. */
   onDismissed?: () => void;
-  /** False for manual-review rows: show the finding, never the Fix with PR button. */
+  /** False for manual-review rows: show the finding, never the Ship PR button. */
   offerFix?: boolean;
 }) {
   const { repoSlug } = useFirewallView();
@@ -91,13 +76,13 @@ export function RemediationDiff({
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pull, setPull] = useState<PullState>({ status: "idle" });
-  const lines = remediation.diff.split("\n");
   const eligibleFinding = Boolean(
     target &&
       isSecurityCategory(target.category) &&
       !isTestSourcePath(target.filePath)
   );
-  const touched = filesTouched(remediation.diff, target?.filePath ?? "patch");
+  const touched = filesTouchedFromDiff(remediation.diff, target?.filePath ?? "patch");
+  const canShip = Boolean(eligibleFinding && offerFix);
 
   async function copyPatch() {
     try {
@@ -112,7 +97,7 @@ export function RemediationDiff({
   }
 
   async function openFixPr() {
-    if (!target || !eligibleFinding || pull.status === "opening" || pull.status === "opened") return;
+    if (!target || !canShip || pull.status === "opening" || pull.status === "opened") return;
     if (!repoSlug) {
       await copyPatch();
       setPull({
@@ -141,7 +126,6 @@ export function RemediationDiff({
           filePath: target.filePath,
           line: target.line,
           category: target.category,
-          // Helps relocate the query when prior patches shifted the static line.
           ...(target.snippet ? { snippet: target.snippet } : {}),
         }),
       });
@@ -159,7 +143,6 @@ export function RemediationDiff({
       }
       if (!response.ok || !payload.ok || !payload.url || typeof payload.number !== "number") {
         if (isSpuriousAutofixNoise(message) || isExpectedAutofixRefuse(message)) {
-          // Refuse / ambient noise: drop the row instead of a sticky red banner.
           setPull({ status: "idle" });
           onDismissed?.();
           return;
@@ -169,8 +152,12 @@ export function RemediationDiff({
       }
       const opened = { url: payload.url, number: payload.number };
       setPull({ status: "opened", ...opened });
-      showToast(prOpenedToast(opened));
-      onOpened?.(opened);
+      // Prefer parent toast (Security panel mirrors Structure). Fallback if standalone.
+      if (onOpened) {
+        onOpened(opened);
+      } else {
+        showToast(prOpenedToast(opened));
+      }
     } catch (error) {
       setPull({
         status: "error",
@@ -199,24 +186,24 @@ export function RemediationDiff({
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      {eligibleFinding && offerFix ? (
-        pull.status === "opened" ? (
-          <a
-            href={pull.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/15"
-          >
-            PR #{pull.number}
-          </a>
-        ) : (
-          // Listed Leaks rows are already gated on App write — always show Open Fix (never Preview-only).
-          <OpenFixPrButton
-            opening={pull.status === "opening" || writeAccess.loading}
-            onClick={() => void openFixPr()}
-            className={rowPrimaryActionClass}
-          />
-        )
+      {pull.status === "opened" ? (
+        <a
+          href={pull.url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/15"
+        >
+          PR #{pull.number}
+        </a>
+      ) : onDismissed && pull.status !== "opening" ? (
+        <button
+          type="button"
+          onClick={() => onDismissed()}
+          className={rowDismissActionClass}
+          title="Dismiss this finding from the Open queue"
+        >
+          Dismiss
+        </button>
       ) : null}
     </div>
   );
@@ -233,26 +220,37 @@ export function RemediationDiff({
     ) : null;
 
   const diff = open ? (
-    <div className="overflow-hidden rounded-md border border-white/[0.08] bg-[#09090b]">
-      <div className="border-b border-white/[0.08] bg-black/50 px-3 py-1.5 font-mono text-[11px] text-zinc-400">
-        {touched.join(" + ")}
-      </div>
-      <pre className="max-h-72 overflow-auto font-mono text-xs leading-5">
-        {lines.map((line, index) => (
-          <div key={`${index}-${line}`} className={`px-3 whitespace-pre ${lineClass(line)}`}>
-            {line.length > 0 ? line : " "}
-          </div>
-        ))}
-      </pre>
-      {remediation.command ? (
-        <p className="border-t border-white/[0.08] px-3 py-2 font-mono text-[11px] text-zinc-500">{remediation.command}</p>
-      ) : null}
-      {remediation.envExample ? (
-        <p className="border-t border-white/[0.08] px-3 py-2 font-mono text-[11px] text-zinc-500">
-          .env.example · {remediation.envExample}
-        </p>
-      ) : null}
-    </div>
+    <FindingDiffDrawer
+      diff={remediation.diff}
+      title={touched.join(" + ")}
+      footerNote={
+        remediation.command
+          ? remediation.command
+          : remediation.envExample
+            ? `.env.example · ${remediation.envExample}`
+            : null
+      }
+      ship={
+        canShip && pull.status !== "opened"
+          ? {
+              opening: pull.status === "opening" || writeAccess.loading,
+              onShip: () => void openFixPr(),
+            }
+          : null
+      }
+      openedPr={
+        pull.status === "opened" ? { url: pull.url, number: pull.number } : null
+      }
+      extraActions={
+        <button
+          type="button"
+          onClick={() => void copyPatch()}
+          className={`${rowGhostActionClass} ${copied ? "text-emerald-300" : ""}`}
+        >
+          {copied ? "Copied" : "Copy patch"}
+        </button>
+      }
+    />
   ) : null;
 
   const toastNode = <Toast {...toast} />;

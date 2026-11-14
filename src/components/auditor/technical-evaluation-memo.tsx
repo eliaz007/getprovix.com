@@ -347,7 +347,7 @@ export default function TechnicalEvaluationMemo(input: MemoInput) {
 
         <section className="memo-card px-4 py-4">
           <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[#a1a1aa]">
-            Hiring Team Interview Battle Plan
+            Engineering Review Probe Plan
           </h2>
           <ol className="mt-3 list-none space-y-2.5">
             {battlePlanProbes.map((question, index) => (

@@ -8,12 +8,7 @@ import {
   useFirewallView,
   type FirewallView,
 } from "@/components/firewall/firewall-view-context";
-
-const VIEWS = [
-  { key: "health" as const, label: "Overview" },
-  { key: "violations" as const, label: "Structure" },
-  { key: "leaks" as const, label: "Security" },
-];
+import { WORKSPACE_NAV } from "@/lib/product-copy";
 
 export default function DashboardTopNav() {
   const pathname = usePathname();
@@ -33,7 +28,7 @@ export default function DashboardTopNav() {
 
   return (
     <nav className="flex items-center gap-5 overflow-x-auto" aria-label="Workspace">
-      {VIEWS.map((view) => {
+      {WORKSPACE_NAV.map((view) => {
         const active = onFirewall && activeView === view.key;
         return (
           <button

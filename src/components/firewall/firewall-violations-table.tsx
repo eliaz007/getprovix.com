@@ -3,15 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
 import {
+  FindingDiffDrawer,
+  rowDismissActionClass,
+} from "@/components/firewall/finding-diff-drawer";
+import {
   FilePathPill,
   StatusPill,
   filterChipClass,
+  findingListClass,
+  findingRowClass,
   formatBoundaryId,
   mutedLabelClass,
   panelClass,
   rowGhostActionClass,
   rowHoverClass,
-  rowPrimaryActionClass,
   sectionLabelClass,
   severityLabel,
   severityTone,
@@ -19,7 +24,6 @@ import {
   tableCellClass,
   tableHeadClass,
 } from "@/components/firewall/firewall-ui";
-import { OpenFixPrButton } from "@/components/firewall/open-fix-pr-button";
 import { useGithubRepoWriteAccess } from "@/components/firewall/use-github-repo-write-access";
 import Toast from "@/components/Toast";
 import { prOpenedToast, useToast } from "@/components/use-toast";
@@ -58,15 +62,47 @@ type SessionPull =
 
 const FILTERS: SeverityFilter[] = ["ALL", ...FIREWALL_SEVERITIES];
 const LIST_FILTERS: { id: ListFilter; label: string }[] = [
+  { id: "action", label: "Open" },
+  { id: "opened", label: "PR Opened / Fixed" },
   { id: "all", label: "All" },
-  { id: "action", label: "Needs action" },
-  { id: "opened", label: "PR opened" },
 ];
 
 function summaryLines(message: string): string {
   const trimmed = message.trim().replace(/\s+/g, " ");
   if (trimmed.length <= 140) return trimmed;
   return `${trimmed.slice(0, 137).trimEnd()}…`;
+}
+
+/** Boilerplate copy stays collapsed until row hover or explicit expand. */
+function FindingDescription({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="min-w-0">
+      {!expanded ? (
+        <button
+          type="button"
+          className="text-[11px] text-zinc-600 transition-colors hover:text-zinc-400 group-hover/row:hidden"
+          aria-expanded={false}
+          onClick={() => setExpanded(true)}
+        >
+          Details
+        </button>
+      ) : null}
+      <div className={expanded ? "block" : "hidden group-hover/row:block"}>
+        <p className="text-[13px] leading-snug text-zinc-500">{text}</p>
+        {expanded ? (
+          <button
+            type="button"
+            className="mt-1 text-[11px] text-zinc-600 transition-colors hover:text-zinc-400"
+            aria-expanded
+            onClick={() => setExpanded(false)}
+          >
+            Hide details
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 /** Lower weight sorts first: Critical → High → Medium → Low. */
@@ -160,7 +196,7 @@ export default function FirewallViolationsTable({
   const { setActiveView } = useFirewallView();
   const { showToast, toast } = useToast();
   const [filter, setFilter] = useState<SeverityFilter>("ALL");
-  const [listFilter, setListFilter] = useState<ListFilter>("all");
+  const [listFilter, setListFilter] = useState<ListFilter>("action");
   const [diffs, setDiffs] = useState<Record<string, DiffCache>>({});
   const [openDiffs, setOpenDiffs] = useState<ReadonlySet<string>>(() => new Set());
   const [sessionPulls, setSessionPulls] = useState<Record<string, SessionPull>>({});
@@ -240,14 +276,21 @@ export default function FirewallViolationsTable({
     setOpenDiffs(new Set());
     setSessionPulls({});
     setDismissedPaths(new Set());
-    setListFilter("all");
+    setListFilter("action");
   }, [report.timestamp]);
 
-  function dismissUnfixable(filePath: string) {
+  function dismissFinding(filePath: string) {
     setDismissedPaths((current) => {
       if (current.has(filePath)) return current;
       const next = new Set(current);
       next.add(filePath);
+      return next;
+    });
+    setOpenDiffs((current) => {
+      const next = new Set(current);
+      for (const key of current) {
+        if (key.startsWith(`${filePath}:`)) next.delete(key);
+      }
       return next;
     });
     setSessionPulls((prev) => {
@@ -255,6 +298,10 @@ export default function FirewallViolationsTable({
       delete next[filePath];
       return next;
     });
+  }
+
+  function dismissUnfixable(filePath: string) {
+    dismissFinding(filePath);
   }
 
   async function toggleDiff(key: string, filePath: string) {
@@ -402,43 +449,45 @@ export default function FirewallViolationsTable({
   return (
     <section className="space-y-4">
       <div className={panelClass}>
-        <div className="flex flex-col gap-4 border-b border-white/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-b border-zinc-800/60 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <h2 className={sectionLabelClass}>Structure issues</h2>
             <p className={`mt-1 ${mutedLabelClass}`}>
               Architecture problems Provix can open a fix PR for.{" "}
               <span className="tabular-nums text-zinc-300">{activeCount.toLocaleString("en-US")}</span>
-              {activeCount === 1 ? " needs action" : " need action"}
+              {activeCount === 1 ? " open" : " open"}
               {openedCount > 0 ? (
                 <>
                   <span className="text-zinc-700"> · </span>
-                  <span className="tabular-nums text-zinc-300">{openedCount.toLocaleString("en-US")}</span> PR open
+                  <span className="tabular-nums text-zinc-300">{openedCount.toLocaleString("en-US")}</span> fixed
                 </>
               ) : null}
             </p>
           </div>
-          <div className="flex flex-wrap gap-1" role="group" aria-label="Filter structure issues by severity">
-            {FILTERS.map((item) => {
-              const active = item === filter;
-              const shown = countFor(sortedArchitecture, item, violationHasOpenPr, listFilter);
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setFilter(item)}
-                  className={filterChipClass(active)}
-                >
-                  <span>{item === "ALL" ? "All" : severityLabel(item)}</span>
-                  <span className={`tabular-nums ${active ? "text-zinc-950/60" : "text-zinc-600"}`}>{shown}</span>
-                </button>
-              );
-            })}
-          </div>
+          {sortedArchitecture.length > 0 ? (
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Filter structure findings">
+              {LIST_FILTERS.map((item) => {
+                const count = countFor(sortedArchitecture, "ALL", violationHasOpenPr, item.id);
+                const selected = listFilter === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setListFilter(item.id)}
+                    className={filterChipClass(selected)}
+                  >
+                    <span>{item.label}</span>
+                    <span className={`tabular-nums ${selected ? "text-zinc-950/60" : "text-zinc-600"}`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
 
         {securityCount > 0 ? (
-          <div className="flex flex-col gap-2 border-b border-white/[0.06] px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 border-b border-zinc-800/60 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-zinc-500">
               <span className="tabular-nums text-zinc-300">{securityCount.toLocaleString("en-US")}</span>
               {securityCount === 1 ? " security finding" : " security findings"} live under Security
@@ -461,20 +510,24 @@ export default function FirewallViolationsTable({
         ) : null}
 
         {sortedArchitecture.length > 0 ? (
-          <div className="flex flex-wrap gap-1 border-b border-white/[0.06] px-5 py-3" role="group" aria-label="Filter architecture violations">
-            {LIST_FILTERS.map((item) => {
-              const count = countFor(sortedArchitecture, filter, violationHasOpenPr, item.id);
-              const selected = listFilter === item.id;
+          <div
+            className="flex flex-wrap gap-1 border-b border-zinc-800/60 px-5 py-2.5"
+            role="group"
+            aria-label="Filter structure issues by severity"
+          >
+            {FILTERS.map((item) => {
+              const active = item === filter;
+              const shown = countFor(sortedArchitecture, item, violationHasOpenPr, listFilter);
               return (
                 <button
-                  key={item.id}
+                  key={item}
                   type="button"
-                  aria-pressed={selected}
-                  onClick={() => setListFilter(item.id)}
-                  className={filterChipClass(selected)}
+                  aria-pressed={active}
+                  onClick={() => setFilter(item)}
+                  className={filterChipClass(active)}
                 >
-                  <span>{item.label}</span>
-                  <span className={`tabular-nums ${selected ? "text-zinc-950/60" : "text-zinc-600"}`}>{count}</span>
+                  <span>{item === "ALL" ? "All severities" : severityLabel(item)}</span>
+                  <span className={`tabular-nums ${active ? "text-zinc-950/60" : "text-zinc-600"}`}>{shown}</span>
                 </button>
               );
             })}
@@ -494,7 +547,7 @@ export default function FirewallViolationsTable({
                   : "No structure issues in this filter."}
           </p>
         ) : (
-          <ul>
+          <ul className={findingListClass}>
             {rows.map((violation) => {
               const key = violationKey(violation);
               const diff = diffs[violation.filePath];
@@ -513,45 +566,25 @@ export default function FirewallViolationsTable({
               const resolved = Boolean(opened || knownOpen);
               const tone = resolved ? "ok" : severityTone(violation.severity);
               const ruleLabel = violation.rule ? formatBoundaryId(violation.rule) : "Architecture";
+              const description = resolved
+                ? null
+                : violation.rule === "Boundary Violation"
+                  ? violation.message.trim().replace(/\s+/g, " ")
+                  : summaryLines(violation.message);
               return (
-                <li key={key} className={`border-t border-white/[0.04] px-5 py-4 ${rowHoverClass}`}>
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0 space-y-2.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusPill
-                          label={resolved ? "Fixed" : severityLabel(violation.severity)}
-                          tone={tone === "ok" ? "ok" : tone === "danger" ? "danger" : tone === "warn" ? "warn" : "neutral"}
-                        />
-                        <span
-                          className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] ${statusPillClass("neutral")}`}
-                        >
-                          {ruleLabel}
-                        </span>
-                        <FilePathPill path={violation.filePath} line={resolved ? undefined : violation.line} />
-                      </div>
-                      <p className="text-sm leading-relaxed text-zinc-400">
-                        {resolved
-                          ? "Fix pull request opened for this finding."
-                          : violation.rule === "Boundary Violation"
-                            ? violation.message.trim().replace(/\s+/g, " ")
-                            : summaryLines(violation.message)}
-                      </p>
-                      {!resolved && violation.rule === "Boundary Violation" ? (
-                        <p className="text-xs leading-relaxed text-zinc-600">
-                          Type-only imports (<code className="font-mono text-zinc-500">import type</code>) are
-                          ignored.
-                        </p>
-                      ) : null}
-                      {!resolved && violation.snippet ? (
-                        <details className="group/snippet">
-                          <summary className="cursor-pointer list-none text-xs text-zinc-500 transition-colors hover:text-zinc-300 [&::-webkit-details-marker]:hidden">
-                            Inspect code
-                          </summary>
-                          <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-white/[0.06] bg-black/50 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">
-                            <code>{violation.snippet}</code>
-                          </pre>
-                        </details>
-                      ) : null}
+                <li key={key} className={findingRowClass}>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <StatusPill
+                        label={resolved ? "Fixed" : severityLabel(violation.severity)}
+                        tone={tone === "ok" ? "ok" : tone === "danger" ? "danger" : tone === "warn" ? "warn" : "neutral"}
+                      />
+                      <span
+                        className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-medium ${statusPillClass("neutral")}`}
+                      >
+                        {ruleLabel}
+                      </span>
+                      <FilePathPill path={violation.filePath} line={resolved ? undefined : violation.line} />
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                       <button
@@ -569,23 +602,47 @@ export default function FirewallViolationsTable({
                           href={opened.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/15"
+                          className="inline-flex items-center rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400 transition-colors hover:bg-emerald-500/15"
                         >
                           PR #{opened.number}
                         </a>
                       ) : knownOpen ? (
                         <StatusPill label="Opened" tone="ok" />
                       ) : (
-                        <OpenFixPrButton
-                          opening={opening}
-                          onClick={() => void openFixPr(violation.filePath)}
-                          className={rowPrimaryActionClass}
-                        />
+                        <button
+                          type="button"
+                          onClick={() => dismissFinding(violation.filePath)}
+                          className={rowDismissActionClass}
+                          title="Dismiss this finding from the Open queue"
+                        >
+                          Dismiss
+                        </button>
                       )}
                     </div>
                   </div>
+                  {description ? (
+                    <div className="mt-1.5 space-y-1.5">
+                      <FindingDescription text={description} />
+                      {violation.rule === "Boundary Violation" ? (
+                        <p className="hidden text-xs leading-relaxed text-zinc-600 group-hover/row:block">
+                          Type-only imports (<code className="font-mono text-zinc-500">import type</code>) are
+                          ignored.
+                        </p>
+                      ) : null}
+                      {violation.snippet ? (
+                        <details className="group/snippet">
+                          <summary className="cursor-pointer list-none text-xs text-zinc-500 transition-colors hover:text-zinc-300 [&::-webkit-details-marker]:hidden">
+                            Inspect code
+                          </summary>
+                          <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-white/[0.06] bg-black/50 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">
+                            <code>{violation.snippet}</code>
+                          </pre>
+                        </details>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {prError || diff?.status === "error" || (diffOpen && diff?.status === "ready") ? (
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-2 space-y-2">
                       {prError ? (
                         <p className="text-sm text-red-300" role="alert">
                           {prError}
@@ -597,12 +654,20 @@ export default function FirewallViolationsTable({
                         </p>
                       ) : null}
                       {diffOpen && diff?.status === "ready" ? (
-                        <div className="overflow-hidden rounded-lg border border-white/[0.06] bg-black/40">
-                          <p className="border-b border-white/[0.06] px-3 py-2 text-xs text-zinc-500">{diff.summary}</p>
-                          <pre className="max-h-48 overflow-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-400">
-                            <code>{diff.diff || "(empty diff)"}</code>
-                          </pre>
-                        </div>
+                        <FindingDiffDrawer
+                          diff={diff.diff || "(empty diff)"}
+                          title={violation.filePath}
+                          summary={diff.summary}
+                          ship={
+                            !resolved
+                              ? {
+                                  opening,
+                                  onShip: () => void openFixPr(violation.filePath),
+                                }
+                              : null
+                          }
+                          openedPr={opened}
+                        />
                       ) : null}
                     </div>
                   ) : null}
@@ -614,7 +679,7 @@ export default function FirewallViolationsTable({
       </div>
 
       <div className={panelClass}>
-        <div className="border-b border-white/[0.06] px-5 py-4">
+        <div className="border-b border-zinc-800/60 px-5 py-4">
           <h2 className={sectionLabelClass}>Largest files</h2>
           <p className={`mt-1 ${mutedLabelClass}`}>Top files by line count in this snapshot</p>
         </div>
@@ -633,8 +698,8 @@ export default function FirewallViolationsTable({
               {report.largestFiles.map((file, index) => (
                 <tr key={file.filePath} className={`border-t border-white/[0.04] ${rowHoverClass}`}>
                   <td className={`${tableCellClass} px-5 tabular-nums text-zinc-600`}>{index + 1}</td>
-                  <td className={`${tableCellClass} max-w-[28rem] truncate font-mono text-xs text-zinc-200`}>
-                    {file.filePath}
+                  <td className={`${tableCellClass} max-w-[28rem]`}>
+                    <FilePathPill path={file.filePath} />
                   </td>
                   <td className={`${tableCellClass} px-5 text-right tabular-nums text-zinc-400`}>
                     {file.lineCount.toLocaleString("en-US")}

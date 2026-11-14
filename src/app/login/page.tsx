@@ -407,7 +407,7 @@ export default function LoginPage() {
                 : mode === "sign-in"
                   ? "Sign in to access your account"
                   : signupKind === "business"
-                    ? "Create a founder account to post roles and hire verified talent"
+                    ? "Create a team account to connect GitHub and run security audits"
                     : "Create a developer account to connect GitHub and run audits"}
           </p>
 

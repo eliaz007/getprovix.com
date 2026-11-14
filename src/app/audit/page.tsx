@@ -8,8 +8,8 @@ import { githubUrlFromAuditQuery } from "@/lib/validate-github-url";
 export const dynamic = "force-dynamic";
 
 export const metadata = buildPageMetadata(
-  "Roster Verification",
-  "Benchmark your own GitHub repository for the Provix Founder Roster. Sign in to submit a build for verification.",
+  "Repository Audit",
+  "Sign in to scan a GitHub repository with Provix—automated Next.js and Supabase security and architecture auditing with verified fix pull requests.",
   "/audit"
 );
 
@@ -46,28 +46,29 @@ export default async function PublicAuditPage({
       <main className="mx-auto flex max-w-6xl flex-col px-6 pb-20 pt-12 sm:pt-16">
         <div className="mx-auto max-w-2xl text-center">
           <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-brand">
-            Provix Roster Verification
+            Repository Security Audit
           </p>
           <h1 className="text-3xl font-extrabold tracking-tight text-textMain sm:text-4xl">
             Open repository scanning has moved
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-textMuted sm:text-base">
-            Anonymous audits are no longer available on the public site. Builders
-            sign in with GitHub to verify repositories they own. Founders request
-            roster access to review 75+ candidates.
+            Anonymous audits are no longer available on the public site. Sign in
+            with GitHub to scan repositories you own for Next.js and Supabase
+            security and architecture issues, then open verified fix pull
+            requests.
           </p>
           <div className="mt-8 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
             <Link
               href="/login?next=/dashboard/auditor"
               className="inline-flex min-h-12 cursor-pointer items-center justify-center rounded-lg bg-brand px-6 text-sm font-semibold text-white transition-colors hover:bg-brandHover"
             >
-              Benchmark Your Build
+              Audit Your Build
             </Link>
             <Link
               href="/pricing"
               className="inline-flex min-h-12 cursor-pointer items-center justify-center rounded-lg border border-border px-6 text-sm font-semibold text-textMain transition-colors hover:bg-panel"
             >
-              Request Roster Access
+              View Pricing
             </Link>
           </div>
         </div>

@@ -3,7 +3,6 @@ import type { FirewallAutofixPullRequestResponse } from "@/lib/firewall-contract
 import {
   AutofixTscPreflightError,
   assertAutofixTscPreflightPasses,
-  preflightPullRequestSection,
 } from "@/lib/autofix-tsc-preflight";
 import { agenticFixWithRetry, isAgenticClientDbEnabled } from "@/lib/agentic-fix-with-retry";
 import { finalizeAutofixWrites, healAutofixWrites } from "@/lib/autofix-write-validation";
@@ -13,6 +12,16 @@ import { resolveGithubRepoAccessToken } from "@/lib/github-app-client";
 import { assertBaseBranchReadyForAutofix } from "@/lib/github-base-ci-gate";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import { isFirewallSourcePath, isRepositoryTextPath, readGitHubSourceFile, readGitHubTextFile } from "@/lib/github-source-file";
+import {
+  captureOriginalSecurityFinding,
+  verifySecurityFixResolved,
+  type PostFixVerifyTarget,
+} from "@/lib/post-fix-security-verify";
+import {
+  verifyPvimFixResolved,
+  type PvimPostFixVerifyOptions,
+  type PvimPostFixVerifyTarget,
+} from "@/lib/pvim/pvim-post-fix-verify";
 import { autopilotBranchName, runAutopilotFix, type AutopilotFinding } from "@/lib/provix-autopilot";
 import {
   isFixtureCoveredClientQuery,
@@ -23,20 +32,64 @@ import {
   missingSupportingHelperWrites,
   planSecurityFix,
   resolveSecurityFixLayout,
+  secretLeakMessage,
+  secretLeakPullRequestSection,
   serverActionFilePath,
   type SecurityCategory,
   type SecurityFixPlan,
+  type SecurityFinding,
+  type SecurityScanFile,
 } from "@/lib/scanner/security-suite";
 
 const TSCONFIG_CANDIDATES = ["tsconfig.json", "tsconfig.app.json", "jsconfig.json"] as const;
 
-async function readRepoTsconfigContents(repoUrl: string, auth: string): Promise<string[]> {
+/** Accept full or abbreviated Git object ids (and SHA-256). Empty/omitted → null. */
+export function normalizeCommitSha(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return null;
+  if (/^[0-9a-f]{7,40}$/.test(trimmed) || /^[0-9a-f]{64}$/.test(trimmed)) return trimmed;
+  return null;
+}
+
+export function pinnedBaseMismatchMessage(base: string, pinned: string, head: string): string {
+  const shortPin = pinned.slice(0, 12);
+  const shortHead = head.slice(0, 12);
+  return (
+    `The repository default branch \`${base}\` moved since this finding was scanned ` +
+    `(pinned ${shortPin}…, current ${shortHead}…). Re-run the scan on the current tip and open the fix again. ` +
+    "No branch or pull request was created."
+  );
+}
+
+export type PvimPublishVerification = PvimPostFixVerifyTarget &
+  Pick<PvimPostFixVerifyOptions, "analyze" | "clientDeps">;
+
+type PublishVerification = {
+  target: PostFixVerifyTarget;
+  scan?: (files: readonly SecurityScanFile[]) => SecurityFinding[];
+  /** When set, PVIM re-analysis supplements Provix post-fix verification. */
+  pvim?: PvimPublishVerification;
+};
+
+async function readRepoTsconfigContents(
+  repoUrl: string,
+  auth: string,
+  ref?: string | null
+): Promise<string[]> {
   const texts: string[] = [];
   for (const path of TSCONFIG_CANDIDATES) {
-    const result = await readGitHubTextFile(repoUrl, path, { auth });
+    const result = await readGitHubTextFile(repoUrl, path, {
+      auth,
+      ...(ref ? { ref } : {}),
+    });
     if (result.ok) texts.push(result.content);
   }
   return texts;
+}
+
+function githubReadOptions(auth: string, ref?: string | null) {
+  return ref ? { auth, ref } : { auth };
 }
 
 const MAX_CONTENT = 1_500_000;
@@ -90,17 +143,135 @@ function branchName(filePath: string): string {
   return `provix/split-${slug || "module"}-${Date.now().toString(36)}`;
 }
 
+/** Collapse AST finding / plan text to a single sentence for the PR header. */
+function oneSentence(text: string, fallback: string): string {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (!cleaned) return fallback;
+  const match = cleaned.match(/^(.+?[.!?])(?:\s|$)/);
+  const sentence = (match?.[1] ?? cleaned).trim();
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+}
+
+const PROVIX_VERIFICATION_BADGES =
+  "`✅ AST Syntax Verified` | `✅ tsc --noEmit Passed` | `✅ Post-Security Re-scanned`";
+
+/**
+ * Standardized 3-line header for every automated Provix PR.
+ * Verification badges stay static; vulnerability/fix come from AST finding data.
+ */
+export function buildProvixHealPullRequestHeader(vulnerability: string, fix: string): string {
+  return [
+    "### 🛡️ Provix Automated Security & Architecture Heal",
+    `- **The Vulnerability:** ${oneSentence(vulnerability, "An AST security or architecture finding was detected.")}`,
+    `- **The Fix:** ${oneSentence(fix, "Applied a surgical patch for the reported finding.")}`,
+    `- **Verification:** ${PROVIX_VERIFICATION_BADGES}`,
+  ].join("\n");
+}
+
+function architectureFixSentence(filePath: string, summary: string, writes: Array<{ filePath: string }>): string {
+  const errorHandling = writes.length === 1;
+  if (errorHandling) {
+    return oneSentence(
+      summary,
+      `Wrapped unhandled async database and fetch calls in \`${filePath}\` so failures return an error response.`
+    );
+  }
+  return oneSentence(
+    summary,
+    `Split \`${filePath}\` into separate modules and replaced that file with a barrel that re-exports them.`
+  );
+}
+
+function architectureVulnerabilitySentence(filePath: string, writes: Array<{ filePath: string }>): string {
+  const errorHandling = writes.length === 1;
+  return errorHandling
+    ? `Unhandled async database or fetch calls in \`${filePath}\` can become unhandled rejections.`
+    : `Architectural bloat in \`${filePath}\` concentrates too many responsibilities in one module.`;
+}
+
+function securityFixSentence(category: SecurityCategory | undefined, summary: string): string {
+  if (category === "SECRET_LEAK") {
+    return "Moved the hardcoded secret to an environment variable reference and redacted it from source.";
+  }
+  if (category === "VULNERABLE_DEPENDENCY") {
+    return "Updated or removed the vulnerable dependency while leaving unrelated packages intact.";
+  }
+  if (category === "CLIENT_DB_EXPOSURE") {
+    return "Moved the client-side database query behind an authenticated server action.";
+  }
+  if (category === "INSECURE_AUTH_SESSION") {
+    return "Replaced supabase.auth.getSession() with supabase.auth.getUser() and updated session destructuring to user.";
+  }
+  return oneSentence(summary, "Applied a surgical patch for the reported finding.");
+}
+
+/** Prefer the AST finding message; fall back to a category one-liner (never raw code snippets). */
+function securityVulnerabilitySentence(
+  category: SecurityCategory | undefined,
+  findingMessage: string | undefined,
+  summary: string
+): string {
+  const fromFinding = findingMessage?.replace(/\s+/g, " ").trim();
+  if (fromFinding) {
+    return oneSentence(fromFinding, "An AST security finding was detected.");
+  }
+  if (category === "SECRET_LEAK") {
+    return "A hardcoded secret was exposed in source by AST analysis.";
+  }
+  if (category === "VULNERABLE_DEPENDENCY") {
+    return "A vulnerable or deprecated dependency was detected by AST analysis.";
+  }
+  if (category === "CLIENT_DB_EXPOSURE") {
+    return "A client component queries the database directly without an authenticated server action.";
+  }
+  if (category === "INSECURE_AUTH_SESSION") {
+    return "Server-side code calls supabase.auth.getSession() instead of revalidating with getUser().";
+  }
+  return oneSentence(summary, "An AST security or architecture finding was detected.");
+}
+
+function autopilotVulnerabilitySentence(
+  finding: AutopilotFinding,
+  fixSummary: string
+): string {
+  const rule = finding.rule?.replace(/\s+/g, " ").trim();
+  if (rule && rule.length > 3 && !/[;=<>{}()]/.test(rule)) {
+    return oneSentence(
+      /[.!?]$/.test(rule) ? rule : `${rule} was detected by Provix AST analysis.`,
+      fixSummary
+    );
+  }
+  if (finding.category === "SECRET_LEAK") {
+    return "A hardcoded secret was exposed in source by AST analysis.";
+  }
+  if (finding.category === "VULNERABLE_DEPENDENCY") {
+    return "A vulnerable or deprecated dependency was detected by AST analysis.";
+  }
+  if (finding.category === "CLIENT_DB_EXPOSURE") {
+    return "A client component queries the database directly without an authenticated server action.";
+  }
+  if (finding.category === "INSECURE_AUTH_SESSION") {
+    return "Server-side code calls supabase.auth.getSession() instead of revalidating with getUser().";
+  }
+  if (
+    finding.rule === "Architectural Bloat" ||
+    finding.category === "ARCHITECTURAL_BLOAT" ||
+    finding.category === "ARCHITECTURE" ||
+    finding.category === "Architectural Bloat"
+  ) {
+    return `Architectural bloat in \`${finding.filePath}\` concentrates too many responsibilities in one module.`;
+  }
+  return oneSentence(fixSummary, "An AST security or architecture finding was detected.");
+}
+
 function pullRequestBody(filePath: string, summary: string, writes: Array<{ filePath: string }>): string {
   const files = writes.map((file) => `- \`${file.filePath}\``).join("\n");
   const errorHandling = writes.length === 1;
   return [
-    errorHandling ? "## Error handling" : "## Architectural refactor",
-    "",
-    errorHandling
-      ? `Provix Architecture Firewall wrapped unhandled async database and fetch calls in \`${filePath}\` so failures return an error response.`
-      : `Provix Architecture Firewall split \`${filePath}\` into separate modules and replaced that file with a barrel that re-exports them.`,
-    "",
-    summary,
+    buildProvixHealPullRequestHeader(
+      architectureVulnerabilitySentence(filePath, writes),
+      architectureFixSentence(filePath, summary, writes)
+    ),
     "",
     "### Files in this pull request",
     files,
@@ -298,9 +469,10 @@ export async function openAutopilotPullRequest(
     summary: fix.summary,
     branch: autopilotBranchName(fix.branchSlug, filePath),
     body: [
-      "## Provix autopilot",
-      "",
-      fix.summary,
+      buildProvixHealPullRequestHeader(
+        autopilotVulnerabilitySentence(finding, fix.summary),
+        oneSentence(fix.summary, "Applied a surgical patch for the reported finding.")
+      ),
       "",
       `Source: ${fix.source} (${fix.attempts} attempt${fix.attempts === 1 ? "" : "s"})`,
       "",
@@ -367,20 +539,48 @@ function securityBranchName(slug: string, filePath: string): string {
   return `provix/security-${slug}-${fileSlug || "fix"}-${Date.now().toString(36)}`;
 }
 
-function securityPullRequestBody(summary: string, writes: CommitWrite[]): string {
+function envNameFromSecretWrites(writes: readonly CommitWrite[]): string | undefined {
+  for (const write of writes) {
+    if (write.filePath.replace(/\\/g, "/").endsWith(".env.example")) {
+      const line = write.content.split(/\r?\n/).find((entry) => /^[A-Z][A-Z0-9_]*=/.test(entry));
+      if (line) return line.replace(/=.*$/, "");
+    }
+  }
+  for (const write of writes) {
+    const match = write.content.match(/process\.env\.([A-Z][A-Z0-9_]*)/);
+    if (match?.[1]) return match[1];
+  }
+  return undefined;
+}
+
+function securityPullRequestBody(
+  summary: string,
+  writes: CommitWrite[],
+  options?: { category?: SecurityCategory; envName?: string; vulnerability?: string }
+): string {
   const files = writes.map((file) => `- \`${file.filePath}\``).join("\n");
-  return [
-    "## Security fix",
-    "",
-    summary,
+  const sections = [
+    buildProvixHealPullRequestHeader(
+      securityVulnerabilitySentence(options?.category, options?.vulnerability, summary),
+      securityFixSentence(options?.category, summary)
+    ),
     "",
     "### Files in this pull request",
     files,
     "",
+  ];
+  if (options?.category === "SECRET_LEAK") {
+    sections.push(
+      secretLeakPullRequestSection(options.envName ?? envNameFromSecretWrites(writes)),
+      ""
+    );
+  }
+  sections.push(
     "Review the diff before merging. Secret values are redacted and are not included in this commit.",
     "",
-    "Generated by Provix.",
-  ].join("\n");
+    "Generated by Provix."
+  );
+  return sections.join("\n");
 }
 
 function normalizeWritePath(filePath: string): string | null {
@@ -395,7 +595,7 @@ function agenticFallbackSummary(category: SecurityCategory, filePath: string): {
   if (category === "SECRET_LEAK") {
     return {
       title: `fix: remove hardcoded secret from ${filePath}`,
-      summary: "Removed a hardcoded secret from source.",
+      summary: secretLeakMessage("Hardcoded secret", "an environment variable"),
       branchSlug: "secret",
     };
   }
@@ -425,15 +625,18 @@ async function openAgenticClientDbFallback(input: {
   snippet?: string | null;
   layout: ReturnType<typeof resolveSecurityFixLayout> | null;
   plan: SecurityFixPlan | null;
+  pinnedSha?: string | null;
+  verification?: PublishVerification | null;
 }): Promise<PrResult> {
   const clientDb = input.category === "CLIENT_DB_EXPOSURE";
+  const readOpts = githubReadOptions(input.token, input.pinnedSha);
   const serverActionPath =
     input.layout?.serverActionPath ?? serverActionFilePath(input.normalizedPath);
   const existingAction = clientDb
-    ? await readGitHubTextFile(input.repoUrl, serverActionPath, { auth: input.token })
+    ? await readGitHubTextFile(input.repoUrl, serverActionPath, readOpts)
     : null;
   const existingEnv = input.category === "SECRET_LEAK"
-    ? await readGitHubTextFile(input.repoUrl, ".env.example", { auth: input.token })
+    ? await readGitHubTextFile(input.repoUrl, ".env.example", readOpts)
     : null;
   const agent = await agenticFixWithRetry({
     finding: {
@@ -460,9 +663,14 @@ async function openAgenticClientDbFallback(input: {
     title: input.plan?.title ?? fallback.title,
     summary,
     branch: securityBranchName(input.plan?.branchSlug ?? fallback.branchSlug, input.normalizedPath),
-    body: securityPullRequestBody(summary, agent.writes),
+    body: securityPullRequestBody(summary, agent.writes, {
+      category: input.category,
+      vulnerability: input.verification?.target.message,
+    }),
     recordFilePath: input.normalizedPath,
     writes: agent.writes,
+    pinnedSha: input.pinnedSha,
+    verification: input.verification,
   });
 }
 
@@ -471,7 +679,13 @@ export async function openSecurityFixPullRequest(
   filePath: string,
   line: number,
   category: SecurityCategory,
-  hint?: { snippet?: string | null; token?: string | null }
+  hint?: {
+    snippet?: string | null;
+    token?: string | null;
+    commitSha?: string | null;
+    /** Original PVIM finding identity for post-fix re-analysis. */
+    pvim?: Omit<PvimPublishVerification, "commitSha"> & { commitSha?: string };
+  }
 ): Promise<PrResult> {
   const ownerRepo = toGitHubOwnerRepo(repoInput);
   const [owner, repo] = ownerRepo?.split("/") ?? [];
@@ -488,9 +702,19 @@ export async function openSecurityFixPullRequest(
     return openSecurityFixPullRequest(repoInput, filePath, line, category, {
       snippet: hint?.snippet,
       token: access.token,
+      commitSha: hint?.commitSha,
+      ...(hint?.pvim ? { pvim: hint.pvim } : {}),
     });
   }
   const token = provided;
+
+  const rawPin = hint?.commitSha;
+  const pinRequested =
+    rawPin != null && typeof rawPin === "string" ? rawPin.trim() : rawPin != null ? String(rawPin).trim() : "";
+  const pin = pinRequested ? normalizeCommitSha(pinRequested) : null;
+  if (pinRequested && !pin) {
+    return { status: 400, body: { ok: false, message: "commitSha must be a Git SHA." } };
+  }
 
   const repoUrl = `https://github.com/${ownerRepo}`;
   const normalizedPath = filePath.replace(/\\/g, "/").replace(/^\/+/, "");
@@ -501,7 +725,8 @@ export async function openSecurityFixPullRequest(
     return { status: 400, body: { ok: false, message: "line must be a positive integer." } };
   }
 
-  const remote = await readGitHubTextFile(repoUrl, normalizedPath, { auth: token });
+  const readOpts = githubReadOptions(token, pin);
+  const remote = await readGitHubTextFile(repoUrl, normalizedPath, readOpts);
   if (!remote.ok) {
     return { status: remote.status, body: { ok: false, message: remote.message } };
   }
@@ -520,8 +745,40 @@ export async function openSecurityFixPullRequest(
     };
   }
 
+  const originalFinding = captureOriginalSecurityFinding(
+    { filePath: normalizedPath, content: remote.content },
+    category,
+    line,
+    { snippet: hint?.snippet }
+  );
+  const pvimIdentity = hint?.pvim;
+  const pvimCommitSha = pvimIdentity
+    ? normalizeCommitSha(pvimIdentity.commitSha ?? pin) ?? pin
+    : null;
+  if (pvimIdentity && !pvimCommitSha) {
+    return {
+      status: 400,
+      body: { ok: false, message: "commitSha must be a Git SHA for PVIM post-fix verification." },
+    };
+  }
+  const verification: PublishVerification = {
+    target: originalFinding,
+    ...(pvimIdentity && pvimCommitSha
+      ? {
+          pvim: {
+            findingId: pvimIdentity.findingId,
+            ruleId: pvimIdentity.ruleId,
+            filePath: pvimIdentity.filePath,
+            commitSha: pvimCommitSha,
+            ...(pvimIdentity.analyze ? { analyze: pvimIdentity.analyze } : {}),
+            ...(pvimIdentity.clientDeps ? { clientDeps: pvimIdentity.clientDeps } : {}),
+          },
+        }
+      : {}),
+  };
+
   const tsconfigContents =
-    category === "CLIENT_DB_EXPOSURE" ? await readRepoTsconfigContents(repoUrl, token) : [];
+    category === "CLIENT_DB_EXPOSURE" ? await readRepoTsconfigContents(repoUrl, token, pin) : [];
   const layout =
     category === "CLIENT_DB_EXPOSURE"
       ? resolveSecurityFixLayout({ clientFilePath: normalizedPath, tsconfigContents })
@@ -549,6 +806,8 @@ export async function openSecurityFixPullRequest(
         snippet: hint?.snippet,
         layout,
         plan,
+        pinnedSha: pin,
+        verification,
       });
     }
     return {
@@ -568,7 +827,7 @@ export async function openSecurityFixPullRequest(
       return { status: 413, body: { ok: false, message: "The generated fix is too large to commit." } };
     }
     if (write.appendLine) {
-      const existing = await readGitHubTextFile(repoUrl, path, { auth: token });
+      const existing = await readGitHubTextFile(repoUrl, path, readOpts);
       const current = existing.ok ? existing.content : existing.status === 404 ? null : null;
       if (!existing.ok && existing.status !== 404) {
         return { status: existing.status, body: { ok: false, message: existing.message } };
@@ -578,7 +837,7 @@ export async function openSecurityFixPullRequest(
       continue;
     }
     if (isSupportingHelperPath(path)) {
-      const existing = await readGitHubTextFile(repoUrl, path, { auth: token });
+      const existing = await readGitHubTextFile(repoUrl, path, readOpts);
       if (!existing.ok && existing.status !== 404) {
         return { status: existing.status, body: { ok: false, message: existing.message } };
       }
@@ -592,7 +851,7 @@ export async function openSecurityFixPullRequest(
       continue;
     }
     if (isServerActionFilePath(path) || (layout && path === layout.serverActionPath)) {
-      const existing = await readGitHubTextFile(repoUrl, path, { auth: token });
+      const existing = await readGitHubTextFile(repoUrl, path, readOpts);
       if (!existing.ok && existing.status !== 404) {
         return { status: existing.status, body: { ok: false, message: existing.message } };
       }
@@ -611,7 +870,7 @@ export async function openSecurityFixPullRequest(
   for (const helper of missingSupportingHelperWrites(writes, layout)) {
     const path = normalizeWritePath(helper.filePath);
     if (!path || presentPaths.has(path)) continue;
-    const existing = await readGitHubTextFile(repoUrl, path, { auth: token });
+    const existing = await readGitHubTextFile(repoUrl, path, readOpts);
     if (!existing.ok && existing.status !== 404) {
       return { status: existing.status, body: { ok: false, message: existing.message } };
     }
@@ -631,8 +890,13 @@ export async function openSecurityFixPullRequest(
     title: plan.title,
     summary: plan.summary,
     branch: securityBranchName(plan.branchSlug, normalizedPath),
-    body: securityPullRequestBody(plan.summary, writes),
+    body: securityPullRequestBody(plan.summary, writes, {
+      category,
+      vulnerability: originalFinding.message,
+    }),
     recordFilePath: normalizedPath,
+    pinnedSha: pin,
+    verification,
   };
 
   if (agenticFallback) {
@@ -652,6 +916,8 @@ export async function openSecurityFixPullRequest(
         snippet: hint?.snippet,
         layout,
         plan,
+        pinnedSha: pin,
+        verification,
       });
     }
     const finalized = await finalizeAutofixWrites(writes);
@@ -668,6 +934,8 @@ export async function openSecurityFixPullRequest(
         snippet: hint?.snippet,
         layout,
         plan,
+        pinnedSha: pin,
+        verification,
       });
     }
     return publishPullRequest({ ...publishInput, writes: finalized.writes });
@@ -687,6 +955,8 @@ async function publishPullRequest(input: {
   body: string;
   recordFilePath: string;
   writes: CommitWrite[];
+  pinnedSha?: string | null;
+  verification?: PublishVerification | null;
 }): Promise<PrResult> {
   // 1) Heal / bundle helpers first (no GitHub writes yet).
   const healed = healAutofixWrites(input.writes);
@@ -723,9 +993,65 @@ async function publishPullRequest(input: {
     };
   }
 
-  // 3) Only construct the GitHub client after typecheck has passed.
+  // 2b) Security path only — prove the original finding is gone before any GitHub write.
+  if (input.verification) {
+    const patchedScanFiles = writes.map((file) => ({
+      filePath: file.filePath,
+      content: file.content,
+    }));
+    const verified = verifySecurityFixResolved(
+      input.verification.target,
+      patchedScanFiles,
+      { scan: input.verification.scan }
+    );
+    if (!verified.ok) {
+      console.error(
+        "[autofix/pr] refusing to open pull request; post-fix verification failed",
+        verified.message
+      );
+      return {
+        status: 422,
+        body: { ok: false, message: verified.message },
+      };
+    }
+
+    // 2c) PVIM-originated fixes — re-run PVIM against the same patched write set.
+    // Supplements Provix verification; never substitutes for it.
+    if (input.verification.pvim) {
+      const pvimVerified = await verifyPvimFixResolved(
+        {
+          findingId: input.verification.pvim.findingId,
+          ruleId: input.verification.pvim.ruleId,
+          filePath: input.verification.pvim.filePath,
+          commitSha: input.verification.pvim.commitSha,
+        },
+        patchedScanFiles.map((file) => ({
+          path: file.filePath,
+          content: file.content,
+        })),
+        {
+          analyze: input.verification.pvim.analyze,
+          clientDeps: input.verification.pvim.clientDeps,
+        }
+      );
+      if (!pvimVerified.ok) {
+        console.error(
+          "[autofix/pr] refusing to open pull request; post-fix PVIM verification failed",
+          pvimVerified.message
+        );
+        return {
+          status: 422,
+          body: { ok: false, message: pvimVerified.message },
+        };
+      }
+    }
+  }
+
+  // 3) Only construct the GitHub client after typecheck (and optional verify) have passed.
+  // Verification badges live in the standardized header on `input.body` (static copy).
+  void preflightNote;
   const octokit = new Octokit({ auth: input.token, userAgent: "provix-architecture-firewall" });
-  const pullBody = `${input.body}\n\n${preflightPullRequestSection(preflightNote)}`;
+  const pullBody = input.body;
   let createdBranch = false;
 
   try {
@@ -736,6 +1062,30 @@ async function publishPullRequest(input: {
       repo: input.repo,
       ref: `heads/${base}`,
     });
+    const headSha = ref.data.object.sha;
+
+    let parentSha = headSha;
+    if (input.pinnedSha) {
+      const pinnedCommit = await octokit.rest.git.getCommit({
+        owner: input.owner,
+        repo: input.repo,
+        commit_sha: input.pinnedSha,
+      });
+      parentSha = pinnedCommit.data.sha;
+      if (parentSha.toLowerCase() !== headSha.toLowerCase()) {
+        console.error(
+          "[autofix/pr] refusing to open pull request; pinned commit is not default-branch HEAD",
+          { pinned: parentSha, head: headSha, base }
+        );
+        return {
+          status: 409,
+          body: {
+            ok: false,
+            message: pinnedBaseMismatchMessage(base, parentSha, headSha),
+          },
+        };
+      }
+    }
 
     // 3b) HARD GATE — if main already fails CI/typecheck, refuse. Otherwise every
     // Open Fix PR inherits that failure (Provix gate green, GitHub CI red).
@@ -744,7 +1094,7 @@ async function publishPullRequest(input: {
       input.owner,
       input.repo,
       base,
-      ref.data.object.sha
+      parentSha
     );
     if (!baseReady.ok) {
       console.error("[autofix/pr] refusing to open pull request; base branch CI is red", baseReady.message);
@@ -757,7 +1107,7 @@ async function publishPullRequest(input: {
     const parent = await octokit.rest.git.getCommit({
       owner: input.owner,
       repo: input.repo,
-      commit_sha: ref.data.object.sha,
+      commit_sha: parentSha,
     });
     const tree = await octokit.rest.git.createTree({
       owner: input.owner,
@@ -775,7 +1125,7 @@ async function publishPullRequest(input: {
       repo: input.repo,
       message: `${input.title}\n\n${input.summary}`,
       tree: tree.data.sha,
-      parents: [ref.data.object.sha],
+      parents: [parentSha],
     });
     await octokit.rest.git.createRef({
       owner: input.owner,
@@ -860,3 +1210,4 @@ async function publishPullRequest(input: {
     };
   }
 }
+

@@ -11,7 +11,7 @@ import {
 } from "react";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 
-export type FirewallView = "firewall" | "health" | "violations" | "leaks";
+export type FirewallView = "firewall" | "health" | "audits" | "violations" | "leaks";
 export type IntegrityPane = "stream" | "integrity";
 
 type FirewallViewContextValue = {
@@ -28,10 +28,16 @@ type FirewallViewContextValue = {
 
 const FirewallViewContext = createContext<FirewallViewContextValue | null>(null);
 
-const VIEW_VALUES = new Set<FirewallView>(["firewall", "health", "violations", "leaks"]);
+const VIEW_VALUES = new Set<FirewallView>(["firewall", "health", "audits", "violations", "leaks"]);
 
 function isFirewallView(value: string | null | undefined): value is FirewallView {
-  return value === "firewall" || value === "health" || value === "violations" || value === "leaks";
+  return (
+    value === "firewall" ||
+    value === "health" ||
+    value === "audits" ||
+    value === "violations" ||
+    value === "leaks"
+  );
 }
 
 function normalizeView(value: string): FirewallView | null {
@@ -39,6 +45,7 @@ function normalizeView(value: string): FirewallView | null {
   if (view === "security") return "leaks";
   // The old Architecture Firewall screen now lives on Integrity.
   if (view === "firewall") return "health";
+  if (view === "audit" || view === "scanner" || view === "repo-scanner") return "audits";
   return isFirewallView(view) ? view : null;
 }
 

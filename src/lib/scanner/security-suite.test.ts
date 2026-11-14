@@ -22,12 +22,17 @@ import {
   resolveSecurityFixLayout,
   runSecuritySuiteScan,
   sanitizeGeneratedTypeScript,
+  secretLeakMessage,
+  secretLeakPullRequestSection,
+  secretLeakRemediationCommand,
   sortFindingsForBatchApply,
 } from "@/lib/scanner/security-suite";
 import ts from "typescript";
 
 const stripe = `sk_live_${"b".repeat(24)}`;
 const jwt = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${"a".repeat(12)}.${"c".repeat(12)}`;
+const awsAccessKeyId = `AKIA${"A".repeat(16)}`;
+const awsSecretAccessKey = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
 
 describe("normalizeSupabaseFilterExpression", () => {
   it("passes a definite number into .limit and .range", () => {
@@ -57,6 +62,69 @@ describe("runSecuritySuiteScan", () => {
     expect(finding?.remediation.diff).toContain("process.env.STRIPE_SECRET_KEY");
     expect(finding?.remediation.diff).not.toContain(stripe);
     expect(finding?.remediation.envExample).toBe("STRIPE_SECRET_KEY=");
+    expect(finding?.message).toMatch(/Rotate or revoke/i);
+    expect(finding?.message).toMatch(/does not invalidate/i);
+    expect(finding?.message).toMatch(/Git history/i);
+    expect(finding?.message).toMatch(/does not rotate credentials or rewrite history/i);
+    expect(finding?.remediation.command).toMatch(/Rotate or revoke/i);
+    expect(finding?.remediation.command).toMatch(/Git history/i);
+    expect(finding?.remediation.command).toMatch(/does not rotate credentials or rewrite history/i);
+    expect(finding?.remediation.command).toContain("STRIPE_SECRET_KEY");
+  });
+
+  it("does not flag an AWS access key ID alone as a leaked secret", () => {
+    const findings = runSecuritySuiteScan([
+      {
+        filePath: "src/lib/aws.ts",
+        content: `export const accessKeyId = "${awsAccessKeyId}";\n`,
+      },
+      {
+        filePath: ".env.local",
+        content: `AWS_ACCESS_KEY_ID=${awsAccessKeyId}\n`,
+      },
+    ]);
+    expect(findings.filter((item) => item.category === "SECRET_LEAK")).toEqual([]);
+  });
+
+  it("flags an AWS secret access key assigned to a secret-key property", () => {
+    expect(awsSecretAccessKey).toHaveLength(40);
+    const findings = runSecuritySuiteScan([
+      {
+        filePath: "src/lib/aws.ts",
+        content: [
+          `const accessKeyId = "${awsAccessKeyId}";`,
+          `const secretAccessKey = "${awsSecretAccessKey}";`,
+          "export const creds = { accessKeyId, secretAccessKey };",
+          "",
+        ].join("\n"),
+      },
+    ]);
+    const finding = findings.find((item) => item.category === "SECRET_LEAK");
+    expect(finding?.rule).toBe("Hardcoded Secret");
+    expect(finding?.message).toMatch(/AWS secret access key/i);
+    expect(finding?.snippet).not.toContain(awsSecretAccessKey);
+    expect(finding?.remediation.diff).toContain("process.env.AWS_SECRET_ACCESS_KEY");
+    expect(finding?.remediation.diff).not.toContain(awsSecretAccessKey);
+    expect(finding?.remediation.envExample).toBe("AWS_SECRET_ACCESS_KEY=");
+    expect(finding?.remediation.command).toMatch(/Rotate or revoke/i);
+    // Access key ID alone on its line must not produce a separate finding.
+    expect(findings.filter((item) => item.category === "SECRET_LEAK")).toHaveLength(1);
+  });
+
+  it("keeps rotation and Git-history guidance consistent across secret helper copy", () => {
+    const message = secretLeakMessage("Stripe live secret key", "STRIPE_SECRET_KEY");
+    const command = secretLeakRemediationCommand("STRIPE_SECRET_KEY");
+    const prSection = secretLeakPullRequestSection("STRIPE_SECRET_KEY");
+    for (const text of [message, command, prSection]) {
+      expect(text).toMatch(/Rotate or revoke/i);
+      expect(text).toMatch(/does not invalidate|does \*\*not\*\* invalidate/i);
+      expect(text).toMatch(/Git history/i);
+      expect(text).toMatch(/collaborators/i);
+      expect(text).toMatch(/does not rotate credentials or rewrite history/i);
+      expect(text).not.toMatch(/rotated the credential|rewrote (Git )?history|automatically rotated/i);
+    }
+    expect(command).toContain("STRIPE_SECRET_KEY");
+    expect(prSection).toContain("`STRIPE_SECRET_KEY`");
   });
 
   it("ignores secrets in comments, node_modules, and blank env values after the patch preview", () => {

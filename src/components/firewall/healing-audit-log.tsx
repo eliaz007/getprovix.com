@@ -7,7 +7,6 @@ import {
   formatAuditTimestamp,
   mutedLabelClass,
   panelClass,
-  rowHoverClass,
   sectionLabelClass,
 } from "@/components/firewall/firewall-ui";
 import { healingAuditLabel, type HealingAuditEntry, type HealingAuditResponse } from "@/lib/healing-audit";
@@ -77,14 +76,14 @@ export default function HealingAuditLog({ repo }: { repo: string | null }): Reac
         </p>
       ) : null}
       {state.kind === "ready" && state.entries.length > 0 ? (
-        <ul>
+        <ul className="divide-y divide-zinc-800/60">
           {state.entries.map((entry) => {
             const stamp = formatAuditTimestamp(entry.timestamp);
             const healed = entry.outcome === "healed";
             return (
               <li
                 key={`${entry.timestamp}:${entry.filePath}:${entry.category}`}
-                className={`flex flex-col gap-2 border-t border-white/[0.04] px-5 py-3 sm:flex-row sm:items-center sm:justify-between ${rowHoverClass}`}
+                className="group/row flex flex-col gap-2 px-4 py-3.5 transition-colors hover:bg-zinc-900/40 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0 space-y-2">
                   <div className="flex flex-wrap items-center gap-2">

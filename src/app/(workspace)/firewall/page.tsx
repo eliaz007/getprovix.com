@@ -1,15 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import IntegrityPanel from "@/components/integrity-panel";
 import FirewallViolationsTable from "@/components/firewall/firewall-violations-table";
 import SecurityGuardPanel from "@/components/firewall/security-guard-panel";
-import {
-  mutedLabelClass,
-  panelClass,
-  sectionLabelClass,
-} from "@/components/firewall/firewall-ui";
+import AuditsCommandCenter from "@/components/firewall/audits-command-center";
+import { panelClass } from "@/components/firewall/firewall-ui";
 import { useGithubAppInstallation } from "@/components/onboarding/use-github-app-installation";
 import type { FirewallResponse } from "@/lib/firewall-contract";
 import { isSecurityCategory } from "@/lib/firewall-contract";
@@ -25,24 +21,8 @@ import { withBrowserSession } from "@/lib/browser-auth-headers";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
 
-const QUICK_START = [
-  {
-    title: "AST Boundary Enforcement",
-    body: "Detect import cycles, layer leaks, and orphaned modules before they ship.",
-  },
-  {
-    title: "Secret & Leak Interception",
-    body: "Catch credentials, client DB exposure, and vulnerable dependencies in-scan.",
-  },
-  {
-    title: "Automated Fix PRs",
-    body: "Open type-safe remediation pull requests with one click from each finding.",
-  },
-] as const;
-
 type PageState =
   | { kind: "idle" }
-  | { kind: "scanning" }
   | { kind: "ready"; payload: FirewallResponse }
   | { kind: "error"; message: string };
 
@@ -56,20 +36,26 @@ function sanitizeRepoParam(raw: string): string {
 }
 
 export default function FirewallPage() {
-  const { activeView, repoSlug, setRepoSlug, setSecurityCount } = useFirewallView();
+  const { activeView, repoSlug, setRepoSlug, setSecurityCount, setActiveView } = useFirewallView();
   const installation = useGithubAppInstallation();
   const [repoUrl, setRepoUrl] = useState("");
   const [entryNote, setEntryNote] = useState<string | null>(null);
   const [state, setState] = useState<PageState>({ kind: "idle" });
   const [isScanning, setIsScanning] = useState(false);
   const installationBootstrapped = useRef(false);
+  // Bumps on every new audit so stale in-flight responses cannot keep the UI scanning.
+  const scanGenRef = useRef(0);
   const trimmedRepoUrl = repoUrl.trim();
-  const showScanning = isScanning || state.kind === "scanning";
   const coverageLine = state.kind === "ready" ? partialScanLine(state.payload.coverage) : null;
 
-  async function loadGithubAudit(ownerRepo: string, signal?: AbortSignal) {
+  async function loadGithubAudit(ownerRepo: string, opts?: { switchToAudits?: boolean }) {
     const clean = sanitizeRepoParam(ownerRepo);
     if (!clean) return;
+    const gen = ++scanGenRef.current;
+    // Immediate feedback: leave Overview inputs behind and show animated scan state.
+    if (opts?.switchToAudits !== false) {
+      setActiveView("audits");
+    }
     setRepoUrl(`https://github.com/${clean}`);
     setEntryNote(null);
     setIsScanning(true);
@@ -80,11 +66,10 @@ export default function FirewallPage() {
         headers: await withBrowserSession({ "Content-Type": "application/json" }),
         credentials: "include",
         body: JSON.stringify({ source: "github", repoUrl: clean }),
-        signal,
       });
-      if (signal?.aborted) return;
+      if (gen !== scanGenRef.current) return;
       const payload = await readJsonResponse<FirewallResponse>(response);
-      if (signal?.aborted) return;
+      if (gen !== scanGenRef.current) return;
       if (!response.ok || payload.status === "error" || !payload.report || payload.source !== "github") {
         setState({
           kind: "error",
@@ -108,15 +93,14 @@ export default function FirewallPage() {
       setEntryNote(note);
       setState({ kind: "ready", payload: readyPayload });
     } catch (error) {
-      if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
-        return;
-      }
+      if (gen !== scanGenRef.current) return;
+      if (error instanceof DOMException && error.name === "AbortError") return;
       setState({
         kind: "error",
         message: error instanceof Error ? error.message : "The GitHub repository could not be scanned.",
       });
     } finally {
-      if (!signal?.aborted) setIsScanning(false);
+      if (gen === scanGenRef.current) setIsScanning(false);
     }
   }
 
@@ -144,21 +128,24 @@ export default function FirewallPage() {
       return;
     }
 
-    const controller = new AbortController();
+    // Prefer a generation bump over AbortController.abort(): Next.js dev overlays
+    // surface `AbortError: signal is aborted without reason` from cleanup aborts
+    // (especially under Strict Mode remount), even when the rejection is caught.
+    const gen = ++scanGenRef.current;
     if (repo) {
       setRepoSlug(repo);
       setRepoUrl(`https://github.com/${repo}`);
     }
-    setState({ kind: "scanning" });
+    setIsScanning(true);
+    setActiveView("audits");
     void (async () => {
       try {
         const response = await fetch("/api/firewall", {
           cache: "no-store",
-          signal: controller.signal,
         });
-        if (controller.signal.aborted) return;
+        if (gen !== scanGenRef.current) return;
         const payload = await readJsonResponse<FirewallResponse>(response);
-        if (controller.signal.aborted) return;
+        if (gen !== scanGenRef.current) return;
         if (!response.ok || payload.status === "error" || !payload.report) {
           setState({
             kind: "error",
@@ -169,18 +156,23 @@ export default function FirewallPage() {
         setEntryNote(LOCAL_SNAPSHOT_NOTE);
         setState({ kind: "ready", payload });
       } catch (error) {
-        if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
-          return;
-        }
+        if (gen !== scanGenRef.current) return;
+        if (error instanceof DOMException && error.name === "AbortError") return;
         setState({
           kind: "error",
           message: error instanceof Error ? error.message : "The architecture report could not be loaded.",
         });
+      } finally {
+        if (gen === scanGenRef.current) setIsScanning(false);
       }
     })();
 
     return () => {
-      controller.abort();
+      // Invalidate this mount's fetch without aborting (avoids Next.js AbortError overlay).
+      if (scanGenRef.current === gen) {
+        scanGenRef.current += 1;
+        setIsScanning(false);
+      }
     };
     // Intentionally once on mount; repoSlug is seeded by FirewallViewProvider first.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -216,26 +208,29 @@ export default function FirewallPage() {
       return;
     }
 
-    const controller = new AbortController();
-    void loadGithubAudit(repo, controller.signal);
-    return () => {
-      controller.abort();
-    };
+    void loadGithubAudit(repo, { switchToAudits: true });
+    // Do not reset installationBootstrapped on cleanup — that re-fired audits in a loop
+    // whenever installation deps changed (and under Strict Mode remount).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [installation.loading, installation.installed, installation.primaryRepo]);
 
   async function runAudit() {
     if (!trimmedRepoUrl || isScanning) return;
+    // Flip scanning UI immediately so the button never feels dead.
+    setIsScanning(true);
+    setActiveView("audits");
+    setState((prev) => (prev.kind === "error" ? { kind: "idle" } : prev));
     const parsed = parseGitHubRepository(trimmedRepoUrl);
     if (!parsed) {
       setEntryNote(null);
+      setIsScanning(false);
       setState({
         kind: "error",
         message: "Paste a public GitHub URL or owner/repo.",
       });
       return;
     }
-    await loadGithubAudit(`${parsed.owner}/${parsed.repo}`);
+    await loadGithubAudit(`${parsed.owner}/${parsed.repo}`, { switchToAudits: true });
   }
 
   const report = state.kind === "ready" ? state.payload.report : null;
@@ -245,11 +240,8 @@ export default function FirewallPage() {
       ? sanitizeRepoParam(state.payload.target.repoUrl)
       : sanitizeRepoParam(trimmedRepoUrl)) ||
     null;
-  const onIntegrity = activeView === "health" || activeView === "firewall";
-  const showOnboarding = onIntegrity && !report && !showScanning && state.kind !== "error";
-  const showRepoDashboard = onIntegrity && !showOnboarding;
-  const typedRepo = sanitizeRepoParam(trimmedRepoUrl);
-  const rerunCurrent = Boolean(scannedRepoUrl) && typedRepo === scannedRepoUrl;
+  const onOverview = activeView === "health" || activeView === "firewall";
+  const onAudits = activeView === "audits";
   const [handoffRepo, setHandoffRepo] = useState<string | null>(null);
   useEffect(() => {
     const handoff = readLatestFirewallScanHandoff();
@@ -261,7 +253,7 @@ export default function FirewallPage() {
       .map((repo) => sanitizeRepoParam(repo))
       .filter(Boolean);
     const merged = handoffRepo ? [handoffRepo, ...fromInstall] : fromInstall;
-    return Array.from(new Set(merged)).slice(0, 6);
+    return Array.from(new Set(merged)).slice(0, 8);
   }, [handoffRepo, installation.repositories]);
 
   useEffect(() => {
@@ -278,216 +270,156 @@ export default function FirewallPage() {
 
   return (
     <div className="space-y-4 text-zinc-100">
-      {showOnboarding ? (
+      {onAudits ? (
+        <AuditsCommandCenter
+          repoUrl={repoUrl}
+          onRepoUrlChange={setRepoUrl}
+          recentRepos={recentRepos}
+          scannedRepoUrl={scannedRepoUrl}
+          isScanning={isScanning}
+          errorMessage={state.kind === "error" ? state.message : null}
+          entryNote={entryNote}
+          coverage={state.kind === "ready" ? state.payload.coverage : null}
+          report={report}
+          onRunAudit={() => void runAudit()}
+          onSelectRepo={(repo) => void loadGithubAudit(repo, { switchToAudits: true })}
+        />
+      ) : null}
+
+      {onOverview ? (
         <>
-          <header className="space-y-1 pb-1">
-            <p className="text-xs text-zinc-500">Integrity</p>
-            <h1 className="text-2xl font-medium tracking-tight text-zinc-50">Code firewall</h1>
-            <p className="max-w-3xl text-sm leading-relaxed text-zinc-500">
-              <Link href="/onboarding" className="text-zinc-200 underline-offset-2 hover:underline">
-                Connect GitHub
-              </Link>{" "}
-              to install the App, or paste a repository URL below to scan with an access token instead.
-            </p>
+          <header className="flex items-center justify-between gap-4 border-b border-zinc-800/60 pb-5">
+            <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <h1 className="truncate text-xl font-medium tracking-tight text-zinc-50 sm:text-2xl">
+                {report ? (scannedRepoUrl ?? "Overview") : "Overview"}
+              </h1>
+              {scannedRepoUrl ? (
+                <span className="inline-flex items-center rounded-md border border-zinc-700/50 bg-zinc-900/40 px-2 py-0.5 font-mono text-[11px] font-medium text-zinc-400">
+                  main
+                </span>
+              ) : null}
+              {report ? (
+                <p className="font-mono text-xs tabular-nums text-zinc-500">
+                  <span className="text-zinc-300">
+                    {report.violations.filter((v) => v.severity === "CRITICAL").length}
+                  </span>{" "}
+                  critical ·{" "}
+                  <span className="text-zinc-300">
+                    {report.violations.filter((v) => v.severity === "HIGH").length}
+                  </span>{" "}
+                  high ·{" "}
+                  <span className="text-zinc-300">
+                    {
+                      report.violations.filter(
+                        (v) => v.severity !== "CRITICAL" && v.severity !== "HIGH"
+                      ).length
+                    }
+                  </span>{" "}
+                  other
+                </p>
+              ) : (
+                <p className="text-sm text-zinc-500">High-level score and activity for your latest scan.</p>
+              )}
+              {coverageLine ? <p className="w-full text-sm text-amber-200/90 sm:w-auto">{coverageLine}</p> : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => (trimmedRepoUrl ? void runAudit() : setActiveView("audits"))}
+              disabled={isScanning}
+              className="shrink-0 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isScanning ? "Scanning…" : "Run Audit"}
+            </button>
           </header>
 
-          <form
-            className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-4 py-4 sm:px-5"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAudit();
-            }}
-          >
-            <label htmlFor="firewall-repo-url" className="text-xs text-zinc-500">
-              Public repository
-            </label>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <input
-                id="firewall-repo-url"
-                type="text"
-                inputMode="url"
-                value={repoUrl}
-                onChange={(event) => setRepoUrl(event.target.value)}
-                placeholder="https://github.com/owner/repo"
-                disabled={showScanning}
-                className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-black/40 px-3 py-2 font-mono text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-white/20 disabled:opacity-60"
-              />
+          {!report && !isScanning ? (
+            <section className={`${panelClass} px-5 py-8 text-center sm:px-8`}>
+              <p className="text-sm text-zinc-400">No scan loaded yet.</p>
               <button
-                type="submit"
-                disabled={!trimmedRepoUrl || showScanning}
-                className="shrink-0 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                onClick={() => setActiveView("audits")}
+                className="mt-4 rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-white"
               >
-                Run audit
+                Open Audits
               </button>
-            </div>
-          </form>
-
-          <div className="space-y-4">
-            <section className={panelClass}>
-              <div className="border-b border-white/[0.06] px-5 py-4">
-                <h2 className={sectionLabelClass}>Quick start · What Provix audits</h2>
-                <p className={`mt-1 ${mutedLabelClass}`}>
-                  Paste a repo above, or pick a connected repository to open the control plane.
-                </p>
-              </div>
-              <div className="grid gap-px bg-white/[0.06] sm:grid-cols-3">
-                {QUICK_START.map((item) => (
-                  <article key={item.title} className="bg-[#0A0A0B] px-5 py-5">
-                    <h3 className="text-sm font-medium tracking-tight text-zinc-100">{item.title}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-zinc-500">{item.body}</p>
-                  </article>
-                ))}
-              </div>
             </section>
+          ) : null}
 
-            {recentRepos.length > 0 ? (
-              <section className={panelClass}>
-                <div className="border-b border-white/[0.06] px-5 py-4">
-                  <h2 className={sectionLabelClass}>Recent connected repositories</h2>
-                  <p className={`mt-1 ${mutedLabelClass}`}>One click to run an audit</p>
-                </div>
-                <ul>
-                  {recentRepos.map((repo) => (
-                    <li key={repo} className="border-t border-white/[0.04] first:border-t-0">
-                      <button
-                        type="button"
-                        disabled={showScanning}
-                        onClick={() => void loadGithubAudit(repo)}
-                        className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left transition-colors hover:bg-white/[0.02] disabled:opacity-60"
-                      >
-                        <span className="truncate font-mono text-sm text-zinc-200">{repo}</span>
-                        <span className="shrink-0 text-xs text-zinc-500">Run audit</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-          </div>
+          {isScanning && onOverview ? (
+            <p
+              className="rounded-xl border border-zinc-800/80 bg-gradient-to-b from-zinc-900/60 to-zinc-950/90 px-5 py-6 text-sm text-zinc-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+              role="status"
+            >
+              Scan in progress — see Audits for live status.
+            </p>
+          ) : null}
+
+          {report ? (
+            <IntegrityPanel
+              repo={scannedRepoUrl}
+              report={report}
+              coverage={state.kind === "ready" ? state.payload.coverage : null}
+            />
+          ) : null}
         </>
       ) : null}
 
-      {showRepoDashboard ? (
-        <header className="flex flex-col gap-4 pb-1 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0 space-y-1">
-            <p className="text-xs text-zinc-500">Integrity</p>
-            <h1 className="truncate text-2xl font-medium tracking-tight text-zinc-50">
-              {scannedRepoUrl ?? "Code firewall"}
-            </h1>
-            {entryNote ? <p className="max-w-xl text-sm text-zinc-600">{entryNote}</p> : null}
-            {coverageLine ? <p className="max-w-xl text-sm text-amber-200/90">{coverageLine}</p> : null}
-          </div>
-          <form
-            className="flex w-full flex-col gap-2 sm:max-w-xl sm:flex-row sm:items-center lg:justify-end"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void runAudit();
-            }}
-          >
-            {recentRepos.length > 0 ? (
-              <select
-                aria-label="Switch repository"
-                value={recentRepos.includes(scannedRepoUrl ?? "") ? scannedRepoUrl ?? "" : ""}
-                disabled={showScanning}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  if (next) void loadGithubAudit(next);
-                }}
-                className="rounded-lg border border-white/[0.08] bg-black/40 px-2.5 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-white/20 disabled:opacity-60"
-              >
-                <option value="">Switch repo</option>
-                {recentRepos.map((repo) => (
-                  <option key={repo} value={repo}>
-                    {repo}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            <input
-              aria-label="Switch / scan repo"
-              type="text"
-              inputMode="url"
-              value={repoUrl}
-              onChange={(event) => setRepoUrl(event.target.value)}
-              placeholder="owner/repo"
-              disabled={showScanning}
-              className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-black/40 px-3 py-2 font-mono text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-white/20 disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={!trimmedRepoUrl || showScanning}
-              className="shrink-0 rounded-lg border border-white/[0.10] bg-white/[0.04] px-3 py-2 text-xs font-medium text-zinc-100 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {showScanning ? "Scanning…" : rerunCurrent ? "Re-run audit" : "Scan repo"}
-            </button>
-          </form>
-        </header>
-      ) : null}
-
       {activeView === "violations" ? (
-        <header className="space-y-1 pb-1">
-          <p className="text-xs text-zinc-500">Architecture</p>
-          <h1 className="text-2xl font-medium tracking-tight text-zinc-50">Violations</h1>
-          {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
-          {coverageLine ? <p className="max-w-3xl text-sm text-amber-200/90">{coverageLine}</p> : null}
+        <header className="flex flex-col gap-2 border-b border-zinc-800/60 pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs text-zinc-500">Architecture</p>
+            <h1 className="text-xl font-medium tracking-tight text-zinc-50 sm:text-2xl">Structure</h1>
+            {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
+            {coverageLine ? <p className="max-w-3xl text-sm text-amber-200/90">{coverageLine}</p> : null}
+          </div>
         </header>
       ) : null}
 
       {activeView === "leaks" ? (
-        <header className="space-y-1 pb-1">
-          <p className="text-xs text-zinc-500">Security</p>
-          <h1 className="text-2xl font-medium tracking-tight text-zinc-50">Leaks</h1>
-          {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
-          {coverageLine ? <p className="max-w-3xl text-sm text-amber-200/90">{coverageLine}</p> : null}
+        <header className="flex flex-col gap-2 border-b border-zinc-800/60 pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs text-zinc-500">Security</p>
+            <h1 className="text-xl font-medium tracking-tight text-zinc-50 sm:text-2xl">Security</h1>
+            {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
+            {coverageLine ? <p className="max-w-3xl text-sm text-amber-200/90">{coverageLine}</p> : null}
+          </div>
         </header>
       ) : null}
 
-      {showRepoDashboard && !report && !showScanning && state.kind !== "error" ? (
-        <p className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-5 py-6 text-sm text-zinc-500">
-          Run an audit to load the execution stream.
-        </p>
-      ) : null}
-
-      {showScanning ? (
+      {state.kind === "error" && !onAudits ? (
         <p
-          className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-5 py-6 text-sm text-zinc-500"
-          role="status"
-        >
-          Scanning repository…
-        </p>
-      ) : null}
-
-      {state.kind === "error" ? (
-        <p
-          className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-5 py-6 text-sm text-zinc-300"
+          className="rounded-xl border border-zinc-800/80 bg-gradient-to-b from-zinc-900/60 to-zinc-950/90 px-5 py-6 text-sm text-zinc-300 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]"
           role="alert"
         >
           {state.message}
         </p>
       ) : null}
 
-      {state.kind === "ready" && state.payload.status === "empty" ? (
-        <p className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-5 py-6 text-sm text-zinc-500">
+      {state.kind === "ready" && state.payload.status === "empty" && !onAudits ? (
+        <p className="rounded-xl border border-zinc-800/80 bg-gradient-to-b from-zinc-900/60 to-zinc-950/90 px-5 py-6 text-sm text-zinc-500 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
           {state.payload.message ?? "No architecture report is available yet."}
         </p>
       ) : null}
 
-      {showRepoDashboard && report ? (
-        <IntegrityPanel
-          repo={scannedRepoUrl}
-          report={report}
-          coverage={state.kind === "ready" ? state.payload.coverage : null}
-        />
-      ) : null}
       {activeView === "violations" && report ? (
         <FirewallViolationsTable report={report} repoUrl={scannedRepoUrl} />
       ) : null}
       {activeView === "leaks" && report ? <SecurityGuardPanel report={report} /> : null}
 
-      {!onIntegrity && !report && !showScanning && state.kind !== "error" ? (
-        <p className="rounded-xl border border-white/[0.06] bg-[#0A0A0B] px-5 py-6 text-sm text-zinc-500">
-          Run an audit from Integrity to load this section.
-        </p>
+      {(activeView === "violations" || activeView === "leaks") &&
+      !report &&
+      !isScanning &&
+      state.kind !== "error" ? (
+        <section className={`${panelClass} px-5 py-8 text-center`}>
+          <p className="text-sm text-zinc-500">Run an audit to load this section.</p>
+          <button
+            type="button"
+            onClick={() => setActiveView("audits")}
+            className="mt-4 rounded-lg border border-white/[0.10] bg-white/[0.04] px-4 py-2 text-sm font-medium text-zinc-100 transition-colors hover:bg-white/[0.08]"
+          >
+            Open Audits
+          </button>
+        </section>
       ) : null}
     </div>
   );

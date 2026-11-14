@@ -131,12 +131,12 @@ export default function OpportunitiesJobFeed({
       <div className="mb-8">
         <PageHeader
           className="mb-0"
-          eyebrow="Talent Network"
-          title="Provix Talent Network"
+          eyebrow="Opportunities"
+          title="Provix Opportunities"
           description={
             isGuest
               ? "Browse openings, companies, and requirements. Sign in when you are ready to express interest."
-              : "Open roles matched to your verified stack. Connect directly with hiring teams."
+              : "Open roles matched to your verified stack and audit score."
           }
         />
         {enableAiMatch ? (

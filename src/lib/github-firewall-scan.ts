@@ -1,9 +1,21 @@
 import path from "node:path";
 import { Octokit } from "@octokit/rest";
 import { analyzeSourceTexts } from "../../scripts/ingest-engine";
-import type { FirewallReport, FirewallResponse } from "@/lib/firewall-contract";
+import type {
+  FirewallPvimAnalysis,
+  FirewallPvimFinding,
+  FirewallPvimReasoning,
+  FirewallReport,
+  FirewallResponse,
+} from "@/lib/firewall-contract";
 import { applyHonestFixGate } from "@/lib/honest-fix-gate";
 import { parseGitHubRepository } from "@/lib/github-repo-ref";
+import {
+  isNonProductionSourcePath,
+  isSqlMigrationCompanionPath,
+  runPvimShadowForScan,
+  type PvimShadowScanDeps,
+} from "@/lib/pvim/pvim-shadow-scan";
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
 const IGNORED_SEGMENTS = new Set(["node_modules", ".next", "dist", "build"]);
@@ -13,6 +25,10 @@ const COMPANION_CAP = 40;
 const MAX_FILE_BYTES = 1_500_000;
 const MAX_COMPANION_BYTES = 200_000;
 const FETCH_CONCURRENCY = 6;
+
+/** Exported for focused selection tests. */
+export const GITHUB_FIREWALL_FILE_CAP = FILE_CAP;
+export const GITHUB_FIREWALL_COMPANION_CAP = COMPANION_CAP;
 
 type ScanResult = {
   status: number;
@@ -59,9 +75,11 @@ function isRelevantSource(filePath: string): boolean {
 function companionRank(filePath: string): number {
   const name = filePath.split("/").pop() ?? filePath;
   if (name === "package.json") return 0;
-  if (name === ".env" || name.startsWith(".env.")) return 1;
-  if (/(?:secret|credential|service-role|apikey|api-key)/i.test(filePath)) return 2;
-  return 3;
+  // Prefer SQL migrations so PVIM P3 can establish RLS context.
+  if (isSqlMigrationCompanionPath(filePath)) return 1;
+  if (name === ".env" || name.startsWith(".env.")) return 2;
+  if (/(?:secret|credential|service-role|apikey|api-key)/i.test(filePath)) return 3;
+  return 4;
 }
 
 function isSecurityCompanion(filePath: string): boolean {
@@ -69,16 +87,60 @@ function isSecurityCompanion(filePath: string): boolean {
   const name = filePath.split("/").pop() ?? filePath;
   if (LOCKFILES.has(name)) return false;
   if (name === "package.json" || name === ".env" || name.startsWith(".env.")) return true;
+  if (isSqlMigrationCompanionPath(filePath)) return true;
   if (name.endsWith(".json")) return true;
-  if (SOURCE_EXTENSIONS.has(path.posix.extname(filePath)) && companionRank(filePath) === 2) return true;
+  if (SOURCE_EXTENSIONS.has(path.posix.extname(filePath)) && companionRank(filePath) === 3) return true;
   return false;
 }
 
-function toFirewallReport(report: ReturnType<typeof analyzeSourceTexts>): FirewallReport {
+type SizedBlob = { path: string; sha: string; size: number };
+
+/**
+ * Production-first FILE_CAP selection: fill with production sources (largest first),
+ * then non-production (tests/fixtures/…) with remaining slots so secrets in tests
+ * can still be fetched without displacing application code.
+ */
+export function selectGitHubSourceBlobsForScan(
+  candidates: readonly SizedBlob[],
+  fileCap: number = FILE_CAP
+): SizedBlob[] {
+  const production = candidates
+    .filter((item) => !isNonProductionSourcePath(item.path))
+    .sort((left, right) => right.size - left.size || left.path.localeCompare(right.path));
+  const nonProduction = candidates
+    .filter((item) => isNonProductionSourcePath(item.path))
+    .sort((left, right) => right.size - left.size || left.path.localeCompare(right.path));
+  return [...production, ...nonProduction].slice(0, fileCap);
+}
+
+export type FirewallScanProvenance = {
+  /** Exact commit SHA whose tree was scanned (`git.getRef` → `object.sha`). */
+  commitSha?: string | null;
+  /** Optional PVIM summary. Omit / null when PVIM was not invoked. */
+  pvim?: FirewallPvimAnalysis | null;
+  /** Optional PVIM findings. Never merged into Provix `violations`. */
+  pvimFindings?: readonly FirewallPvimFinding[] | null;
+  /** Optional non-authoritative PVIM reasoning. Omit when absent. */
+  pvimReasoning?: FirewallPvimReasoning | null;
+};
+
+/**
+ * Build a FirewallReport from Provix `analyzeSourceTexts` output.
+ * Provenance fields are additive and omitted when absent so local snapshots stay valid.
+ */
+export function toFirewallReport(
+  report: ReturnType<typeof analyzeSourceTexts>,
+  provenance?: FirewallScanProvenance
+): FirewallReport {
   const largestFiles = [...report.files]
     .sort((left, right) => right.lineCount - left.lineCount || left.filePath.localeCompare(right.filePath))
     .slice(0, 5)
     .map((file) => ({ filePath: file.filePath, lineCount: file.lineCount }));
+
+  const commitSha =
+    typeof provenance?.commitSha === "string" && provenance.commitSha.trim()
+      ? provenance.commitSha.trim()
+      : undefined;
 
   return {
     timestamp: report.timestamp,
@@ -86,6 +148,12 @@ function toFirewallReport(report: ReturnType<typeof analyzeSourceTexts>): Firewa
     summary: report.summary,
     violations: report.violations,
     largestFiles,
+    ...(commitSha ? { commitSha } : {}),
+    ...(provenance?.pvim ? { pvim: provenance.pvim } : {}),
+    ...(provenance?.pvimFindings && provenance.pvimFindings.length > 0
+      ? { pvimFindings: [...provenance.pvimFindings] }
+      : {}),
+    ...(provenance?.pvimReasoning ? { pvimReasoning: provenance.pvimReasoning } : {}),
   };
 }
 
@@ -114,7 +182,16 @@ function decodeBlob(content: string, encoding: string): string | null {
   return text.includes("\u0000") ? null : text;
 }
 
-export async function scanPublicGitHubRepo(input: string, token: string): Promise<ScanResult> {
+export type ScanPublicGitHubRepoOptions = {
+  /** Optional PVIM shadow scan overrides (tests / isolation). */
+  pvim?: PvimShadowScanDeps;
+};
+
+export async function scanPublicGitHubRepo(
+  input: string,
+  token: string,
+  options: ScanPublicGitHubRepoOptions = {}
+): Promise<ScanResult> {
   const parsed = parseGitHubRepository(input);
   if (!parsed) {
     return { status: 400, body: errorBody(null, "Paste a public GitHub URL or owner/repo.") };
@@ -133,10 +210,12 @@ export async function scanPublicGitHubRepo(input: string, token: string): Promis
       repo: parsed.repo,
       ref: `heads/${branch}`,
     });
+    // Exact audited tip — same SHA used for the recursive tree and blob reads below.
+    const commitSha = ref.data.object.sha;
     const tree = await octokit.rest.git.getTree({
       owner: parsed.owner,
       repo: parsed.repo,
-      tree_sha: ref.data.object.sha,
+      tree_sha: commitSha,
       recursive: "true",
     });
 
@@ -147,9 +226,8 @@ export async function scanPublicGitHubRepo(input: string, token: string): Promis
     const candidates = blobs
       .filter((item) => isRelevantSource(item.path))
       .map((item) => ({ path: item.path, sha: item.sha, size: item.size ?? 0 }))
-      .filter((item) => item.size <= MAX_FILE_BYTES)
-      .sort((left, right) => right.size - left.size || left.path.localeCompare(right.path));
-    const selected = candidates.slice(0, FILE_CAP);
+      .filter((item) => item.size <= MAX_FILE_BYTES);
+    const selected = selectGitHubSourceBlobsForScan(candidates, FILE_CAP);
     const selectedPaths = new Set(selected.map((item) => item.path));
     const companions = blobs
       .filter((item) => isSecurityCompanion(item.path) && !selectedPaths.has(item.path))
@@ -199,7 +277,45 @@ export async function scanPublicGitHubRepo(input: string, token: string): Promis
       ...sources,
       ...companionSources,
     ]);
-    const report = toFirewallReport({ ...audited, violations });
+
+    // PVIM is additive shadow analysis on the same commitSha + already-fetched texts.
+    // Failures never alter Provix detections, score, or runner inputs.
+    let pvimProvenance: FirewallScanProvenance = { commitSha };
+    try {
+      const shadow = await runPvimShadowForScan(
+        {
+          owner,
+          repo,
+          defaultBranch: branch,
+          commitSha,
+          sources,
+          companions: companionSources,
+        },
+        options.pvim
+      );
+      if (shadow) {
+        pvimProvenance = {
+          commitSha,
+          pvim: shadow.pvim,
+          ...(shadow.pvimFindings ? { pvimFindings: shadow.pvimFindings } : {}),
+          ...(shadow.pvimReasoning ? { pvimReasoning: shadow.pvimReasoning } : {}),
+        };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unexpected PVIM integration failure";
+      pvimProvenance = {
+        commitSha,
+        pvim: {
+          status: "error",
+          findingCount: 0,
+          incomplete: 0,
+          elapsedMs: 0,
+          message: `PVIM shadow integration failed: ${message}`,
+        },
+      };
+    }
+
+    const report = toFirewallReport({ ...audited, violations }, pvimProvenance);
     const coverage = scannedAll
       ? `all ${sources.length} source files`
       : `the ${sources.length} largest source files`;

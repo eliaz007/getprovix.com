@@ -1,4 +1,9 @@
-import { violationCategory, type FirewallReport, type FirewallViolation } from "@/lib/firewall-contract";
+import {
+  isProvixScoredViolation,
+  violationCategory,
+  type FirewallReport,
+  type FirewallViolation,
+} from "@/lib/firewall-contract";
 
 export type RunnerState = "OK" | "FAILED";
 export type RunnerStatus = "PASSED" | "FAILED";
@@ -14,11 +19,16 @@ function firstPath(violations: readonly FirewallViolation[]): string {
   return violations[0]?.filePath ?? "violation";
 }
 
+/**
+ * Runner status is derived only from Provix `violations`.
+ * `pvimFindings` never participate — PVIM authorization/RLS rows must not fail BOUNDARY_CHECK.
+ */
 export function buildRunnerChecks(report: FirewallReport): RunnerCheck[] {
-  const architecture = report.violations.filter((violation) => violationCategory(violation) === "ARCHITECTURE");
-  const secrets = report.violations.filter((violation) => violationCategory(violation) === "SECRET_LEAK");
-  const clientDb = report.violations.filter((violation) => violationCategory(violation) === "CLIENT_DB_EXPOSURE");
-  const dependencies = report.violations.filter(
+  const scored = report.violations.filter(isProvixScoredViolation);
+  const architecture = scored.filter((violation) => violationCategory(violation) === "ARCHITECTURE");
+  const secrets = scored.filter((violation) => violationCategory(violation) === "SECRET_LEAK");
+  const clientDb = scored.filter((violation) => violationCategory(violation) === "CLIENT_DB_EXPOSURE");
+  const dependencies = scored.filter(
     (violation) => violationCategory(violation) === "VULNERABLE_DEPENDENCY"
   );
   const parsed = report.summary.totalFiles > 0;
