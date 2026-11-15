@@ -4,6 +4,15 @@ import { planAutofix } from "../src/lib/firewall-autofix";
 import { missingErrorHandlingViolations } from "../src/lib/firewall-error-handling";
 import { runSecuritySuiteScan } from "../src/lib/scanner/security-suite";
 
+/** Turbopack NFT-safe path helpers — this module is imported by App Routes. */
+function nftJoin(first: string, ...rest: string[]): string {
+  return path.join(/*turbopackIgnore: true*/ first, ...rest);
+}
+
+function nftResolve(...parts: string[]): string {
+  return path.resolve(/*turbopackIgnore: true*/ parts[0] as string, ...parts.slice(1));
+}
+
 type IngestedFile = {
   filePath: string;
   extension: string;
@@ -124,9 +133,9 @@ const REEXPORT_FROM =
   /\bexport\s+(?:type\s+)?(?:\*|\{[\s\S]*?\})\s+from\s+['"]([^'"]+)['"]/g;
 
 const projectRoot = process.cwd();
-const targetDir = path.resolve(projectRoot, process.argv[2] ?? ".");
-const snapshotPath = path.join(projectRoot, "scripts", "ingestion-snapshot.json");
-const reportPath = path.join(projectRoot, "scripts", "audit-report.json");
+const targetDir = nftResolve(projectRoot, process.argv[2] ?? ".");
+const snapshotPath = nftJoin(projectRoot, "scripts", "ingestion-snapshot.json");
+const reportPath = nftJoin(projectRoot, "scripts", "audit-report.json");
 
 function isHidden(name: string): boolean {
   return name.startsWith(".");
@@ -215,12 +224,12 @@ function extractImportLines(content: string): string[] {
 }
 
 function collectSourceFiles(directory: string, found: string[]): void {
-  const entries = fs.readdirSync(directory, { withFileTypes: true });
+  const entries = fs.readdirSync(/*turbopackIgnore: true*/ directory, { withFileTypes: true });
 
   for (const entry of entries) {
     if (isHidden(entry.name) || IGNORED_DIRECTORIES.has(entry.name)) continue;
 
-    const absolutePath = path.join(directory, entry.name);
+    const absolutePath = nftJoin(directory, entry.name);
 
     if (entry.isDirectory()) {
       collectSourceFiles(absolutePath, found);
@@ -235,7 +244,7 @@ function collectSourceFiles(directory: string, found: string[]): void {
 }
 
 function ingestFile(absolutePath: string): IngestedFile {
-  const rawContent = fs.readFileSync(absolutePath, "utf8");
+  const rawContent = fs.readFileSync(/*turbopackIgnore: true*/ absolutePath, "utf8");
   const extension = path.extname(absolutePath);
 
   return {
@@ -560,9 +569,9 @@ function lookupKnown(candidate: string, knownByLower: Map<string, string>): stri
 export function specifierPathCandidates(fromFile: string, specifier: string): string[] {
   let absoluteBase: string;
   if (specifier.startsWith("@/")) {
-    absoluteBase = path.join(projectRoot, "src", specifier.slice(2));
+    absoluteBase = nftJoin(projectRoot, "src", specifier.slice(2));
   } else if (specifier.startsWith(".")) {
-    absoluteBase = path.resolve(projectRoot, path.dirname(fromFile), specifier);
+    absoluteBase = nftResolve(projectRoot, path.dirname(fromFile), specifier);
   } else {
     return [];
   }
@@ -577,10 +586,10 @@ export function specifierPathCandidates(fromFile: string, specifier: string): st
       `${base}.tsx`,
       `${base}.js`,
       `${base}.jsx`,
-      path.join(base, "index.ts"),
-      path.join(base, "index.tsx"),
-      path.join(base, "index.js"),
-      path.join(base, "index.jsx")
+      nftJoin(base, "index.ts"),
+      nftJoin(base, "index.tsx"),
+      nftJoin(base, "index.js"),
+      nftJoin(base, "index.jsx")
     );
   }
   return candidates.map((candidate) => toProjectPath(candidate)).filter((candidate) => candidate.length > 0);
@@ -1226,7 +1235,10 @@ function printDashboard(files: IngestedFile[], report: AuditReport): void {
 }
 
 function main(): void {
-  if (!fs.existsSync(targetDir) || !fs.statSync(targetDir).isDirectory()) {
+  if (
+    !fs.existsSync(/*turbopackIgnore: true*/ targetDir) ||
+    !fs.statSync(/*turbopackIgnore: true*/ targetDir).isDirectory()
+  ) {
     console.error(`Target directory does not exist: ${targetDir}`);
     process.exit(1);
   }
@@ -1240,9 +1252,17 @@ function main(): void {
   const violations = audit(files);
   const report = buildReport(files, violations);
 
-  fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
-  fs.writeFileSync(snapshotPath, `${JSON.stringify(files, null, 2)}\n`, "utf8");
-  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  fs.mkdirSync(/*turbopackIgnore: true*/ path.dirname(snapshotPath), { recursive: true });
+  fs.writeFileSync(
+    /*turbopackIgnore: true*/ snapshotPath,
+    `${JSON.stringify(files, null, 2)}\n`,
+    "utf8"
+  );
+  fs.writeFileSync(
+    /*turbopackIgnore: true*/ reportPath,
+    `${JSON.stringify(report, null, 2)}\n`,
+    "utf8"
+  );
   printDashboard(files, report);
 }
 

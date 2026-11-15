@@ -20,8 +20,14 @@ const ACTION = "src/app/actions/secure-query.ts";
  */
 describe("employer-job-postings CLIENT_DB_EXPOSURE autofix", () => {
   it("typechecks generated secure-query for the failing lines", async () => {
-    const content = readFileSync(path.join(process.cwd(), FILE), "utf8");
-    const existingAction = readFileSync(path.join(process.cwd(), ACTION), "utf8");
+    const content = readFileSync(
+      /*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ process.cwd(), FILE),
+      "utf8"
+    );
+    const existingAction = readFileSync(
+      /*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ process.cwd(), ACTION),
+      "utf8"
+    );
     const report = analyzeSourceTexts([
       { filePath: FILE, content },
       { filePath: ACTION, content: existingAction },

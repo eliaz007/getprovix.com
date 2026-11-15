@@ -13,7 +13,10 @@ import { planAutofix } from "@/lib/firewall-autofix";
 describe("live split preflight", () => {
   it("refuses to split github-autofix-pr.ts when helpers share bindings", async () => {
     const filePath = "src/lib/github-autofix-pr.ts";
-    const content = await readFile(path.join(process.cwd(), filePath), "utf8");
+    const content = await readFile(
+      /*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ process.cwd(), filePath),
+      "utf8"
+    );
     const plan = planAutofix(filePath, content);
 
     expect(plan.canOpenPullRequest).toBe(false);

@@ -5,6 +5,30 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { AutofixWriteFile } from "@/lib/autofix-write-validation";
 
+/**
+ * Turbopack NFT helpers — dynamic workspace / node_modules / temp paths must not
+ * be filesystem-traced into the Vercel serverless bundle (`BUILD_UTILS_SPAWN_1`).
+ */
+function nftJoin(first: string, ...rest: string[]): string {
+  return path.join(/*turbopackIgnore: true*/ first, ...rest);
+}
+
+function nftExists(filePath: string): boolean {
+  return existsSync(/*turbopackIgnore: true*/ filePath);
+}
+
+function nftReadFileSync(filePath: string): string {
+  return readFileSync(/*turbopackIgnore: true*/ filePath, "utf8");
+}
+
+async function nftReadFile(filePath: string): Promise<string> {
+  return readFile(/*turbopackIgnore: true*/ filePath, "utf8");
+}
+
+async function nftWriteFile(filePath: string, contents: string): Promise<void> {
+  await writeFile(/*turbopackIgnore: true*/ filePath, contents, "utf8");
+}
+
 type HostTsconfigPaths = {
   baseUrl: string;
   paths: Record<string, string[]>;
@@ -88,9 +112,9 @@ export async function loadHostTsconfigPaths(
     paths: { "@/*": ["./src/*"] },
     aliasRoot: "src",
   };
-  const tsconfigPath = path.join(projectRoot, "tsconfig.json");
+  const tsconfigPath = nftJoin(projectRoot, "tsconfig.json");
   try {
-    const raw = await readFile(tsconfigPath, "utf8");
+    const raw = await nftReadFile(tsconfigPath);
     const parsed = JSON.parse(stripJsonComments(raw)) as {
       compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> };
     };
@@ -174,21 +198,21 @@ function isNodeBuiltin(specifier: string): boolean {
 
 /** True when `pkgDir` ships usable `.d.ts` (types/typings entry or index.d.ts). */
 function packageHasBundledTypes(pkgDir: string): boolean {
-  const pkgJsonPath = path.join(pkgDir, "package.json");
-  if (!existsSync(pkgJsonPath)) return false;
+  const pkgJsonPath = nftJoin(pkgDir, "package.json");
+  if (!nftExists(pkgJsonPath)) return false;
   try {
-    const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as {
+    const pkg = JSON.parse(nftReadFileSync(pkgJsonPath)) as {
       types?: string;
       typings?: string;
     };
     const entry = pkg.types ?? pkg.typings;
-    if (entry && existsSync(path.join(pkgDir, ...entry.replace(/^\.\//, "").split("/")))) {
+    if (entry && nftExists(nftJoin(pkgDir, ...entry.replace(/^\.\//, "").split("/")))) {
       return true;
     }
   } catch {
     // Fall through to index.d.ts / @types lookup.
   }
-  return existsSync(path.join(pkgDir, "index.d.ts"));
+  return nftExists(nftJoin(pkgDir, "index.d.ts"));
 }
 
 /**
@@ -199,12 +223,12 @@ function packageHasBundledTypes(pkgDir: string): boolean {
  */
 export function hostPackageHasTypes(projectRoot: string, packageName: string): boolean {
   const parts = packageName.split("/");
-  const pkgDir = path.join(projectRoot, "node_modules", ...parts);
+  const pkgDir = nftJoin(projectRoot, "node_modules", ...parts);
   if (packageHasBundledTypes(pkgDir)) return true;
 
   if (!packageName.startsWith("@")) {
-    const typesDir = path.join(projectRoot, "node_modules", "@types", packageName);
-    if (packageHasBundledTypes(typesDir) || existsSync(path.join(typesDir, "package.json"))) {
+    const typesDir = nftJoin(projectRoot, "node_modules", "@types", packageName);
+    if (packageHasBundledTypes(typesDir) || nftExists(nftJoin(typesDir, "package.json"))) {
       return true;
     }
     return false;
@@ -214,13 +238,13 @@ export function hostPackageHasTypes(projectRoot: string, packageName: string): b
   const bare = packageName.slice(1);
   const slash = bare.indexOf("/");
   if (slash > 0) {
-    const typesDir = path.join(
+    const typesDir = nftJoin(
       projectRoot,
       "node_modules",
       "@types",
       `${bare.slice(0, slash)}__${bare.slice(slash + 1)}`
     );
-    if (packageHasBundledTypes(typesDir) || existsSync(path.join(typesDir, "package.json"))) {
+    if (packageHasBundledTypes(typesDir) || nftExists(nftJoin(typesDir, "package.json"))) {
       return true;
     }
   }
@@ -425,7 +449,7 @@ export function collectMissingAtAliasesInTempRoot(
       if (!specifier.startsWith("@/")) continue;
       const mapped = resolveAtAliasPath(specifier, aliasRoot, hostPaths);
       const present = workspaceCandidates(mapped).some((candidate) =>
-        existsSync(path.join(tempRoot, ...candidate.split("/")))
+        nftExists(nftJoin(tempRoot, ...candidate.split("/")))
       );
       if (!present) found.add(specifier);
     }
@@ -444,14 +468,14 @@ export async function writeAmbientInternalImportStubs(
   const projectRoot = options?.projectRoot ?? process.cwd();
   const nextTypes = buildNextTypeStubs(unique, hostPackageHasTypes(projectRoot, "next"));
   const content = `${buildAmbientModuleStubs(unique)}${nextTypes.script}`;
-  const dir = path.join(tempRoot, "__provix_stubs__");
+  const dir = nftJoin(tempRoot, "__provix_stubs__");
   await mkdir(dir, { recursive: true });
-  const abs = path.join(dir, "ambient-modules.d.ts");
-  if (content.trim()) await writeFile(abs, content, "utf8");
-  const nextAbs = path.join(dir, "next-types.d.ts");
+  const abs = nftJoin(dir, "ambient-modules.d.ts");
+  if (content.trim()) await nftWriteFile(abs, content);
+  const nextAbs = nftJoin(dir, "next-types.d.ts");
   if (nextTypes.moduleFile) {
-    await writeFile(nextAbs, nextTypes.moduleFile, "utf8");
-  } else if (existsSync(nextAbs)) {
+    await nftWriteFile(nextAbs, nextTypes.moduleFile);
+  } else if (nftExists(nextAbs)) {
     await rm(nextAbs, { force: true });
   }
   return content.trim() ? abs : nextTypes.moduleFile ? nextAbs : null;
@@ -517,16 +541,16 @@ function resolveWorkspaceModule(
 
   for (const candidate of workspaceCandidates(base)) {
     if (candidate.includes("..")) continue;
-    const abs = path.join(projectRoot, ...candidate.split("/"));
-    if (existsSync(abs)) return candidate;
+    const abs = nftJoin(projectRoot, ...candidate.split("/"));
+    if (nftExists(abs)) return candidate;
   }
   return null;
 }
 
 async function readWorkspaceFile(projectRoot: string, relativePath: string): Promise<string | null> {
-  const abs = path.join(projectRoot, ...normalizedWritePath(relativePath).split("/"));
+  const abs = nftJoin(projectRoot, ...normalizedWritePath(relativePath).split("/"));
   try {
-    return await readFile(abs, "utf8");
+    return await nftReadFile(abs);
   } catch {
     return null;
   }
@@ -700,17 +724,17 @@ export async function removeOwnedPreflightTempDir(tempRoot: string): Promise<voi
 }
 
 async function linkHostNodeModules(tempRoot: string, projectRoot: string): Promise<void> {
-  const hostModules = path.join(projectRoot, "node_modules");
-  if (!existsSync(hostModules)) return;
-  const target = path.join(tempRoot, "node_modules");
+  const hostModules = nftJoin(projectRoot, "node_modules");
+  if (!nftExists(hostModules)) return;
+  const target = nftJoin(tempRoot, "node_modules");
   // "junction" is Windows-only; Vercel/Linux needs "dir" or the link is a no-op
   // and tsc then fails with TS2318 Cannot find global type 'Array'.
   const linkType = process.platform === "win32" ? "junction" : "dir";
   try {
-    await symlink(hostModules, target, linkType);
+    await symlink(/*turbopackIgnore: true*/ hostModules, /*turbopackIgnore: true*/ target, linkType);
   } catch {
     try {
-      await symlink(hostModules, target, "dir");
+      await symlink(/*turbopackIgnore: true*/ hostModules, /*turbopackIgnore: true*/ target, "dir");
     } catch {
       // Best-effort — infrastructure noise is filtered below if libs still miss.
     }
@@ -726,14 +750,8 @@ function resolveTypescriptTscJs(projectRoot: string): string | null {
   const roots = [projectRoot, process.cwd()];
   for (const root of roots) {
     // turbopackIgnore: do not NFT-trace node_modules/typescript into the app.
-    const candidate = path.join(
-      /*turbopackIgnore: true*/ root,
-      "node_modules",
-      "typescript",
-      "bin",
-      "tsc"
-    );
-    if (existsSync(/*turbopackIgnore: true*/ candidate)) return candidate;
+    const candidate = nftJoin(root, "node_modules", "typescript", "bin", "tsc");
+    if (nftExists(candidate)) return candidate;
   }
   return null;
 }
@@ -742,22 +760,16 @@ function resolveTypescriptTscJs(projectRoot: string): string | null {
 export function typescriptLibDirectory(projectRoot: string): string | null {
   const tscJs = resolveTypescriptTscJs(projectRoot);
   if (tscJs) {
-    const fromBin = path.join(/*turbopackIgnore: true*/ path.dirname(tscJs), "..", "lib");
-    if (
-      existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ fromBin, "lib.es2022.d.ts")) ||
-      existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ fromBin, "lib.d.ts"))
-    ) {
+    const fromBin = nftJoin(path.dirname(tscJs), "..", "lib");
+    if (nftExists(nftJoin(fromBin, "lib.es2022.d.ts")) || nftExists(nftJoin(fromBin, "lib.d.ts"))) {
       return fromBin;
     }
   }
   const roots = [projectRoot, process.cwd()];
   for (const root of roots) {
     // turbopackIgnore: do not NFT-trace typescript/lib into the serverless bundle.
-    const dir = path.join(/*turbopackIgnore: true*/ root, "node_modules", "typescript", "lib");
-    if (
-      existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dir, "lib.es2022.d.ts")) ||
-      existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dir, "lib.d.ts"))
-    ) {
+    const dir = nftJoin(root, "node_modules", "typescript", "lib");
+    if (nftExists(nftJoin(dir, "lib.es2022.d.ts")) || nftExists(nftJoin(dir, "lib.d.ts"))) {
       return dir;
     }
   }
@@ -1142,7 +1154,7 @@ export async function runAutofixTscPreflight(
 
   const tempRoot =
     options?.workDir ??
-    (await mkdtemp(path.join(tmpdir(), "provix-autofix-tsc-")));
+    (await mkdtemp(nftJoin(tmpdir(), "provix-autofix-tsc-")));
   const ownsTemp = !options?.workDir;
 
   try {
@@ -1154,9 +1166,9 @@ export async function runAutofixTscPreflight(
     }
 
     for (const write of graph.writes) {
-      const abs = path.join(tempRoot, ...normalizedWritePath(write.filePath).split("/"));
+      const abs = nftJoin(tempRoot, ...normalizedWritePath(write.filePath).split("/"));
       await mkdir(path.dirname(abs), { recursive: true });
-      await writeFile(abs, write.content.endsWith("\n") ? write.content : `${write.content}\n`, "utf8");
+      await nftWriteFile(abs, write.content.endsWith("\n") ? write.content : `${write.content}\n`);
     }
     await writeAmbientInternalImportStubs(tempRoot, stubModules, { projectRoot });
     // Re-scan after materializing seeds in case relative imports still miss.
@@ -1168,7 +1180,7 @@ export async function runAutofixTscPreflight(
       await writeAmbientInternalImportStubs(tempRoot, [...stubModules, ...stillMissing], { projectRoot });
     }
     const stubCount = new Set([...stubModules, ...stillMissing]).size;
-    await writeFile(path.join(tempRoot, "tsconfig.json"), buildPreflightTsconfig(host, libDir), "utf8");
+    await nftWriteFile(nftJoin(tempRoot, "tsconfig.json"), buildPreflightTsconfig(host, libDir));
     await linkHostNodeModules(tempRoot, projectRoot);
 
     const childResult = await runTscNoEmit(tempRoot, projectRoot, timeoutMs);

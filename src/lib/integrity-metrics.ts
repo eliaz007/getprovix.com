@@ -296,6 +296,7 @@ export function computeSecurityPostureIndex(
       // Architecture criticals do not drive the security cap, but clearing
       // Critical security findings is what the projection promises.
       architecture: parts.architecture,
+      criticalSecurity: [],
     };
     // Also drop Critical data-boundary hits that came from Provix CRITICAL rows.
     const projectedDimensions = buildDimensions(withoutCriticals);

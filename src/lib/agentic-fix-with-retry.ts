@@ -154,7 +154,10 @@ function prepareWrites(
 
 async function readWorkspaceText(filePath: string): Promise<string | null> {
   try {
-    return await readFile(path.join(process.cwd(), filePath), "utf8");
+    return await readFile(
+      /*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ process.cwd(), filePath),
+      "utf8"
+    );
   } catch {
     return null;
   }

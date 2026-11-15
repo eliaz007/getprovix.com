@@ -156,8 +156,14 @@ export function charge(mode: "${FAKE_STRIPE_LIVE_KEY}"): string {
   it("merges the live secure-query before gating employer-job-postings inserts", async () => {
     const clientPath = "src/components/employer/employer-job-postings.tsx";
     const actionPath = "src/app/actions/secure-query.ts";
-    const client = readFileSync(path.join(process.cwd(), clientPath), "utf8");
-    const action = readFileSync(path.join(process.cwd(), actionPath), "utf8");
+    const client = readFileSync(
+      /*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ process.cwd(), clientPath),
+      "utf8"
+    );
+    const action = readFileSync(
+      /*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ process.cwd(), actionPath),
+      "utf8"
+    );
     const files = [
       { filePath: clientPath, content: client },
       { filePath: actionPath, content: action },

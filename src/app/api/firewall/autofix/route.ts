@@ -26,9 +26,9 @@ function normalizePath(filePath: string): string | null {
 
 function localAbsolutePath(filePath: string): string | null {
   if (!/\.tsx?$/.test(filePath)) return null;
-  const root = path.resolve(process.cwd());
-  const absolute = path.resolve(root, filePath);
-  const relative = path.relative(root, absolute);
+  const root = path.resolve(/*turbopackIgnore: true*/ process.cwd());
+  const absolute = path.resolve(/*turbopackIgnore: true*/ root, filePath);
+  const relative = path.relative(/*turbopackIgnore: true*/ root, absolute);
   if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
   return absolute;
 }
@@ -37,7 +37,7 @@ async function readLocalContent(filePath: string): Promise<string | null> {
   const absolute = localAbsolutePath(filePath);
   if (!absolute) return null;
   try {
-    return await fs.readFile(absolute, "utf8");
+    return await fs.readFile(/*turbopackIgnore: true*/ absolute, "utf8");
   } catch {
     return null;
   }

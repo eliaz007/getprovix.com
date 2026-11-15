@@ -29,7 +29,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const REPORT_PATH = path.join(process.cwd(), "scripts", "audit-report.json");
+const REPORT_PATH = path.join(
+  /*turbopackIgnore: true*/ process.cwd(),
+  "scripts",
+  "audit-report.json"
+);
 const LOCAL_TARGET = {
   kind: "local" as const,
   snapshot: "scripts/audit-report.json" as const,
@@ -304,7 +308,7 @@ function reportFrom(value: unknown): FirewallReport | null {
 
 async function readLocalReport(): Promise<FirewallResponse> {
   try {
-    const raw = await fs.readFile(REPORT_PATH, "utf8");
+    const raw = await fs.readFile(/*turbopackIgnore: true*/ REPORT_PATH, "utf8");
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw) as unknown;
