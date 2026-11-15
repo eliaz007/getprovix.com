@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Activity, History, Radar, ScrollText, Settings, Shield } from "lucide-react";
 import { isFirewallPath } from "@/lib/dashboard-account";
@@ -65,6 +65,14 @@ export default function DashboardSidebar() {
   const onHistory = pathname === "/history" || pathname.startsWith("/history/");
   const onSettings = pathname === "/dashboard/settings" || pathname.startsWith("/dashboard/settings/");
   const active = onSettings ? "settings" : onFirewall ? activeView : "";
+
+  // Warm /firewall before leaving Activity/Settings so tab switches don't wait on the chunk.
+  useEffect(() => {
+    if (onFirewall) return;
+    for (const item of WORKSPACE_NAV) {
+      router.prefetch(firewallHref(repoSlug, item.key));
+    }
+  }, [onFirewall, repoSlug, router]);
 
   function openFirewallView(view: FirewallView) {
     setMobileNavOpen(false);

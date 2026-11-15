@@ -2,11 +2,9 @@
 
 import { useEffect, useState } from "react";
 import ExecutionStream from "@/components/firewall/execution-stream";
-import { elevatedSurfaceClass, mutedLabelClass } from "@/components/firewall/firewall-ui";
 import IntegrityTab from "@/components/integrity-tab";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
 import type { FirewallReport, FirewallScanCoverage } from "@/lib/firewall-contract";
-import { partialScanLine } from "@/lib/firewall-repo-access";
 import type { HealingAuditEntry, HealingAuditResponse } from "@/lib/healing-audit";
 
 const TABS = [
@@ -14,40 +12,13 @@ const TABS = [
   { id: "integrity" as const, label: "Repo score" },
 ];
 
-function ScanBrief({
-  report,
-  coverage,
-}: {
-  report: FirewallReport | null;
-  coverage?: FirewallScanCoverage | null;
-}) {
-  if (!report) return null;
-  const criticalCount = report.violations.filter((violation) => violation.severity === "CRITICAL").length;
-  const highCount = report.violations.filter((violation) => violation.severity === "HIGH").length;
-  const otherCount = report.violations.length - criticalCount - highCount;
-  const coverageLine = partialScanLine(coverage);
-  return (
-    <section className={`${elevatedSurfaceClass} p-4`}>
-      <p className={mutedLabelClass}>This repository</p>
-      <h2 className="mt-2 text-[15px] font-medium tracking-tight text-zinc-100">
-        {criticalCount} critical · {highCount} high · {otherCount} other
-      </h2>
-      <p className="mt-1 max-w-3xl text-sm leading-relaxed text-zinc-500">
-        The score is this scan only. Fix with PR can open a patch for database exposure, secrets, known dependency
-        floors, and oversized modules.
-      </p>
-      {coverageLine ? <p className="mt-3 text-sm text-amber-200/90">{coverageLine}</p> : null}
-    </section>
-  );
-}
-
 export default function IntegrityPanel({
   repo,
   report,
-  coverage,
 }: {
   repo: string | null;
   report: FirewallReport | null;
+  /** Kept for call-site compatibility; coverage lives in the Overview header. */
   coverage?: FirewallScanCoverage | null;
 }) {
   const { integrityPane, setIntegrityPane } = useFirewallView();
@@ -78,8 +49,6 @@ export default function IntegrityPanel({
 
   return (
     <div className="space-y-4">
-      <ScanBrief report={report} coverage={coverage} />
-
       <div
         className="flex gap-1 border-b border-zinc-800/60"
         role="tablist"

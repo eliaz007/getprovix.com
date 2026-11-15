@@ -42,6 +42,13 @@ export const rowPrimaryActionClass =
 export const rowGhostActionClass =
   "inline-flex items-center rounded-md px-2 py-1 text-xs text-zinc-500 transition-colors hover:bg-zinc-900/50 hover:text-zinc-200 disabled:cursor-wait disabled:opacity-60";
 
+/**
+ * Primary CTA for Manual review rows — Copy Fix Prompt (no Preview Fix).
+ * Brand violet `#9333ea` so detect-only findings still have a clear next step.
+ */
+export const rowManualReviewPrimaryClass =
+  "inline-flex items-center rounded-md bg-[#9333ea] px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-[#7e22ce] disabled:cursor-not-allowed disabled:opacity-60";
+
 export type StatusPillTone = "ok" | "warn" | "danger" | "neutral" | "info";
 
 export function statusPillClass(tone: StatusPillTone): string {

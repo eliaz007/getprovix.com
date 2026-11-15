@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
 import {
   FindingDiffDrawer,
+  buildManualReviewFixPrompt,
   filesTouchedFromDiff,
   rowDismissActionClass,
 } from "@/components/firewall/finding-diff-drawer";
@@ -18,7 +19,10 @@ import {
 } from "@/lib/firewall-contract";
 import { isExpectedAutofixRefuse, isTestSourcePath } from "@/lib/firewall-autofix";
 import { readJsonResponse } from "@/lib/read-json-response";
-import { rowGhostActionClass } from "@/components/firewall/firewall-ui";
+import {
+  rowGhostActionClass,
+  rowManualReviewPrimaryClass,
+} from "@/components/firewall/firewall-ui";
 
 type PullState =
   | { status: "idle" }
@@ -51,6 +55,7 @@ function isSpuriousAutofixNoise(message: string): boolean {
 export function RemediationDiff({
   remediation,
   target,
+  issueSummary,
   children,
   onOpened,
   onDismissed,
@@ -58,6 +63,8 @@ export function RemediationDiff({
 }: {
   remediation: FirewallRemediation;
   target?: { filePath: string; line: number; category: FirewallCategory; snippet?: string };
+  /** Finding message — used for Manual review Copy Fix Prompt. */
+  issueSummary?: string;
   children?: (parts: {
     toolbar: ReactNode;
     notice: ReactNode;
@@ -83,10 +90,24 @@ export function RemediationDiff({
   );
   const touched = filesTouchedFromDiff(remediation.diff, target?.filePath ?? "patch");
   const canShip = Boolean(eligibleFinding && offerFix);
+  // Any non-shippable Security row (Manual review) copies an AI fix prompt, never raw unified diff.
+  const copyFixPrompt = Boolean(target) && !canShip;
+  // Never leave a Preview drawer open on detect-only rows.
+  const previewOpen = !copyFixPrompt && open;
 
   async function copyPatch() {
     try {
-      await navigator.clipboard.writeText(remediation.diff);
+      const text =
+        copyFixPrompt && target
+          ? buildManualReviewFixPrompt({
+              filePath: target.filePath,
+              line: target.line,
+              issue: issueSummary ?? "Security finding requires a manual refactor.",
+              diff: remediation.diff,
+              snippet: target.snippet,
+            })
+          : remediation.diff;
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
       return true;
@@ -168,24 +189,37 @@ export function RemediationDiff({
 
   const toolbar = (
     <div className="flex flex-wrap items-center justify-end gap-1">
-      <div className="inline-flex items-center overflow-hidden rounded-md border border-white/[0.08] bg-black/30">
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen((current) => !current)}
-          className={`${rowGhostActionClass} rounded-none border-r border-white/[0.08]`}
-          title="Preview the proposed fix without opening a pull request"
-        >
-          {open ? "Hide" : "Preview fix"}
-        </button>
+      {copyFixPrompt ? (
+        // Manual review / detect-only: no Preview Fix — Copy Fix Prompt is the primary CTA.
         <button
           type="button"
           onClick={() => void copyPatch()}
-          className={`${rowGhostActionClass} rounded-none ${copied ? "text-emerald-300" : ""}`}
+          className={`${rowManualReviewPrimaryClass} ${copied ? "bg-emerald-600 hover:bg-emerald-600" : ""}`}
+          title="Copy a ready-to-paste Cursor/AI fix prompt"
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? "Copied" : "Copy Fix Prompt"}
         </button>
-      </div>
+      ) : (
+        <div className="inline-flex items-center overflow-hidden rounded-md border border-white/[0.08] bg-black/30">
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((current) => !current)}
+            className={`${rowGhostActionClass} rounded-none border-r border-white/[0.08]`}
+            title="Preview the proposed fix without opening a pull request"
+          >
+            {open ? "Hide" : "Preview fix"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void copyPatch()}
+            className={`${rowGhostActionClass} rounded-none ${copied ? "text-emerald-300" : ""}`}
+            title="Copy the patch"
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      )}
       {pull.status === "opened" ? (
         <a
           href={pull.url}
@@ -219,10 +253,11 @@ export function RemediationDiff({
       </p>
     ) : null;
 
-  const diff = open ? (
+  const diff = previewOpen ? (
     <FindingDiffDrawer
       diff={remediation.diff}
       title={touched.join(" + ")}
+      sectionLabel="Suggested Refactor"
       footerNote={
         remediation.command
           ? remediation.command

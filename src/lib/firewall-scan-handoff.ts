@@ -1,4 +1,5 @@
 import type { FirewallReport, FirewallScanCoverage } from "@/lib/firewall-contract";
+import { SCAN_COVERAGE_COPY } from "@/lib/firewall-repo-access";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 
 const STORAGE_KEY = "provix.firewall.scan";
@@ -17,6 +18,25 @@ export type FirewallScanHandoff = {
   coverage?: FirewallScanCoverage | null;
 };
 
+/** True when a stored/API note still uses the old file-cap / firewall jargon. */
+export function isStaleScanSummaryNote(note: string): boolean {
+  return /Architecture firewall|security (board|guard)|largest source files|Scanned \d+\s+of\s+\d+|config files\./i.test(
+    note
+  );
+}
+
+/** Clean summary for UI + cache — works for old localStorage / Supabase-restored scans. */
+export function normalizeScanSummaryNote(note: string, repoUrl?: string | null): string {
+  const trimmed = note.trim();
+  const repo = repoUrl ? toGitHubOwnerRepo(repoUrl) ?? repoUrl.trim() : null;
+  if (!trimmed || isStaleScanSummaryNote(trimmed)) {
+    return repo
+      ? `Scanned ${repo}. ${SCAN_COVERAGE_COPY}`
+      : SCAN_COVERAGE_COPY;
+  }
+  return trimmed;
+}
+
 function coverageFrom(value: unknown): FirewallScanCoverage | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
@@ -28,8 +48,15 @@ function coverageFrom(value: unknown): FirewallScanCoverage | null {
   };
 }
 
+function normalizeHandoff(handoff: FirewallScanHandoff): FirewallScanHandoff {
+  return {
+    ...handoff,
+    note: normalizeScanSummaryNote(handoff.note, handoff.repoUrl),
+  };
+}
+
 export function saveFirewallScanHandoff(handoff: FirewallScanHandoff) {
-  writeStorageItem(STORAGE_KEY, JSON.stringify(handoff));
+  writeStorageItem(STORAGE_KEY, JSON.stringify(normalizeHandoff(handoff)));
 }
 
 export function readLatestFirewallScanHandoff(): FirewallScanHandoff | null {
@@ -40,13 +67,18 @@ export function readLatestFirewallScanHandoff(): FirewallScanHandoff | null {
     if (typeof parsed.repoUrl !== "string" || !parsed.report || typeof parsed.note !== "string") {
       return null;
     }
-    return {
+    const handoff = normalizeHandoff({
       repoUrl: parsed.repoUrl,
       report: parsed.report,
       note: parsed.note,
       source: parsed.source === "github" || parsed.source === "local" ? parsed.source : undefined,
       coverage: coverageFrom(parsed.coverage),
-    };
+    });
+    // Rewrite cleaned copy so the next load (and other tabs) never flash stale jargon.
+    if (handoff.note !== parsed.note) {
+      writeStorageItem(STORAGE_KEY, JSON.stringify(handoff));
+    }
+    return handoff;
   } catch {
     return null;
   }

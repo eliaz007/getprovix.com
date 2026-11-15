@@ -27,6 +27,50 @@ export function filesTouchedFromDiff(diff: string, fallback: string): string[] {
   return files.length > 0 ? files : [fallback];
 }
 
+/** Strip unified-diff chrome into paste-ready after-code for AI / editor prompts. */
+export function suggestedRefactorFromDiff(diff: string): string {
+  const added: string[] = [];
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@") || line.startsWith("diff ")) {
+      continue;
+    }
+    if (line.startsWith("+")) added.push(line.slice(1));
+  }
+  return added.length > 0 ? added.join("\n") : diff.trim();
+}
+
+export function buildManualReviewFixPrompt(input: {
+  filePath: string;
+  line: number;
+  issue: string;
+  diff: string;
+  snippet?: string;
+}): string {
+  const suggested = suggestedRefactorFromDiff(input.diff);
+  const current = input.snippet?.trim()
+    ? input.snippet.trim()
+    : "(See the finding location in the file.)";
+  return [
+    "Fix this security finding in our codebase.",
+    "",
+    `File: ${input.filePath}`,
+    `Line: ${input.line}`,
+    `Issue: ${input.issue.replace(/\s+/g, " ").trim()}`,
+    "",
+    "Current code:",
+    "```",
+    current,
+    "```",
+    "",
+    "Suggested refactor:",
+    "```",
+    suggested,
+    "```",
+    "",
+    "Apply this change in one step. Prefer a Server Action or route handler over client-side data access when the issue is a client database query.",
+  ].join("\n");
+}
+
 /** Subtle dismiss control for open finding rows. */
 export const rowDismissActionClass =
   "inline-flex items-center rounded-md px-2 py-1 text-xs text-zinc-600 transition-colors hover:bg-zinc-900/50 hover:text-zinc-400";
@@ -36,6 +80,8 @@ type FindingDiffDrawerProps = {
   title?: string;
   summary?: string | null;
   footerNote?: string | null;
+  /** Mini-header above the hunk list (defaults to Suggested Refactor). */
+  sectionLabel?: string | null;
   ship?: {
     opening: boolean;
     onShip: () => void;
@@ -53,6 +99,7 @@ export function FindingDiffDrawer({
   title,
   summary,
   footerNote,
+  sectionLabel = "Suggested Refactor",
   ship,
   openedPr,
   extraActions,
@@ -61,7 +108,15 @@ export function FindingDiffDrawer({
 
   return (
     <div className="overflow-hidden rounded-lg border border-zinc-800/80 bg-[#09090b]">
-      {(title || summary) && (
+      {sectionLabel ? (
+        <div className="border-b border-zinc-800/80 bg-violet-500/5 px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-200/80">
+            {sectionLabel}
+          </p>
+          {title ? <p className="mt-1 font-mono text-[11px] text-zinc-500">{title}</p> : null}
+          {summary ? <p className="mt-1 text-xs text-zinc-500">{summary}</p> : null}
+        </div>
+      ) : (title || summary) ? (
         <div className="border-b border-zinc-800/80 bg-black/50 px-3 py-2">
           {title ? (
             <p className="font-mono text-[11px] text-zinc-400">{title}</p>
@@ -70,7 +125,7 @@ export function FindingDiffDrawer({
             <p className={`text-xs text-zinc-500 ${title ? "mt-1" : ""}`}>{summary}</p>
           ) : null}
         </div>
-      )}
+      ) : null}
       <pre className="max-h-72 overflow-auto font-mono text-[11px] leading-5">
         {lines.map((line, index) => (
           <div

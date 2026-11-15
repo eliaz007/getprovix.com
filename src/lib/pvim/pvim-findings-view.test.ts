@@ -550,7 +550,7 @@ describe("pvim findings view model", () => {
       ).toBe(false);
     });
 
-    it("shows unavailable without inventing advisory when reasoning is missing", () => {
+    it("shows hard failures without Incomplete / No advisory copy", () => {
       const strip = buildPvimSecurityStatusStrip(
         baseReport({
           pvim: {
@@ -566,22 +566,27 @@ describe("pvim findings view model", () => {
       expect(strip.analysisLabel).toBe("Unavailable");
       expect(strip.advisory).toBeNull();
       expect(strip.summary).toBe("PVIM Unavailable");
-      expect(strip.disclaimer).not.toMatch(/confirmed/i);
+      expect(strip.disclaimer).toBe("");
+      expect(strip.disclaimer).not.toMatch(/optional shadow|No advisory|Incomplete/i);
     });
 
-    it("marks incomplete analysis honestly", () => {
+    it("treats incomplete analysis with findings as PVIM Active", () => {
       const strip = buildPvimSecurityStatusStrip(
         baseReport({
           pvim: { status: "incomplete", findingCount: 1, incomplete: 4, elapsedMs: 40 },
           pvimFindings: [finding()],
         })
       );
-      expect(strip.analysisLabel).toBe("Incomplete");
-      expect(strip.analysisTone).toBe("warn");
-      expect(strip.summary).toBe("PVIM Incomplete");
+      expect(strip.visible).toBe(true);
+      expect(strip.analysisLabel).toBe("PVIM Active");
+      expect(strip.analysisTone).toBe("ok");
+      expect(strip.advisory).toBeNull();
+      expect(strip.disclaimer).toMatch(/Analyzed \d+ findings across repository boundaries/);
+      expect(strip.disclaimer).toMatch(/tsc --noEmit/);
+      expect(strip.disclaimer).not.toMatch(/optional shadow|Incomplete|No advisory/i);
     });
 
-    it("reports advisory available only when reasoning status is present", () => {
+    it("hides ok/incomplete strips when there are no findings", () => {
       const strip = buildPvimSecurityStatusStrip(
         baseReport({
           pvim: { status: "ok", findingCount: 0, incomplete: 0, elapsedMs: 10 },
@@ -594,21 +599,16 @@ describe("pvim findings view model", () => {
           },
         })
       );
-      expect(strip.advisory).toEqual({
-        available: true,
-        label: "Advisory available",
-        tone: "info",
-      });
-      expect(strip.summary).toBe("PVIM Complete · Advisory available");
-      expect(strip.disclaimer).toMatch(/does not authorize fixes/i);
-      expect(strip.summary).not.toMatch(/confirmed/i);
+      expect(strip.visible).toBe(false);
+      expect(strip.advisory).toBeNull();
     });
 
-    it("reports no advisory for skipped/unavailable/invalid reasoning", () => {
+    it("never surfaces No advisory for skipped/unavailable/invalid reasoning", () => {
       for (const status of ["skipped", "unavailable", "invalid"] as const) {
         const strip = buildPvimSecurityStatusStrip(
           baseReport({
-            pvim: { status: "ok", findingCount: 0, incomplete: 0, elapsedMs: 10 },
+            pvim: { status: "ok", findingCount: 1, incomplete: 0, elapsedMs: 10 },
+            pvimFindings: [finding()],
             pvimReasoning: {
               status,
               detail: `${status}`,
@@ -617,16 +617,13 @@ describe("pvim findings view model", () => {
             },
           })
         );
-        expect(strip.advisory).toEqual({
-          available: false,
-          label: "No advisory",
-          tone: "neutral",
-        });
-        expect(strip.summary).toBe("PVIM Complete · No advisory");
+        expect(strip.advisory).toBeNull();
+        expect(strip.analysisLabel).toBe("PVIM Active");
+        expect(strip.summary).not.toMatch(/No advisory/i);
       }
     });
 
-    it("PvimStatusIndicator renders analysis and advisory pills without listing findings", () => {
+    it("PvimStatusIndicator renders PVIM Active without listing findings", () => {
       const strip = buildPvimSecurityStatusStrip(
         baseReport({
           pvim: { status: "incomplete", findingCount: 2, incomplete: 3, elapsedMs: 20 },
@@ -641,9 +638,12 @@ describe("pvim findings view model", () => {
       );
       const html = renderToStaticMarkup(createElement(PvimStatusIndicator, { strip }));
       expect(html).toContain("pvim-security-status");
-      expect(html).toContain("Incomplete");
-      expect(html).toContain("Advisory available");
-      expect(html).toContain("does not authorize fixes");
+      expect(html).toContain("PVIM Active");
+      expect(html).toContain("tsc --noEmit");
+      expect(html).not.toContain("Incomplete");
+      expect(html).not.toContain("Advisory available");
+      expect(html).not.toContain("No advisory");
+      expect(html).not.toContain("optional shadow");
       expect(html).not.toContain("authorization_flaw");
       expect(html).not.toContain(finding().filePath!);
     });

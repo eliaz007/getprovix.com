@@ -1,16 +1,31 @@
 "use client";
 
+import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import AuditScanningPanel from "@/components/firewall/audit-scanning-panel";
-import FirewallViolationsTable from "@/components/firewall/firewall-violations-table";
-import SecurityGuardPanel from "@/components/firewall/security-guard-panel";
+import { useFirewallView } from "@/components/firewall/firewall-view-context";
 import {
+  FilePathPill,
+  StatusPill,
   elevatedSurfaceClass,
   mutedLabelClass,
   sectionLabelClass,
+  severityLabel,
+  severityTone,
 } from "@/components/firewall/firewall-ui";
-import type { FirewallReport, FirewallScanCoverage } from "@/lib/firewall-contract";
-import { partialScanLine } from "@/lib/firewall-repo-access";
+import type {
+  FirewallReport,
+  FirewallScanCoverage,
+  FirewallSeverity,
+  FirewallViolation,
+} from "@/lib/firewall-contract";
+import { SCAN_COVERAGE_COPY, partialScanLine } from "@/lib/firewall-repo-access";
+import {
+  buildOverviewOpenSummary,
+  listOpenSecuritySnapshotFindings,
+  listOpenStructureSnapshotFindings,
+} from "@/lib/integrity-metrics";
+import { normalizeScanSummaryNote } from "@/lib/firewall-scan-handoff";
 
 type AuditsCommandCenterProps = {
   repoUrl: string;
@@ -26,6 +41,104 @@ type AuditsCommandCenterProps = {
   onSelectRepo: (repo: string) => void;
 };
 
+function severityWeight(severity: FirewallSeverity | string): number {
+  switch (severity) {
+    case "CRITICAL":
+      return 0;
+    case "HIGH":
+      return 1;
+    case "MEDIUM":
+      return 2;
+    case "LOW":
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function sortBySeverity(left: FirewallViolation, right: FirewallViolation): number {
+  const bySeverity = severityWeight(left.severity) - severityWeight(right.severity);
+  if (bySeverity !== 0) return bySeverity;
+  const byPath = left.filePath.localeCompare(right.filePath);
+  if (byPath !== 0) return byPath;
+  return left.line - right.line;
+}
+
+function formatScanTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function PreviewFindingRow({ finding }: { finding: FirewallViolation }) {
+  const tone = severityTone(finding.severity);
+  return (
+    <li className="flex items-start justify-between gap-3 border-b border-zinc-800/50 px-4 py-3 last:border-b-0">
+      <div className="min-w-0 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusPill
+            label={severityLabel(finding.severity)}
+            tone={tone === "ok" ? "ok" : tone === "danger" ? "danger" : tone === "warn" ? "warn" : "neutral"}
+          />
+          <FilePathPill path={finding.filePath} line={finding.line} />
+        </div>
+        <p className="line-clamp-2 text-[13px] leading-snug text-zinc-400">{finding.message}</p>
+      </div>
+    </li>
+  );
+}
+
+function SummaryPreviewCard({
+  title,
+  count,
+  findings,
+  emptyLabel,
+  ctaLabel,
+  onViewAll,
+}: {
+  title: string;
+  count: number;
+  findings: FirewallViolation[];
+  emptyLabel: string;
+  ctaLabel: string;
+  onViewAll: () => void;
+}) {
+  return (
+    <section className={`${elevatedSurfaceClass} overflow-hidden`}>
+      <div className="border-b border-zinc-800/60 px-5 py-4">
+        <h3 className={sectionLabelClass}>{title}</h3>
+        <p className={`mt-1 ${mutedLabelClass}`}>
+          <span className="tabular-nums text-zinc-300">{count}</span> total
+        </p>
+      </div>
+      {findings.length === 0 ? (
+        <p className="px-5 py-8 text-sm text-zinc-500">{emptyLabel}</p>
+      ) : (
+        <ul>{findings.map((finding) => (
+          <PreviewFindingRow
+            key={`${finding.filePath}:${finding.line}:${finding.message}`}
+            finding={finding}
+          />
+        ))}</ul>
+      )}
+      <div className="border-t border-zinc-800/60 px-5 py-3">
+        <button
+          type="button"
+          onClick={onViewAll}
+          className="text-sm font-medium text-violet-300 transition-colors hover:text-violet-200"
+        >
+          {ctaLabel}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export default function AuditsCommandCenter({
   repoUrl,
   onRepoUrlChange,
@@ -39,9 +152,32 @@ export default function AuditsCommandCenter({
   onRunAudit,
   onSelectRepo,
 }: AuditsCommandCenterProps) {
+  const { setActiveView } = useFirewallView();
   const trimmed = repoUrl.trim();
-  const coverageLine = partialScanLine(coverage ?? null);
+  const coverageLine = partialScanLine(coverage ?? null) ?? (report ? SCAN_COVERAGE_COPY : null);
   const showResults = Boolean(report) && !isScanning;
+  const cleanNote = entryNote ? normalizeScanSummaryNote(entryNote, scannedRepoUrl) : null;
+
+  const openSummary = useMemo(
+    () => buildOverviewOpenSummary(report),
+    [report]
+  );
+
+  const securityFindings = useMemo(() => {
+    if (!report) return [];
+    return listOpenSecuritySnapshotFindings(report).sort(sortBySeverity);
+  }, [report]);
+
+  const structureFindings = useMemo(() => {
+    if (!report) return [];
+    return listOpenStructureSnapshotFindings(report).sort(sortBySeverity);
+  }, [report]);
+
+  // Counts come from the shared selector (includes PVIM in Security openExposures).
+  const securityCount = openSummary.openExposures;
+  const structureCount = openSummary.structureCount;
+  const securityPreview = securityFindings.slice(0, 3);
+  const structurePreview = structureFindings.slice(0, 3);
 
   return (
     <div className="space-y-4">
@@ -137,7 +273,7 @@ export default function AuditsCommandCenter({
       </AnimatePresence>
 
       <AnimatePresence>
-        {showResults ? (
+        {showResults && report ? (
           <motion.div
             key="results"
             className="space-y-4"
@@ -146,24 +282,49 @@ export default function AuditsCommandCenter({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
           >
-            <section className={`${elevatedSurfaceClass} p-5`}>
-              <p className={sectionLabelClass}>Scan complete</p>
-              <h2 className="mt-2 truncate text-lg font-medium tracking-tight text-zinc-50">
-                {scannedRepoUrl ?? "Repository"}
-              </h2>
-              {entryNote ? <p className="mt-1 max-w-3xl text-sm text-zinc-500">{entryNote}</p> : null}
-              {coverageLine ? <p className="mt-2 text-sm text-amber-200/90">{coverageLine}</p> : null}
-              <p className={`mt-3 ${mutedLabelClass}`}>
-                Review issues below. Use Fix with PR on findings Provix can repair safely.
-              </p>
-            </section>
+            <div className="flex flex-wrap items-end justify-between gap-3 px-0.5">
+              <div>
+                <p className={sectionLabelClass}>Latest scan</p>
+                <p className={`mt-1 ${mutedLabelClass}`}>
+                  {formatScanTimestamp(report.timestamp)}
+                  {coverageLine ? ` · ${coverageLine}` : null}
+                </p>
+                {cleanNote ? <p className="mt-1 max-w-2xl text-xs text-zinc-600">{cleanNote}</p> : null}
+              </div>
+              <dl className="flex gap-6">
+                <div>
+                  <dt className={mutedLabelClass}>Security</dt>
+                  <dd className="mt-0.5 text-2xl font-medium tabular-nums tracking-tight text-zinc-50">
+                    {securityCount}
+                  </dd>
+                </div>
+                <div>
+                  <dt className={mutedLabelClass}>Structure</dt>
+                  <dd className="mt-0.5 text-2xl font-medium tabular-nums tracking-tight text-zinc-50">
+                    {structureCount}
+                  </dd>
+                </div>
+              </dl>
+            </div>
 
-            {report ? (
-              <>
-                <SecurityGuardPanel report={report} />
-                <FirewallViolationsTable report={report} repoUrl={scannedRepoUrl} />
-              </>
-            ) : null}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <SummaryPreviewCard
+                title="Security Findings"
+                count={securityCount}
+                findings={securityPreview}
+                emptyLabel="No security findings in this scan."
+                ctaLabel="View all in Security →"
+                onViewAll={() => setActiveView("leaks")}
+              />
+              <SummaryPreviewCard
+                title="Structure & Architecture"
+                count={structureCount}
+                findings={structurePreview}
+                emptyLabel="No structure findings in this scan."
+                ctaLabel="View all in Structure →"
+                onViewAll={() => setActiveView("violations")}
+              />
+            </div>
           </motion.div>
         ) : null}
       </AnimatePresence>

@@ -11,7 +11,10 @@ import {
   type PvimFindingView,
   type PvimSecurityStatusStrip,
 } from "@/lib/pvim/pvim-findings-view";
-import { rowDismissActionClass } from "@/components/firewall/finding-diff-drawer";
+import {
+  buildManualReviewFixPrompt,
+  rowDismissActionClass,
+} from "@/components/firewall/finding-diff-drawer";
 import { RemediationDiff } from "@/components/firewall/remediation-diff";
 import { PvimFixWithPrAction } from "@/components/firewall/pvim-findings-panel";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
@@ -28,6 +31,7 @@ import {
   formatBoundaryId,
   mutedLabelClass,
   panelClass,
+  rowManualReviewPrimaryClass,
   sectionLabelClass,
   severityLabel,
   severityTone,
@@ -69,19 +73,17 @@ function findingKey(finding: FirewallViolation): string {
 }
 
 /**
- * Fix-ready rows need a preflight-backed patch and write access.
- * Everything else in Security stays on the list as manual review — no button.
+ * Security list universe matches `buildOverviewOpenSummary` / sidebar badge:
+ * every Provix security-category finding (not Structure). Write access only
+ * gates Ship PR — never visibility or filter-pill counts.
  */
 function isListableSecurityFinding(
   finding: FirewallViolation,
-  opts: { canOfferFix: boolean; opened: boolean; dismissed: boolean }
+  opts: { dismissed: boolean }
 ): boolean {
   if (violationCategory(finding) === "ARCHITECTURE") return false;
   if (!isSecurityCategory(finding.category)) return false;
   if (opts.dismissed) return false;
-  if (!isActionableSecurityFinding(finding)) return true;
-  if (!finding.remediation) return false;
-  if (!opts.opened && !opts.canOfferFix) return false;
   return true;
 }
 
@@ -104,9 +106,16 @@ function FindingSnippet({ snippet }: { snippet: string }) {
         {open ? "Hide code" : "Inspect code"}
       </button>
       {open ? (
-        <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-white/[0.06] bg-black/50 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">
-          <code>{snippet}</code>
-        </pre>
+        <div className="mt-2 overflow-hidden rounded-lg border border-white/[0.06] bg-black/50">
+          <div className="border-b border-white/[0.06] bg-zinc-950/80 px-3 py-1.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              Current Code
+            </p>
+          </div>
+          <pre className="max-h-48 overflow-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">
+            <code>{snippet}</code>
+          </pre>
+        </div>
       ) : null}
     </div>
   );
@@ -115,11 +124,15 @@ function FindingSnippet({ snippet }: { snippet: string }) {
 function FindingMeta({
   finding,
   prOpen,
+  manualReview: manualReviewProp,
 }: {
   finding: FirewallViolation;
   prOpen?: boolean;
+  /** When set, overrides autofixable-based Manual review (e.g. no GitHub write access). */
+  manualReview?: boolean;
 }) {
-  const manualReview = !prOpen && finding.autofixable !== true;
+  const manualReview =
+    manualReviewProp ?? (!prOpen && finding.autofixable !== true);
   const tone = prOpen ? "ok" : manualReview ? "neutral" : severityTone(finding.severity);
   const statusLabel = prOpen ? "Fixed" : manualReview ? "Manual review" : severityLabel(finding.severity);
   return (
@@ -165,24 +178,114 @@ function PvimFindingMeta({
   );
 }
 
-/** Compact header strip — analysis/advisory honesty only; never lists findings. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Detect-only Provix rows without a remediation payload. */
+function ProvixCopyFixPromptButton({ finding }: { finding: FirewallViolation }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyPrompt() {
+    const text = buildManualReviewFixPrompt({
+      filePath: finding.filePath,
+      line: finding.line,
+      issue: finding.message,
+      diff: "No automated patch is available — review this finding manually.",
+      snippet: finding.snippet,
+    });
+    const ok = await copyText(text);
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copyPrompt()}
+      className={`${rowManualReviewPrimaryClass} ${copied ? "bg-emerald-600 hover:bg-emerald-600" : ""}`}
+      title="Copy a ready-to-paste Cursor/AI fix prompt"
+    >
+      {copied ? "Copied" : "Copy Fix Prompt"}
+    </button>
+  );
+}
+
+/** Detect-only PVIM rows: primary Copy Fix Prompt (no Preview Fix / Ship PR). */
+function PvimCopyFixPromptButton({
+  view,
+  source,
+}: {
+  view: PvimFindingView;
+  source: FirewallPvimFinding;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyPrompt() {
+    const filePath = view.filePath?.trim() || source.filePath?.trim() || "(unknown file)";
+    const line = view.line ?? source.line ?? 1;
+    const issue =
+      view.message?.trim() ||
+      view.remediation.explanation?.trim() ||
+      formatPvimLabel(source.ruleId);
+    const text = buildManualReviewFixPrompt({
+      filePath,
+      line,
+      issue,
+      diff: view.remediation.explanation?.trim()
+        ? `Suggested guidance:\n${view.remediation.explanation.trim()}`
+        : "No automated patch is available — review ownership and auth checks manually.",
+      snippet: view.snippet ?? undefined,
+    });
+    const ok = await copyText(text);
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copyPrompt()}
+      className={`${rowManualReviewPrimaryClass} ${copied ? "bg-emerald-600 hover:bg-emerald-600" : ""}`}
+      title="Copy a ready-to-paste Cursor/AI fix prompt"
+    >
+      {copied ? "Copied" : "Copy Fix Prompt"}
+    </button>
+  );
+}
+
+/** Compact header strip — confident PVIM Active (or hard-failure) status; never lists findings. */
 export function PvimStatusIndicator({ strip }: { strip: PvimSecurityStatusStrip }) {
   if (!strip.visible) return null;
+  const active = strip.analysisLabel === "PVIM Active";
   return (
     <div
-      className="flex flex-col gap-1 border-b border-zinc-800/60 bg-white/[0.015] px-5 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-1.5 border-b border-zinc-800/60 bg-white/[0.015] px-5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
       role="status"
       aria-label={strip.summary}
       data-testid="pvim-security-status"
     >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className={mutedLabelClass}>PVIM</span>
-        <StatusPill label={strip.analysisLabel} tone={strip.analysisTone} />
-        {strip.advisory ? (
-          <StatusPill label={strip.advisory.label} tone={strip.advisory.tone} />
-        ) : null}
+        {active ? (
+          <span className="inline-flex items-center rounded-full border border-violet-400/35 bg-gradient-to-r from-violet-500/20 to-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-emerald-200">
+            PVIM Active
+          </span>
+        ) : (
+          <StatusPill label={strip.analysisLabel} tone={strip.analysisTone} />
+        )}
       </div>
-      <p className="text-[11px] leading-snug text-zinc-600 sm:max-w-md sm:text-right">{strip.disclaimer}</p>
+      {strip.disclaimer ? (
+        <p className="text-[11px] leading-snug text-zinc-500 sm:max-w-xl sm:text-right">
+          {strip.disclaimer}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -242,18 +345,16 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
   const commitSha =
     typeof report.commitSha === "string" && report.commitSha.trim() ? report.commitSha.trim() : null;
 
-  // Only rows with a real Open Fix path (or an already-opened PR). No Preview-only zombies.
+  // Same snapshot universe as Overview / sidebar (`listOpenSecuritySnapshotFindings`).
   const security = useMemo(
     () =>
       report.violations.filter((violation) => {
         const key = findingKey(violation);
         return isListableSecurityFinding(violation, {
-          canOfferFix,
-          opened: openedKeys.has(key),
           dismissed: dismissedKeys.has(key),
         });
       }),
-    [report.violations, canOfferFix, openedKeys, dismissedKeys]
+    [report.violations, dismissedKeys]
   );
 
   // Shadow findings stay out of Provix scoring (`violations`) but render in the same list UI.
@@ -353,8 +454,8 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
           <div>
             <h2 className={sectionLabelClass}>Security findings</h2>
             <p className={`mt-1 ${mutedLabelClass}`}>
-              Fix with PR only appears after the patch passes the same typecheck as opening the pull request.
-              Other rows stay on manual review.{" "}
+              Counts match Overview and the sidebar badge (Provix security + PVIM). Fix with PR only
+              appears after the patch passes the same typecheck as opening the pull request.{" "}
               <span className="tabular-nums text-zinc-300">{rows.length}</span> total
             </p>
           </div>
@@ -394,14 +495,8 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
           <p className="px-5 py-10 text-sm text-zinc-500">Checking whether Provix can open fix pull requests…</p>
         ) : rows.length === 0 ? (
           <p className="flex items-center gap-2 px-5 py-10 text-sm text-zinc-500">
-            {!writeAccess.canOpenPullRequest && repoSlug ? (
-              "No fixable security findings to show until the GitHub App can open pull requests."
-            ) : (
-              <>
-                <StatusPill label="Passed" tone="ok" />
-                No security findings
-              </>
-            )}
+            <StatusPill label="Passed" tone="ok" />
+            No security findings
           </p>
         ) : visible.length === 0 ? (
           <p className="px-5 py-10 text-sm text-zinc-500">
@@ -435,6 +530,8 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
                             commitSha={commitSha}
                             onOpened={(pull) => handleSecurityPrOpened(key, pull)}
                           />
+                        ) : !prOpen ? (
+                          <PvimCopyFixPromptButton view={view} source={source} />
                         ) : null}
                         {!prOpen ? (
                           <button
@@ -469,14 +566,17 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
                         <FindingDescription text={summaryLines(finding.message)} />
                         {finding.snippet ? <FindingSnippet snippet={finding.snippet} /> : null}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => markDismissed(key)}
-                        className={`${rowDismissActionClass} shrink-0 self-start`}
-                        title="Dismiss this finding from the Open queue"
-                      >
-                        Dismiss
-                      </button>
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1 self-start">
+                        <ProvixCopyFixPromptButton finding={finding} />
+                        <button
+                          type="button"
+                          onClick={() => markDismissed(key)}
+                          className={rowDismissActionClass}
+                          title="Dismiss this finding from the Open queue"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
                     </div>
                   </li>
                 );
@@ -485,7 +585,8 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
                 <RemediationDiff
                   key={key}
                   remediation={remediation}
-                  offerFix={isActionableSecurityFinding(finding)}
+                  issueSummary={finding.message}
+                  offerFix={isActionableSecurityFinding(finding) && canOfferFix}
                   onOpened={(pull) => handleSecurityPrOpened(key, pull)}
                   onDismissed={() => markDismissed(key)}
                   target={{
@@ -500,7 +601,14 @@ export default function SecurityGuardPanel({ report }: { report: FirewallReport 
                     <li className={findingRowClass}>
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
-                          <FindingMeta finding={finding} prOpen={prOpen} />
+                          <FindingMeta
+                            finding={finding}
+                            prOpen={prOpen}
+                            manualReview={
+                              !prOpen &&
+                              !(isActionableSecurityFinding(finding) && canOfferFix)
+                            }
+                          />
                         </div>
                         <div className="flex shrink-0 sm:justify-end">{toolbar}</div>
                       </div>

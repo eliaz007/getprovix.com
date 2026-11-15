@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { isFirewallPath } from "@/lib/dashboard-account";
 import {
@@ -17,6 +18,13 @@ export default function DashboardTopNav() {
   const onFirewall = isFirewallPath(pathname);
   const onHistory = pathname === "/history" || pathname.startsWith("/history/");
   const onSettings = pathname.startsWith("/dashboard/settings");
+
+  useEffect(() => {
+    if (onFirewall) return;
+    for (const view of WORKSPACE_NAV) {
+      router.prefetch(firewallHref(repoSlug, view.key));
+    }
+  }, [onFirewall, repoSlug, router]);
 
   function openView(view: FirewallView) {
     if (onFirewall) {

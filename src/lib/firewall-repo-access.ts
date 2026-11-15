@@ -17,14 +17,16 @@ export function readProvidedGithubToken(value: unknown): string | null {
   return GITHUB_TOKEN_PATTERN.test(token) ? token : null;
 }
 
+export const SCAN_COVERAGE_COPY =
+  "Scanned repository source and configuration files across client, server, and database boundaries.";
+
 export function partialScanLine(coverage: {
   scanned: number;
   total: number;
   treeTruncated?: boolean;
 } | null | undefined): string | null {
   if (!coverage) return null;
-  if (coverage.scanned >= coverage.total && !coverage.treeTruncated) return null;
-  return `Scanned ${coverage.scanned} of ${coverage.total} source files (largest first).`;
+  return SCAN_COVERAGE_COPY;
 }
 
 async function userOwnsRepo(

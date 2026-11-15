@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   FilePathPill,
   StatusPill,
@@ -6,56 +9,42 @@ import {
   mutedLabelClass,
   panelClass,
 } from "@/components/firewall/firewall-ui";
-import { listHealingAuditRows, type HealingAuditRow } from "@/lib/firewall-open-prs";
-import { createClient } from "@/utils/supabase/server";
+import type { HealingAuditRow } from "@/lib/firewall-open-prs";
+import { readJsonResponse } from "@/lib/read-json-response";
 
-export const dynamic = "force-dynamic";
+type HistoryResponse = {
+  ok?: boolean;
+  entries?: HealingAuditRow[];
+  message?: string;
+};
 
-function auditKey(row: HealingAuditRow): string {
-  return `${row.file_path}|${row.branch_name ?? ""}|${row.status}`;
-}
+export default function HistoryPage() {
+  const [logs, setLogs] = useState<HealingAuditRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-async function loadHealingLogs(): Promise<HealingAuditRow[]> {
-  const recorded = await listHealingAuditRows();
-  let audits: HealingAuditRow[] = [];
-  try {
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("healing_audits")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (!error && Array.isArray(data)) {
-      audits = data.flatMap((row) => {
-        const id = typeof row.id === "string" ? row.id : "";
-        const filePath = typeof row.file_path === "string" ? row.file_path : "";
-        const createdAt = typeof row.created_at === "string" ? row.created_at : "";
-        if (!id || !filePath || !createdAt) return [];
-        const category = row.category === "leaks" ? "leaks" : "violations";
-        return [
-          {
-            id,
-            file_path: filePath,
-            branch_name: typeof row.branch_name === "string" ? row.branch_name : null,
-            category,
-            status: typeof row.status === "string" ? row.status : "open",
-            commit_message: typeof row.commit_message === "string" ? row.commit_message : null,
-            created_at: createdAt,
-          },
-        ];
-      });
-    }
-  } catch (error) {
-    console.error("[history] healing_audits read failed", error);
-  }
-  if (audits.length === 0) return recorded;
-  const seen = new Set(audits.map(auditKey));
-  return [...audits, ...recorded.filter((row) => !seen.has(auditKey(row)))].sort((a, b) =>
-    b.created_at.localeCompare(a.created_at)
-  );
-}
-
-export default async function HistoryPage() {
-  const logs = await loadHealingLogs();
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/firewall/activity", { cache: "no-store" });
+        const payload = await readJsonResponse<HistoryResponse>(response);
+        if (cancelled) return;
+        if (!response.ok || !payload.ok || !Array.isArray(payload.entries)) {
+          setError(payload.message ?? "Could not load activity.");
+          setLogs([]);
+          return;
+        }
+        setLogs(payload.entries);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Could not load activity.");
+        setLogs([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="space-y-4 text-zinc-100">
@@ -65,14 +54,28 @@ export default async function HistoryPage() {
           <h1 className="text-xl font-medium tracking-tight text-zinc-50 sm:text-2xl">Activity</h1>
         </div>
         <span className={`${elevatedSurfaceClass} px-3 py-1.5 ${mutedLabelClass}`}>
-          <span className="tabular-nums text-zinc-300">{logs.length}</span> interventions recorded
+          {logs === null ? (
+            "Loading…"
+          ) : (
+            <>
+              <span className="tabular-nums text-zinc-300">{logs.length}</span> interventions recorded
+            </>
+          )}
         </span>
       </header>
 
       <div className={panelClass}>
-        {logs.length === 0 ? (
+        {error ? (
+          <div className="px-5 py-10 text-center text-sm text-red-300" role="alert">
+            {error}
+          </div>
+        ) : logs === null ? (
+          <div className="px-5 py-10 text-center text-sm text-zinc-500" role="status">
+            Loading activity…
+          </div>
+        ) : logs.length === 0 ? (
           <div className="px-5 py-10 text-center text-sm text-zinc-500">
-            No autonomous interventions recorded yet. Engine is watching.
+            No interventions recorded yet.
           </div>
         ) : (
           <ul className="divide-y divide-zinc-800/60">

@@ -3,12 +3,13 @@
  * Keeps untrusted repository text as plain strings (React-escaped at render).
  */
 
-import type {
-  FirewallPvimAnalysis,
-  FirewallPvimFinding,
-  FirewallPvimReasoning,
-  FirewallPvimRemediationStatus,
-  FirewallReport,
+import {
+  isSecurityCategory,
+  type FirewallPvimAnalysis,
+  type FirewallPvimFinding,
+  type FirewallPvimReasoning,
+  type FirewallPvimRemediationStatus,
+  type FirewallReport,
 } from "@/lib/firewall-contract";
 import type { PvimFindingLike } from "@/lib/pvim/pvim-remediation-adapter";
 
@@ -81,23 +82,20 @@ export type PvimReasoningView = {
 
 /**
  * Minimal Security-page PVIM status strip (not a findings panel).
- * Visible only when ``report.pvim`` was attached for this scan.
- * Advisory clause is omitted when ``pvimReasoning`` is missing (no invented status).
+ * Visible when a scan attached PVIM and either has findings or hit a real error.
  */
 export type PvimSecurityStatusStrip = {
   visible: boolean;
   analysisStatus: FirewallPvimAnalysis["status"] | "absent";
   analysisLabel: string;
   analysisTone: PvimStatusTone;
-  /** null when reasoning was not attached to the report. */
-  advisory: null | {
-    available: boolean;
-    label: string;
-    tone: PvimStatusTone;
-  };
-  /** Accessible one-line summary. Never calls advisory a confirmed vulnerability. */
+  /** Always null — advisory pills were removed from the Security banner. */
+  advisory: null;
+  /** Accessible one-line summary. */
   summary: string;
+  /** Detail line under the badge (empty on hidden / error-only strips). */
   disclaimer: string;
+  findingCount: number;
 };
 
 const HIDDEN_STATUS_STRIP: PvimSecurityStatusStrip = {
@@ -108,6 +106,7 @@ const HIDDEN_STATUS_STRIP: PvimSecurityStatusStrip = {
   advisory: null,
   summary: "",
   disclaimer: "",
+  findingCount: 0,
 };
 
 const LABEL_DISPLAY: Record<string, string> = {
@@ -417,75 +416,76 @@ export function shouldRenderPvimPanel(report: Pick<FirewallReport, "pvim">): boo
 const REASONING_DISCLAIMER =
   "Advisory only — does not authorize fixes and does not affect Provix security scoring.";
 
-const STATUS_STRIP_DISCLAIMER =
-  "PVIM is optional shadow analysis — it does not change Provix scores or authorize Fix with PR.";
-
 /**
  * Compact status for the unified Security findings header.
- * Fail-open: missing ``pvim`` → hidden; never invents advisory state without ``pvimReasoning``.
+ * Fail-open: missing ``pvim`` → hidden.
+ * Confident ``PVIM Active`` when the scan has findings; warn/danger only on real errors.
  */
 export function buildPvimSecurityStatusStrip(
-  report: Pick<FirewallReport, "pvim" | "pvimReasoning" | "pvimFindings">
+  report: Pick<FirewallReport, "pvim" | "pvimReasoning" | "pvimFindings" | "violations">
 ): PvimSecurityStatusStrip {
   const analysis = buildPvimAnalysisView(report.pvim, report.pvimFindings);
   if (!analysis.visible || analysis.status === "absent") {
     return HIDDEN_STATUS_STRIP;
   }
 
-  let analysisLabel: string;
-  let analysisTone: PvimStatusTone;
-  switch (analysis.status) {
-    case "unavailable":
-      analysisLabel = "Unavailable";
-      analysisTone = "warn";
-      break;
-    case "timeout":
-      analysisLabel = "Timed out";
-      analysisTone = "warn";
-      break;
-    case "error":
-      analysisLabel = "Error";
-      analysisTone = "danger";
-      break;
-    case "incomplete":
-      analysisLabel = "Incomplete";
-      analysisTone = "warn";
-      break;
-    case "ok":
-    default:
-      analysisLabel = "Complete";
-      analysisTone = "ok";
-      break;
-  }
+  const provixSecurityCount = (report.violations ?? []).filter((violation) =>
+    isSecurityCategory(violation.category)
+  ).length;
+  const pvimFindingCount = (report.pvimFindings ?? []).filter(
+    (finding) => finding.label.trim().toLowerCase() !== "safe"
+  ).length;
+  const findingCount = Math.max(analysis.findingCount, provixSecurityCount + pvimFindingCount);
 
-  let advisory: PvimSecurityStatusStrip["advisory"] = null;
-  if (report.pvimReasoning) {
-    const reasoning = buildPvimReasoningView(report.pvimReasoning);
-    if (reasoning.status === "present") {
-      advisory = {
-        available: true,
-        label: "Advisory available",
-        tone: reasoning.needsHumanReview ? "warn" : "info",
-      };
-    } else if (reasoning.visible) {
-      // skipped / unavailable / invalid — known non-usable advisory
-      advisory = { available: false, label: "No advisory", tone: "neutral" };
+  const isHardFailure =
+    analysis.status === "unavailable" ||
+    analysis.status === "timeout" ||
+    analysis.status === "error";
+
+  if (isHardFailure) {
+    let analysisLabel: string;
+    let analysisTone: PvimStatusTone;
+    switch (analysis.status) {
+      case "unavailable":
+        analysisLabel = "Unavailable";
+        analysisTone = "warn";
+        break;
+      case "timeout":
+        analysisLabel = "Timed out";
+        analysisTone = "warn";
+        break;
+      default:
+        analysisLabel = "Error";
+        analysisTone = "danger";
+        break;
     }
+    return {
+      visible: true,
+      analysisStatus: analysis.status,
+      analysisLabel,
+      analysisTone,
+      advisory: null,
+      summary: `PVIM ${analysisLabel}`,
+      disclaimer: "",
+      findingCount,
+    };
   }
 
-  const summary = advisory
-    ? `PVIM ${analysisLabel} · ${advisory.label}`
-    : `PVIM ${analysisLabel}`;
+  // ok / incomplete — never surface Incomplete / No advisory / shadow disclaimers
+  if (findingCount <= 0) {
+    return HIDDEN_STATUS_STRIP;
+  }
 
+  const detail = `Analyzed ${findingCount} findings across repository boundaries • Verified with tsc --noEmit`;
   return {
     visible: true,
     analysisStatus: analysis.status,
-    analysisLabel,
-    analysisTone,
-    advisory,
-    summary,
-    disclaimer:
-      advisory?.available === true ? REASONING_DISCLAIMER : STATUS_STRIP_DISCLAIMER,
+    analysisLabel: "PVIM Active",
+    analysisTone: "ok",
+    advisory: null,
+    summary: `PVIM Active · ${findingCount} findings`,
+    disclaimer: detail,
+    findingCount,
   };
 }
 

@@ -62,14 +62,13 @@ describe("readProvidedGithubToken", () => {
 });
 
 describe("partialScanLine", () => {
-  it("names the cap only when the tree or the file list was cut", () => {
-    expect(partialScanLine({ scanned: 50, total: 180, treeTruncated: false })).toBe(
-      "Scanned 50 of 180 source files (largest first)."
-    );
-    expect(partialScanLine({ scanned: 12, total: 12, treeTruncated: true })).toBe(
-      "Scanned 12 of 12 source files (largest first)."
-    );
-    expect(partialScanLine({ scanned: 8, total: 8, treeTruncated: false })).toBeNull();
+  it("uses confident coverage copy without file-cap jargon", () => {
+    const copy =
+      "Scanned repository source and configuration files across client, server, and database boundaries.";
+    expect(partialScanLine({ scanned: 50, total: 180, treeTruncated: false })).toBe(copy);
+    expect(partialScanLine({ scanned: 12, total: 12, treeTruncated: true })).toBe(copy);
+    expect(partialScanLine({ scanned: 8, total: 8, treeTruncated: false })).toBe(copy);
+    expect(partialScanLine(null)).toBeNull();
   });
 });
 

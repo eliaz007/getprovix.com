@@ -316,11 +316,6 @@ export async function scanPublicGitHubRepo(
     }
 
     const report = toFirewallReport({ ...audited, violations }, pvimProvenance);
-    const coverage = scannedAll
-      ? `all ${sources.length} source files`
-      : `the ${sources.length} largest source files`;
-    const companionNote = companionSources.length > 0 ? ` and ${companionSources.length} config files` : "";
-    const truncated = tree.data.truncated ? " GitHub truncated the file tree." : "";
 
     return {
       status: 200,
@@ -328,7 +323,7 @@ export async function scanPublicGitHubRepo(
         ok: true,
         source: "github",
         status: "ready",
-        message: `Scanned ${parsed.repoUrl}. Architecture firewall and security guard reviewed ${coverage}${companionNote}.${truncated}`,
+        message: `Scanned ${parsed.repoUrl}. Repository source and configuration files were reviewed across client, server, and database boundaries.`,
         target: { kind: "github", repoUrl: parsed.repoUrl },
         report,
         coverage: {

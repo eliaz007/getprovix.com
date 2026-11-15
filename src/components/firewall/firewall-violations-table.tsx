@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
 import {
   FindingDiffDrawer,
+  buildManualReviewFixPrompt,
   rowDismissActionClass,
 } from "@/components/firewall/finding-diff-drawer";
 import {
@@ -17,6 +18,7 @@ import {
   panelClass,
   rowGhostActionClass,
   rowHoverClass,
+  rowManualReviewPrimaryClass,
   sectionLabelClass,
   severityLabel,
   severityTone,
@@ -29,7 +31,6 @@ import Toast from "@/components/Toast";
 import { prOpenedToast, useToast } from "@/components/use-toast";
 import {
   FIREWALL_SEVERITIES,
-  violationCategory,
   type FirewallAutofixPullRequestResponse,
   type FirewallAutofixResponse,
   type FirewallReport,
@@ -39,12 +40,15 @@ import {
 } from "@/lib/firewall-contract";
 import {
   isActionableArchitectureViolation,
-  isActionableSecurityFinding,
   isEmptyTopLevelSplitRefuse,
   isExpectedAutofixRefuse,
   isTestSourcePath,
 } from "@/lib/firewall-autofix";
 import { toGitHubOwnerRepo } from "@/lib/github-repo-ref";
+import {
+  buildOverviewOpenSummary,
+  listOpenStructureSnapshotFindings,
+} from "@/lib/integrity-metrics";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type SeverityFilter = "ALL" | FirewallSeverity;
@@ -166,6 +170,41 @@ function violationKey(violation: FirewallViolation): string {
   return `${violation.filePath}:${violation.line}:${violation.severity}:${violation.message}`;
 }
 
+/** Detect-only Structure rows — primary Copy Fix Prompt (no Preview Fix). */
+function StructureCopyFixPromptButton({ finding }: { finding: FirewallViolation }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyPrompt() {
+    const text = buildManualReviewFixPrompt({
+      filePath: finding.filePath,
+      line: finding.line,
+      issue: finding.message,
+      diff:
+        finding.remediation?.diff?.trim() ||
+        "No automated patch is available — review this architecture finding manually.",
+      snippet: finding.snippet,
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copyPrompt()}
+      className={`${rowManualReviewPrimaryClass} ${copied ? "bg-emerald-600 hover:bg-emerald-600" : ""}`}
+      title="Copy a ready-to-paste Cursor/AI fix prompt"
+    >
+      {copied ? "Copied" : "Copy Fix Prompt"}
+    </button>
+  );
+}
+
 function lacksWriteAccess(status: number, message: string): boolean {
   if (status === 401 || status === 403) return true;
   return /GITHUB_TOKEN|GitHub App|cannot create a branch|permission|not installed/i.test(message);
@@ -204,37 +243,18 @@ export default function FirewallViolationsTable({
   const repoSlug = repoUrl ? toGitHubOwnerRepo(repoUrl) : null;
   const writeAccess = useGithubRepoWriteAccess(repoSlug);
   const recorded = writeAccess.recorded;
-  const architecture = useMemo(() => {
-    const canOfferFix = !writeAccess.loading && writeAccess.canOpenPullRequest;
-    return report.violations.filter((violation) => {
-      if (violationCategory(violation) !== "ARCHITECTURE") return false;
-      if (!isActionableArchitectureViolation(violation)) return false;
-      if (dismissedPaths.has(violation.filePath)) return false;
-      const hasPr =
-        Boolean(writeAccess.recorded[violation.filePath]) ||
-        sessionPulls[violation.filePath]?.status === "opened";
-      // Don't list rows we can't Open Fix — Preview-only looks broken.
-      if (!hasPr && !canOfferFix) return false;
-      return true;
-    });
-  }, [
-    report.violations,
-    dismissedPaths,
-    writeAccess.loading,
-    writeAccess.canOpenPullRequest,
-    writeAccess.recorded,
-    sessionPulls,
-  ]);
-  // Match Leaks: only count findings that can actually Open Fix (have a patch + App write).
-  const securityCount =
-    !writeAccess.loading && writeAccess.canOpenPullRequest
-      ? report.violations.filter(
-          (violation) =>
-            violationCategory(violation) !== "ARCHITECTURE" &&
-            isActionableSecurityFinding(violation) &&
-            Boolean(violation.remediation)
-        ).length
-      : 0;
+  const canOfferFix = !writeAccess.loading && writeAccess.canOpenPullRequest;
+  // Same Structure universe as Audits (`listOpenStructureSnapshotFindings`) —
+  // never drop rules that lack an automated patch; those stay as Manual review.
+  const architecture = useMemo(
+    () =>
+      listOpenStructureSnapshotFindings(report).filter(
+        (violation) => !dismissedPaths.has(violation.filePath)
+      ),
+    [report, dismissedPaths]
+  );
+  // Same Security open universe as Overview / sidebar / Audits (Provix + PVIM).
+  const securityCount = buildOverviewOpenSummary(report).openExposures;
 
   function violationHasOpenPr(filePath: string): boolean {
     const session = sessionPulls[filePath];
@@ -453,7 +473,8 @@ export default function FirewallViolationsTable({
           <div className="min-w-0">
             <h2 className={sectionLabelClass}>Structure issues</h2>
             <p className={`mt-1 ${mutedLabelClass}`}>
-              Architecture problems Provix can open a fix PR for.{" "}
+              Same architecture findings as Audits — Fix with PR when a verified patch exists; otherwise
+              Manual review.{" "}
               <span className="tabular-nums text-zinc-300">{activeCount.toLocaleString("en-US")}</span>
               {activeCount === 1 ? " open" : " open"}
               {openedCount > 0 ? (
@@ -505,7 +526,7 @@ export default function FirewallViolationsTable({
         {!writeAccess.loading && !writeAccess.canOpenPullRequest && repoSlug ? (
           <p className="border-b border-amber-400/20 bg-amber-400/5 px-5 py-2.5 text-xs text-amber-100/90" role="status">
             {writeAccess.accessMessage ??
-              "Install the Provix GitHub App on this repository to open fix pull requests."}
+              "Install the Provix GitHub App on this repository to open fix pull requests. Manual-review findings stay listed."}
           </p>
         ) : null}
 
@@ -534,17 +555,13 @@ export default function FirewallViolationsTable({
           </div>
         ) : null}
 
-        {writeAccess.loading && repoSlug ? (
-          <p className="px-5 py-10 text-sm text-zinc-500">Checking whether Provix can open fix pull requests…</p>
-        ) : rows.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="px-5 py-10 text-sm text-zinc-500">
-            {!writeAccess.canOpenPullRequest && repoSlug
-              ? "No fixable structure issues to show until the GitHub App can open pull requests."
-              : listFilter === "opened"
-                ? "No pull requests opened in this scan."
-                : listFilter === "action"
-                  ? "Nothing needs a fix PR right now."
-                  : "No structure issues in this filter."}
+            {listFilter === "opened"
+              ? "No pull requests opened in this scan."
+              : listFilter === "action"
+                ? "No open structure findings."
+                : "No structure issues in this filter."}
           </p>
         ) : (
           <ul className={findingListClass}>
@@ -564,6 +581,9 @@ export default function FirewallViolationsTable({
               const prError = session?.status === "error" ? session.message : null;
               const knownOpen = Boolean(saved);
               const resolved = Boolean(opened || knownOpen);
+              const shippable =
+                !resolved && isActionableArchitectureViolation(violation) && canOfferFix;
+              const manualReview = !resolved && !shippable;
               const tone = resolved ? "ok" : severityTone(violation.severity);
               const ruleLabel = violation.rule ? formatBoundaryId(violation.rule) : "Architecture";
               const description = resolved
@@ -576,8 +596,20 @@ export default function FirewallViolationsTable({
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <StatusPill
-                        label={resolved ? "Fixed" : severityLabel(violation.severity)}
-                        tone={tone === "ok" ? "ok" : tone === "danger" ? "danger" : tone === "warn" ? "warn" : "neutral"}
+                        label={
+                          resolved ? "Fixed" : manualReview ? "Manual review" : severityLabel(violation.severity)
+                        }
+                        tone={
+                          resolved
+                            ? "ok"
+                            : manualReview
+                              ? "neutral"
+                              : tone === "danger"
+                                ? "danger"
+                                : tone === "warn"
+                                  ? "warn"
+                                  : "neutral"
+                        }
                       />
                       <span
                         className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-medium ${statusPillClass("neutral")}`}
@@ -587,16 +619,18 @@ export default function FirewallViolationsTable({
                       <FilePathPill path={violation.filePath} line={resolved ? undefined : violation.line} />
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        aria-expanded={diffOpen}
-                        disabled={diff?.status === "loading"}
-                        onClick={() => void toggleDiff(key, violation.filePath)}
-                        className={rowGhostActionClass}
-                        title="Preview the proposed fix without opening a pull request"
-                      >
-                        {diff?.status === "loading" ? "Loading…" : diffOpen ? "Hide" : "Preview fix"}
-                      </button>
+                      {shippable ? (
+                        <button
+                          type="button"
+                          aria-expanded={diffOpen}
+                          disabled={diff?.status === "loading"}
+                          onClick={() => void toggleDiff(key, violation.filePath)}
+                          className={rowGhostActionClass}
+                          title="Preview the proposed fix without opening a pull request"
+                        >
+                          {diff?.status === "loading" ? "Loading…" : diffOpen ? "Hide" : "Preview fix"}
+                        </button>
+                      ) : null}
                       {opened ? (
                         <a
                           href={opened.url}
@@ -609,14 +643,17 @@ export default function FirewallViolationsTable({
                       ) : knownOpen ? (
                         <StatusPill label="Opened" tone="ok" />
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => dismissFinding(violation.filePath)}
-                          className={rowDismissActionClass}
-                          title="Dismiss this finding from the Open queue"
-                        >
-                          Dismiss
-                        </button>
+                        <>
+                          {manualReview ? <StructureCopyFixPromptButton finding={violation} /> : null}
+                          <button
+                            type="button"
+                            onClick={() => dismissFinding(violation.filePath)}
+                            className={rowDismissActionClass}
+                            title="Dismiss this finding from the Open queue"
+                          >
+                            Dismiss
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -634,14 +671,21 @@ export default function FirewallViolationsTable({
                           <summary className="cursor-pointer list-none text-xs text-zinc-500 transition-colors hover:text-zinc-300 [&::-webkit-details-marker]:hidden">
                             Inspect code
                           </summary>
-                          <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-white/[0.06] bg-black/50 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">
-                            <code>{violation.snippet}</code>
-                          </pre>
+                          <div className="mt-2 overflow-hidden rounded-lg border border-white/[0.06] bg-black/50">
+                            <div className="border-b border-white/[0.06] bg-zinc-950/80 px-3 py-1.5">
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                                Current Code
+                              </p>
+                            </div>
+                            <pre className="max-h-48 overflow-auto px-3 py-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">
+                              <code>{violation.snippet}</code>
+                            </pre>
+                          </div>
                         </details>
                       ) : null}
                     </div>
                   ) : null}
-                  {prError || diff?.status === "error" || (diffOpen && diff?.status === "ready") ? (
+                  {shippable && (prError || diff?.status === "error" || (diffOpen && diff?.status === "ready")) ? (
                     <div className="mt-2 space-y-2">
                       {prError ? (
                         <p className="text-sm text-red-300" role="alert">

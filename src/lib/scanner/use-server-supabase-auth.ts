@@ -5,12 +5,16 @@ import ts from "typescript";
  * `supabase.auth.getUser()`. Uses the TypeScript compiler API only (no exec).
  */
 
+/** Stable rule id for unauthenticated `"use server"` Supabase `.from()` / `.rpc()` calls. */
+export const USE_SERVER_SUPABASE_AUTH_RULE = "Unauthenticated Server Action DB Access";
+
 export type UseServerSupabaseAuthViolation = {
   filePath: string;
   line: number;
   message: string;
   /** Exported / declared name when available. */
   functionName: string | null;
+  ruleId?: string;
 };
 
 export type UseServerSupabaseAuthScanFile = {
@@ -249,6 +253,7 @@ function analyzeFunction(
     filePath,
     line,
     functionName: name,
+    ruleId: USE_SERVER_SUPABASE_AUTH_RULE,
     message:
       `${nameLabel} is a "use server" action that performs a Supabase database ` +
       `operation (line ${line}) without calling supabase.auth.getUser(). ` +

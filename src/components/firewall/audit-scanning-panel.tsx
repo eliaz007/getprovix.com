@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 
 const SCAN_STEPS = [
@@ -11,31 +11,58 @@ const SCAN_STEPS = [
   "Putting together your security report...",
 ] as const;
 
+const EARLY_STEP_MS = 1800;
+const CREEP_MS = 2000;
+const FINAL_INDEX = SCAN_STEPS.length - 1;
+
 export default function AuditScanningPanel({
   repo,
 }: {
   repo: string | null;
 }) {
   const [step, setStep] = useState(0);
+  const [progress, setProgress] = useState(8);
+  const creepStarted = useRef(false);
 
+  // Advance through early steps only. The final step stays active until this panel unmounts.
   useEffect(() => {
     setStep(0);
-    const timers = SCAN_STEPS.map((_, index) =>
-      setTimeout(() => {
-        setStep(index);
-      }, index * 1600)
-    );
-    // Hold on the final step until the real scan finishes.
-    const hold = setTimeout(() => {
-      setStep(SCAN_STEPS.length - 1);
-    }, (SCAN_STEPS.length - 1) * 1600);
+    setProgress(8);
+    creepStarted.current = false;
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (let index = 0; index < FINAL_INDEX; index += 1) {
+      timers.push(
+        setTimeout(() => {
+          setStep(index + 1);
+          // Plateau at 80% when we enter the final step.
+          if (index + 1 >= FINAL_INDEX) {
+            setProgress(80);
+          } else {
+            const pct = Math.round(((index + 1) / FINAL_INDEX) * 72);
+            setProgress(Math.min(72, Math.max(12, pct)));
+          }
+        }, (index + 1) * EARLY_STEP_MS)
+      );
+    }
+
     return () => {
       timers.forEach(clearTimeout);
-      clearTimeout(hold);
     };
   }, [repo]);
 
-  const progress = Math.min(92, Math.round(((step + 1) / SCAN_STEPS.length) * 100));
+  // Once on the final step, creep 80% → 99% (1% every 2s) until the API finishes and unmounts us.
+  useEffect(() => {
+    if (step < FINAL_INDEX) return;
+    if (!creepStarted.current) {
+      creepStarted.current = true;
+      setProgress((current) => Math.max(current, 80));
+    }
+    const id = setInterval(() => {
+      setProgress((current) => (current >= 99 ? 99 : current + 1));
+    }, CREEP_MS);
+    return () => clearInterval(id);
+  }, [step]);
 
   return (
     <motion.section
@@ -71,7 +98,7 @@ export default function AuditScanningPanel({
               className="h-full rounded-full bg-gradient-to-r from-violet-500 via-violet-400 to-emerald-400"
               initial={{ width: "8%" }}
               animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.55, ease: "easeOut" }}
+              transition={{ duration: 0.45, ease: "easeOut" }}
             />
           </div>
           <p className="mt-2 text-left text-[11px] uppercase tracking-[0.16em] text-zinc-600">
@@ -81,8 +108,9 @@ export default function AuditScanningPanel({
 
         <ul className="mt-8 w-full space-y-2.5 text-left">
           {SCAN_STEPS.map((label, index) => {
-            const done = index < step;
-            const active = index === step;
+            // Final step is never a green check while the request is in flight.
+            const done = index < step && index < FINAL_INDEX;
+            const active = index === step || (step >= FINAL_INDEX && index === FINAL_INDEX);
             return (
               <motion.li
                 key={label}
@@ -97,12 +125,25 @@ export default function AuditScanningPanel({
                       : "border-white/[0.05] bg-white/[0.02] text-zinc-500"
                 }`}
               >
-                <span
-                  className={`flex h-2 w-2 shrink-0 rounded-full ${
-                    done ? "bg-emerald-400" : active ? "animate-pulse bg-violet-300" : "bg-zinc-700"
-                  }`}
-                  aria-hidden
-                />
+                {done ? (
+                  <span
+                    className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300"
+                    aria-hidden
+                  >
+                    <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M2.5 6.5 4.8 9 9.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                ) : active ? (
+                  <span
+                    className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-violet-300/30 border-t-violet-200"
+                    aria-hidden
+                  />
+                ) : (
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center" aria-hidden>
+                    <span className="h-2 w-2 rounded-full bg-zinc-700" />
+                  </span>
+                )}
                 <span className="leading-snug">{label}</span>
               </motion.li>
             );

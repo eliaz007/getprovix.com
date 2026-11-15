@@ -8,15 +8,15 @@ import AuditsCommandCenter from "@/components/firewall/audits-command-center";
 import { panelClass } from "@/components/firewall/firewall-ui";
 import { useGithubAppInstallation } from "@/components/onboarding/use-github-app-installation";
 import type { FirewallResponse } from "@/lib/firewall-contract";
-import { isSecurityCategory } from "@/lib/firewall-contract";
-import { isActionableSecurityFinding } from "@/lib/firewall-autofix";
 import { parseGitHubRepository, toGitHubOwnerRepo } from "@/lib/github-repo-ref";
 import {
+  normalizeScanSummaryNote,
   readFirewallScanHandoff,
   readLatestFirewallScanHandoff,
   saveFirewallScanHandoff,
 } from "@/lib/firewall-scan-handoff";
-import { partialScanLine } from "@/lib/firewall-repo-access";
+import { partialScanLine, SCAN_COVERAGE_COPY } from "@/lib/firewall-repo-access";
+import { buildOverviewOpenSummary } from "@/lib/integrity-metrics";
 import { withBrowserSession } from "@/lib/browser-auth-headers";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { useFirewallView } from "@/components/firewall/firewall-view-context";
@@ -25,9 +25,6 @@ type PageState =
   | { kind: "idle" }
   | { kind: "ready"; payload: FirewallResponse }
   | { kind: "error"; message: string };
-
-const LOCAL_SNAPSHOT_NOTE =
-  "Remote GitHub scans are not running yet. This is the latest firewall snapshot on this workspace.";
 
 function sanitizeRepoParam(raw: string): string {
   const trimmed = raw.trim();
@@ -77,9 +74,13 @@ export default function FirewallPage() {
         });
         return;
       }
-      const note = payload.message ?? `Scanned https://github.com/${clean}.`;
+      const note = normalizeScanSummaryNote(
+        payload.message ?? `Scanned ${clean}. ${SCAN_COVERAGE_COPY}`,
+        clean
+      );
       const readyPayload: FirewallResponse = {
         ...payload,
+        message: note,
         target: { kind: "github", repoUrl: clean },
       };
       saveFirewallScanHandoff({
@@ -104,10 +105,12 @@ export default function FirewallPage() {
     }
   }
 
+  // Remounting /firewall (e.g. leaving Activity) must NOT kick off a new GitHub
+  // scan — that made tab switches feel multi-second. Restore the last handoff
+  // synchronously; the user re-runs an audit explicitly via Run Audit.
   useEffect(() => {
     const repo = repoSlug ?? sanitizeRepoParam(new URLSearchParams(window.location.search).get("repo") ?? "");
     const handoff = repo ? readFirewallScanHandoff(repo) : readLatestFirewallScanHandoff();
-    if (!repo && !handoff) return;
     if (handoff) {
       const ownerRepo = sanitizeRepoParam(handoff.repoUrl) || repo;
       if (ownerRepo) setRepoSlug(ownerRepo);
@@ -127,58 +130,15 @@ export default function FirewallPage() {
       });
       return;
     }
-
-    // Prefer a generation bump over AbortController.abort(): Next.js dev overlays
-    // surface `AbortError: signal is aborted without reason` from cleanup aborts
-    // (especially under Strict Mode remount), even when the rejection is caught.
-    const gen = ++scanGenRef.current;
     if (repo) {
       setRepoSlug(repo);
       setRepoUrl(`https://github.com/${repo}`);
     }
-    setIsScanning(true);
-    setActiveView("audits");
-    void (async () => {
-      try {
-        const response = await fetch("/api/firewall", {
-          cache: "no-store",
-        });
-        if (gen !== scanGenRef.current) return;
-        const payload = await readJsonResponse<FirewallResponse>(response);
-        if (gen !== scanGenRef.current) return;
-        if (!response.ok || payload.status === "error" || !payload.report) {
-          setState({
-            kind: "error",
-            message: payload.message ?? "The architecture report could not be loaded.",
-          });
-          return;
-        }
-        setEntryNote(LOCAL_SNAPSHOT_NOTE);
-        setState({ kind: "ready", payload });
-      } catch (error) {
-        if (gen !== scanGenRef.current) return;
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setState({
-          kind: "error",
-          message: error instanceof Error ? error.message : "The architecture report could not be loaded.",
-        });
-      } finally {
-        if (gen === scanGenRef.current) setIsScanning(false);
-      }
-    })();
-
-    return () => {
-      // Invalidate this mount's fetch without aborting (avoids Next.js AbortError overlay).
-      if (scanGenRef.current === gen) {
-        scanGenRef.current += 1;
-        setIsScanning(false);
-      }
-    };
     // Intentionally once on mount; repoSlug is seeded by FirewallViewProvider first.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // When an App installation already exists, skip Connect and open the audit view.
+  // Prefill the connected repo after App install lookup — never auto-scan on remount.
   useEffect(() => {
     if (installationBootstrapped.current || installation.loading || !installation.installed) return;
     const params = new URLSearchParams(window.location.search);
@@ -203,12 +163,10 @@ export default function FirewallPage() {
           message: handoff.note,
           target: { kind: "github", repoUrl: repo },
           report: handoff.report,
+          coverage: handoff.coverage ?? null,
         },
       });
-      return;
     }
-
-    void loadGithubAudit(repo, { switchToAudits: true });
     // Do not reset installationBootstrapped on cleanup — that re-fired audits in a loop
     // whenever installation deps changed (and under Strict Mode remount).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -261,11 +219,7 @@ export default function FirewallPage() {
       setSecurityCount(null);
       return;
     }
-    setSecurityCount(
-      report.violations.filter(
-        (violation) => isSecurityCategory(violation.category) && isActionableSecurityFinding(violation)
-      ).length
-    );
+    setSecurityCount(buildOverviewOpenSummary(report).openExposures);
   }, [report, setSecurityCount]);
 
   return (
@@ -300,27 +254,22 @@ export default function FirewallPage() {
               ) : null}
               {report ? (
                 <p className="font-mono text-xs tabular-nums text-zinc-500">
-                  <span className="text-zinc-300">
-                    {report.violations.filter((v) => v.severity === "CRITICAL").length}
-                  </span>{" "}
-                  critical ·{" "}
-                  <span className="text-zinc-300">
-                    {report.violations.filter((v) => v.severity === "HIGH").length}
-                  </span>{" "}
-                  high ·{" "}
-                  <span className="text-zinc-300">
-                    {
-                      report.violations.filter(
-                        (v) => v.severity !== "CRITICAL" && v.severity !== "HIGH"
-                      ).length
-                    }
-                  </span>{" "}
-                  other
+                  {(() => {
+                    const open = buildOverviewOpenSummary(report);
+                    return (
+                      <>
+                        <span className="text-zinc-300">{open.critical}</span> critical ·{" "}
+                        <span className="text-zinc-300">{open.high}</span> high ·{" "}
+                        <span className="text-zinc-300">{open.other}</span> other
+                        <span className="text-zinc-600"> · {open.openExposures} open</span>
+                      </>
+                    );
+                  })()}
                 </p>
               ) : (
                 <p className="text-sm text-zinc-500">High-level score and activity for your latest scan.</p>
               )}
-              {coverageLine ? <p className="w-full text-sm text-amber-200/90 sm:w-auto">{coverageLine}</p> : null}
+              {coverageLine ? <p className="w-full text-sm text-zinc-500 sm:w-auto">{coverageLine}</p> : null}
             </div>
             <button
               type="button"
@@ -369,8 +318,12 @@ export default function FirewallPage() {
           <div className="min-w-0 space-y-1">
             <p className="text-xs text-zinc-500">Architecture</p>
             <h1 className="text-xl font-medium tracking-tight text-zinc-50 sm:text-2xl">Structure</h1>
-            {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
-            {coverageLine ? <p className="max-w-3xl text-sm text-amber-200/90">{coverageLine}</p> : null}
+            {entryNote ? (
+              <p className="max-w-3xl text-sm text-zinc-600">
+                {normalizeScanSummaryNote(entryNote, scannedRepoUrl)}
+              </p>
+            ) : null}
+            <p className="max-w-3xl text-sm text-zinc-500">{coverageLine ?? SCAN_COVERAGE_COPY}</p>
           </div>
         </header>
       ) : null}
@@ -380,8 +333,12 @@ export default function FirewallPage() {
           <div className="min-w-0 space-y-1">
             <p className="text-xs text-zinc-500">Security</p>
             <h1 className="text-xl font-medium tracking-tight text-zinc-50 sm:text-2xl">Security</h1>
-            {entryNote ? <p className="max-w-3xl text-sm text-zinc-600">{entryNote}</p> : null}
-            {coverageLine ? <p className="max-w-3xl text-sm text-amber-200/90">{coverageLine}</p> : null}
+            {entryNote ? (
+              <p className="max-w-3xl text-sm text-zinc-600">
+                {normalizeScanSummaryNote(entryNote, scannedRepoUrl)}
+              </p>
+            ) : null}
+            <p className="max-w-3xl text-sm text-zinc-500">{coverageLine ?? SCAN_COVERAGE_COPY}</p>
           </div>
         </header>
       ) : null}
@@ -401,6 +358,7 @@ export default function FirewallPage() {
         </p>
       ) : null}
 
+      {/* Full finding tables live only on Security / Structure — never on Audits. */}
       {activeView === "violations" && report ? (
         <FirewallViolationsTable report={report} repoUrl={scannedRepoUrl} />
       ) : null}
