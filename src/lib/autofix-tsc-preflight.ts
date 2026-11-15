@@ -1,12 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { AutofixWriteFile } from "@/lib/autofix-write-validation";
-
-const requireFromHere = createRequire(import.meta.url);
 
 type HostTsconfigPaths = {
   baseUrl: string;
@@ -720,54 +717,51 @@ async function linkHostNodeModules(tempRoot: string, projectRoot: string): Promi
   }
 }
 
+/**
+ * Locate typescript/bin/tsc on disk only — never require.resolve.
+ * Turbopack NFT must not trace these paths into the serverless bundle;
+ * path.join / existsSync use turbopackIgnore magic comments.
+ */
 function resolveTypescriptTscJs(projectRoot: string): string | null {
-  // Prefer on-disk paths so Vercel/serverless builds never need package resolution.
-  const candidates = [
-    path.join(projectRoot, "node_modules", "typescript", "bin", "tsc"),
-    path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc"),
-  ];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
+  const roots = [projectRoot, process.cwd()];
+  for (const root of roots) {
+    // turbopackIgnore: do not NFT-trace node_modules/typescript into the app.
+    const candidate = path.join(
+      /*turbopackIgnore: true*/ root,
+      "node_modules",
+      "typescript",
+      "bin",
+      "tsc"
+    );
+    if (existsSync(/*turbopackIgnore: true*/ candidate)) return candidate;
   }
-  // Skip package resolve in production bundles — typescript/bin is often absent on
-  // Vercel `/var/task`, and Turbopack static analysis of resolve() fails the build.
-  if (process.env.NODE_ENV === "production") return null;
-  try {
-    // turbopackIgnore: keep this a runtime resolve; do not NFT-trace typescript into the app.
-    return requireFromHere.resolve(/* turbopackIgnore: true */ "typescript/bin/tsc");
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 /** `typescript/lib/lib.*.d.ts` — often stripped from the Vercel serverless bundle. */
 export function typescriptLibDirectory(projectRoot: string): string | null {
   const tscJs = resolveTypescriptTscJs(projectRoot);
   if (tscJs) {
-    const fromBin = path.join(path.dirname(tscJs), "..", "lib");
-    if (existsSync(path.join(fromBin, "lib.es2022.d.ts")) || existsSync(path.join(fromBin, "lib.d.ts"))) {
+    const fromBin = path.join(/*turbopackIgnore: true*/ path.dirname(tscJs), "..", "lib");
+    if (
+      existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ fromBin, "lib.es2022.d.ts")) ||
+      existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ fromBin, "lib.d.ts"))
+    ) {
       return fromBin;
     }
   }
-  const fallbacks = [
-    path.join(projectRoot, "node_modules", "typescript", "lib"),
-    path.join(process.cwd(), "node_modules", "typescript", "lib"),
-  ];
-  for (const dir of fallbacks) {
-    if (existsSync(path.join(dir, "lib.es2022.d.ts")) || existsSync(path.join(dir, "lib.d.ts"))) {
+  const roots = [projectRoot, process.cwd()];
+  for (const root of roots) {
+    // turbopackIgnore: do not NFT-trace typescript/lib into the serverless bundle.
+    const dir = path.join(/*turbopackIgnore: true*/ root, "node_modules", "typescript", "lib");
+    if (
+      existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dir, "lib.es2022.d.ts")) ||
+      existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dir, "lib.d.ts"))
+    ) {
       return dir;
     }
   }
-  if (process.env.NODE_ENV === "production") return null;
-  try {
-    // turbopackIgnore: runtime-only; lib.*.d.ts may be missing from the serverless bundle.
-    const resolved = requireFromHere.resolve(
-      /* turbopackIgnore: true */ "typescript/lib/lib.es2022.d.ts"
-    );
-    return path.dirname(resolved);
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 /**
