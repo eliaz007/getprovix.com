@@ -721,6 +721,7 @@ async function linkHostNodeModules(tempRoot: string, projectRoot: string): Promi
 }
 
 function resolveTypescriptTscJs(projectRoot: string): string | null {
+  // Prefer on-disk paths so Vercel/serverless builds never need package resolution.
   const candidates = [
     path.join(projectRoot, "node_modules", "typescript", "bin", "tsc"),
     path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc"),
@@ -728,8 +729,12 @@ function resolveTypescriptTscJs(projectRoot: string): string | null {
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }
+  // Skip package resolve in production bundles — typescript/bin is often absent on
+  // Vercel `/var/task`, and Turbopack static analysis of resolve() fails the build.
+  if (process.env.NODE_ENV === "production") return null;
   try {
-    return requireFromHere.resolve("typescript/bin/tsc");
+    // turbopackIgnore: keep this a runtime resolve; do not NFT-trace typescript into the app.
+    return requireFromHere.resolve(/* turbopackIgnore: true */ "typescript/bin/tsc");
   } catch {
     return null;
   }
@@ -753,8 +758,12 @@ export function typescriptLibDirectory(projectRoot: string): string | null {
       return dir;
     }
   }
+  if (process.env.NODE_ENV === "production") return null;
   try {
-    const resolved = requireFromHere.resolve("typescript/lib/lib.es2022.d.ts");
+    // turbopackIgnore: runtime-only; lib.*.d.ts may be missing from the serverless bundle.
+    const resolved = requireFromHere.resolve(
+      /* turbopackIgnore: true */ "typescript/lib/lib.es2022.d.ts"
+    );
     return path.dirname(resolved);
   } catch {
     return null;
